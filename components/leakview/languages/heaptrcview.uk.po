@@ -1,0 +1,89 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Project-Id-Version: \n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: uk\n"
+"X-Generator: Poedit 1.6.4\n"
+
+#: heaptrcview.rsdtimes
+msgid " (%d times)"
+msgstr " (%d разів)"
+
+#: heaptrcview.rserrorparse
+msgid "Error while parsing trace file"
+msgstr "Помилка розбору файлу трасування"
+
+#: heaptrcview.rsleakview
+msgid "Leaks and Traces"
+msgstr "Витоки і трасування"
+
+#: heaptrcview.sbtnclipbrd
+msgid "Paste Clipboard"
+msgstr "Вставити з буфера обміну"
+
+#: heaptrcview.sbtnresolve
+msgid "Resolve"
+msgstr "Розв'язати"
+
+#: heaptrcview.sbtnupdate
+msgid "Update"
+msgstr "Оновити"
+
+#: heaptrcview.schkraw
+msgid "Raw leak data"
+msgstr "Необроблені дані про витік"
+
+#: heaptrcview.schktop
+msgid "Stay on top"
+msgstr "Поверх інших вікон"
+
+#: heaptrcview.sfrmcap
+msgid "Leaks and Traces - HeapTrc and GDB backtrace output viewer"
+msgstr "Витоки і трасування - програма перегляду виводу HeapTrc і зворотного трасування GDB"
+
+#: heaptrcview.sfrmselectfilewithdebuginfo
+msgid "Select file with debug info"
+msgstr "Виберіть файл зі зневаджувальною інформацією"
+
+#: heaptrcview.sfrmselecttrcfile
+msgid "Select file with trace log"
+msgstr "Виберіть файл з журналом трасування"
+
+#: heaptrcview.slbltrace
+msgid ".trc file"
+msgstr "файл .trc"
+
+#: heaptrcview.stacklineformat
+msgid "%s"
+msgstr "%s"
+
+#: heaptrcview.stacklineformatwithfile
+msgid "%s file: %s : %d; "
+msgstr "%s файл: %s : %d; "
+
+#: heaptrcview.stacktraceformat
+msgid "Leak: %d bytes x %d times"
+msgstr "Витік: %d байт(ів) x %d раз(ів)"
+
+#: heaptrcview.stacktraceformatsingle
+msgid "Leak: %d bytes"
+msgstr "Витік: %d байт(ів)"
+
+#: heaptrcview.strleakingblockscount
+msgid "Leaking Blocks Count: %d"
+msgstr "К-сть втрачених блоків: %d"
+
+#: heaptrcview.strleakingmemsize
+msgid "Leaking Mem Size: %d"
+msgstr "Обсяг втраченої пам'яті: %d"
+
+#: heaptrcview.strtotalmemalloc
+msgid "Total Mem allocated: %d"
+msgstr "Всього виділено пам'яті: %d"
+
