@@ -1,4 +1,4 @@
-{  $Id: lazhelpintf.pas 50694 2015-12-06 14:42:42Z mattias $  }
+{  $Id: lazhelpintf.pas 58244 2018-06-13 13:59:07Z juha $  }
 {
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -25,8 +25,11 @@ unit LazHelpIntf;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, FileUtil, LCLStrConsts, Dialogs,
-  LazConfigStorage, HelpIntfs, Masks, LazFileUtils, LazUTF8;
+  Classes, SysUtils,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUtilities, LazUTF8, LazConfigStorage, Masks,
+  // LCL
+  LCLProc, LCLStrConsts, Dialogs, HelpIntfs;
 
 type
   { THelpQueryItem }
@@ -1959,7 +1962,7 @@ begin
   for i:=0 to Count-1 do begin
     HelpDB:=Items[i];
     Path:=HelpDB.ID;
-    if (Path='') or (not IsValidIdent(Path)) then continue;
+    if not IsValidIdent(Path) then continue;
     Storage.AppendBasePath(Path);
     try
       HelpDB.Load(Storage);
@@ -1978,7 +1981,7 @@ begin
   for i:=0 to Count-1 do begin
     HelpDB:=Items[i];
     Path:=HelpDB.ID;
-    if (Path='') or (not IsValidIdent(Path)) then continue;
+    if not IsValidIdent(Path) then continue;
     Storage.AppendBasePath(Path);
     try
       HelpDB.Save(Storage);
@@ -2069,7 +2072,7 @@ begin
   for i:=0 to Count-1 do begin
     Viewer:=Items[i];
     Path:=Viewer.StorageName;
-    if (Path='') or (not IsValidIdent(Path)) then continue;
+    if not IsValidIdent(Path) then continue;
     Storage.AppendBasePath(Path);
     try
       Viewer.Load(Storage);
@@ -2088,7 +2091,7 @@ begin
   for i:=0 to Count-1 do begin
     Viewer:=Items[i];
     Path:=Viewer.StorageName;
-    if (Path='') or (not IsValidIdent(Path)) then continue;
+    if not IsValidIdent(Path) then continue;
     Storage.AppendBasePath(Path);
     try
       Viewer.Save(Storage);

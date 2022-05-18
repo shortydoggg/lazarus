@@ -5,8 +5,12 @@ unit ReplaceNamesUnit;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, LResources, Forms, Controls, Graphics, Dialogs,
-  Grids, Buttons, ExtCtrls, Menus, ButtonPanel, CodeToolsStructs, SynRegExpr,
+  Classes, SysUtils, RegExpr,
+  // LCL
+  Forms, Controls, Dialogs, Grids, Menus, ButtonPanel,
+  // LazUtils
+  AvgLvlTree,
+  // IDE, converter
   LazarusIDEStrConsts, ConverterTypes;
 
 type

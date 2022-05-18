@@ -12,7 +12,7 @@
 
   A copy of the GNU General Public License is available on the World Wide Web at
   <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing to the Free Software
-  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 unit MouseInputIntf;
 
@@ -31,6 +31,8 @@ type
     procedure DoDown(Button: TMouseButton); dynamic; abstract;
     procedure DoMove(ScreenX, ScreenY: Integer); dynamic; abstract;
     procedure DoUp(Button: TMouseButton); dynamic; abstract;
+    procedure DoScrollUp; dynamic; abstract;
+    procedure DoScrollDown; dynamic; abstract;
   public
     procedure Down(Button: TMouseButton; Shift: TShiftState);
     procedure Down(Button: TMouseButton; Shift: TShiftState; Control: TControl; X, Y: Integer);
@@ -41,6 +43,12 @@ type
     procedure Move(Shift: TShiftState; ScreenX, ScreenY: Integer; Duration: Integer);
     procedure Move(Shift: TShiftState; ScreenX, ScreenY: Integer);
 
+    procedure ScrollUp(Shift: TShiftState);
+    procedure ScrollUp(Shift: TShiftState; Control: TControl; X, Y: Integer);
+    procedure ScrollUp(Shift: TShiftState; ScreenX, ScreenY: Integer);
+    procedure ScrollDown(Shift: TShiftState);
+    procedure ScrollDown(Shift: TShiftState; Control: TControl; X, Y: Integer);
+    procedure ScrollDown(Shift: TShiftState; ScreenX, ScreenY: Integer);
 
     procedure Up(Button: TMouseButton; Shift: TShiftState);
     procedure Up(Button: TMouseButton; Shift: TShiftState; Control: TControl; X, Y: Integer);
@@ -58,7 +66,7 @@ type
 implementation
 
 uses
-  Math, MouseAndKeyInput, LCLIntf;
+  Math, MouseAndKeyInput;
 
 { TMouseInput }
 
@@ -117,7 +125,7 @@ var
   TimeStep: Integer;
   X, Y: Integer;
   Start: TPoint;
-  S: LongWord;
+  S: QWord;
 begin
   Start := Mouse.CursorPos;
   
@@ -125,8 +133,9 @@ begin
   begin
     TimeStep := Min(Interval, Duration);
 
-    S := GetTickCount;
-    while GetTickCount - S < TimeStep do Application.ProcessMessages;
+    S := GetTickCount64;
+    while GetTickCount64 - S < TimeStep do
+      Application.ProcessMessages;
     
     X := Start.X + ((ScreenX - Start.X) * TimeStep) div Duration;
     Y := Start.Y + ((ScreenY - Start.Y) * TimeStep) div Duration;
@@ -148,6 +157,58 @@ begin
     KeyInput.Unapply(Shift);
   end;
   Application.ProcessMessages;
+end;
+
+procedure TMouseInput.ScrollUp(Shift: TShiftState);
+begin
+  KeyInput.Apply(Shift);
+  try
+    DoScrollUp;
+  finally
+    KeyInput.Unapply(Shift);
+  end;
+  Application.ProcessMessages;
+end;
+
+procedure TMouseInput.ScrollUp(Shift: TShiftState; Control: TControl;
+  X, Y: Integer);
+var
+  P: TPoint;
+begin
+  P := Control.ClientToScreen(Point(X, Y));
+  ScrollUp(Shift, P.X, P.Y);
+end;
+
+procedure TMouseInput.ScrollUp(Shift: TShiftState; ScreenX, ScreenY: Integer);
+begin
+  Move(Shift, ScreenX, ScreenY);
+  ScrollUp(Shift);
+end;
+
+procedure TMouseInput.ScrollDown(Shift: TShiftState);
+begin
+  KeyInput.Apply(Shift);
+  try
+    DoScrollDown;
+  finally
+    KeyInput.Unapply(Shift);
+  end;
+  Application.ProcessMessages;
+end;
+
+procedure TMouseInput.ScrollDown(Shift: TShiftState; Control: TControl;
+  X, Y: Integer);
+var
+  P: TPoint;
+begin
+  P := Control.ClientToScreen(Point(X, Y));
+  ScrollDown(Shift, P.X, P.Y);
+end;
+
+procedure TMouseInput.ScrollDown(Shift: TShiftState; ScreenX, ScreenY: Integer);
+begin
+  Move(Shift, ScreenX, ScreenY);
+  ScrollDown(Shift);
 end;
 
 procedure TMouseInput.Up(Button: TMouseButton; Shift: TShiftState);
@@ -220,8 +281,6 @@ begin
   Move(Shift, ScreenX, ScreenY);
   DblClick(Button, Shift);
 end;
-
-
 
 end.
 

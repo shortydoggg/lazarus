@@ -45,8 +45,6 @@ type
       AContentRect: PRect = nil); override;
     procedure DrawIcon(DC: HDC; Details: TThemedElementDetails; const R: TRect;
       himl: HIMAGELIST; Index: Integer); override;
-    procedure DrawIcon(ACanvas: TPersistent; Details: TThemedElementDetails;
-      const P: TPoint; AImageList: TPersistent; Index: Integer); override;
 
     procedure DrawText(DC: HDC; Details: TThemedElementDetails;
       const S: String; R: TRect; Flags, Flags2: Cardinal); override;
@@ -171,10 +169,11 @@ begin
   if ThemesEnabled then
   begin
     if (Details.Element = teToolBar) and (Details.Part = TP_SPLITBUTTONDROPDOWN) then
-       Result.cx := 12
+       Result.cx := MulDiv(12, ScreenInfo.PixelsPerInchX, 96)
     else
     if ((Details.Element = teTreeview) and (Details.Part in [TVP_GLYPH, TVP_HOTGLYPH])) or
-       ((Details.Element = teWindow) and (Details.Part in [WP_SMALLCLOSEBUTTON])) then
+       ((Details.Element = teWindow) and (Details.Part in [WP_SMALLCLOSEBUTTON])) or
+       (Details.Element = teTrackBar) or (Details.Element = teHeader) then
     begin
       R := Rect(0, 0, 800, 800);
       GetThemePartSize(GetTheme(Details.Element), 0, Details.Part, Details.State, @R, TS_TRUE, Result);
@@ -399,21 +398,6 @@ begin
     inherited;
 end;
 
-procedure TWin32ThemeServices.DrawIcon(ACanvas: TPersistent;
-  Details: TThemedElementDetails; const P: TPoint; AImageList: TPersistent;
-  Index: Integer);
-{var
-  ImageList: TCustomImageList absolute AImageList;
-}
-begin
-{  if ThemesEnabled then
-    DrawIcon(TCanvas(ACanvas).Handle, Details,
-      Rect(P.X, P.Y, P.X + ImageList.Width, P.Y + ImageList.Width),
-      ImageList.Handle, Index)
-  else}
-    inherited;
-end;
-
 function TWin32ThemeServices.HasTransparentParts(Details: TThemedElementDetails): Boolean;
 begin
   if ThemesEnabled then
@@ -506,12 +490,27 @@ procedure TWin32ThemeServices.DrawText(ACanvas: TPersistent;
 
 var
   FontUnderlineSave:boolean;
+  DC: HDC;
+  DCIndex: Integer;
+  ARect: TRect;
+
+  procedure SaveState;
+  begin
+    if DCIndex <> 0 then exit;
+    DCIndex := SaveDC(DC);
+  end;
+
+  procedure RestoreState;
+  begin
+    if DCIndex = 0 then exit;
+    RestoreDC(DC, DCIndex);
+  end;
 
   function NotImplementedInXP: Boolean; inline;
   begin
     Result :=
       ((Details.Element = teTreeview) and (Details.Part = TVP_TREEITEM)) or
-      (Details.Element = teToolTip);
+      (Details.Element = teToolTip) or (Details.Element = teMenu);
   end;
 
 begin
@@ -532,7 +531,16 @@ begin
     // to fix it here with disabled button text
     if (Details.Element = teToolBar) and (Details.State = TS_DISABLED) then
       Details := GetElementDetails(tbPushButtonDisabled);
-    DrawText(TCanvas(ACanvas).Handle, Details, S, R, Flags, Flags2);
+
+    DCIndex := 0;
+    DC := TCanvas(ACanvas).Handle;
+    if TCanvas(ACanvas).Font.IsDefault then
+    begin
+      SaveState;
+      SelectObject(DC, OnGetSystemFont());
+    end;
+    DrawText(DC, Details, S, R, Flags, Flags2);
+    RestoreState;
   end
   else
     inherited;

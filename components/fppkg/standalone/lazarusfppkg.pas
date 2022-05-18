@@ -7,13 +7,17 @@ uses
   cthreads,
   {$ENDIF}{$ENDIF}
   Interfaces,
-  Forms, fppkg_mainfrm, laz_pkgcommands, laz_pkgrepos, laz_pkghandler,
-fppkg_lpk;
+  Forms, fppkg_mainfrm, laz_pkgrepos,
+  pkgDownload,
+  fppkg_lpk,
+  pkgfpmake,
+  pkgfphttp,
+  fppkg_initializeoptionsfrm;
 
 {$R *.res}
 
 begin
-  Application.Title:='Lazarus Package Manager';
+  Application.Title := 'Lazarus package manager';
   RequireDerivedFormResource := True;
   Application.Initialize;
   Application.CreateForm(TFppkgForm, FppkgForm);

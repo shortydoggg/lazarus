@@ -11,10 +11,12 @@ object ActionListEditor: TActionListEditor
   KeyPreview = True
   OnClose = ActionListEditorClose
   OnCreate = FormCreate
+  OnHide = FormHide
   OnKeyDown = ActionListEditorKeyDown
   OnKeyPress = ActionListEditorKeyPress
+  OnShow = FormShow
   Position = poScreenCenter
-  LCLVersion = '1.5'
+  LCLVersion = '1.9.0.0'
   object PanelDescr: TPanel
     Left = 0
     Height = 26
@@ -31,7 +33,7 @@ object ActionListEditor: TActionListEditor
       Left = 6
       Height = 15
       Top = 6
-      Width = 67
+      Width = 59
       Caption = 'Categories:'
       ParentColor = False
     end
@@ -39,7 +41,7 @@ object ActionListEditor: TActionListEditor
       Left = 162
       Height = 15
       Top = 6
-      Width = 48
+      Width = 43
       Caption = 'Actions:'
       ParentColor = False
     end
@@ -65,10 +67,8 @@ object ActionListEditor: TActionListEditor
     OnKeyDown = lstActionNameKeyDown
     OnMouseDown = lstActionNameMouseDown
     PopupMenu = PopMenuActions
-    ScrollWidth = 245
     Style = lbOwnerDrawFixed
     TabOrder = 1
-    TopIndex = -1
   end
   object lstCategory: TListBox
     Left = 0
@@ -80,9 +80,7 @@ object ActionListEditor: TActionListEditor
     OnClick = lstCategoryClick
     OnMouseDown = lstActionNameMouseDown
     PopupMenu = PopMenuActions
-    ScrollWidth = 150
     TabOrder = 2
-    TopIndex = -1
   end
   object ToolBar1: TToolBar
     Left = 0
@@ -95,7 +93,6 @@ object ActionListEditor: TActionListEditor
     EdgeBorders = []
     EdgeInner = esNone
     EdgeOuter = esNone
-    Images = ImageList1
     ParentShowHint = False
     ShowHint = True
     TabOrder = 4
@@ -103,41 +100,35 @@ object ActionListEditor: TActionListEditor
       Left = 1
       Top = 0
       Action = ActNew
-    end
-    object btnAddMore: TToolButton
-      Left = 27
-      Top = 0
-      Caption = 'btnAddMore'
       DropdownMenu = PopMenuToolBarActions
-      ImageIndex = 0
+      Style = tbsDropDown
     end
     object btnDelete: TToolButton
-      Left = 53
+      Left = 39
       Top = 0
       Action = ActDelete
     end
     object ToolButton4: TToolButton
-      Left = 79
+      Left = 65
       Height = 26
       Top = 0
-      Width = 5
       Caption = 'ToolButton4'
       Style = tbsDivider
     end
     object btnUp: TToolButton
-      Left = 84
+      Left = 70
       Top = 0
       Action = ActMoveUp
     end
     object btnDown: TToolButton
-      Left = 110
+      Left = 96
       Top = 0
       Action = ActMoveDown
     end
   end
   object ActionListSelf: TActionList
-    left = 56
-    top = 260
+    Left = 56
+    Top = 260
     object ActDelete: TAction
       Category = 'AddDelete'
       OnExecute = ActDeleteExecute
@@ -156,13 +147,13 @@ object ActionListEditor: TActionListEditor
     end
     object ActMoveUp: TAction
       Category = 'MoveUpDown'
-      OnExecute = ActMoveDownExecute
+      OnExecute = ActMoveUpDownExecute
       OnUpdate = ActMoveUpUpdate
       ShortCut = 16422
     end
     object ActMoveDown: TAction
       Category = 'MoveUpDown'
-      OnExecute = ActMoveDownExecute
+      OnExecute = ActMoveUpDownExecute
       OnUpdate = ActMoveDownUpdate
       ShortCut = 16424
     end
@@ -182,8 +173,8 @@ object ActionListEditor: TActionListEditor
     end
   end
   object PopMenuActions: TPopupMenu
-    left = 56
-    top = 216
+    Left = 56
+    Top = 216
     object mItemActListNewAction: TMenuItem
       Action = ActNew
       Caption = 'New Action'
@@ -199,12 +190,12 @@ object ActionListEditor: TActionListEditor
     object mItemActListMoveUpAction: TMenuItem
       Action = ActMoveUp
       Caption = 'Move Up'
-      OnClick = ActMoveDownExecute
+      OnClick = ActMoveUpDownExecute
     end
     object mItemActListMoveDownAction: TMenuItem
       Action = ActMoveDown
       Caption = 'Move Down'
-      OnClick = ActMoveDownExecute
+      OnClick = ActMoveUpDownExecute
     end
     object MenuItem6: TMenuItem
       Caption = '-'
@@ -229,8 +220,8 @@ object ActionListEditor: TActionListEditor
     end
   end
   object PopMenuToolBarActions: TPopupMenu
-    left = 56
-    top = 164
+    Left = 56
+    Top = 164
     object mItemToolBarNewAction: TMenuItem
       Action = ActNew
       Default = True
@@ -240,45 +231,5 @@ object ActionListEditor: TActionListEditor
       Action = ActNewStd
       OnClick = ActNewStdExecute
     end
-  end
-  object ImageList1: TImageList
-    AllocBy = 8
-    left = 56
-    top = 116
-    Bitmap = {
-      4C69010000001000000010000000FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF007F7F7FFF7F7F
-      7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F
-      7FFFFFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF007F7F
-      7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFFFFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF007F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFFFFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF007F7F7FFF7F7F7FFF7F7F7FFF7F7F7FFFFFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF007F7F7FFF7F7F7FFFFFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFF
-      FF00FFFFFF00FFFFFF00FFFFFF00
-    }
   end
 end

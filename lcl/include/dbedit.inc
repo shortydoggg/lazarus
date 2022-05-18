@@ -63,6 +63,7 @@ begin
   //the changes have been validated
   ValidateEdit;
   FDataLink.Field.Text := Text;
+  Modified := False;
 end;
 
 function TDBEdit.GetDataField: string;
@@ -125,6 +126,9 @@ begin
         if not FieldIsEditable(FDatalink.Field) or not FDataLink.Edit then
           Key := VK_UNKNOWN;
       end;
+    VK_RETURN:
+      if FDatalink.Editing then // soner: take changes, without this you must
+        FDatalink.UpdateRecord; // change focus to other dbctrl
   end;
 end;
 
@@ -195,24 +199,31 @@ begin
 end;
 
 procedure TDBEdit.WMSetFocus(var Message: TLMSetFocus);
+var
+  EditOnFocus: Boolean;
 begin
+  // update text before inherited so DoEnter has the new text
+  if not FFocusedDisplay then
+  begin
+    FFocusedDisplay := True;
+    // some widgetsets do not notify clipboard actions properly. Put at edit state at entry
+    EditOnFocus := WidgetSet.GetLCLCapability(lcReceivesLMClearCutCopyPasteReliably) = LCL_CAPABILITY_NO;
+    if EditOnFocus then
+    begin
+      if FDataLink.Edit then
+        RestoreMask(FDataLink.Field.Text);
+    end
+    else
+      FDataLink.Reset;
+  end;
   inherited WMSetFocus(Message);
-  // some widgetsets do not notify clipboard actions properly. Put at edit state at entry
-  if FFocusedDisplay then
-    exit;
-  FFocusedDisplay := true;
-  if WidgetSet.GetLCLCapability(lcReceivesLMClearCutCopyPasteReliably) = LCL_CAPABILITY_YES then
-    FDataLink.Reset
-  else
-    FDataLink.Edit;
 end;
 
 procedure TDBEdit.WMKillFocus(var Message: TLMKillFocus);
 begin
   inherited WMKillFocus(Message);
-
   FFocusedDisplay := False;
-
+  if csDestroying in ComponentState then Exit;
   if FDatalink.Editing then
   begin
     FDatalink.UpdateRecord;
@@ -246,7 +257,9 @@ begin
           FDataLink.Modified;
           FDataLink.OnDataChange := @DataChange;
           inherited WndProc(Message);
-        end;
+        end
+        else
+          Message.Result := 1; // prevent calling default window proc
       end;
     else
       inherited WndProc(Message);

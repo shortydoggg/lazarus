@@ -50,17 +50,6 @@
  *      zero its main fields (essentially the pointers and array
  *      sizes found in the root fields).
  *
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *
  ******************************************************************)
 
 unit TTCache;
@@ -309,6 +298,7 @@ var
   label
     Fail;
   begin
+    Result := False;
     (* LOCK *)
     current := cache.idle;
     if current <> nil then

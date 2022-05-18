@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -35,9 +35,15 @@ unit HelpOptions;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LazFileUtils, Laz2_XMLCfg, LazFileCache,
-  LazHelpIntf, IDEOptionsIntf, MacroIntf, LazConf,
-  LazarusIDEStrConsts, IDEOptionDefs;
+  Classes, SysUtils,
+  // LCL
+  LCLProc,
+  // LazUtils
+  LazFileUtils, Laz2_XMLCfg, LazFileCache,
+  // IdeIntf
+  LazHelpIntf, IDEOptionsIntf, IDEOptEditorIntf, MacroIntf,
+  // IDE
+  LazarusIDEStrConsts, IDEOptionDefs, LazConf;
 
 type
   { THelpOptions }
@@ -209,7 +215,7 @@ procedure THelpOptions.SetDefaultFilename;
 var
   ConfFileName: string;
 begin
-  ConfFileName := SetDirSeparators(GetPrimaryConfigPath+'/'+DefaultHelpOptsFile);
+  ConfFileName := AppendPathDelim(GetPrimaryConfigPath)+DefaultHelpOptsFile;
   CopySecondaryConfigFile(DefaultHelpOptsFile);
   if (not FileExistsUTF8(ConfFileName)) then
     DebugLn('NOTE: help options config file not found - using defaults');

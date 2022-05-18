@@ -1,10 +1,10 @@
-{ $Id: debugutils.pp 48151 2015-03-06 00:36:52Z martin $ }
+{ $Id: debugutils.pp 56692 2017-12-11 19:44:22Z juha $ }
 {                   -------------------------------------------
                      dbgutils.pp  -  Debugger utility routines
                     -------------------------------------------
 
  @created(Sun Apr 28st WET 2002)
- @lastmod($Date: 2015-03-06 01:36:52 +0100 (Fr, 06 Mär 2015) $)
+ @lastmod($Date: 2017-12-11 20:44:22 +0100 (Mo, 11 Dez 2017) $)
  @author(Marc Weustink <marc@@dommelstein.net>)
 
  This unit contains a collection of debugger support routines.
@@ -24,7 +24,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -214,7 +214,7 @@ begin
         if AString[n] = '''' then Result := Result + '''';
       end;
     #192..#255: begin // Maybe utf8
-        u := UTF8CharacterLength(@AString[n]);
+        u := UTF8CodepointSize(@AString[n]);
         if (u > 0) and (n+u-1 <= l) then begin
           if not InString then
             ToggleInString;

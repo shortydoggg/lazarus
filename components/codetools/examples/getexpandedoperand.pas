@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -29,7 +29,11 @@ program getexpandedoperand;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, CodeCache, CodeToolManager,
+  SysUtils,
+  // LazUtils
+  LazFileUtils,
+  // CodeTools
+  CodeCache, CodeToolManager,
   SimpleUnit1, getterexample1;
 
 const
@@ -44,7 +48,7 @@ var
 begin
   Filename:='scanexamples/getterexample1.pas';
   X:=14;
-  Y:=56;
+  Y:=54;
   if (ParamCount>=1) and (Paramcount<3) then begin
     writeln('Usage:');
     writeln('  ',ParamStr(0));

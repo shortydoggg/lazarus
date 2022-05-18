@@ -4,10 +4,12 @@ msgstr ""
 "Project-Id-Version: \n"
 "POT-Creation-Date: \n"
 "PO-Revision-Date: \n"
-"Last-Translator: Marcelo B Paula\n"
+"Last-Translator: Marcelo B Paula <marcelo.bp@netsite.com.br>\n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Language: pt_BR\n"
+"X-Generator: Poedit 1.8.13\n"
 
 #: fppkg_const.rsaboutform
 msgid "About form"
@@ -52,6 +54,14 @@ msgstr "Downloader"
 #: fppkg_const.rsfpmakecompilerconfig
 msgid "fpmake compiler config"
 msgstr "Configuração compilador \"fpmake\""
+
+#: fppkg_const.rsfppkgenvironmentoptions
+msgid "Fppkg"
+msgstr "Fppkg"
+
+#: fppkg_const.rsfppkgenvironmentoptionscaption
+msgid "Compilation"
+msgstr "Compilação"
 
 #: fppkg_const.rsfppkgoptions
 msgid "fppkg options"
@@ -101,9 +111,7 @@ msgstr "URL espelhos remotos"
 msgid "Remote repository"
 msgstr "Repositório remoto"
 
-#: fppkg_const.rsshowlazaruspackagemanager
-#, fuzzy
-#| msgid "Show Lazarus package manager"
-msgid "Show Lazarus Package Manager"
-msgstr "Exibir o gerenciador de pacotes Lazarus"
+#: fppkg_const.rsshowfppkgpackagemanager
+msgid "Show Fppkg Package Manager"
+msgstr "Exibir gerenciador de pacotes Fppkg"
 

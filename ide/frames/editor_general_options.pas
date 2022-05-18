@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,17 +25,29 @@ unit editor_general_options;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LCLType, StdCtrls, Controls, ExtCtrls, Graphics,
-  EditorOptions, LazarusIDEStrConsts, IDEProcs, IDEOptionsIntf,
-  IDEUtils, SynEdit, SynHighlighterPas, SynPluginMultiCaret, DividerBevel;
+  Classes, SysUtils, math,
+  // LCL
+  LCLProc, LCLType, StdCtrls, Controls, Graphics,
+  // LazControls
+  DividerBevel,
+  // SynEdit
+  SynEdit, SynHighlighterPas, SynPluginMultiCaret,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEUtils, SrcEditorIntf,
+  // IDE
+  EditorOptions, LazarusIDEStrConsts;
 
 type
   TPreviewEditor = TSynEdit;
   { TEditorGeneralOptionsFrame }
 
   TEditorGeneralOptionsFrame = class(TAbstractIDEOptionsEditor)
+    CaretMoveClearsSelectionCheckBox: TCheckBox;
+    PersistentCursorNoBlinkCheckBox: TCheckBox;
     chkMultiCaretColumnMode: TCheckBox;
     chkMultiCaretMode: TCheckBox;
+    chkMultiCaretDelSkipCr: TCheckBox;
+    MultiCaretGroupDivider: TDividerBevel;
     MultiCaretOnColumnSelection: TCheckBox;
     CursorSkipsTabCheckBox: TCheckBox;
     CaretGroupDivider: TDividerBevel;
@@ -61,6 +73,7 @@ type
     UndoLimitLabel: TLabel;
     chkScrollHint: TCheckBox;
     procedure AlwaysVisibleCursorCheckBoxChange(Sender: TObject);
+    procedure CaretMoveClearsSelectionCheckBoxChange(Sender: TObject);
     procedure CursorSkipsSelectionCheckBoxChange(Sender: TObject);
     procedure CursorSkipsTabCheckBoxChange(Sender: TObject);
     procedure EndKeyJumpsToNearestStartCheckBoxChange(Sender: TObject);
@@ -71,6 +84,7 @@ type
     procedure OverwriteBlockCheckBoxChange(Sender: TObject);
     procedure PersistentBlockCheckBoxChange(Sender: TObject);
     procedure PersistentCursorCheckBoxChange(Sender: TObject);
+    procedure PersistentCursorNoBlinkCheckBoxChange(Sender: TObject);
     procedure ScrollByOneLessCheckBoxChange(Sender: TObject);
     procedure ScrollPastEndFileCheckBoxChange(Sender: TObject);
     procedure ScrollPastEndLineCheckBoxChange(Sender: TObject);
@@ -82,6 +96,8 @@ type
     function DefaultBookmarkImages: TImageList;
     procedure SetExtendedKeywordsMode(const AValue: Boolean);
     procedure SetStringKeywordMode(const AValue: TSynPasStringMode);
+  protected
+    procedure CreateHandle; override;
   public
     PreviewEdits: array of TPreviewEditor;
     procedure AddPreviewEdit(AEditor: TPreviewEditor);
@@ -133,17 +149,24 @@ begin
 
 
   // caret + key navigation
-  CaretGroupDivider.Caption := dlgCursorGroupOptions;
+  CaretGroupDivider.Caption := dlgCaretGroupOptions;
   KeepCursorXCheckBox.Caption := dlgKeepCursorX;
   PersistentCursorCheckBox.Caption := dlgPersistentCursor;
+  PersistentCursorNoBlinkCheckBox.Caption := dlgPersistentCursorNoBlink;
   AlwaysVisibleCursorCheckBox.Caption := dlgAlwaysVisibleCursor;
   CursorSkipsSelectionCheckBox.Caption := dlgCursorSkipsSelection;
+  CaretMoveClearsSelectionCheckBox.Caption := dlgCursorMoveClearsSelection;
+  //dlgCursorMoveClearsSelection
   CursorSkipsTabCheckBox.Caption := dlgCursorSkipsTab;
   HomeKeyJumpsToNearestStartCheckBox.Caption := dlgHomeKeyJumpsToNearestStart;
   EndKeyJumpsToNearestStartCheckBox.Caption := dlgEndKeyJumpsToNearestStart;
+
+  // multi caret
+  MultiCaretGroupDivider.Caption := dlgMultiCaretGroupOptions;
   MultiCaretOnColumnSelection.Caption := dlgMultiCaretOnColumnSelection;
   chkMultiCaretColumnMode.Caption := dlgMultiCaretColumnMode;
   chkMultiCaretMode.Caption := dlgMultiCaretMode;
+  chkMultiCaretDelSkipCr.Caption := dlgMultiCaretDelSkipCr;
 
   // Block
   BlockGroupDivider.Caption := dlgBlockGroupOptions;
@@ -172,14 +195,17 @@ begin
     // cursor
     KeepCursorXCheckBox.Checked := eoKeepCaretX in SynEditOptions;
     PersistentCursorCheckBox.Checked := eoPersistentCaret in SynEditOptions;
+    PersistentCursorNoBlinkCheckBox.Checked := eoPersistentCaretStopBlink in SynEditOptions2;
     AlwaysVisibleCursorCheckBox.Checked := eoAlwaysVisibleCaret in SynEditOptions2;
     CursorSkipsSelectionCheckBox.Checked := eoCaretSkipsSelection in SynEditOptions2;
+    CaretMoveClearsSelectionCheckBox.Checked := eoCaretMoveEndsSelection in SynEditOptions2;
     CursorSkipsTabCheckBox.Checked := eoCaretSkipTab in SynEditOptions2;
     HomeKeyJumpsToNearestStartCheckBox.Checked := eoEnhanceHomeKey in SynEditOptions;
     EndKeyJumpsToNearestStartCheckBox.Checked := eoEnhanceEndKey in SynEditOptions2;
     MultiCaretOnColumnSelection.Checked := MultiCaretOnColumnSelect;
     chkMultiCaretColumnMode.Checked := MultiCaretDefaultColumnSelectMode = mcmMoveAllCarets;
     chkMultiCaretMode.Checked := MultiCaretDefaultMode = mcmMoveAllCarets;
+    chkMultiCaretDelSkipCr.Checked := MultiCaretDeleteSkipLineBreak;
 
     // block
     PersistentBlockCheckBox.Checked := eoPersistentBlock in SynEditOptions2;
@@ -234,8 +260,10 @@ begin
     // cursor
     UpdateOptionFromBool(KeepCursorXCheckBox.Checked, eoKeepCaretX);
     UpdateOptionFromBool(PersistentCursorCheckBox.Checked, eoPersistentCaret);
+    UpdateOptionFromBool(PersistentCursorNoBlinkCheckBox.Checked, eoPersistentCaretStopBlink);
     UpdateOptionFromBool(AlwaysVisibleCursorCheckBox.Checked, eoAlwaysVisibleCaret);
     UpdateOptionFromBool(CursorSkipsSelectionCheckBox.Checked, eoCaretSkipsSelection);
+    UpdateOptionFromBool(CaretMoveClearsSelectionCheckBox.Checked, eoCaretMoveEndsSelection);
     UpdateOptionFromBool(CursorSkipsTabCheckBox.Checked, eoCaretSkipTab);
     UpdateOptionFromBool(HomeKeyJumpsToNearestStartCheckBox.Checked, eoEnhanceHomeKey);
     UpdateOptionFromBool(EndKeyJumpsToNearestStartCheckBox.Checked, eoEnhanceEndKey);
@@ -248,7 +276,7 @@ begin
       MultiCaretDefaultMode := mcmMoveAllCarets
     else
       MultiCaretDefaultMode := mcmCancelOnCaretMove;
-
+    MultiCaretDeleteSkipLineBreak := chkMultiCaretDelSkipCr.Checked;
 
     // block
     UpdateOptionFromBool(PersistentBlockCheckBox.Checked, eoPersistentBlock);
@@ -306,6 +334,12 @@ begin
   SetPreviewOption(AlwaysVisibleCursorCheckBox.Checked, eoAlwaysVisibleCaret);
 end;
 
+procedure TEditorGeneralOptionsFrame.CaretMoveClearsSelectionCheckBoxChange(
+  Sender: TObject);
+begin
+  SetPreviewOption(CaretMoveClearsSelectionCheckBox.Checked, eoCaretMoveEndsSelection);
+end;
+
 procedure TEditorGeneralOptionsFrame.CursorSkipsSelectionCheckBoxChange(
   Sender: TObject);
 begin
@@ -361,6 +395,12 @@ begin
   SetPreviewOption(PersistentCursorCheckBox.Checked, eoPersistentCaret);
 end;
 
+procedure TEditorGeneralOptionsFrame.PersistentCursorNoBlinkCheckBoxChange(
+  Sender: TObject);
+begin
+  SetPreviewOption(PersistentCursorNoBlinkCheckBox.Checked, eoPersistentCaretStopBlink);
+end;
+
 procedure TEditorGeneralOptionsFrame.ScrollByOneLessCheckBoxChange(
   Sender: TObject);
 begin
@@ -388,7 +428,7 @@ begin
     FDefaultBookmarkImages := TImageList.Create(Self);
     FDefaultBookmarkImages.Width := 11;
     FDefaultBookmarkImages.Height := 11;
-    for i := 0 to 9 do
+    for i in TBookmarkNumRange do
       FDefaultBookmarkImages.AddResourceName(HInstance, 'bookmark' + IntToStr(i));
   end;
   Result := FDefaultBookmarkImages;
@@ -406,6 +446,21 @@ begin
   if FPasStringKeywordMode = AValue then exit;
   FPasStringKeywordMode := AValue;
   UpdatePrevieEdits;
+end;
+
+procedure TEditorGeneralOptionsFrame.CreateHandle;
+var
+  i, w: Integer;
+  c: TControl;
+begin
+  inherited;
+  w := 150;
+  for i := 0 to ControlCount - 1 do begin
+    c := Controls[i];
+    if not (c is TCheckBox) then Continue;
+    w := Max(w, Canvas.TextExtent(c.Caption).cx);
+  end;
+  Constraints.MinWidth := 2 * w + 60;
 end;
 
 procedure TEditorGeneralOptionsFrame.AddPreviewEdit(AEditor: TPreviewEditor);

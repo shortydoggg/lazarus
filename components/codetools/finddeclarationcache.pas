@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -37,9 +37,10 @@ interface
 { $DEFINE HardExceptions}
 
 uses
-  Classes, SysUtils, FileProcs, BasicCodeTools, CodeTree, LinkScanner,
-  AVL_Tree, PascalParserTool, KeywordFuncLists,
-  CodeToolMemManager;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // Codetools
+  FileProcs, BasicCodeTools, CodeTree, LinkScanner,
+  PascalParserTool, KeywordFuncLists, CodeToolMemManager;
 
 type
   {
@@ -489,8 +490,7 @@ var
   Entry: PInterfaceIdentCacheEntry;
 begin
   if FItems<>nil then begin
-    if FItems.ConsistencyCheck<>0 then
-      RaiseCatchableException('');
+    FItems.ConsistencyCheck;
     Node:=FItems.FindLowest;
     while Node<>nil do begin
       Entry:=PInterfaceIdentCacheEntry(Node.Data);
@@ -1050,10 +1050,8 @@ end;
 
 procedure TCodeTreeNodeCache.ConsistencyCheck;
 begin
-  if (FItems<>nil) then begin
-    if FItems.ConsistencyCheck<>0 then
-      raise Exception.Create('');
-  end;
+  if (FItems<>nil) then
+    FItems.ConsistencyCheck;
   if Owner<>nil then begin
     if Owner.Cache<>Self then
       raise Exception.Create('');

@@ -1,4 +1,4 @@
-{  $Id: apiwizard.pp 49624 2015-08-08 21:06:51Z juha $  }
+{  $Id: apiwizard.pp 54253 2017-02-22 22:16:40Z marcus $  }
 {
  /***************************************************************************
                                 APIWizard.pp
@@ -74,6 +74,7 @@ type
     awGtk,
     awGtk2,
     awGtk3,
+    awMUI,
     awNoGui,
     awQt,
     awWin32,
@@ -105,6 +106,7 @@ const
     'gtk',
     'gtk2',
     'gtk3',
+    'mui',
     'nogui',
     'qt',
     'win32',

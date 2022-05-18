@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
  
@@ -37,13 +37,20 @@ unit HelpFPCMessages;
 interface
 
 uses
-  Classes, SysUtils, fgl, LCLProc, Dialogs, TextTools, MacroIntf,
-  LazarusIDEStrConsts, LazConfigStorage, HelpIntfs, IDEHelpIntf, BaseIDEIntf,
-  IDEMsgIntf, IDEDialogs, IDEExternToolIntf, LazHelpIntf, LazHelpHTML, StdCtrls,
-  ButtonPanel, ExtCtrls, Forms, Controls, Graphics, LCLIntf, CodeToolsFPCMsgs,
-  FileProcs, LazFileUtils, LazFileCache, CodeToolManager, CodeCache,
-  DefineTemplates, EnvironmentOpts;
-  
+  Classes, SysUtils, fgl,
+  // LCL
+  LCLProc, LCLIntf, Dialogs, Forms, Controls, StdCtrls, ExtCtrls, Graphics,
+  ButtonPanel, LazHelpHTML,
+  // LazUtils
+  LazConfigStorage, LazFileUtils, LazFileCache,
+  // CodeTools
+  FileProcs, CodeToolsFPCMsgs, CodeToolManager, CodeCache, DefineTemplates,
+  // IdeIntf
+  BaseIDEIntf, MacroIntf, HelpIntfs, IDEHelpIntf, IDEMsgIntf,
+  IDEExternToolIntf, LazHelpIntf, IDEDialogs, TextTools,
+  // IDE
+  LazarusIDEStrConsts, EnvironmentOpts;
+
 const
   lihcFPCMessages = 'Free Pascal Compiler messages';
   lihFPCMessagesURL = 'http://wiki.lazarus.freepascal.org/';
@@ -917,12 +924,12 @@ begin
         IDEMessageDialog(lisHFMHelpForFreePascalCompilerMessage, FoundComment,
                    mtInformation,[mbOk]);
       end else begin
-        if IDEQuestionDialog(lisHFMHelpForFreePascalCompilerMessage, Format(
-          lisThereAreAdditionalNotesForThisMessageOn, [FoundComment
-                   +LineEnding+LineEnding, LineEnding+URL]),
-                   mtInformation, [mrYes, lisOpenURL, mrClose, lisClose])=mrYes
-                     then
-        begin
+        if IDEQuestionDialog(lisHFMHelpForFreePascalCompilerMessage,
+          Format(lisThereAreAdditionalNotesForThisMessageOn,
+                 [FoundComment+LineEnding+LineEnding, LineEnding+URL]),
+          mtInformation, [mrYes, lisOpenURL,
+                          mrClose, lisClose]) = mrYes
+        then begin
           if not OpenURL(URL) then
             exit(shrViewerError);
         end;
@@ -954,7 +961,7 @@ var
   Code: TCodeBuffer;
   AltFilename: String;
   UnitSet: TFPCUnitSetCache;
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
 begin
   Result:=nil;
   Filename:=EnvironmentOptions.GetParsedCompilerMessagesFilename;
@@ -970,7 +977,7 @@ begin
     FPCSrcDir:=UnitSet.FPCSourceDirectory;
     if (FPCSrcDir<>'') then begin
       AltFilename:=TrimFilename(AppendPathDelim(FPCSrcDir)
-                +SetDirSeparators('compiler/msg/')+Filename);
+                +GetForcedPathDelims('compiler/msg/')+Filename);
       if FileExistsCached(AltFilename) then
         Filename:=AltFilename;
     end;
@@ -984,7 +991,7 @@ begin
         if FilenameIsAbsolute(CfgCache.RealCompiler) then
         begin
           AltFilename:=AppendPathDelim(ExtractFilePath(CfgCache.RealCompiler))
-                      +SetDirSeparators('msg/')+Filename;
+                      +'msg'+PathDelim+Filename;
           if FileExistsCached(AltFilename) then
             Filename:=AltFilename;
         end;
@@ -993,7 +1000,7 @@ begin
         and FilenameIsAbsolute(CfgCache.Compiler) then
         begin
           AltFilename:=AppendPathDelim(ExtractFilePath(CfgCache.Compiler))
-                      +SetDirSeparators('msg/')+Filename;
+                      +'msg'+PathDelim+Filename;
           if FileExistsCached(AltFilename) then
             Filename:=AltFilename;
         end;
@@ -1076,7 +1083,7 @@ begin
   Result:=AdditionsFile;
   IDEMacros.SubstituteMacros(Result);
   if Result='' then begin
-    Result:=SetDirSeparators(FDefaultAdditionsFile);
+    Result:=GetForcedPathDelims(FDefaultAdditionsFile);
     IDEMacros.SubstituteMacros(Result);
   end;
   Result:=TrimFilename(Result);

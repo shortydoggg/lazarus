@@ -29,7 +29,7 @@
 
  You should have received a copy of the GNU Library General Public License
  along with this library; if not, write to the Free Software Foundation,
- Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
 unit le_e_spreadsheet_consts;
@@ -59,6 +59,12 @@ resourcestring
   sPages               = 'Pages:';
   sEnterPageNumbers    = 'Enter page numbers and/or page ranges,'#13'separated by commas. For example, 1,3,5-12';
   sExportPictures      = 'Export pictures';
+  sExportURL           = 'Export URL';
+  sExportPrintRange    = 'Export print range';
+  sExportReportTitle   = 'Export report title';
+  sExportReportSummary = 'Export report summary';
+  sExportPageHeader    = 'Export page header';
+  sExportPageFooter    = 'Export page footer';
   sMergeCells          = 'Merge cells';
   sPageBreaks          = 'Page breaks';
   sDeleteEmptyRows     = 'Delete empty rows';

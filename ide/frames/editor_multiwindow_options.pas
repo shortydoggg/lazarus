@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,8 +25,13 @@ unit editor_multiwindow_options;
 interface
 
 uses
-  Classes, SysUtils, StdCtrls, ExtCtrls, LCLType, EditorOptions, LazarusIDEStrConsts,
-  SourceEditor, IDEOptionsIntf, CheckLst, ComCtrls;
+  Classes, SysUtils,
+  // LCL
+  LCLType, StdCtrls, ExtCtrls, CheckLst, ComCtrls,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  EditorOptions, LazarusIDEStrConsts, SourceEditor;
 
 type
 
@@ -38,6 +43,7 @@ type
     Bevel2a: TBevel;
     Bevel2: TBevel;
     CenterLabel: TLabel;
+    chkShowFileNameInCaption: TCheckBox;
     chkMultiLine: TCheckBox;
     chkCtrlMiddleCloseOthers: TCheckBox;
     chkUseTabHistory: TCheckBox;
@@ -63,7 +69,6 @@ type
     procedure listAccessTypeKeyUp(Sender: TObject; var {%H-}Key: Word; {%H-}Shift: TShiftState);
     procedure radioAccessOrderEditChange(Sender: TObject);
   private
-    { private declarations }
     FMultiWinEditAccessOrder: TEditorOptionsEditAccessOrderList;
   public
     constructor Create(AOwner: TComponent); override;
@@ -144,6 +149,7 @@ begin
   chkShowCloseBtn.Caption := dlgCloseButtonsNotebook;
   chkUseTabHistory.Caption := dlgUseTabsHistory;
   chkCtrlMiddleCloseOthers.Caption := dlgCtrlMiddleTabCloseOtherPages;
+  chkShowFileNameInCaption.Caption := dlgShowFileNameInCaption;
   chkMultiLine.Caption := dlgSourceEditTabMultiLine;
   EditorTabPositionCheckBox.Items.Add(lisNotebookTabPosTop);
   EditorTabPositionCheckBox.Items.Add(lisNotebookTabPosBottom);
@@ -153,8 +159,7 @@ begin
 
 end;
 
-procedure TEditorMultiWindowOptionsFrame.ReadSettings(
-  AOptions: TAbstractIDEOptions);
+procedure TEditorMultiWindowOptionsFrame.ReadSettings(AOptions: TAbstractIDEOptions);
 const
   TabPosToIndex : Array [TTabPosition] of Integer = (0, 1, 2, 3);
 var
@@ -166,6 +171,7 @@ begin
     chkShowCloseBtn.Checked := ShowTabCloseButtons and chkShowCloseBtn.Enabled;
     chkUseTabHistory.Checked := UseTabHistory;
     chkCtrlMiddleCloseOthers.Checked := CtrlMiddleTabClickClosesOthers;
+    chkShowFileNameInCaption.Checked := ShowFileNameInCaption;
     chkMultiLine.Checked := MultiLineTab;
     EditorTabPositionCheckBox.ItemIndex := TabPosToIndex[TabPosition];
   end;
@@ -183,8 +189,7 @@ begin
   listAccessTypeClickCheck(nil);
 end;
 
-procedure TEditorMultiWindowOptionsFrame.WriteSettings(
-  AOptions: TAbstractIDEOptions);
+procedure TEditorMultiWindowOptionsFrame.WriteSettings(AOptions: TAbstractIDEOptions);
 const
   TabIndexToPos : Array [0..3] of TTabPosition = (tpTop, tpBottom, tpLeft, tpRight);
 begin
@@ -195,6 +200,7 @@ begin
     ShowTabCloseButtons := chkShowCloseBtn.Checked;
     UseTabHistory := chkUseTabHistory.Checked;
     CtrlMiddleTabClickClosesOthers := chkCtrlMiddleCloseOthers.Checked;
+    ShowFileNameInCaption := chkShowFileNameInCaption.Checked;
     MultiLineTab := chkMultiLine.Checked;
     TabPosition := TabIndexToPos[EditorTabPositionCheckBox.ItemIndex];
   end;

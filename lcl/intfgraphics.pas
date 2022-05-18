@@ -1,4 +1,4 @@
-{  $Id: intfgraphics.pas 48623 2015-04-04 18:23:18Z juha $  }
+{  $Id: intfgraphics.pas 60390 2019-02-09 08:49:38Z mattias $  }
 {
  /***************************************************************************
                               intfgraphics.pp
@@ -25,10 +25,18 @@ unit IntfGraphics;
 interface
 
 uses
-  Classes, SysUtils, fpImage, FPReadBMP, FPWriteBMP, BMPComn, FPCAdds,
-  AvgLvlTree, LCLType, LCLversion, Math,
-  LCLProc, GraphType, FPReadPNG, FPWritePNG, FPReadTiff, FPWriteTiff, FPTiffCmn,
-  IcnsTypes;
+  // RTL + FCL
+  Classes, SysUtils, Math, fpImage, 
+  FPReadBMP, FPWriteBMP, BMPComn,
+  FPReadPNG, FPWritePNG, 
+  {$IFNDEF DisableLCLTIFF}
+  FPReadTiff, FPWriteTiff, FPTiffCmn, 
+  {$ENDIF}
+  Laz_AVL_Tree,
+  // LazUtils
+  FPCAdds, LazLoggerBase, LazTracer,
+  // LCL
+  LCLType, LCLversion, GraphType, IcnsTypes;
 
 type
   { TLazIntfImage }
@@ -232,6 +240,7 @@ type
     constructor Create(ARawImage: TRawImage; ADataOwner: Boolean);
     constructor CreateCompatible(IntfImg: TLazIntfImage; AWidth, AHeight: integer);
     destructor Destroy; override;
+    procedure Assign(Source: TPersistent); override;
     procedure BeginUpdate;
     procedure EndUpdate;
     procedure SetSize(AWidth, AHeight: integer); override;
@@ -286,8 +295,8 @@ type
 
   TLazAVLPalette = class(TFPPalette)
   protected
-    FAVLPalette: TAvgLvlTree; // tree of PLazAVLPaletteEntry 'color to index'
-    FAVLNodes: PAvgLvlTreeNode;// 'index to node' array
+    FAVLPalette: TAvlTree; // tree of PLazAVLPaletteEntry 'color to index'
+    FAVLNodes: PAvlTreeNode;// 'index to node' array
     procedure SetCount(NewCount: integer); override;
     procedure SetColor(Index: integer; const NewColor: TFPColor); override;
     function CompareEntries(Index1, Index2: integer): integer;
@@ -577,6 +586,8 @@ type
     procedure Finalize;
   end;
 
+{$IFNDEF DisableLCLTIFF}
+
   { TLazReaderTiff }
 
 const
@@ -629,7 +640,8 @@ type
     procedure Initialize(AImage: TLazIntfImage);
     procedure Finalize;
   end;
-
+  
+{$ENDIF} //DisableLCLTIFF
 
   { TLazReaderIcnsPart }
 
@@ -3458,6 +3470,13 @@ begin
   inherited Destroy;
 end;
 
+procedure TLazIntfImage.Assign(Source: TPersistent);
+begin
+  if Source is TLazIntfImage then
+    DataDescription:=TLazIntfImage(Source).DataDescription;
+  inherited Assign(Source);
+end;
+
 procedure TLazIntfImage.AlphaFromMask(AKeepAlpha: Boolean);
 var
   x, y, xStop, yStop: Integer;
@@ -3768,7 +3787,7 @@ procedure TLazIntfImage.CopyPixels(ASource: TFPCustomImage; XDst: Integer;
 var
   SrcImg: TLazIntfImage absolute ASource;
   SrcHasMask, DstHasMask: Boolean;
-  x, y, xStop, yStop: Integer;
+  x, y, xStart, yStart, xStop, yStop: Integer;
   c: TFPColor;
 begin
 {
@@ -3787,32 +3806,23 @@ begin
   end;
 
   // copy pixels
-  xStop := ASource.Width;
-  if Width - XDst < xStop
-  then xStop := Width - XDst;
-  yStop := ASource.Height;
-  if Height - YDst < yStop
-  then yStop := Height - YDst;
-  Dec(xStop);
-  Dec(yStop);
+  XStart := IfThen(XDst < 0, -XDst, 0);
+  YStart := IfThen(YDst < 0, -YDst, 0);
+  XStop := IfThen(Width - XDst < ASource.Width, Width - XDst, ASource.Width) - 1;
+  YStop := IfTHen(Height - YDst < ASource.Height, Height - YDst, ASource.Height) - 1;
 
-  if ASource is TLazIntfImage then
-    SrcHasMask := SrcImg.FRawImage.Description.MaskBitsPerPixel > 0
-  else
-    SrcHasMask := False;
-
+  SrcHasMask := (ASource is TLazIntfImage) and (SrcImg.FRawImage.Description.MaskBitsPerPixel > 0);
   DstHasMask := FRawImage.Description.MaskBitsPerPixel > 0;
 
-  if DstHasMask
-  and (ASource is TLazIntfImage)
+  if DstHasMask and (ASource is TLazIntfImage)
   then begin
-    for y:=0 to yStop do
-      for x:=0 to xStop do
+    for y:= yStart to yStop do
+      for x:=xStart to xStop do
         Masked[x+XDst,y+YDst] := SrcHasMask and SrcImg.Masked[x,y];
   end;
 
-  for y:=0 to yStop do
-    for x:=0 to xStop do
+  for y:=yStart to yStop do
+    for x:=xStart to xStop do
     begin
       c := ASource.Colors[x,y];
 
@@ -4339,7 +4349,7 @@ end;
 procedure TLazAVLPalette.SetCount(NewCount: integer);
 var
   NewAVLPalEntry: PLazAVLPaletteEntry;
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
   CurAVLPalEntry: PLazAVLPaletteEntry;
   Index: Integer;
 begin
@@ -4357,7 +4367,7 @@ begin
   inherited SetCount(NewCount);
   // create tree if not already done
   if (FAVLPalette=nil) and (FCount>0) then
-    FAVLPalette:=TAvgLvlTree.Create(TListSortCompare(@CompareLazAVLPaletteEntries));
+    FAVLPalette:=TAvlTree.Create(TListSortCompare(@CompareLazAVLPaletteEntries));
   if FAVLPalette=nil then exit;
   // add new colors to 'color to index' tree and 'index to node' array
   while FAVLPalette.Count<FCount do begin
@@ -4371,7 +4381,7 @@ end;
 
 procedure TLazAVLPalette.SetColor(Index: integer; const NewColor: TFPColor);
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   Entry: PLazAVLPaletteEntry;
 begin
   if Index=FCount then
@@ -4402,7 +4412,7 @@ end;
 
 function TLazAVLPalette.IndexOf(const AColor: TFPColor): integer;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   if FAVLPalette<>nil then
     Node:=FAVLPalette.FindKey(@AColor,TListSortCompare(@ComparePFPColorAndLazAVLPalEntry))
@@ -4450,7 +4460,7 @@ end;
 
 procedure TLazAVLPalette.CheckConsistency;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   Entry: PLazAVLPaletteEntry;
   i: Integer;
 begin
@@ -6145,6 +6155,8 @@ begin
   Result := -1;
 end;
 
+{$IFNDEF DisableLCLTIFF}
+
 { TLazReaderTiff }
 
 {$IFDEF OldTiffCreateImageHook}
@@ -6317,6 +6329,8 @@ function TLazWriterTiff._Release: LongInt; {$IFDEF WINDOWS}stdcall{$ELSE}cdecl{$
 begin
   Result := -1;
 end;
+
+{$ENDIF} //DisableLCLTIFF
 
 { TLazReaderIcnsPart }
 

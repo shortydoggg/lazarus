@@ -27,7 +27,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synhighlighterhtml.pp 49889 2015-09-29 00:25:46Z martin $
+$Id: synhighlighterhtml.pp 50780 2015-12-13 20:38:06Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -2523,18 +2523,21 @@ begin
 end;
 
 procedure TSynHTMLSyn.IdentProc;
+var
+  R: LongInt;
 begin
   case fRange of
   rsKey:
     begin
       fRange := rsParam;
       fTokenID := IdentKind((fLine + Run));
-      if ((FMode = shmXHtml) or (not fSimpleTag)) then
-        if fLine[Run] = '/' then
-          EndHtmlNodeCodeFoldBlock(Run+1, copy(fline, Run+2, fStringLen-1))
-        else if fLine[Run] <> '!' then
-          StartHtmlNodeCodeFoldBlock(cfbtHtmlNode, Run, copy(fline, Run+1, fStringLen));
+      R := Run;
       Inc(Run, fStringLen);
+      if ((FMode = shmXHtml) or (not fSimpleTag)) then
+        if fLine[R] = '/' then
+          EndHtmlNodeCodeFoldBlock(R+1, copy(fline, R+2, fStringLen-1))
+        else if fLine[R] <> '!' then
+          StartHtmlNodeCodeFoldBlock(cfbtHtmlNode, R, copy(fline, R+1, fStringLen));
     end;
   rsValue:
     begin
@@ -2759,6 +2762,10 @@ function TSynHTMLSyn.GetFoldConfigInstance(Index: Integer): TSynCustomFoldConfig
 begin
   Result := inherited GetFoldConfigInstance(Index);
   Result.Enabled := True;
+  if THtmlCodeFoldBlockType(Index) in [cfbtHtmlNode] then begin
+    Result.SupportedModes := Result.SupportedModes + [fmMarkup];
+    Result.Modes := Result.Modes + [fmMarkup];
+  end;
 end;
 
 function TSynHTMLSyn.StartHtmlCodeFoldBlock(ABlockType: THtmlCodeFoldBlockType): TSynCustomCodeFoldBlock;

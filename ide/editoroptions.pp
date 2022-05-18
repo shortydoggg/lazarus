@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -40,10 +40,12 @@ interface
 
 uses
   // RTL, FCL
-  Classes, SysUtils, resource,
+  Classes, SysUtils, typinfo, resource,
   // LCL
-  Controls, ExtCtrls, Graphics, LCLProc, FileUtil, Laz2_XMLCfg, lazutf8classes,
-  LazClasses, LazFileUtils, LResources, Forms, Dialogs, ComCtrls, LCLType, LazUTF8,
+  Graphics, LCLProc, LResources, Forms, Dialogs, ComCtrls, LCLType,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8, LazClasses, LazUTF8Classes, Laz2_XMLCfg,
+  LazStringUtils,
   // Synedit
   SynEdit, SynEditAutoComplete, SynEditKeyCmds, SynEditTypes,
   SynEditMiscClasses, SynBeautifier, SynEditTextTrimmer, SynEditMouseCmds,
@@ -54,18 +56,20 @@ uses
   SynEditMarkupSpecialChar,
   SourceSynEditor,
   // SynEdit Highlighters
-  SynEditHighlighter, SynEditHighlighterFoldBase,
-  SynHighlighterCPP, SynHighlighterHTML, SynHighlighterJava, SynHighlighterLFM,
-  SynHighlighterPas, SynHighlighterPerl, SynHighlighterPHP, SynHighlighterSQL,
+  SynEditHighlighter, SynEditHighlighterFoldBase, SynHighlighterCPP,
+  SynHighlighterHTML, SynHighlighterJava, SynHighlighterLFM, SynHighlighterPas,
+  SynHighlighterPerl, SynHighlighterPHP, SynHighlighterSQL, SynHighlighterCss,
   SynHighlighterPython, SynHighlighterUNIXShellScript, SynHighlighterXML,
-  SynHighlighterJScript, SynHighlighterDiff, SynHighlighterBat, SynHighlighterIni,
-  SynHighlighterPo, SynHighlighterPike, SynPluginMultiCaret,
+  SynHighlighterJScript, SynHighlighterDiff, SynHighlighterBat,
+  SynHighlighterIni, SynHighlighterPo, SynHighlighterPike, SynPluginMultiCaret,
+  SynEditMarkupFoldColoring, SynEditMarkup,
   // codetools
   LinkScanner, CodeToolManager,
   // IDEIntf
-  IDECommands, SrcEditorIntf, IDEOptionsIntf, IDEDialogs,
+  IDECommands, SrcEditorIntf, IDEOptionsIntf, IDEOptEditorIntf, IDEDialogs,
+  EditorSyntaxHighlighterDef, MacroIntf,
   // IDE
-  SourceMarks, LazarusIDEStrConsts, IDEProcs, KeyMapping, LazConf, typinfo;
+  SourceMarks, LazarusIDEStrConsts, KeyMapping, LazConf;
 
 const
   DefaultCompletionLongLineHintType = sclpExtendRightOnly;
@@ -77,21 +81,18 @@ type
   TSynHighlightElement = TSynHighlighterAttributes;
   TCustomSynClass = class of TSrcIDEHighlighter;
 
+  TLazSynPluginTemplateMultiCaret = class(TForm)     end;
   TLazSynPluginTemplateEditForm = class(TForm)     end;
   TLazSynPluginTemplateEditFormOff = class(TForm)  end;
   TLazSynPluginSyncroEditFormSel = class(TForm)    end;
   TLazSynPluginSyncroEditForm = class(TForm)       end;
   TLazSynPluginSyncroEditFormOff = class(TForm)    end;
 
-  TLazSyntaxHighlighter =
-    (lshNone, lshText, lshFreePascal, lshDelphi, lshLFM, lshXML, lshHTML,
-    lshCPP, lshPerl, lshJava, lshBash, lshPython, lshPHP, lshSQL, lshJScript,
-    lshDiff, lshBat, lshIni, lshPo, lshPike);
-
   TColorSchemeAttributeFeature =
     ( hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior,
       hafStyle, hafStyleMask,
-      hafFrameStyle, hafFrameEdges
+      hafFrameStyle, hafFrameEdges,
+      hafMarkupFoldColor // for the MarkupFoldColor module
     );
   TColorSchemeAttributeFeatures = set of TColorSchemeAttributeFeature;
 
@@ -113,6 +114,7 @@ const
     'Highlight all',       'Brackets highlight',        'Mouse link',
     'Line number',         'Line highlight',            'Modified line',
     'Code folding tree',   'Highlight current word',    'Folded code',
+    'Folded code Line',    'Hidden code Line',
     'Word-Brackets',       'TemplateEdit Current',      'TemplateEdit Sync',
     'TemplateEdit Cells',  'SyncronEdit Current Cells', 'SyncronEdit Syncron Cells',
     'SyncronEdit Other Cells', 'SyncronEdit Range',
@@ -121,8 +123,11 @@ const
     '',  // ahaRightMargin
     '',  // ahaSpecialVisibleChars
     '',  // ahaTopInfoHint
+    '', // ahaCaretColor
     '', '', '',  // ahaIfDefBlockInactive, ahaIfDefBlockActive, ahaIfDefBlockTmpActive
-     '', '', ''  // ahaIfDefNodeInactive, ahaIfDefNodeActive, ahaIfDefNodeTmpActive
+    '', '', '',  // ahaIfDefNodeInactive, ahaIfDefNodeActive, ahaIfDefNodeTmpActive
+    '', '', '', '', // ahaIdentComplWindow, ahaIdentComplWindowBorder, ahaIdentComplWindowSelection, ahaIdentComplWindowHighlight
+    '', '', '', '', '', '', '', '', '', '' // ahaOutlineLevel1Color..ahaOutlineLevel10Color
   );
 
   ahaGroupMap: array[TAdditionalHilightAttribute] of TAhaGroupName = (
@@ -144,6 +149,8 @@ const
     { ahaCodeFoldingTree }     agnGutter,
     { ahaHighlightWord }       agnText,
     { ahaFoldedCode }          agnGutter,
+    { ahaFoldedCodeLine }      agnGutter,
+    { ahaHiddenCodeLine }      agnGutter,
     { ahaWordGroup }           agnText,
     { ahaTemplateEditCur }     agnTemplateMode,
     { ahaTemplateEditSync }    agnTemplateMode,
@@ -157,12 +164,28 @@ const
     { ahaRightMargin}          agnGutter,
     { ahaSpecialVisibleChars } agnText,
     { ahaTopInfoHint }         agnLine,
+    { ahaCaretColor }          agnText,
     { ahaIfDefBlockInactive }  agnIfDef,
     { ahaIfDefBlockActive }    agnIfDef,
     { ahaIfDefBlockTmpActive } agnIfDef,
     { ahaIfDefNodeInactive }   agnIfDef,
     { ahaIfDefNodeActive }     agnIfDef,
-    { ahaIfDefNodeTmpActive }  agnIfDef
+    { ahaIfDefNodeTmpActive }  agnIfDef,
+    { ahaIdentComplWindow }           agnIdentComplWindow,
+    { ahaIdentComplWindowBorder }     agnIdentComplWindow,
+    { ahaIdentComplWindowSelection }  agnIdentComplWindow,
+    { ahaIdentComplWindowHighlight }  agnIdentComplWindow,
+    { ahaOutlineLevel1Color }  agnOutlineColors,
+    { ahaOutlineLevel2Color }  agnOutlineColors,
+    { ahaOutlineLevel3Color }  agnOutlineColors,
+    { ahaOutlineLevel4Color }  agnOutlineColors,
+    { ahaOutlineLevel5Color }  agnOutlineColors,
+    { ahaOutlineLevel6Color }  agnOutlineColors,
+    { ahaOutlineLevel7Color }  agnOutlineColors,
+    { ahaOutlineLevel8Color }  agnOutlineColors,
+    { ahaOutlineLevel9Color }  agnOutlineColors,
+    { ahaOutlineLevel10Color } agnOutlineColors
+
   );
   ahaSupportedFeatures: array[TAdditionalHilightAttribute] of TColorSchemeAttributeFeatures =
   (
@@ -184,6 +207,8 @@ const
     { ahaCodeFoldingTree }    [hafBackColor, hafForeColor, hafFrameColor],
     { ahaHighlightWord }      [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaFoldedCode }         [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
+    { ahaFoldedCodeLine }     [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
+    { ahaHiddenCodeLine }     [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaWordGroup }          [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaTemplateEditCur }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaTemplateEditSync }   [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
@@ -197,12 +222,27 @@ const
     { ahaRightMargin}         [hafForeColor],
     { ahaSpecialVisibleChars }[hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaTopInfoHint }        [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
+    { ahaCaretColor }         [hafBackColor, hafForeColor],
     { ahaIfDefBlockInactive } [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaIfDefBlockActive }   [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaIfDefBlockTmpActive }[hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaIfDefNodeInactive }  [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
     { ahaIfDefNodeActive }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
-    { ahaIfDefNodeTmpActive } [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask]
+    { ahaIfDefNodeTmpActive } [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask],
+    { ahaIdentComplWindow }   [hafBackColor, hafForeColor],
+    { ahaIdentComplWindowBorder }    [hafForeColor],
+    { ahaIdentComplWindowSelection } [hafBackColor, hafForeColor],
+    { ahaIdentComplWindowHighlight } [hafForeColor],
+    { ahaFoldLevel1Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel2Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel3Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel4Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel5Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel6Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel7Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel8Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel9Color }    [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor],
+    { ahaFoldLevel10Color }   [hafBackColor, hafForeColor, hafFrameColor, hafAlpha, hafPrior, hafFrameStyle, hafFrameEdges, hafStyle, hafStyleMask, hafMarkupFoldColor]
   );
 
 
@@ -228,14 +268,21 @@ type
   private
     FFeatures: TColorSchemeAttributeFeatures;
     FGroup: TAhaGroupName;
+    FMarkupFoldLineAlpha: Byte;
+    FMarkupFoldLineColor: TColor;
+    FMarkupFoldLineStyle: TSynLineStyle;
     FOwner: TColorSchemeLanguage;
     FUseSchemeGlobals: Boolean;
     function GetIsUsingSchemeGlobals: Boolean;
     function OldAdditionalAttributeName(NewAha: String): string;
+    procedure SetMarkupFoldLineAlpha(AValue: Byte);
+    procedure SetMarkupFoldLineColor(AValue: TColor);
+    procedure SetMarkupFoldLineStyle(AValue: TSynLineStyle);
   protected
     procedure Init; override;
   public
     constructor Create(ASchemeLang: TColorSchemeLanguage; attribName: PString; aStoredName: String = '');
+    function IsEnabled: boolean; override;
     procedure ApplyTo(aDest: TSynHighlighterAttributes; aDefault: TColorSchemeAttribute = nil);
     procedure Assign(Src: TPersistent); override;
     function Equals(Other: TColorSchemeAttribute): Boolean; reintroduce;
@@ -252,6 +299,10 @@ type
     property Features: TColorSchemeAttributeFeatures read FFeatures write FFeatures;
   published
     property UseSchemeGlobals: Boolean read FUseSchemeGlobals write FUseSchemeGlobals;
+    // For markup fold color
+    property MarkupFoldLineColor: TColor read FMarkupFoldLineColor write SetMarkupFoldLineColor default clNone; // clDefault will take Color[].Frame or Color[].Foreground
+    property MarkupFoldLineStyle: TSynLineStyle read FMarkupFoldLineStyle write SetMarkupFoldLineStyle default slsSolid;
+    property MarkupFoldLineAlpha: Byte read FMarkupFoldLineAlpha write SetMarkupFoldLineAlpha default 0;
   end;
 
   { TColorSchemeLanguage }
@@ -265,6 +316,7 @@ type
     FOwner: TColorScheme;
     FLanguageName: String;
     FIsSchemeDefault: Boolean;
+    FFormatVersion: integer;
     function GetAttribute(Index: String): TColorSchemeAttribute;
     function GetAttributeAtPos(Index: Integer): TColorSchemeAttribute;
     function GetAttributeByEnum(Index: TAdditionalHilightAttribute): TColorSchemeAttribute;
@@ -395,6 +447,7 @@ const
       (Count: 0; Info: nil), // python
       (Count: 0; Info: nil), // php
       (Count: 0; Info: nil), // sql
+      (Count: 0; Info: nil), // css
       (Count: 0; Info: nil), // jscript
       (Count: 0; Info: nil), // Diff
       (Count: 0; Info: nil), // Ini
@@ -416,6 +469,7 @@ type
 
   TEditorOptionsFoldRecord = record
     Count: Integer;
+    HasMarkup: Boolean;
     Info: PEditorOptionsFoldInfoList;
   end;
 
@@ -435,7 +489,7 @@ type
 const
 
   (* When adding new entries, ensure that resourcestrings are re-assigned in InitLocale *)
-  EditorOptionsFoldInfoPas: Array [0..23] of TEditorOptionsFoldInfo
+  EditorOptionsFoldInfoPas: Array [0..26] of TEditorOptionsFoldInfo
   = (
       (Name:  dlgFoldPasProcedure;     Xml:     'Procedure';
        Index: ord(cfbtProcedure);    Enabled: True),
@@ -490,7 +544,13 @@ const
        Index: ord(cfbtNestedComment);Enabled: True),
 
       (Name:  dlgFoldPasIfThen; Xml:     'IfThen';
-       Index: ord(cfbtIfThen); Enabled: False)
+       Index: ord(cfbtIfThen); Enabled: False),
+      (Name:  dlgFoldPasForDo; Xml:     'ForDo';
+       Index: ord(cfbtForDo); Enabled: False),
+      (Name:  dlgFoldPasWhileDo; Xml:     'WhileDo';
+       Index: ord(cfbtWhileDo); Enabled: False),
+      (Name:  dlgFoldPasWithDo; Xml:     'WithDo';
+       Index: ord(cfbtWithDo); Enabled: False)
     );
 
   EditorOptionsFoldInfoLFM: Array [0..2] of TEditorOptionsFoldInfo
@@ -582,30 +642,31 @@ const
   (* When adding new entries, ensure that resourcestrings are re-assigned in InitLocale *)
   EditorOptionsFoldDefaults: array[TLazSyntaxHighlighter] of
     TEditorOptionsFoldRecord =
-    ( (Count:  0; Info: nil), // none
-      (Count:  0; Info: nil), // text
-      (Count: 24; Info: @EditorOptionsFoldInfoPas[0]), // Freepas
-      (Count: 24; Info: @EditorOptionsFoldInfoPas[0]), // pas
-      (Count:  3; Info: @EditorOptionsFoldInfoLFM[0]), // lfm
-      (Count:  5; Info: @EditorOptionsFoldInfoXML[0]), // xml
-      (Count:  3; Info: @EditorOptionsFoldInfoHTML[0]), // html
-      (Count:  0; Info: nil), // cpp
-      (Count:  0; Info: nil), // perl
-      (Count:  0; Info: nil), // java
-      (Count:  0; Info: nil), // shell
-      (Count:  0; Info: nil), // python
-      (Count:  0; Info: nil), // php
-      (Count:  0; Info: nil), // sql
-      (Count:  0; Info: nil), // jscript
-      (Count:  3; Info: @EditorOptionsFoldInfoDiff[0]), // Diff
-      (Count:  0; Info: nil), // Bat
-      (Count:  0; Info: nil), // Ini
-      (Count:  0; Info: nil), // PO
-      (Count:  0; Info: nil)  // Pike
+    ( (Count:  0; HasMarkup: False; Info: nil), // none
+      (Count:  0; HasMarkup: False; Info: nil), // text
+      (Count: 27; HasMarkup: True; Info: @EditorOptionsFoldInfoPas[0]), // Freepas
+      (Count: 27; HasMarkup: True; Info: @EditorOptionsFoldInfoPas[0]), // pas
+      (Count:  3; HasMarkup: True; Info: @EditorOptionsFoldInfoLFM[0]), // lfm
+      (Count:  5; HasMarkup: True; Info: @EditorOptionsFoldInfoXML[0]), // xml
+      (Count:  3; HasMarkup: True; Info: @EditorOptionsFoldInfoHTML[0]), // html
+      (Count:  0; HasMarkup: False; Info: nil), // cpp
+      (Count:  0; HasMarkup: False; Info: nil), // perl
+      (Count:  0; HasMarkup: False; Info: nil), // java
+      (Count:  0; HasMarkup: False; Info: nil), // shell
+      (Count:  0; HasMarkup: False; Info: nil), // python
+      (Count:  0; HasMarkup: False; Info: nil), // php
+      (Count:  0; HasMarkup: False; Info: nil), // sql
+      (Count:  0; HasMarkup: False; Info: nil), // css
+      (Count:  0; HasMarkup: False; Info: nil), // jscript
+      (Count:  3; HasMarkup: False; Info: @EditorOptionsFoldInfoDiff[0]), // Diff
+      (Count:  0; HasMarkup: False; Info: nil), // Bat
+      (Count:  0; HasMarkup: False; Info: nil), // Ini
+      (Count:  0; HasMarkup: False; Info: nil), // PO
+      (Count:  0; HasMarkup: False; Info: nil)  // Pike
     );
 
 const
-  EditorOptsFormatVersion = 11;
+  EditorOptsFormatVersion = 12;
   { * Changes in Version 6:
        - ColorSchemes now have a Global settings part.
          Language specific changes must save UseSchemeGlobals=False (Default is true)
@@ -622,6 +683,9 @@ const
          eoTabIndent was added to SynEditDefaultOptions
     * Changes in Version 11:
          Default for GutterLeft set to moglUpClickAndSelect (was moGLDownClick)
+    * Changes in Version 12:
+         Used in Colorscheme/Version
+         Colors for MarkupFoldColor can now have gaps (before unset colors were filtered)
   }
   EditorMouseOptsFormatVersion = 1;
   { * Changes in Version 6:
@@ -632,7 +696,7 @@ const
     TCustomSynClass =
     (nil, nil, TIDESynFreePasSyn, TIDESynPasSyn, TSynLFMSyn, TSynXMLSyn,
     TSynHTMLSyn, TSynCPPSyn, TSynPerlSyn, TSynJavaSyn, TSynUNIXShellScriptSyn,
-    TSynPythonSyn, TSynPHPSyn, TSynSQLSyn, TSynJScriptSyn, TSynDiffSyn,
+    TSynPythonSyn, TSynPHPSyn, TSynSQLSyn,TSynCssSyn, TSynJScriptSyn, TSynDiffSyn,
     TSynBatSyn, TSynIniSyn, TSynPoSyn, TSynPikeSyn);
 
 
@@ -653,6 +717,7 @@ const
     comtPerl,  // lshPython
     comtHTML,  // lshPHP
     comtCPP,   // lshSQL
+    comtCPP,   // lshCss
     comtCPP,   // lshJScript
     comtNone,  // Diff
     comtNone,  // Bat
@@ -681,6 +746,10 @@ type
       value fo style [fsBold] as defined in synhighlighterhtml.pp.
     }
   TEditOptLanguageInfo = class
+  private
+    MappedAttributes: TStringList; // map attributes to pascal
+  protected
+    procedure prepare(Syntax :  TLazSyntaxHighlighter);virtual;
   public
     SynClass: TCustomSynClass;
     TheType:  TLazSyntaxHighlighter;
@@ -688,9 +757,8 @@ type
     DefaultFileExtensions: string;
     ColorScheme: String;
     SampleSource: String;
-    AddAttrSampleLines: array[TAdditionalHilightAttribute] of
-    Integer; // first line = 1
-    MappedAttributes: TStringList; // map attributes to pascal
+    AddAttrSampleLines: array[TAdditionalHilightAttribute] of Integer; // first line = 1
+//    MappedAttributes: TStringList; // map attributes to pascal
     DefaultCommentType: TCommentType;
     CaretXY: TPoint;
     constructor Create;
@@ -698,6 +766,15 @@ type
     function GetDefaultFilextension: String;
     procedure SetBothFilextensions(const Extensions: string);
     function SampleLineToAddAttr(Line: Integer): TAdditionalHilightAttribute;
+  end;
+
+  { TEditOptLangCssInfo }
+
+  TEditOptLangCssInfo = class(tEditOptLanguageInfo)
+  protected
+     procedure prepare(Syntax :  TLazSyntaxHighlighter);override;
+     function getSampleSource:string;
+     function getMappedAttributes: tStringList;
   end;
 
   { TEditOptLangList }
@@ -715,8 +792,7 @@ type
     function FindByType(AType: TLazSyntaxHighlighter): Integer;
     function GetDefaultFilextension(AType: TLazSyntaxHighlighter): String;
     function GetInfoByType(AType: TLazSyntaxHighlighter): TEditOptLanguageInfo;
-    property Items[Index: Integer]: TEditOptLanguageInfo read GetInfos;
-      default;
+    property Items[Index: Integer]: TEditOptLanguageInfo read GetInfos; default;
   end;
 
   TEditorOptions = class;
@@ -789,6 +865,7 @@ type
     FGutterActions: TSynEditMouseActions;
     FGutterActionsFold, FGutterActionsFoldExp, FGutterActionsFoldCol: TSynEditMouseActions;
     FGutterActionsLines: TSynEditMouseActions;
+    FGutterActionsOverView, FGutterActionsOverViewMarks: TSynEditMouseActions;
     FSelectedUserScheme: String;
     // left multi click
     FTextDoubleLeftClick: TMouseOptButtonAction;
@@ -897,6 +974,8 @@ type
     property GutterActionsFoldCol: TSynEditMouseActions read FGutterActionsFoldCol;
     property GutterActionsLines: TSynEditMouseActions read FGutterActionsLines;
     property GutterActionsChanges: TSynEditMouseActions read FGutterActionsChanges;
+    property GutterActionsOverView: TSynEditMouseActions read FGutterActionsOverView;
+    property GutterActionsOverViewMarks: TSynEditMouseActions read FGutterActionsOverViewMarks;
   published
     property GutterLeft: TMouseOptGutterLeftType read FGutterLeft write FGutterLeft
              default moglUpClickAndSelect;
@@ -1301,6 +1380,7 @@ type
     FCompletionLongLineHintType: TSynCompletionLongHintType;
     FMultiCaretDefaultColumnSelectMode: TSynPluginMultiCaretDefaultMode;
     FMultiCaretDefaultMode: TSynPluginMultiCaretDefaultMode;
+    FMultiCaretDeleteSkipLineBreak: Boolean;
     FPasExtendedKeywordsMode: Boolean;
     FHideSingleTabInWindow: Boolean;
     FPasStringKeywordMode: TSynPasStringMode;
@@ -1375,17 +1455,20 @@ type
     fAutoToolTipExprEval: Boolean;
     fAutoToolTipSymbTools: Boolean;
     FDbgHintAutoTypeCastClass: Boolean;
-    fCodeTemplateFileName: String;
+    fCodeTemplateFileNameRaw: String;
     fCTemplIndentToTokenStart: Boolean;
     fAutoDisplayFuncPrototypes: Boolean;
 
     // Code Folding
     FUseCodeFolding: Boolean;
+    FUseMarkupWordBracket: Boolean;
+    FUseMarkupOutline: Boolean;
     FReverseFoldPopUpOrder: Boolean;
 
     // Multi window
     FMultiWinEditAccessOrder: TEditorOptionsEditAccessOrderList;
     FCtrlMiddleTabClickClosesOthers: Boolean;
+    FShowFileNameInCaption: Boolean;
 
     // Comment Continue
     FAnsiCommentContinueEnabled: Boolean;
@@ -1415,7 +1498,7 @@ type
     FStringBreakPrefix: String;
 
     FDefaultValues: TEditorOptions;
-
+    function GetCodeTemplateFileNameExpand:String;
   protected
     function GetTabPosition: TTabPosition; override;
   public
@@ -1443,6 +1526,7 @@ type
     procedure GetSynEditPreviewSettings(APreviewEditor: TObject);
     procedure ApplyFontSettingsTo(ASynEdit: TSynEdit);
 
+    function ExtensionToLazSyntaxHighlighter(Ext: String): TLazSyntaxHighlighter; override;
     function CreateSyn(LazSynHilighter: TLazSyntaxHighlighter): TSrcIDEHighlighter;
     function ReadColorScheme(const LanguageName: String): String;
     function ReadPascalColorScheme: String;
@@ -1572,8 +1656,10 @@ type
   public
     property AutoDelayInMSec: Integer read fAutoDelayInMSec
       write fAutoDelayInMSec default 1000;
-    property CodeTemplateFileName: String
-      read fCodeTemplateFileName write fCodeTemplateFileName;
+    property CodeTemplateFileNameRaw: String
+      read fCodeTemplateFileNameRaw write fCodeTemplateFileNameRaw;
+    property CodeTemplateFileNameExpand:String
+      read GetCodeTemplateFileNameExpand;
     property CodeTemplateIndentToTokenStart: Boolean
       read fCTemplIndentToTokenStart write fCTemplIndentToTokenStart;
     property AutoRemoveEmptyMethods: Boolean read FAutoRemoveEmptyMethods
@@ -1589,6 +1675,10 @@ type
     // Code Folding
     property UseCodeFolding: Boolean
         read FUseCodeFolding write FUseCodeFolding default True;
+    property UseMarkupWordBracket: Boolean
+        read FUseMarkupWordBracket write FUseMarkupWordBracket default True;
+    property UseMarkupOutline: Boolean
+        read FUseMarkupOutline write FUseMarkupOutline default False;
 
     // Multi window
     property MultiWinEditAccessOrder: TEditorOptionsEditAccessOrderList
@@ -1614,6 +1704,8 @@ type
       read FMultiCaretOnColumnSelect write FMultiCaretOnColumnSelect default True;
     property MultiCaretDefaultMode: TSynPluginMultiCaretDefaultMode
              read FMultiCaretDefaultMode write FMultiCaretDefaultMode default mcmMoveAllCarets;
+    property MultiCaretDeleteSkipLineBreak: Boolean
+             read FMultiCaretDeleteSkipLineBreak write FMultiCaretDeleteSkipLineBreak default False;
     property MultiCaretDefaultColumnSelectMode: TSynPluginMultiCaretDefaultMode
              read FMultiCaretDefaultColumnSelectMode write FMultiCaretDefaultColumnSelectMode default mcmCancelOnCaretMove;
 
@@ -1626,6 +1718,9 @@ type
     // Multi window
     property CtrlMiddleTabClickClosesOthers: Boolean
       read FCtrlMiddleTabClickClosesOthers write FCtrlMiddleTabClickClosesOthers default True;
+
+    property ShowFileNameInCaption: Boolean
+      read FShowFileNameInCaption write FShowFileNameInCaption default False;
 
     // Commend Continue
     property AnsiCommentContinueEnabled: Boolean
@@ -1674,39 +1769,10 @@ type
     property StringBreakPrefix: String read FStringBreakPrefix write FStringBreakPrefix;
   end;
 
-const
-  LazSyntaxHighlighterNames: array[TLazSyntaxHighlighter] of String = (
-    'None',
-    'Text',
-    'FreePascal',
-    'Delphi',
-    'LFM',
-    'XML',
-    'HTML',
-    'C++',
-    'Perl',
-    'Java',
-    'Bash',
-    'Python',
-    'PHP',
-    'SQL',
-    'JScript',
-    'Diff',
-    'Bat',
-    'Ini',
-    'PO',
-    'Pike'
-    );
-
 var
   EditorOpts: TEditorOptions;
 
-function StrToLazSyntaxHighlighter(const s: String): TLazSyntaxHighlighter;
-function ExtensionToLazSyntaxHighlighter(Ext: String): TLazSyntaxHighlighter;
-function FilenameToLazSyntaxHighlighter(Filename: String): TLazSyntaxHighlighter;
 procedure RepairEditorFontSize(var FontSize: integer);
-
-function GetSyntaxHighlighterCaption(h: TLazSyntaxHighlighter): string;
 
 function BuildBorlandDCIFile(ACustomSynAutoComplete: TCustomSynAutoComplete): Boolean;
 function ColorSchemeFactory: TColorSchemeFactory;
@@ -1741,6 +1807,7 @@ const
     lshPython,
     lshPHP,
     lshSQL,
+    lshCSS,
     lshJScript,
     lshDiff,
     lshBat,
@@ -2220,73 +2287,8 @@ begin
     FontSize := SynDefaultFontSize;
 end;
 
-function StrToLazSyntaxHighlighter(const s: String): TLazSyntaxHighlighter;
-begin
-  for Result := Low(TLazSyntaxHighlighter) to High(TLazSyntaxHighlighter) do
-    if (CompareText(s, LazSyntaxHighlighterNames[Result]) = 0) then
-      exit;
-  Result := lshFreePascal;
-end;
-
-function ExtensionToLazSyntaxHighlighter(Ext: String): TLazSyntaxHighlighter;
-var
-  s, CurExt: String;
-  LangID, StartPos, EndPos: Integer;
-begin
-  Result := lshNone;
-  if (Ext = '') or (Ext = '.') or (EditorOpts.HighlighterList = Nil) then
-    exit;
-  Ext := lowercase(Ext);
-  if (Ext[1] = '.') then
-    Ext := copy(Ext, 2, length(Ext) - 1);
-  LangID := 0;
-  while LangID < EditorOpts.HighlighterList.Count do
-  begin
-    s := EditorOpts.HighlighterList[LangID].FileExtensions;
-    StartPos := 1;
-    while StartPos <= length(s) do
-    begin
-      Endpos := StartPos;
-      while (EndPos <= length(s)) and (s[EndPos] <> ';') do
-        inc(EndPos);
-      CurExt := copy(s, Startpos, EndPos - StartPos);
-      if (CurExt <> '') and (CurExt[1] = '.') then
-        CurExt := copy(CurExt, 2, length(CurExt) - 1);
-      if lowercase(CurExt) = Ext then
-      begin
-        Result := EditorOpts.HighlighterList[LangID].TheType;
-        exit;
-      end;
-      Startpos := EndPos + 1;
-    end;
-    inc(LangID);
-  end;
-end;
-
-function FilenameToLazSyntaxHighlighter(Filename: String): TLazSyntaxHighlighter;
-var
-  CompilerMode: TCompilerMode;
-begin
-  Result:=ExtensionToLazSyntaxHighlighter(ExtractFileExt(Filename));
-  if Result in [lshFreePascal,lshDelphi] then begin
-    CompilerMode:=CodeToolBoss.GetCompilerModeForDirectory(ExtractFilePath(Filename));
-    if CompilerMode in [cmDELPHI,cmTP] then
-      Result:=lshDelphi
-    else
-      Result:=lshFreePascal;
-  end;
-end;
-
 const
   EditOptsConfFileName = 'editoroptions.xml';
-
-function GetSyntaxHighlighterCaption(h: TLazSyntaxHighlighter): string;
-begin
-  if h=lshFreePascal then
-    Result:='Free Pascal'
-  else
-    Result:=LazSyntaxHighlighterNames[h];
-end;
 
 function BuildBorlandDCIFile(
   ACustomSynAutoComplete: TCustomSynAutoComplete): Boolean;
@@ -2401,7 +2403,7 @@ end;
 
 function UserSchemeDirectory(CreateIfNotExists: Boolean): String;
 begin
-  Result := GetPrimaryConfigPath + DirectorySeparator + 'userschemes';
+  Result := AppendPathDelim(GetPrimaryConfigPath) + 'userschemes';
   If CreateIfNotExists and (not DirectoryExistsUTF8(Result)) then
     CreateDirUTF8(Result);
 end;
@@ -2512,6 +2514,8 @@ begin
   AdditionalHighlightAttributes[ahaCodeFoldingTree]     := dlgAddHiAttrCodeFoldingTree;
   AdditionalHighlightAttributes[ahaHighlightWord]       := dlgAddHiAttrHighlightWord;
   AdditionalHighlightAttributes[ahaFoldedCode]          := dlgAddHiAttrFoldedCode;
+  AdditionalHighlightAttributes[ahaFoldedCodeLine]      := dlgAddHiAttrFoldedCodeLine;
+  AdditionalHighlightAttributes[ahaHiddenCodeLine]      := dlgAddHiAttrHiddenCodeLine;
   AdditionalHighlightAttributes[ahaWordGroup]           := dlgAddHiAttrWordGroup;
   AdditionalHighlightAttributes[ahaTemplateEditCur]     := dlgAddHiAttrTemplateEditCur;
   AdditionalHighlightAttributes[ahaTemplateEditSync]    := dlgAddHiAttrTemplateEditSync;
@@ -2525,6 +2529,7 @@ begin
   AdditionalHighlightAttributes[ahaRightMargin]         := dlgRightMargin;
   AdditionalHighlightAttributes[ahaSpecialVisibleChars] := dlgAddHiSpecialVisibleChars;
   AdditionalHighlightAttributes[ahaTopInfoHint]         := dlgTopInfoHint;
+  AdditionalHighlightAttributes[ahaCaretColor]          := dlgCaretColor;
   AdditionalHighlightAttributes[ahaIfDefBlockInactive]  := dlgIfDefBlockInactive;
   AdditionalHighlightAttributes[ahaIfDefBlockActive]    := dlgIfDefBlockActive;
   AdditionalHighlightAttributes[ahaIfDefBlockTmpActive] := dlgIfDefBlockTmpActive;
@@ -2532,6 +2537,24 @@ begin
   AdditionalHighlightAttributes[ahaIfDefNodeActive]     := dlgIfDefNodeActive;
   AdditionalHighlightAttributes[ahaIfDefNodeTmpActive]  := dlgIfDefNodeTmpActive;
   AdditionalHighlightGroupNames[agnIfDef]        := dlgAddHiAttrGroupIfDef;
+
+  AdditionalHighlightAttributes[ahaIdentComplWindow]          := dlgAddHiAttrDefaultWindow;
+  AdditionalHighlightAttributes[ahaIdentComplWindowBorder]    := dlgAddHiAttrWindowBorder;
+  AdditionalHighlightAttributes[ahaIdentComplWindowSelection] := dlgBlockGroupOptions;
+  AdditionalHighlightAttributes[ahaIdentComplWindowHighlight] := dlgAddHiAttrHighlightPrefix;
+  AdditionalHighlightGroupNames[agnIdentComplWindow]          := dlgIdentifierCompletion;
+
+  AdditionalHighlightAttributes[ahaOutlineLevel1Color]  := dlgAddHiAttrOutlineLevel1Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel2Color]  := dlgAddHiAttrOutlineLevel2Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel3Color]  := dlgAddHiAttrOutlineLevel3Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel4Color]  := dlgAddHiAttrOutlineLevel4Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel5Color]  := dlgAddHiAttrOutlineLevel5Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel6Color]  := dlgAddHiAttrOutlineLevel6Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel7Color]  := dlgAddHiAttrOutlineLevel7Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel8Color]  := dlgAddHiAttrOutlineLevel8Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel9Color]  := dlgAddHiAttrOutlineLevel9Color;
+  AdditionalHighlightAttributes[ahaOutlineLevel10Color] := dlgAddHiAttrOutlineLevel10Color;
+  AdditionalHighlightGroupNames[agnOutlineColors]  := dlgAddHiAttrGroupOutlineColors;
 
   AdditionalHighlightGroupNames[agnDefault]      := dlgAddHiAttrGroupDefault;
   AdditionalHighlightGroupNames[agnText]         := dlgAddHiAttrGroupText;
@@ -2557,7 +2580,6 @@ end;
 constructor TEditOptLanguageInfo.Create;
 begin
   inherited Create;
-
 end;
 
 destructor TEditOptLanguageInfo.Destroy;
@@ -2596,6 +2618,52 @@ procedure TEditOptLanguageInfo.SetBothFilextensions(const Extensions: string);
 begin
   FileExtensions:=Extensions;
   DefaultFileExtensions:=Extensions;
+end;
+
+procedure TEditOptLanguageInfo.prepare(Syntax: TLazSyntaxHighlighter);
+begin
+  TheType := Syntax;
+  DefaultCommentType := DefaultCommentTypes[TheType];
+  SynClass := LazSyntaxHighlighterClasses[TheType];
+end;
+
+{ TEditOptLangCssInfo }
+
+procedure TEditOptLangCssInfo.prepare(Syntax: TLazSyntaxHighlighter);
+begin
+  inherited Prepare(syntax);
+  SetBothFilextensions('css');
+  SampleSource := getSampleSource;
+  AddAttrSampleLines[ahaTextBlock] := 4;
+  CaretXY := Point(1,1);
+  MappedAttributes := getMappedAttributes;;
+end;
+
+function TEditOptLangCssInfo.getSampleSource: string;
+begin
+  result :=
+      '.field :hover {'#10 +
+      '   display:inline;'#10+
+      '   border:10px;'#10+
+      '   color: #555;'#10+
+      '/* comment */'#10+
+      '}'#10+#10;
+end;
+
+function TEditOptLangCssInfo.getMappedAttributes: tStringList;
+begin
+    result:=tStringList.create;
+    with result do
+    begin
+      Add('Comment=Comment');
+      Add('Selector=Reserved_word');
+      Add('Identifier=Identifier');
+      Add('Space=Space');
+      Add('Symbol=Symbol');
+      Add('Number=Number');
+      Add('Key=Key');
+      Add('String=String');
+    end;
 end;
 
 { TEditOptLangList }
@@ -2700,7 +2768,7 @@ begin
     TheType := lshHTML;
     DefaultCommentType := DefaultCommentTypes[TheType];
     SynClass := LazSyntaxHighlighterClasses[TheType];
-    SetBothFilextensions('htm;html');
+    SetBothFilextensions('htm;html;xhtml');
     SampleSource :=
       '<html>'#13 + '<title>Lazarus Sample source for html</title>'#13 +
       '<body bgcolor=#ffffff background="bg.jpg">'#13 +
@@ -2760,7 +2828,7 @@ begin
     TheType := lshXML;
     DefaultCommentType := DefaultCommentTypes[TheType];
     SynClass := LazSyntaxHighlighterClasses[TheType];
-    SetBothFilextensions('xml;xsd;xsl;xslt;dtd;lpi;lps;lpk');
+    SetBothFilextensions('xml;xsd;xsl;xslt;dtd;lpi;lps;lpk;wsdl;svg');
     SampleSource :=
       '<?xml version="1.0"?>'#13 + '<!DOCTYPE root ['#13 +
       '  ]>'#13 + '<!-- Comment -->'#13 + '<root version="&test;">'#13 +
@@ -3002,6 +3070,13 @@ begin
   end;
   Add(NewInfo);
 
+  // create info for CSS
+  NewInfo := TEditOptLangCssInfo.Create;
+  NewInfo.Prepare(lshCss);
+  Add(NewInfo);
+
+
+
   // create info for JScript
   NewInfo := TEditOptLanguageInfo.Create;
   with NewInfo do
@@ -3012,7 +3087,19 @@ begin
     SetBothFilextensions('js');
     SampleSource :=
       '/* JScript */'#13#10 +
-      '/* To be written ... /*'#13#10 + #13#10 +
+      'var semafor={'#13#10 +
+      '  semafor:0,'#13#10 +
+      '  timer:null,'#13#10 +
+      '  name:"Name",'#13#10 +
+      '  clear: function(){'#13#10 +
+      '    try{'#13#10 +
+      '      this.semafor=0;'#13#10 +
+      '      clearTimeout(this.timer);'#13#10 +
+      '    }  catch (e)  { }'#13#10 +
+      '  }'#13#10 +
+      '};'#13#10 +
+
+      #13#10 +
       '/* Text Block */'#13#10 + #13#10;
     AddAttrSampleLines[ahaTextBlock] := 2;
     MappedAttributes := TStringList.Create;
@@ -3280,6 +3367,8 @@ begin
   FGutterActionsFoldCol := TSynEditMouseActions.Create(nil);
   FGutterActionsLines   := TSynEditMouseActions.Create(nil);
   FGutterActionsChanges := TSynEditMouseActions.Create(nil);
+  FGutterActionsOverView:= TSynEditMouseActions.Create(nil);
+  FGutterActionsOverViewMarks:= TSynEditMouseActions.Create(nil);
   FUserSchemes := TQuickStringlist.Create;
   FVersion := 0;
 end;
@@ -3297,6 +3386,8 @@ begin
   FGutterActionsFoldCol.Free;
   FGutterActionsLines.Free;
   FGutterActionsChanges.Free;
+  FGutterActionsOverView.Free;
+  FGutterActionsOverViewMarks.Free;
   inherited Destroy;
 end;
 
@@ -3389,6 +3480,8 @@ begin
   FGutterActionsFoldCol.Clear;
   FGutterActionsLines.Clear;
   FGutterActionsChanges.Clear;
+  FGutterActionsOverView.Clear;
+  FGutterActionsOverViewMarks.Clear;
   //TMouseOptGutterLeftType = (moGLDownClick, moglUpClickAndSelect);
 
   with FGutterActions do begin
@@ -3463,6 +3556,18 @@ begin
     // do not allow selection, over colapse/expand icons. Those may depend cursor pos (e.g. hide selected lines)
     if CDir = cdUp then
       AddCommand(emcNone,              False, mbXLeft,   ccAny,    cdDown, [], []);
+  end;
+
+  with FGutterActionsOverViewMarks do begin
+    R := R - [crLastDownPosSameLine];
+    if R <> [] then
+      R := R + [crAllowFallback];
+    AddCommand(emcOverViewGutterGotoMark, True, mbXLeft, ccAny,  CDir, R, [], [ssShift, ssCtrl, ssAlt]);
+  end;
+  with FGutterActionsOverView do begin
+    if R <> [] then
+      R := R + [crLastDownPosSearchAll];
+    AddCommand(emcOverViewGutterScrollTo, True, mbXLeft, ccAny,  CDir, R, [], [ssShift, ssCtrl, ssAlt]);
   end;
 
 end;
@@ -3751,6 +3856,8 @@ begin
   FGutterActionsFoldCol.Assign(Src.GutterActionsFoldCol);
   FGutterActionsLines.Assign  (Src.GutterActionsLines);
   FGutterActionsChanges.Assign(Src.GutterActionsChanges);
+  FGutterActionsOverView.Assign(Src.GutterActionsOverView);
+  FGutterActionsOverViewMarks.Assign(Src.GutterActionsOverViewMarks);
 end;
 
 procedure TEditorMouseOptions.SetTextCtrlLeftClick(AValue: TMouseOptButtonActionOld);
@@ -3886,7 +3993,9 @@ begin
     Temp.GutterActionsFoldCol.Equals(self.GutterActionsFoldCol) and
     Temp.GutterActionsFoldExp.Equals(self.GutterActionsFoldExp) and
     Temp.GutterActionsLines.Equals  (self.GutterActionsLines) and
-    Temp.GutterActionsChanges.Equals(Self.GutterActionsChanges);
+    Temp.GutterActionsChanges.Equals(Self.GutterActionsChanges) and
+    Temp.GutterActionsOverView.Equals(Self.GutterActionsOverView) and
+    Temp.GutterActionsOverViewMarks.Equals(Self.GutterActionsOverViewMarks);
   Temp.Free;
 end;
 
@@ -3992,6 +4101,8 @@ begin
     LoadMouseAct(aPath + 'GutterFoldCol/', GutterActionsFoldCol);
     LoadMouseAct(aPath + 'GutterLineNum/', GutterActionsLines);
     LoadMouseAct(aPath + 'GutterLineChange/', GutterActionsChanges);
+    LoadMouseAct(aPath + 'GutterOverView/',   GutterActionsOverView);
+    LoadMouseAct(aPath + 'GutterOverViewMarks/',   GutterActionsOverViewMarks);
 
     if Version < 1 then begin
       try
@@ -4051,6 +4162,8 @@ begin
     SaveMouseAct(aPath + 'GutterFoldCol/', GutterActionsFoldCol);
     SaveMouseAct(aPath + 'GutterLineNum/', GutterActionsLines);
     SaveMouseAct(aPath + 'GutterLineChange/', GutterActionsChanges);
+    SaveMouseAct(aPath + 'GutterOverView/',   GutterActionsOverView);
+    SaveMouseAct(aPath + 'GutterOverViewMarks/',GutterActionsOverViewMarks);
   end else begin
     // clear unused entries
     aXMLConfig.DeletePath(aPath + 'Main');
@@ -4104,6 +4217,8 @@ begin
   LoadMouseAct(aPath + 'GutterFoldCol/', GutterActionsFoldCol);
   LoadMouseAct(aPath + 'GutterLineNum/', GutterActionsLines);
   LoadMouseAct(aPath + 'GutterLineChange/', GutterActionsChanges);
+  LoadMouseAct(aPath + 'GutterOverView/',   GutterActionsOverView);
+  LoadMouseAct(aPath + 'GutterOverViewMarks/',GutterActionsOverViewMarks);
 end;
 
 procedure TEditorMouseOptions.ExportToXml(aXMLConfig: TRttiXMLConfig; aPath: String);
@@ -4135,6 +4250,8 @@ begin
   SaveMouseAct(aPath + 'GutterFoldCol/', GutterActionsFoldCol);
   SaveMouseAct(aPath + 'GutterLineNum/', GutterActionsLines);
   SaveMouseAct(aPath + 'GutterLineChange/', GutterActionsChanges);
+  SaveMouseAct(aPath + 'GutterOverView/',   GutterActionsOverView);
+  SaveMouseAct(aPath + 'GutterOverViewMarks/',GutterActionsOverViewMarks);
   MAct.Free;
 end;
 
@@ -4412,8 +4529,7 @@ begin
   inherited Create;
   InitLocale;
 
-  ConfFileName := SetDirSeparators(GetPrimaryConfigPath + '/' +
-    EditOptsConfFileName);
+  ConfFileName := AppendPathDelim(GetPrimaryConfigPath) + EditOptsConfFileName;
   CopySecondaryConfigFile(EditOptsConfFileName);
   try
     if (not FileExistsUTF8(ConfFileName)) then
@@ -4435,15 +4551,15 @@ begin
   Init;
 
   // code templates (dci file)
-  fCodeTemplateFileName :=
-    TrimFilename(GetPrimaryConfigPath+PathDelim+DefaultCodeTemplatesFilename);
+  fCodeTemplateFileNameRaw :=
+    TrimFilename(AppendPathDelim(GetPrimaryConfigPath)+DefaultCodeTemplatesFilename);
   CopySecondaryConfigFile(DefaultCodeTemplatesFilename);
-  if not FileExistsUTF8(CodeTemplateFileName) then
+  if not FileExistsUTF8(CodeTemplateFileNameExpand) then
   begin
     res := TResourceStream.Create(HInstance, PChar('lazarus_dci_file'), PChar(RT_RCDATA));
     try
       InvalidateFileStateCache;
-      fs := TFileStreamUTF8.Create(CodeTemplateFileName, fmCreate);
+      fs := TFileStreamUTF8.Create(CodeTemplateFileNameExpand, fmCreate);
       try
         fs.CopyFrom(res, res.Size);
       finally
@@ -4451,7 +4567,7 @@ begin
       end;
     except
       DebugLn('WARNING: unable to write code template file "',
-        CodeTemplateFileName, '"');
+        CodeTemplateFileNameExpand, '"');
     end;
     res.Free;
   end;
@@ -4504,6 +4620,7 @@ begin
   FMultiCaretOnColumnSelect := True;
   FMultiCaretDefaultMode := mcmMoveAllCarets;
   FMultiCaretDefaultColumnSelectMode := mcmCancelOnCaretMove;
+  FMultiCaretDeleteSkipLineBreak := False;
 
   // Display options
   fEditorFont := SynDefaultFontName;
@@ -4550,6 +4667,7 @@ begin
 
   // Multi window
   FCtrlMiddleTabClickClosesOthers := True;
+  FShowFileNameInCaption := False;
 
   // Comment
   FAnsiCommentContinueEnabled := False;
@@ -4636,6 +4754,8 @@ begin
           SynEditOptName := 'OverwriteBlock';
         eoAutoHideCursor:
           SynEditOptName := 'AutoHideCursor';
+        eoCaretMoveEndsSelection, eoPersistentCaretStopBlink:
+          WriteStr(SynEditOptName, SynEditOpt2);
         else
           SynEditOptName := '';
       end;
@@ -4766,6 +4886,9 @@ begin
     FMarkupCurWordNoTimer :=
       XMLConfig.GetValue(
       'EditorOptions/Display/MarkupCurrentWord/NoTimer', False);
+    FShowFileNameInCaption :=
+      XMLConfig.GetValue(
+      'EditorOptions/Display/ShowFileNameInCaption', False);
 
     // Code Tools options
     fAutoBlockCompletion :=
@@ -4782,9 +4905,9 @@ begin
       XMLConfig.GetValue('EditorOptions/CodeTools/AutoToolTipSymbTools', True);
     fAutoDelayInMSec    :=
       XMLConfig.GetValue('EditorOptions/CodeTools/AutoDelayInMSec', 1000);
-    fCodeTemplateFileName :=
+    fCodeTemplateFileNameRaw :=
       XMLConfig.GetValue('EditorOptions/CodeTools/CodeTemplateFileName'
-      , TrimFilename(GetPrimaryConfigPath + PathDelim + DefaultCodeTemplatesFilename));
+      , TrimFilename(AppendPathDelim(GetPrimaryConfigPath) + DefaultCodeTemplatesFilename));
     fCTemplIndentToTokenStart :=
       XMLConfig.GetValue(
       'EditorOptions/CodeTools/CodeTemplateIndentToTokenStart/Value', False);
@@ -4800,6 +4923,12 @@ begin
     FUseCodeFolding :=
       XMLConfig.GetValue(
       'EditorOptions/CodeFolding/UseCodeFolding', True);
+    FUseMarkupWordBracket :=
+      XMLConfig.GetValue(
+      'EditorOptions/CodeFolding/UseMarkupWordBracket', True);
+    FUseMarkupOutline :=
+      XMLConfig.GetValue(
+      'EditorOptions/CodeFolding/UseMarkupOutline', False);
 
     FUserMouseSettings.LoadFromXml(XMLConfig, 'EditorOptions/Mouse/',
                                   'EditorOptions/General/Editor/', FileVersion);
@@ -4856,6 +4985,8 @@ begin
           SynEditOptName := 'OverwriteBlock';
         eoAutoHideCursor:
           SynEditOptName := 'AutoHideCursor';
+        eoCaretMoveEndsSelection, eoPersistentCaretStopBlink:
+          WriteStr(SynEditOptName, SynEditOpt2);
         else
           SynEditOptName := '';
       end;
@@ -4953,6 +5084,8 @@ begin
       FMarkupCurWordTrim, True);
     XMLConfig.SetDeleteValue('EditorOptions/Display/MarkupCurrentWord/NoTimer',
       FMarkupCurWordNoTimer, False);
+    XMLConfig.SetDeleteValue('EditorOptions/Display/ShowFileNameInCaption',
+        FShowFileNameInCaption, False);
 
     // Code Tools options
     XMLConfig.SetDeleteValue('EditorOptions/CodeTools/AutoBlockCompletion'
@@ -4968,7 +5101,7 @@ begin
     XMLConfig.SetDeleteValue('EditorOptions/CodeTools/AutoDelayInMSec'
       , fAutoDelayInMSec, 1000);
     XMLConfig.SetDeleteValue('EditorOptions/CodeTools/CodeTemplateFileName'
-      , fCodeTemplateFileName, '');
+      , fCodeTemplateFileNameRaw, '');
     XMLConfig.SetDeleteValue(
       'EditorOptions/CodeTools/CodeTemplateIndentToTokenStart/Value'
       , fCTemplIndentToTokenStart, False);
@@ -4984,6 +5117,10 @@ begin
     // Code Folding
     XMLConfig.SetDeleteValue('EditorOptions/CodeFolding/UseCodeFolding',
         FUseCodeFolding, True);
+    XMLConfig.SetDeleteValue('EditorOptions/CodeFolding/UseMarkupWordBracket',
+        FUseMarkupWordBracket, True);
+    XMLConfig.SetDeleteValue('EditorOptions/CodeFolding/UseMarkupOutline',
+        FUseMarkupOutline, False);
 
     FUserMouseSettings.SaveToXml(XMLConfig, 'EditorOptions/Mouse/');
 
@@ -5097,6 +5234,7 @@ end;
 
 function TEditorOptions.GetTrimSpaceName(IndentType: TSynEditStringTrimmingType): string;
 begin
+  Result := '';
   case IndentType of
     settLeaveLine:
       Result := 'LeaveLine';
@@ -5174,6 +5312,19 @@ begin
                         TLazSynPluginSyncroEditForm, ecIdePSyncroOffset);
         KeyMap.AssignTo(TSynPluginSyncroEdit(ASynEdit.Plugin[c]).KeystrokesOffCell,
                         TLazSynPluginSyncroEditFormOff, ecIdePSyncroOutOffset);
+      end;
+    end;
+
+    if (ASynEdit.Plugin[c] is TSynPluginMultiCaret) then begin
+      // Only ecPluginMultiCaretClearAll
+      // the others are handled in SynEdit.Keystrokes
+      TSynPluginMultiCaret(ASynEdit.Plugin[c]).Keystrokes.Clear;
+      if i >= 0 then begin
+        TSynPluginMultiCaret(ASynEdit.Plugin[c]).Keystrokes.Assign(
+                               TSynPluginMultiCaret(SimilarEdit.Plugin[i]).KeyStrokes);
+      end else begin
+        KeyMap.AssignTo(TSynPluginMultiCaret(ASynEdit.Plugin[c]).Keystrokes,
+                        TLazSynPluginTemplateMultiCaret, 0); //ecIdePTmplOffset);
       end;
     end;
 
@@ -5301,10 +5452,21 @@ begin
         (* if ReadForOptions=True then Enabled appies only to fmFold,fmHide.
            This allows to store what selection was previously active *)
         if not ReadForOptions then begin
-          if not FoldHl.FoldConfig[idx].Enabled then
+          if (not FoldHl.FoldConfig[idx].Enabled) or (not FUseCodeFolding) then
             FoldHl.FoldConfig[idx].Modes := FoldHl.FoldConfig[idx].Modes - [fmFold, fmHide];
+          if (not FUseMarkupWordBracket) then
+            FoldHl.FoldConfig[idx].Modes := FoldHl.FoldConfig[idx].Modes - [fmMarkup];
+          if (not FUseMarkupOutline) then
+            FoldHl.FoldConfig[idx].Modes := FoldHl.FoldConfig[idx].Modes - [fmOutline];
+
           FoldHl.FoldConfig[idx].Enabled := FoldHl.FoldConfig[idx].Modes <> [];
         end;
+
+        if (FoldHl is TSynPasSyn) and (idx = ord(cfbtIfThen)) then begin
+          FoldHl.FoldConfig[ord(cfbtIfElse)].Modes := FoldHl.FoldConfig[idx].Modes * [fmOutline];
+          FoldHl.FoldConfig[ord(cfbtIfElse)].Enabled := FoldHl.FoldConfig[idx].Enabled and (FoldHl.FoldConfig[ord(cfbtIfElse)].Modes <> []);
+        end;
+
       end;
     finally
       DefHl.Free;
@@ -5533,6 +5695,41 @@ begin
     ASynEdit.Font.Quality := fqDefault;
 end;
 
+function TEditorOptions.ExtensionToLazSyntaxHighlighter(Ext: String): TLazSyntaxHighlighter;
+var
+  s, CurExt: String;
+  LangID, StartPos, EndPos: Integer;
+begin
+  Result := lshNone;
+  if (Ext = '') or (Ext = '.') or (HighlighterList = Nil) then
+    exit;
+  Ext := lowercase(Ext);
+  if (Ext[1] = '.') then
+    Ext := copy(Ext, 2, length(Ext) - 1);
+  LangID := 0;
+  while LangID < HighlighterList.Count do
+  begin
+    s := HighlighterList[LangID].FileExtensions;
+    StartPos := 1;
+    while StartPos <= length(s) do
+    begin
+      Endpos := StartPos;
+      while (EndPos <= length(s)) and (s[EndPos] <> ';') do
+        inc(EndPos);
+      CurExt := copy(s, Startpos, EndPos - StartPos);
+      if (CurExt <> '') and (CurExt[1] = '.') then
+        CurExt := copy(CurExt, 2, length(CurExt) - 1);
+      if lowercase(CurExt) = Ext then
+      begin
+        Result := HighlighterList[LangID].TheType;
+        exit;
+      end;
+      Startpos := EndPos + 1;
+    end;
+    inc(LangID);
+  end;
+end;
+
 procedure TEditorOptions.GetSynEditSettings(ASynEdit: TSynEdit;
   SimilarEdit: TSynEdit);
 // read synedit settings from config file
@@ -5543,6 +5740,7 @@ var
   i: Integer;
   mw: TSourceSynEditMarkupHighlightAllMulti;
   TermsConf: TEditorUserDefinedWords;
+  Markup: TSynEditMarkup;
 begin
   // general options
   ASynEdit.BeginUpdate(False);
@@ -5660,6 +5858,9 @@ begin
       TIDESynEditor(ASynEdit).MultiCaret.EnableWithColumnSelection := MultiCaretOnColumnSelect;
       TIDESynEditor(ASynEdit).MultiCaret.DefaultMode := FMultiCaretDefaultMode;
       TIDESynEditor(ASynEdit).MultiCaret.DefaultColumnSelectMode := FMultiCaretDefaultColumnSelectMode;
+      if FMultiCaretDeleteSkipLineBreak
+      then TIDESynEditor(ASynEdit).MultiCaret.Options := TIDESynEditor(ASynEdit).MultiCaret.Options + [smcoDeleteSkipLineBreak]
+      else TIDESynEditor(ASynEdit).MultiCaret.Options := TIDESynEditor(ASynEdit).MultiCaret.Options - [smcoDeleteSkipLineBreak];
     end;
     {$ENDIF}
 
@@ -5712,6 +5913,10 @@ begin
       MarkCaret.Trim := FMarkupCurWordTrim;
     end;
 
+    Markup := ASynEdit.MarkupByClass[TSynEditMarkupFoldColors];
+    if (Markup <> nil) then
+      Markup.Enabled := FUseMarkupOutline;
+
     AssignKeyMapTo(ASynEdit, SimilarEdit);
 
     ASynEdit.MouseOptions := [emUseMouseActions];
@@ -5735,9 +5940,19 @@ begin
     else
     if (ASynEdit.Gutter.SeparatorPart <> nil) and (GutterSeparatorIndex >= 2) then
       ASynEdit.Gutter.SeparatorPart.MouseActions.Assign(FUserMouseSettings.GutterActionsChanges);
+    if ASynEdit.RightGutter.LineOverviewPart <> nil then begin
+      ASynEdit.RightGutter.LineOverviewPart.MouseActions.Assign(FUserMouseSettings.GutterActionsOverView);
+      ASynEdit.RightGutter.LineOverviewPart.MouseActionsForMarks.Assign(FUserMouseSettings.GutterActionsOverViewMarks);
+    end;
   finally
     ASynEdit.EndUpdate;
   end;
+end;
+
+function TEditorOptions.GetCodeTemplateFileNameExpand:String;
+begin
+  result:=fCodeTemplateFileNameRaw;
+  IDEMacros.SubstituteMacros(result);
 end;
 
 function TEditorOptions.GetTabPosition: TTabPosition;
@@ -5776,10 +5991,34 @@ begin
     else Result := ahaXmlNames[TAdditionalHilightAttribute(AttriIdx)];
 end;
 
+procedure TColorSchemeAttribute.SetMarkupFoldLineAlpha(AValue: Byte);
+begin
+  if FMarkupFoldLineAlpha = AValue then Exit;
+  FMarkupFoldLineAlpha := AValue;
+  Changed;
+end;
+
+procedure TColorSchemeAttribute.SetMarkupFoldLineColor(AValue: TColor);
+begin
+  if FMarkupFoldLineColor = AValue then Exit;
+  FMarkupFoldLineColor := AValue;
+  Changed;
+end;
+
+procedure TColorSchemeAttribute.SetMarkupFoldLineStyle(AValue: TSynLineStyle);
+begin
+  if FMarkupFoldLineStyle = AValue then Exit;
+  FMarkupFoldLineStyle := AValue;
+  Changed;
+end;
+
 procedure TColorSchemeAttribute.Init;
 begin
   inherited Init;
   FFeatures := [hafBackColor, hafForeColor, hafFrameColor, hafStyle, hafFrameStyle, hafFrameEdges];
+  FMarkupFoldLineColor := clNone;
+  FMarkupFoldLineStyle := slsSolid;
+  FMarkupFoldLineAlpha := 0;
 end;
 
 function TColorSchemeAttribute.GetIsUsingSchemeGlobals: Boolean;
@@ -5804,6 +6043,11 @@ begin
   inherited Create(attribName, aStoredName);
   FOwner := ASchemeLang;
   FUseSchemeGlobals := True;
+end;
+
+function TColorSchemeAttribute.IsEnabled: boolean;
+begin
+  Result := (inherited IsEnabled) or (FMarkupFoldLineColor <> clNone);
 end;
 
 procedure TColorSchemeAttribute.ApplyTo(aDest: TSynHighlighterAttributes;
@@ -5881,6 +6125,10 @@ begin
     FGroup := TColorSchemeAttribute(Src).FGroup;
     FUseSchemeGlobals := TColorSchemeAttribute(Src).FUseSchemeGlobals;
     FFeatures := TColorSchemeAttribute(Src).FFeatures;
+
+    FMarkupFoldLineColor := TColorSchemeAttribute(Src).FMarkupFoldLineColor;;
+    FMarkupFoldLineStyle := TColorSchemeAttribute(Src).FMarkupFoldLineStyle;;
+    FMarkupFoldLineAlpha := TColorSchemeAttribute(Src).FMarkupFoldLineAlpha;;
   end;
 
 end;
@@ -6221,6 +6469,7 @@ begin
   end
   else
     FormatVersion := 6;
+  FFormatVersion := FormatVersion;
   TmpPath := TmpPath + 'Scheme' + StrToValidXMLName(Name) + '/';
 
   if (aOldPath <> '') and (FormatVersion > 1) then begin
@@ -6275,6 +6524,10 @@ begin
       AttributeAtPos[i].FrameStyle := slsSolid;
       AttributeAtPos[i].FrameEdges := sfeBottom;
     end;
+
+    if (ColorVersion < 12) and (AttributeAtPos[i].Group = agnOutlineColors) then begin
+      AttributeAtPos[i].MarkupFoldLineColor := AttributeAtPos[i].Foreground;
+    end
   end;
   FreeAndNil(EmptyDef);
 
@@ -6351,9 +6604,18 @@ procedure TColorSchemeLanguage.ApplyTo(ASynEdit: TSynEdit);
     if assigned(ASynEdit.Gutter.Parts.ByClass[aClass, 0]) then
       SetMarkupColor(aha, ASynEdit.Gutter.Parts.ByClass[aClass, 0].MarkupInfo);
   end;
+  function GetUsedAttr(aha: TAdditionalHilightAttribute): TColorSchemeAttribute;
+  begin
+    Result := AttributeByEnum[aha];
+    if Assigned(Result) and Result.IsUsingSchemeGlobals then
+      Result := Result.GetSchemeGlobal;
+  end;
 var
   Attri: TColorSchemeAttribute;
-  i: Integer;
+  i, c, j: Integer;
+  IDESynEdit: TIDESynEditor;
+  aha: TAdditionalHilightAttribute;
+  col: TColor;
 begin
   ASynEdit.BeginUpdate;
   try
@@ -6372,19 +6634,13 @@ begin
       aSynEdit.Font.Color := clBlack;
     end;
 
-    Attri := Attribute[AhaToStoredName(ahaGutter)];
-    if Attri <> nil then begin
-      if Attri.IsUsingSchemeGlobals then
-        Attri := Attri.GetSchemeGlobal;
+    Attri := GetUsedAttr(ahaGutter);
+    if Attri <> nil then
       aSynEdit.Gutter.Color := Attri.Background;
-    end;
 
-    Attri := Attribute[AhaToStoredName(ahaRightMargin)];
-    if Attri <> nil then begin
-      if Attri.IsUsingSchemeGlobals then
-        Attri := Attri.GetSchemeGlobal;
+    Attri := GetUsedAttr(ahaRightMargin);
+    if Attri <> nil then
       aSynEdit.RightEdgeColor := Attri.Foreground;
-    end;
 
     SetMarkupColor(ahaTextBlock,         aSynEdit.SelectedColor);
     SetMarkupColor(ahaIncrementalSearch, aSynEdit.IncrementColor);
@@ -6392,9 +6648,21 @@ begin
     SetMarkupColor(ahaBracketMatch,      aSynEdit.BracketMatchColor);
     SetMarkupColor(ahaMouseLink,         aSynEdit.MouseLinkColor);
     SetMarkupColor(ahaFoldedCode,        aSynEdit.FoldedCodeColor);
+    SetMarkupColor(ahaFoldedCodeLine,    aSynEdit.FoldedCodeLineColor);
+    SetMarkupColor(ahaHiddenCodeLine,    aSynEdit.HiddenCodeLineColor);
     SetMarkupColor(ahaLineHighlight,     aSynEdit.LineHighlightColor);
-    if ASynEdit is TIDESynEditor then
+    if ASynEdit is TIDESynEditor then begin
       SetMarkupColor(ahaTopInfoHint,  TIDESynEditor(aSynEdit).TopInfoMarkup);
+      Attri := GetUsedAttr(ahaCaretColor);
+      if Attri <> nil then begin
+        TIDESynEditor(aSynEdit).CaretColor := Attri.Foreground;
+
+        col := Attri.Background;
+        if (col = clNone) or (col = clDefault) then
+          col := $606060;
+        TIDESynEditor(aSynEdit).MultiCaret.Color := col;
+      end;
+    end;
     SetMarkupColorByClass(ahaHighlightWord, TSynEditMarkupHighlightAllCaret);
     SetMarkupColorByClass(ahaWordGroup,     TSynEditMarkupWordGroup);
     SetMarkupColorByClass(ahaSpecialVisibleChars, TSynEditMarkupSpecialChar);
@@ -6425,6 +6693,44 @@ begin
     SetGutterColorByClass(ahaCodeFoldingTree, TSynGutterCodeFolding);
     SetGutterColorByClass(ahaGutterSeparator, TSynGutterSeparator);
 
+    if ASynEdit is TIDESynEditor then
+    begin
+      IDESynEdit := TIDESynEditor(ASynEdit);
+
+      Attri := GetUsedAttr(ahaIdentComplWindow);
+      if Attri<>nil then
+      begin
+        IDESynEdit.MarkupIdentComplWindow.TextColor := Attri.Foreground;
+        IDESynEdit.MarkupIdentComplWindow.WindowColor:= Attri.Background;
+      end else
+      begin
+        IDESynEdit.MarkupIdentComplWindow.TextColor := clNone;
+        IDESynEdit.MarkupIdentComplWindow.WindowColor:= clNone;
+      end;
+
+      Attri := GetUsedAttr(ahaIdentComplWindowBorder);
+      if Attri<>nil then
+        IDESynEdit.MarkupIdentComplWindow.BorderColor:= Attri.Foreground
+      else
+        IDESynEdit.MarkupIdentComplWindow.BorderColor:= clNone;
+
+      Attri := GetUsedAttr(ahaIdentComplWindowHighlight);
+      if Attri<>nil then
+        IDESynEdit.MarkupIdentComplWindow.HighlightColor:= Attri.Foreground
+      else
+        IDESynEdit.MarkupIdentComplWindow.HighlightColor:= clNone;
+
+      Attri := GetUsedAttr(ahaIdentComplWindowSelection);
+      if Attri<>nil then
+      begin
+        IDESynEdit.MarkupIdentComplWindow.TextSelectedColor:= Attri.Foreground;
+        IDESynEdit.MarkupIdentComplWindow.BackgroundSelectedColor:= Attri.Background;
+      end else
+      begin
+        IDESynEdit.MarkupIdentComplWindow.TextSelectedColor := clNone;
+        IDESynEdit.MarkupIdentComplWindow.BackgroundSelectedColor:= clNone;
+      end;
+    end;
 
     i := aSynEdit.PluginCount - 1;
     while (i >= 0) and not(aSynEdit.Plugin[i] is TSynPluginTemplateEdit) do
@@ -6442,6 +6748,32 @@ begin
       SetMarkupColor(ahaSyncroEditCur,   TSynPluginSyncroEdit(aSynEdit.Plugin[i]).MarkupInfoCurrent);
       SetMarkupColor(ahaSyncroEditSync,  TSynPluginSyncroEdit(aSynEdit.Plugin[i]).MarkupInfoSync);
       SetMarkupColor(ahaSyncroEditArea,  TSynPluginSyncroEdit(aSynEdit.Plugin[i]).MarkupInfoArea);
+    end;
+    i := aSynEdit.MarkupCount - 1;
+    while (i >= 0) and not(aSynEdit.Markup[i] is TSynEditMarkupFoldColors) do
+      dec(i);
+    if i >= 0 then begin
+      TSynEditMarkupFoldColors(aSynEdit.Markup[i]).ColorCount := 10;
+      j := 0;
+      c := 0;
+      for aha := ahaOutlineLevel1Color to ahaOutlineLevel10Color do begin
+        Attri := GetUsedAttr(aha);
+        if Attri = nil then Continue;
+        if (Attri.IsEnabled) or
+           (FFormatVersion >= 12)
+        then begin
+          SetMarkupColor(aha, TSynEditMarkupFoldColors(aSynEdit.Markup[i]).Color[j]);
+
+          TSynEditMarkupFoldColors(aSynEdit.Markup[i]).LineColor[j].Color := Attri.MarkupFoldLineColor;
+          TSynEditMarkupFoldColors(aSynEdit.Markup[i]).LineColor[j].Style := Attri.MarkupFoldLineStyle;
+          TSynEditMarkupFoldColors(aSynEdit.Markup[i]).LineColor[j].Alpha := Attri.MarkupFoldLineAlpha;
+          TSynEditMarkupFoldColors(aSynEdit.Markup[i]).LineColor[j].Priority := Attri.FramePriority;
+          inc(j);
+          if Attri.IsEnabled then
+            c := j;
+        end;
+      end;
+      TSynEditMarkupFoldColors(aSynEdit.Markup[i]).ColorCount := c; // discard unused colors at the end
     end;
   finally
     ASynEdit.EndUpdate;
@@ -6734,7 +7066,7 @@ begin
     l := length(s1)
   else
     l := length(s2);
-  while i < l do begin
+  while i <= l do begin
     Result := ord(s1[i]) - ord(s2[i]);
     if Result <> 0 then
       exit;

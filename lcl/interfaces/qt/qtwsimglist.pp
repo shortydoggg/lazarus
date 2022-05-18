@@ -1,4 +1,4 @@
-{ $Id: qtwsimglist.pp 41387 2013-05-24 18:30:06Z juha $}
+{ $Id: qtwsimglist.pp 57164 2018-01-27 18:12:35Z ondrej $}
 {
  *****************************************************************************
  *                              QtWSImgList.pp                               * 
@@ -33,9 +33,9 @@ uses
 
 type
 
-  { TQtWSCustomImageList }
+  { TQtWSCustomImageListResolution }
 
-  TQtWSCustomImageList = class(TWSCustomImageList)
+  TQtWSCustomImageListResolution = class(TWSCustomImageListResolution)
   published
   end;
 

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,10 +25,17 @@ unit editor_mouseaction_options_advanced;
 interface
 
 uses
-  EditorOptions, LazarusIDEStrConsts, IDEOptionsIntf, sysutils, StdCtrls,
-  ExtCtrls, Classes, Controls, Grids, ComCtrls, Dialogs,
-  SynEditMouseCmds, Laz2_XMLCfg, MouseActionDialog, math, KeyMapping,
-  IDEImagesIntf, IDEDialogs, LazUTF8, FileUtil;
+  Classes, sysutils, math,
+  // LCL
+  StdCtrls, ExtCtrls, Controls, Grids, ComCtrls, Dialogs,
+  // LazUtils
+  Laz2_XMLCfg, LazUTF8, FileUtil,
+  // SynEdit
+  SynEditMouseCmds,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf, IDEDialogs,
+  // IDE
+  EditorOptions, LazarusIDEStrConsts, MouseActionDialog, KeyMapping;
 
 type
 
@@ -91,6 +98,7 @@ type
     FGutterFoldNode, FGutterFoldExpNode, FGutterFoldColNode: TTreeNode;
     FGutterLinesNode: TTreeNode;
     FGutterChangeNode: TTreeNode;
+    FGutterLineOverviewNode, FGutterLineOverviewMarksNode: TTreeNode;
     FCurNode: TTreeNode;
 
     FCurActions: TSynEditMouseActions;
@@ -544,7 +552,7 @@ begin
     l := length(ExtractFileExt(NewName));
     if (l > 0) and (l+1 < Length(NewName)) then
       NewName := Copy(NewName, 1, Length(NewName) - l);
-    l := UTF8CharacterLength(PChar(NewName));
+    l := UTF8CodepointSize(PChar(NewName));
     if l > 0 then
       NewName := UTF8UpperCase(copy(NewName, 1, l)) + copy(NewName, 1+l, length(NewName));
 
@@ -628,6 +636,11 @@ begin
   // Changes
   FGutterChangeNode := ContextTree.Items.AddChild(FGutterNode, dlgMouseOptNodeGutterChanges);
   FGutterChangeNode.Data := FTempMouseSettings.GutterActionsChanges;
+  // Overview
+  FGutterLineOverviewNode := ContextTree.Items.AddChild(FGutterNode, dlgMouseOptNodeGutterLineOverview);
+  FGutterLineOverviewNode.Data := FTempMouseSettings.GutterActionsOverView;
+  FGutterLineOverviewMarksNode := ContextTree.Items.AddChild(FGutterLineOverviewNode, dlgMouseOptNodeGutterLineOverviewMarks);
+  FGutterLineOverviewMarksNode.Data := FTempMouseSettings.GutterActionsOverViewMarks;
 
   ActionGrid.Constraints.MinWidth := ActionGrid.ColCount * MinGridColSize;
   ActionGrid.Cells[0,0] := dlgMouseOptHeadDesc;
@@ -707,11 +720,11 @@ begin
   OtherActToggleBox.Caption := dlgMouseOptOtherActToggle;
 
   ToolBar1.Images := IDEImages.Images_16;
-  BtnImport.ImageIndex := IDEImages.LoadImage(16, 'laz_open');
-  BtnExport.ImageIndex := IDEImages.LoadImage(16, 'laz_save');
-  UpdateButton.ImageIndex := IDEImages.LoadImage(16, 'laz_edit');
-  AddNewButton.ImageIndex := IDEImages.LoadImage(16, 'laz_add');
-  DelButton.ImageIndex := IDEImages.LoadImage(16, 'laz_delete');
+  BtnImport.ImageIndex := IDEImages.LoadImage('laz_open');
+  BtnExport.ImageIndex := IDEImages.LoadImage('laz_save');
+  UpdateButton.ImageIndex := IDEImages.LoadImage('laz_edit');
+  AddNewButton.ImageIndex := IDEImages.LoadImage('laz_add');
+  DelButton.ImageIndex := IDEImages.LoadImage('laz_delete');
 
   OpenDialog1.Title := lisImport;
   SaveDialog1.Title := lisExport;

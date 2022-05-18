@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -40,8 +40,13 @@ unit IDEGuiCmdLine;
 interface
 
 uses
-  Classes, SysUtils, math, lazutf8classes, LazConf, LCLProc,
-  FileProcs, LazFileUtils, IDECmdLine;
+  Classes, SysUtils, math,
+  // LazUtils
+  LazUTF8Classes, LazUtilities, LazFileUtils,
+  // Codetools
+  FileProcs,
+  // IDE
+  LazConf, IDECmdLine;
 
 procedure ParseGuiCmdLineParams(var SkipAutoLoadingLastProject,
                                     StartedByStartLazarus,
@@ -57,7 +62,7 @@ var
 
 function SetupMainIDEInstance: boolean; // false if this is a secondary instance
 function GetPidFile: string;
-function IsLazarusPIDRunning(aPID: int64): boolean;
+function IsLazarusPIDRunning({%H-}aPID: int64): boolean;
 function GetRemoteControlFilename: string;
 procedure CleanUpPIDFile;
 

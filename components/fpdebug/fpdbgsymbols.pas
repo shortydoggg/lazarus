@@ -1,4 +1,4 @@
-{ $Id: fpdbgsymbols.pas 44620 2014-04-06 14:30:04Z joost $ }
+{ $Id: fpdbgsymbols.pas 54031 2017-01-29 21:04:32Z joost $ }
 {
  ---------------------------------------------------------------------------
  fpdbgsymbols.pas  -  Native freepascal debugger - Symbol loader/resolver
@@ -9,7 +9,7 @@
  ---------------------------------------------------------------------------
 
  @created(Sat Jun 24th WET 2006)
- @lastmod($Date: 2014-04-06 16:30:04 +0200 (So, 06 Apr 2014) $)
+ @lastmod($Date: 2017-01-29 22:04:32 +0100 (So, 29 Jan 2017) $)
  @author(Marc Weustink <marc@@dommelstein.nl>)
 
  ***************************************************************************
@@ -27,7 +27,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }

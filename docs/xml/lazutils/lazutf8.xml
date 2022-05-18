@@ -63,10 +63,22 @@
       </element>
       <!-- function Visibility: default -->
       <element name="UTF8CharacterLength">
-        <short/>
-        <descr/>
+        <short>Returns the number of bytes of the codepoint starting at p</short>
+        <descr>It returns 0 if p is nil.
+It returns 1 if p is a 1-byte UTF-8 codepoint or p is an invalid UTF-8 sequence.
+Otherwise it returns a number 2..4. 
+
+It does not check for malicious codepoints like #$c0#$80, nor for non defined codepoints like #$f3#$a0#$87#$b9.
+
+Use UTF8CharacterLength to step through a string with a simple loop:
+<br/>                                                                            
+while p^&lt;&gt;#0 do begin<br/>                                                                                                            
+  inc(p,UTF8CharacterLength(p));<br/>
+end;<br/>
+
+Even if p contains invalid UTF-8 it will run through the string without overflow.</descr>
         <errors/>
-        <seealso/>
+        <seealso>UTF8CharacterStrictLength</seealso>
       </element>
       <!-- function result Visibility: default -->
       <element name="UTF8CharacterLength.Result">
@@ -131,8 +143,9 @@ For speed reasons this function only checks for 1,2,3,4 byte encoding errors. Es
       </element>
       <!-- function Visibility: default -->
       <element name="UnicodeToUTF8">
-        <short>Encodes the given codepoint as an UTF-8 sequence of 1 to 4 bytes.</short>
-        <descr>It does not add a #0.</descr>
+        <short>Encodes the given code point as an UTF-8 sequence of 1 to 4 bytes.</short>
+        <descr>It does not add a #0.
+The code point is not encoded, aka in UTF32.</descr>
         <errors/>
         <seealso/>
       </element>
@@ -733,6 +746,15 @@ Control characters are the unicode sets C0 and C1 and the left-to-right and righ
 Null characters #0 are treated as normal characters.</descr>
       </element>
     <element name="UTF8CompareStrCollated"><short>Compare two strings using language specific sorting</short>
+      </element>
+    <element name="GetEnvironmentVariableCountUTF8"><short>Returns the number of system environment variables.</short><descr>Use together with GetEnvironmentStringUTF8.</descr>
+      </element><element name="GetEnvironmentStringUTF8"><short>Returns a system environment string.</short><descr>The index is 1 to GetEnvironmentVariableCountUTF8.
+On Unix and Windows the string often has the form 'name=value'.
+Beware that Windows knows some special formats, e.g. '=C:=SomePath'.
+
+Use GetEnvironmentVariableUTF8 to lookup environment values by name.</descr>
+      </element><element name="GetEnvironmentVariableUTF8"><short>Returns the value of a system environment variable.</short><descr>Returns the value of a environment string of the form 'EnvVar=value'.
+See GetEnvironmentStringUTF8 to retrieve the whole list of environment strings.</descr>
       </element>
     </module>
     <!-- LazUTF8 -->

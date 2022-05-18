@@ -1,10 +1,10 @@
-{ $Id: debugoutputform.pp 36329 2012-03-25 19:09:20Z juha $ }
+{ $Id: debugoutputform.pp 58392 2018-06-24 12:40:43Z martin $ }
 {                       ------------------------------------------  
                         debugoutputform.pp  -  Shows target output 
                         ------------------------------------------ 
  
  @created(Wed Feb 25st WET 2001)
- @lastmod($Date: 2012-03-25 21:09:20 +0200 (So, 25 Mär 2012) $)
+ @lastmod($Date: 2018-06-24 14:40:43 +0200 (So, 24 Jun 2018) $)
  @author(Marc Weustink <marc@@dommelstein.net>)                       
 
  ***************************************************************************
@@ -22,7 +22,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -145,9 +145,7 @@ end;
 {$IFDEF DBG_WITH_DEBUGGER_DEBUG}
 procedure TDbgOutputForm.Button1Click(Sender: TObject);
 begin
-  if DebugBoss.Debugger is TCmdLineDebugger then begin
-    TCmdLineDebugger(DebugBoss.Debugger).TestCmd(Edit1.Text);
-  end;
+  DebugBoss.Debugger.TestCmd(Edit1.Text);
 end;
 {$ENDIF}
 

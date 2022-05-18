@@ -16,9 +16,11 @@ unit ListFilterEdit;
 interface
 
 uses
-  Classes, SysUtils, Forms, LResources, Graphics, Controls, StdCtrls,
-  LCLProc, LCLType, EditBtn, CheckLst, LazFileUtils, LazUTF8, AvgLvlTree,
-  Math;
+  Classes, SysUtils, Math,
+  // LCL
+  LCLType, Graphics, StdCtrls, EditBtn, CheckLst,
+  // LazUtils
+  LazFileUtils, LazUTF8, AvgLvlTree;
 
 type
 
@@ -39,7 +41,8 @@ type
     function CompareFNs(AFilename1,AFilename2: string): integer;
     procedure SetFilteredListbox(const AValue: TCustomListBox);
   protected
-    procedure EditEnter; override;
+    procedure Notification(AComponent: TComponent; Operation: TOperation); override;
+    //procedure EditEnter; override;
     procedure MoveTo(AIndex: Integer; ASelect: Boolean);
     procedure MoveNext(ASelect: Boolean = False); override;
     procedure MovePrev(ASelect: Boolean = False); override;
@@ -50,7 +53,7 @@ type
     function ReturnKeyHandled: Boolean; override;
     procedure SortAndFilter; override;
     procedure ApplyFilterCore; override;
-    function GetDefaultGlyph: TBitmap; override;
+    function GetDefaultGlyphName: string; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -65,17 +68,7 @@ type
     property FilteredListbox: TCustomListBox read fFilteredListbox write SetFilteredListbox;
   end;
 
-var
-  ListFilterGlyph: TBitmap;
-
-procedure Register;
-
 implementation
-
-procedure Register;
-begin
-  RegisterComponents('LazControls',[TListFilterEdit]);
-end;
 
 { TListBoxFilterEdit }
 
@@ -85,7 +78,7 @@ begin
   fOriginalData:=TStringList.Create;
   fSelectionList:=TStringList.Create;
   fSortedData:=TStringList.Create;
-  if Assigned(fFilteredListbox) and (fFilteredListbox is TCustomCheckListBox) then
+  if fFilteredListbox is TCustomCheckListBox then
     Assert(Assigned(fCheckedItems), 'TListFilterEdit.Create: fCheckedItems=nil');
 end;
 
@@ -97,15 +90,14 @@ begin
   fOriginalData.Free;
   inherited Destroy;
 end;
-
+{
 procedure TListFilterEdit.EditEnter;
 begin
   inherited EditEnter;
-  Exit;
   if (fFilteredListbox.SelCount = 0) and (fFilteredListbox.Count > 0) then
     fFilteredListbox.Selected[0] := True;
 end;
-
+}
 procedure TListFilterEdit.RemoveItem(AItem: string);
 var
   i: Integer;
@@ -128,29 +120,42 @@ end;
 
 procedure TListFilterEdit.MoveEnd(ASelect: Boolean);
 begin
-  if fFilteredListbox.Items.Count > 0 then
-    MoveTo(fFilteredListbox.Items.Count-1, ASelect);
+  if (fFilteredListbox = nil) or (fFilteredListbox.Count = 0) then Exit;
+  MoveTo(fFilteredListbox.Items.Count-1, ASelect);
 end;
 
 procedure TListFilterEdit.MoveHome(ASelect: Boolean);
 begin
-  if fFilteredListbox.Items.Count > 0 then
-    MoveTo(0, ASelect);
+  if (fFilteredListbox = nil) or (fFilteredListbox.Count = 0) then Exit;
+  MoveTo(0, ASelect);
 end;
 
-function TListFilterEdit.GetDefaultGlyph: TBitmap;
+function TListFilterEdit.GetDefaultGlyphName: string;
 begin
-  Result := ListFilterGlyph;
+  Result := 'btnfiltercancel';
 end;
 
 procedure TListFilterEdit.SetFilteredListbox(const AValue: TCustomListBox);
 begin
   if fFilteredListbox = AValue then Exit;
   fFilteredListbox:=AValue;
-  if Assigned(fFilteredListbox) then begin
+  if Assigned(fFilteredListbox) then
+  begin
+    Filter:=Text;
     fOriginalData.Assign(fFilteredListbox.Items);
     if (fFilteredListbox is TCustomCheckListBox) and not Assigned(fCheckedItems) then
       fCheckedItems:=TStringMap.Create(False);
+  end;
+end;
+
+procedure TListFilterEdit.Notification(AComponent: TComponent; Operation: TOperation);
+begin
+  inherited Notification(AComponent, Operation);
+  if (Operation=opRemove) and (FilteredListbox=AComponent) then
+  begin
+    IdleConnected:=False;
+    fNeedUpdate:=False;
+    fFilteredListbox:=nil;
   end;
 end;
 
@@ -166,29 +171,18 @@ procedure TListFilterEdit.SortAndFilter;
 // Copy data from fOriginalData to fSortedData in sorted order
 var
   Origi, i: Integer;
-  s, FilterLC: string;
-  Pass, Done: Boolean;
+  Capt: string;
 begin
-  Done:=False;
   fSortedData.Clear;
-  FilterLC := UTF8LowerCase(Filter);
   for Origi:=0 to fOriginalData.Count-1 do begin
-    s:=fOriginalData[Origi];
-    // Filter with event handler if there is one.
-    if Assigned(OnFilterItem) then
-      Pass:=OnFilterItem(fOriginalData.Objects[Origi], Done)
-    else
-      Pass:=False;
-    // Filter by item's title text if needed.
-    if not (Pass or Done) then
-      Pass:=(FilterLC='') or (Pos(FilterLC,UTF8LowerCase(s))>0);
-    if Pass then begin
+    Capt:=fOriginalData[Origi];
+    if DoFilterItem(Capt, Filter, fOriginalData.Objects[Origi]) then begin
       i:=fSortedData.Count-1;       // Always sort the data.
       while i>=0 do begin
-        if CompareFNs(s,fSortedData[i])>=0 then break;
+        if CompareFNs(Capt,fSortedData[i])>=0 then break;
         dec(i);
       end;
-      fSortedData.InsertObject(i+1, s, fOriginalData.Objects[Origi]);
+      fSortedData.InsertObject(i+1, Capt, fOriginalData.Objects[Origi]);
     end;
   end;
 end;
@@ -255,7 +249,7 @@ procedure TListFilterEdit.MoveNext(ASelect: Boolean);
 var
   i: Integer;
 begin
-  if fFilteredListbox.Count = 0 then Exit;
+  if (fFilteredListbox = nil) or (fFilteredListbox.Count = 0) then Exit;
   if (fFilteredListbox.ItemIndex=0) and not fFilteredListbox.Selected[0] then
     i := 0
   else
@@ -269,7 +263,7 @@ procedure TListFilterEdit.MovePrev(ASelect: Boolean);
 var
   i: Integer;
 begin
-  if fFilteredListbox.Count = 0 then Exit;
+  if (fFilteredListbox = nil) or (fFilteredListbox.Count = 0) then Exit;
   i := fFilteredListbox.ItemIndex - 1;
   if i < 0 then
     i := 0;
@@ -280,8 +274,7 @@ procedure TListFilterEdit.MovePageDown(ASelect: Boolean);
 var
   i, ih: Integer;
 begin
-  if fFilteredListbox.Items.Count = 0 then
-    Exit;
+  if (fFilteredListbox = nil) or (fFilteredListbox.Items.Count = 0) then Exit;
   ih := fFilteredListbox.ItemHeight;
   if ih = 0 then  //fFilteredListbox.ItemHeight is always zero. Why?
     ih := 22;
@@ -295,8 +288,7 @@ procedure TListFilterEdit.MovePageUp(ASelect: Boolean);
 var
   i, ih: Integer;
 begin
-  if fFilteredListbox.Items.Count = 0 then
-    Exit;
+  if (fFilteredListbox = nil) or (fFilteredListbox.Items.Count = 0) then Exit;
   ih := fFilteredListbox.ItemHeight;
   if ih = 0 then
     ih := 22;

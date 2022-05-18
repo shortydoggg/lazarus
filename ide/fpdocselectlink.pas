@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,9 +30,14 @@ unit FPDocSelectLink;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Graphics,
-  ExtCtrls, StdCtrls, ButtonPanel, FileUtil, LazFileUtils, LCLType, AvgLvlTree,
-  Laz2_DOM, PackageIntf, ProjectIntf,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  LCLProc, LCLType, Forms, Controls, Graphics, ExtCtrls, StdCtrls, ButtonPanel,
+  // LazUtils
+  FileUtil, LazFileUtils, Laz2_DOM,
+  // IdeIntf
+  PackageIntf, ProjectIntf,
+  // IDE
   CodeHelp, LazarusIDEStrConsts, PackageSystem, PackageDefs;
 
 type
@@ -61,7 +66,7 @@ type
     FTextColor: TColor;
     FTop: integer;
     FVisibleItems: integer;
-    FTree: TAvgLvlTree; // tree of TFPDocLinkCompletionItem
+    FTree: TAvlTree; // tree of TFPDocLinkCompletionItem
     function GetCount: integer;
     function GetItems(Index: integer): TFPDocLinkCompletionItem;
     procedure SetSorted(const AValue: Boolean);
@@ -585,7 +590,7 @@ end;
 constructor TFPDocLinkCompletionList.Create;
 begin
   FItems:=TFPList.Create;
-  FTree:=TAvgLvlTree.Create(@CompareFPDocLinkCompletionItem);
+  FTree:=TAvlTree.Create(@CompareFPDocLinkCompletionItem);
 end;
 
 destructor TFPDocLinkCompletionList.Destroy;
@@ -610,7 +615,7 @@ end;
 
 procedure TFPDocLinkCompletionList.Sort;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   i: Integer;
 begin
   if FSorted then exit;

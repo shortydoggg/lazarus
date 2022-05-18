@@ -39,6 +39,7 @@ begin
     FRadioGroup.UpdateAll
   else
     FRadioGroup.UpdateInternalObjectList;
+  FRadioGroup.FLastClickedItemIndex := FRadioGroup.FItemIndex;
 end;
 
 constructor TRadioGroupStringList.Create(TheRadioGroup: TCustomRadioGroup);
@@ -180,19 +181,18 @@ begin
       with ARadioButton do
       begin
         Name := 'RadioButton'+IntToStr(FButtonList.Count);
-        AutoSize := False;
         OnClick := @Self.Clicked;
         OnChange := @Self.Changed;
-        OnEnter :=@Self.ItemEnter;
-        OnExit :=@Self.ItemExit;
-        OnKeyDown :=@Self.ItemKeyDown;
+        OnEnter := @Self.ItemEnter;
+        OnExit := @Self.ItemExit;
+        OnKeyDown := @Self.ItemKeyDown;
         OnKeyUp := @Self.ItemKeyUp;
         OnKeyPress := @Self.ItemKeyPress;
         OnUTF8KeyPress := @Self.ItemUTF8KeyPress;
         OnResize := @Self.ItemResize;
         ParentFont := True;
-        BorderSpacing.CellAlignHorizontal:=ccaLeftTop;
-        BorderSpacing.CellAlignVertical:=ccaCenter;
+        BorderSpacing.CellAlignHorizontal := ccaLeftTop;
+        BorderSpacing.CellAlignVertical := ccaCenter;
         ControlStyle := ControlStyle + [csNoDesignSelectable];
       end;
       FButtonList.Add(ARadioButton);
@@ -278,13 +278,16 @@ procedure TCustomRadioGroup.ItemKeyDown(Sender: TObject; var Key: Word;
       StepSize := HorzDiff * Rows + VertDiff;
       WrapOffSet := HorzDiff;
     end;
-    NewIndex := ItemIndex + StepSize;
-    if (NewIndex>=Count) or (NewIndex<0) then begin
-      NewIndex := (NewIndex + WrapOffSet + BlockSize) mod BlockSize;
-      // Keep moving in the same direction until in valid range
-      while NewIndex>=Count do
-        NewIndex := (NewIndex + StepSize) mod BlockSize;
-    end;
+    NewIndex := ItemIndex;
+    repeat
+      Inc(NewIndex, StepSize);
+      if (NewIndex >= Count) or (NewIndex < 0) then begin
+        NewIndex := (NewIndex + WrapOffSet + BlockSize) mod BlockSize;
+        // Keep moving in the same direction until in valid range
+        while NewIndex >= Count do
+           NewIndex := (NewIndex + StepSize) mod BlockSize;
+      end;
+    until (NewIndex = ItemIndex) or TRadioButton(FButtonList[NewIndex]).Enabled;
     ItemIndex := NewIndex;
     TRadioButton(FButtonList[ItemIndex]).SetFocus;
     Key := 0;
@@ -524,7 +527,6 @@ class procedure TCustomRadioGroup.WSRegisterClass;
 begin
   inherited WSRegisterClass;
   RegisterCustomRadioGroup;
-  RegisterPropertyToSkip(TCustomRadioGroup, 'DoubleBuffered', 'VCL compatibility property', '');
 end;
 
 procedure TCustomRadioGroup.UpdateInternalObjectList;

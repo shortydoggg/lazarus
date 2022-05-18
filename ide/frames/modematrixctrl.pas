@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -26,10 +26,17 @@ unit ModeMatrixCtrl;
 interface
 
 uses
-  Classes, SysUtils, math, types, contnrs, Controls, LCLType, LCLIntf, Grids,
-  Graphics, StdCtrls, Menus, LazLogger,
-  FileProcs, IDEUtils,
-  IDEProcs, LazarusIDEStrConsts;
+  Classes, SysUtils, math, types, contnrs,
+  // LCL
+  Controls, LCLType, LCLIntf, Grids, Graphics, StdCtrls, Menus,
+  // LazUtils
+  LazLoggerBase,
+  // Codetools
+  FileProcs,
+  // IdeIntf
+  IDEUtils,
+  // IDE
+  LazarusIDEStrConsts;
 
 const
   DefaultModeMatrixMaxUndo = 100;
@@ -55,11 +62,7 @@ type
     destructor Destroy; override;
     procedure Clear; virtual;
     function Equals(Obj: TObject): boolean; override;
-    property Matrix: TGroupedMatrix read FMatrix;
-    property Group: TGroupedMatrixGroup read FGroup write SetGroup;
     function GetGroupIndex: integer;
-    property RowInGrid: integer read FRowInGrid; // in Grid, not in Group
-    property LastDrawValueX: integer read FLastDrawValueX write FLastDrawValueX;
     function Level: integer;
     function GetNextSibling: TGroupedMatrixRow;
     function GetNext: TGroupedMatrixRow; virtual;
@@ -69,6 +72,10 @@ type
     function GetLastLeaf: TGroupedMatrixRow; virtual; // get last child of last child of ...
     function GetTopLvlItem: TGroupedMatrixRow;
     function AsString: string; virtual;
+    property LastDrawValueX: integer read FLastDrawValueX write FLastDrawValueX;
+    property Matrix: TGroupedMatrix read FMatrix;
+    property Group: TGroupedMatrixGroup read FGroup write SetGroup;
+    property RowInGrid: integer read FRowInGrid; // in Grid, not in Group
   end;
   TGroupedMatrixRowClass = class of TGroupedMatrixRow;
 
@@ -89,18 +96,18 @@ type
     destructor Destroy; override;
     procedure Clear; override;
     function Equals(Obj: TObject): boolean; override;
-    property Caption: TCaption read FCaption write FCaption;
-    property Value: string read FValue write FValue;
-    property Writable: boolean read FWritable write FWritable;
-    property Count: integer read GetCount;
-    property Items[Index: integer]: TGroupedMatrixRow read GetItems; default;
     function IndexOfRow(aRow: TGroupedMatrixRow): integer;
     procedure Move(CurIndex, NewIndex: integer);
     function GetNext: TGroupedMatrixRow; override;
     function GetLastLeaf: TGroupedMatrixRow; override;
-    property Color: TColor read FColor write FColor;
     function GetEffectiveColor: TColor;
     function AsString: string; override;
+    property Caption: TCaption read FCaption write FCaption;
+    property Color: TColor read FColor write FColor;
+    property Items[Index: integer]: TGroupedMatrixRow read GetItems; default;
+    property Value: string read FValue write FValue;
+    property Writable: boolean read FWritable write FWritable;
+    property Count: integer read GetCount;
   end;
 
   { TGroupedMatrixValue }
@@ -119,11 +126,11 @@ type
     constructor Create(aControl: TGroupedMatrix); override;
     destructor Destroy; override;
     function Equals(Obj: TObject): boolean; override;
-    property Value: string read FValue write SetValue;
-    property Typ: string read FTyp write SetTyp;
     property ModeList: TStrings read FModeList write SetModes;
     function GetNormalizedModes(IgnoreModes: TStrings = nil): string;
     function AsString: string; override;
+    property Typ: string read FTyp write SetTyp;
+    property Value: string read FValue write SetValue;
   end;
 
   { TGroupedMatrixMode }
@@ -153,10 +160,10 @@ type
     destructor Destroy; override;
     procedure Clear;
     function Equals(Obj: TObject): boolean; override;
-    property Items[Index: integer]: TGroupedMatrixMode read GetItems; default;
     function Count: integer;
     function Add(aCaption: string; aColor: TColor = clDefault): TGroupedMatrixMode;
     procedure Delete(Index: integer);
+    property Items[Index: integer]: TGroupedMatrixMode read GetItems; default;
   end;
   TGroupedMatrixModesClass = class of TGroupedMatrixModes;
 
@@ -180,12 +187,8 @@ type
     procedure Clear;
     function Equals(Obj: TObject): boolean; override;
     procedure RebuildRows;
-    property RowCount: integer read GetRowCount;
-    property Rows[Index: integer]: TGroupedMatrixRow read GetRows; default;
     procedure DeleteRow(Index: integer);
     function IndexOfRow(Row: TGroupedMatrixRow): integer;
-    property TopLvlCount: integer read GetTopLvlCount;
-    property TopLvlItems[Index: integer]: TGroupedMatrixRow read GetTopLvlItems;
     function IndexOfTopLvlItem(Row: TGroupedMatrixRow): integer;
     function IndexOfTopLvlGroup(aCaption: TCaption): integer;
     function GetTopLvlGroup(aCaption: TCaption): TGroupedMatrixGroup;
@@ -194,9 +197,13 @@ type
       aCaption: TCaption; aValue: string = ''): TGroupedMatrixGroup;
     function AddValue(ParentGroup: TGroupedMatrixGroup;
       ModesAsText, aType, AValue, aID: string): TGroupedMatrixValue;
+    procedure WriteDebugReport;
+    property RowCount: integer read GetRowCount;
+    property Rows[Index: integer]: TGroupedMatrixRow read GetRows; default;
+    property TopLvlCount: integer read GetTopLvlCount;
+    property TopLvlItems[Index: integer]: TGroupedMatrixRow read GetTopLvlItems;
     property Modes: TGroupedMatrixModes read FModes;
     property Control: TGroupedMatrixControl read FControl;
-    procedure WriteDebugReport;
   end;
 
   TOnGetCellHightlightColor = procedure(Sender: TObject; aCol,aRow: integer;
@@ -206,7 +213,7 @@ type
 
   TGroupedMatrixControl = class(TCustomDrawGrid)
   private
-    FActiveMode: integer;
+    FActiveModeIndex: integer;
     FActiveModeColor: TColor;
     FIndent: integer;
     FMatrix: TGroupedMatrix;
@@ -221,7 +228,7 @@ type
     function GetModeColumns(Index: integer): TGridColumn;
     function GetModes: TGroupedMatrixModes;
     procedure InvalidateGroupedCells({%H-}aCol, aRow: Integer);
-    procedure SetActiveMode(AValue: integer);
+    procedure SetActiveModeIndex(AValue: integer);
     procedure SetActiveModeColor(AValue: TColor);
     procedure SetIndent(AValue: integer);
     procedure SetMaxUndo(AValue: integer);
@@ -253,33 +260,32 @@ type
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure Clear;
-  public
-    property ActiveModeColor: TColor read FActiveModeColor write SetActiveModeColor;
     procedure DefaultDrawCell(aCol, aRow: Integer; var aRect: TRect;
       aState: TGridDrawState); override;
-    property Matrix: TGroupedMatrix read FMatrix;
-    property Modes: TGroupedMatrixModes read GetModes;
     procedure MatrixChanging;
     procedure MatrixChanged;
     procedure DeleteMatrixRow(aRow: integer);
-    property ActiveMode: integer read FActiveMode write SetActiveMode;
+    procedure RenameMode(aOldName, aNewName: string);
     function ModeColFirst: integer;
     function ModeColLast: integer;
-    property ModeColumns[Index: integer]: TGridColumn read GetModeColumns;
-    property TypeColumn: TGridColumn read FTypeColumn;
     function TypeCol: integer;
-    property ValueColumn: TGridColumn read FValueColumn;
     function ValueCol: integer;
-    property Indent: integer read FIndent write SetIndent default DefaultModeMatrixIndent;
-  public
     // undo/redo
     function CanUndo: boolean;
     function CanRedo: boolean;
     procedure Undo;
     procedure Redo;
-    property MaxUndo: integer read FMaxUndo write SetMaxUndo default DefaultModeMatrixMaxUndo;
     procedure StoreUndo(EvenIfNothingChanged: boolean = false);
   public
+    property ActiveModeColor: TColor read FActiveModeColor write SetActiveModeColor;
+    property Matrix: TGroupedMatrix read FMatrix;
+    property Modes: TGroupedMatrixModes read GetModes;
+    property ActiveModeIndex: integer read FActiveModeIndex write SetActiveModeIndex;
+    property ModeColumns[Index: integer]: TGridColumn read GetModeColumns;
+    property TypeColumn: TGridColumn read FTypeColumn;
+    property ValueColumn: TGridColumn read FValueColumn;
+    property Indent: integer read FIndent write SetIndent default DefaultModeMatrixIndent;
+    property MaxUndo: integer read FMaxUndo write SetMaxUndo default DefaultModeMatrixMaxUndo;
     property Options default DefaultModeMatrixOptions;
     property TitleStyle default tsNative;
     property OnGetCellHightlightColor: TOnGetCellHightlightColor
@@ -1039,6 +1045,7 @@ begin
     fTypePopupMenu.Items[fTypePopupMenu.Items.Count-1].Free;
 
   XY:=Point(0,0);
+  i:=TypeColumn.PickList.Count-1;
   ColRowToOffset(true,true,TypeCol,XY.X,i);
   ColRowToOffset(false,true,aRow,i,XY.Y);
   XY:=ClientToScreen(XY);
@@ -1105,10 +1112,10 @@ begin
   end;
 end;
 
-procedure TGroupedMatrixControl.SetActiveMode(AValue: integer);
+procedure TGroupedMatrixControl.SetActiveModeIndex(AValue: integer);
 begin
-  if FActiveMode=AValue then Exit;
-  FActiveMode:=AValue;
+  if FActiveModeIndex=AValue then Exit;
+  FActiveModeIndex:=AValue;
   Invalidate;
 end;
 
@@ -1239,17 +1246,19 @@ procedure TGroupedMatrixControl.GetCheckBoxState(const aCol, aRow: Integer;
   var aState: TCheckboxState);
 var
   MatRow: TGroupedMatrixRow;
+  ValueRow: TGroupedMatrixValue;
+  ModeName: String;
 begin
-  if (aCol>=1) and (aCol<=Modes.Count)
-  and (aRow>0) then begin
+  if (aCol>=1) and (aCol<=Modes.Count) and (aRow>0) then
+  begin
     MatRow:=Matrix.Rows[aRow-1];
-    if MatRow is TGroupedMatrixValue then begin
-      //debugln(['TGroupedMatrixControl.GetCheckBoxState ',aCol,' ',aRow,' "',Modes[aCol-1],'" ',TGroupedMatrixValue(MatRow).ModeList.Text]);
-      if IndexInStringList(TGroupedMatrixValue(MatRow).ModeList,cstCaseInsensitive,Modes[aCol-1].Caption)>=0
-      then begin
-        aState:=cbChecked;
-        //debugln(['TGroupedMatrixControl.GetCheckBoxState ',aCol,' ',aRow,' "',Modes[aCol-1],'" ',TGroupedMatrixValue(MatRow).ModeList.Text]);
-      end else
+    if MatRow is TGroupedMatrixValue then
+    begin
+      ValueRow:=TGroupedMatrixValue(MatRow);
+      ModeName:=Modes[aCol-1].Caption;
+      if IndexInStringList(ValueRow.ModeList,cstCaseInsensitive,ModeName)>=0 then
+        aState:=cbChecked
+      else
         aState:=cbUnchecked;
     end;
   end;
@@ -1264,8 +1273,8 @@ var
   ModeName: String;
   i: Integer;
 begin
-  if (aCol>=1) and (aCol<=Modes.Count)
-  and (aRow>0) then begin
+  if (aCol>=1) and (aCol<=Modes.Count) and (aRow>0) then
+  begin
     MatRow:=Matrix.Rows[aRow-1];
     if MatRow is TGroupedMatrixValue then begin
       ValueRow:=TGroupedMatrixValue(MatRow);
@@ -1275,11 +1284,10 @@ begin
       i:=IndexInStringList(ValueRow.ModeList,cstCaseInsensitive,ModeName);
       if (i<0) = (aState=cbUnchecked) then exit;
       StoreUndo;
-      if i>=0 then begin
-        ValueRow.ModeList.Delete(i);
-      end else begin
+      if i>=0 then
+        ValueRow.ModeList.Delete(i)
+      else
         ValueRow.ModeList.Add(ModeName);
-      end;
       InvalidateRow(aRow);
       EditingDone;
       exit;
@@ -1472,6 +1480,8 @@ constructor TGroupedMatrixControl.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
 
+  MouseWheelOption := mwGrid;
+
   FMatrix:=TGroupedMatrix.Create(Self);
   fUndoItems:=TObjectList.Create(true);
   fRedoItems:=TObjectList.Create(true);
@@ -1515,13 +1525,15 @@ procedure TGroupedMatrixControl.DefaultDrawCell(aCol, aRow: Integer; var aRect: 
   aState: TGridDrawState);
 
   procedure DrawActiveModeRow(ValueRow: TGroupedMatrixValue);
+  var
+    ModeName: String;
   begin
-    if ActiveMode<0 then exit;
-    if IndexInStringList(ValueRow.ModeList,cstCaseInsensitive,Modes[ActiveMode].Caption)<0
-    then
+    if ActiveModeIndex<0 then exit;
+    ModeName:=Modes[ActiveModeIndex].Caption;
+    if IndexInStringList(ValueRow.ModeList,cstCaseInsensitive,ModeName)<0 then
       exit;
     Canvas.GradientFill(Rect(aRect.Left,(aRect.Top+aRect.Bottom) div 2,aRect.Right,aRect.Bottom),
-      Color,ActiveModeColor,gdVertical);
+                        Color,ActiveModeColor,gdVertical);
   end;
 
 var
@@ -1534,7 +1546,6 @@ var
   StateColor: TColor;
   aHighlightColor: TColor;
 begin
-  //DebugLn(['TModeMatrixControl.DefaultDrawCell ']);
   if aRow=0 then begin
     // titles
     if aCol=0 then begin
@@ -1565,7 +1576,7 @@ begin
         ModeColor:=Modes[aCol-ModeColFirst].Color;
         if ModeColor=clDefault then ModeColor:=Color;
         StateColor:=Color;
-        if ActiveMode=aCol-ModeColFirst then
+        if ActiveModeIndex=aCol-ModeColFirst then
           StateColor:=ActiveModeColor;
         if (ModeColor<>Color) or (StateColor<>Color) then begin
           Canvas.GradientFill(aRect,ModeColor,StateColor,gdHorizontal);
@@ -1639,6 +1650,25 @@ begin
     Matrix.DeleteRow(aRow-1);
   finally
     MatrixChanged;
+  end;
+end;
+
+procedure TGroupedMatrixControl.RenameMode(aOldName, aNewName: string);
+var
+  iRow, iMod: Integer;
+  MatRow: TGroupedMatrixRow;
+  ValRow: TGroupedMatrixValue;
+begin
+  for iRow:=0 to Matrix.RowCount-1 do
+  begin
+    MatRow:=Matrix.Rows[iRow];
+    if MatRow is TGroupedMatrixValue then
+    begin
+      ValRow:=TGroupedMatrixValue(MatRow);
+      iMod:=IndexInStringList(ValRow.ModeList,cstCaseInsensitive,aOldName);
+      if iMod>=0 then
+        ValRow.ModeList[iMod]:=aNewName;
+    end;
   end;
 end;
 

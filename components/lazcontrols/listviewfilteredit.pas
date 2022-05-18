@@ -12,19 +12,32 @@
 unit ListViewFilterEdit;
 
 {$mode objfpc}{$H+}
+{$modeswitch advancedrecords}
 
 interface
 
 uses
-  Classes, SysUtils, Forms, LResources, Graphics, Controls, ComCtrls,
-  LCLProc, LCLType, EditBtn, FileUtil, LazUTF8, fgl, Math;
+  Classes, SysUtils, Math, fgl,
+  // LCL
+  LCLType, Graphics, ComCtrls, EditBtn,
+  // LazUtils
+  LazUTF8;
 
 type
 
   //TImageIndexEvent = function (Str: String; Data: TObject;
   //                             var IsEnabled: Boolean): Integer of object;
   TStringArray = array of string;
-  TListViewDataList = specialize TFPGList<TStringArray>;
+
+  { TListViewDataItem }
+
+  TListViewDataItem = record
+    Data: Pointer;
+    StringArray: TStringArray;
+    //constructor Initialize(ColumnCount: integer);   Does not work. Why?
+    class operator =(a,b : TListViewDataItem) : Boolean;
+  end;
+  TListViewDataList = specialize TFPGList<TListViewDataItem>;
 
   { TListViewFilterEdit }
 
@@ -40,11 +53,12 @@ type
     fOriginalData: TListViewDataList;
     // Data sorted for viewing.
     fFilteredData: TListViewDataList;
-    function MatchesFilter(aData: TStringArray): Boolean;
+    function MatchesFilter(aData: TListViewDataItem; const AFilter: string): Boolean;
     procedure SetFilteredListview(const AValue: TCustomListView);
   protected
-    procedure MoveTo(AIndex: Integer; ASelect: Boolean);
+    procedure Notification(AComponent: TComponent; Operation: TOperation); override;
     function GetLastSelectedIndex: Integer;
+    procedure MoveTo(AIndex: Integer; ASelect: Boolean);
     procedure MoveNext(ASelect: Boolean = False); override;
     procedure MovePrev(ASelect: Boolean = False); override;
     procedure MovePageUp(ASelect: Boolean = False); override;
@@ -54,7 +68,7 @@ type
     function ReturnKeyHandled: Boolean; override;
     procedure SortAndFilter; override;
     procedure ApplyFilterCore; override;
-    function GetDefaultGlyph: TBitmap; override;
+    function GetDefaultGlyphName: string; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -68,16 +82,19 @@ type
     property ByAllFields: Boolean read fByAllFields write fByAllFields default False;
   end;
 
-var
-  ListFilterGlyph: TBitmap;
-
-procedure Register;
-
 implementation
 
-procedure Register;
+{ TListViewDataItem }
+{
+constructor TListViewDataItem.Initialize(ColumnCount: integer);
 begin
-  RegisterComponents('LazControls',[TListViewFilterEdit]);
+  Data := Nil;
+  SetLength(StringArray, ColumnCount);
+end;
+}
+class operator TListViewDataItem. = (a, b: TListViewDataItem): Boolean;
+begin
+  Result := (a.Data=b.Data) and (a.StringArray=b.StringArray);
 end;
 
 { TListViewFilterEdit }
@@ -98,9 +115,9 @@ begin
   inherited Destroy;
 end;
 
-function TListViewFilterEdit.GetDefaultGlyph: TBitmap;
+function TListViewFilterEdit.GetDefaultGlyphName: string;
 begin
-  Result := ListFilterGlyph;
+  Result := 'btnfiltercancel';
 end;
 
 function TListViewFilterEdit.GetLastSelectedIndex: Integer;
@@ -111,23 +128,25 @@ begin
     Result := -1;
 end;
 
-function ListItem2Data(AItem: TListItem): TStringArray;
+function ListItem2Data(AItem: TListItem): TListViewDataItem;
 var
   i: Integer;
 begin
-  SetLength(Result, AItem.SubItems.Count+1);
-  Result[0] := AItem.Caption;
+  Result.Data := AItem.Data;
+  SetLength(Result.StringArray, AItem.SubItems.Count+1);
+  Result.StringArray[0] := AItem.Caption;
   for i := 0 to AItem.SubItems.Count-1 do
-    Result[i+1] := AItem.SubItems[i];
+    Result.StringArray[i+1] := AItem.SubItems[i];
 end;
 
-procedure Data2ListItem(AData: TStringArray; AItem: TListItem);
+procedure Data2ListItem(AData: TListViewDataItem; AItem: TListItem);
 var
   i: Integer;
 begin
-  AItem.Caption := AData[0];
-  for i := 1 to Length(AData)-1 do
-    AItem.SubItems.Add(AData[i]);
+  AItem.Data := AData.Data;
+  AItem.Caption := AData.StringArray[0];
+  for i := 1 to Length(AData.StringArray)-1 do
+    AItem.SubItems.Add(AData.StringArray[i]);
 end;
 
 procedure TListViewFilterEdit.SetFilteredListview(const AValue: TCustomListView);
@@ -137,41 +156,49 @@ begin
   if fFilteredListview = AValue then Exit;
   fFilteredListview:=AValue;
   if Assigned(fFilteredListview) then
+  begin
+    Filter:=Text;
     for i := 0 to fFilteredListview.Items.Count-1 do
       fOriginalData.Add(ListItem2Data(fFilteredListview.Items[i]));
+  end;
 end;
 
-function TListViewFilterEdit.MatchesFilter(aData: TStringArray): Boolean;
+procedure TListViewFilterEdit.Notification(AComponent: TComponent; Operation: TOperation);
+begin
+  inherited Notification(AComponent, Operation);
+  if (Operation=opRemove) and (FilteredListview=AComponent) then
+  begin
+    IdleConnected:=False;
+    fNeedUpdate:=False;
+    fFilteredListview:=nil;
+  end;
+end;
+
+function TListViewFilterEdit.MatchesFilter(aData: TListViewDataItem;
+  const AFilter: string): Boolean;
 var
   i, EndInd: Integer;
-  FilterLC: string;
 begin
-  if Filter='' then
-    Exit(True);
-  FilterLC := UTF8LowerCase(Filter);
   if fByAllFields then
-    EndInd := Pred(Length(aData))
+    EndInd := Pred(Length(aData.StringArray))
   else
     EndInd := 0;
   for i := 0 to EndInd do begin
-    Result := Pos(FilterLC,UTF8LowerCase(aData[i]))>0;
-    if Result then
-      Exit;
+    if DoFilterItem(aData.StringArray[i], AFilter, aData.Data) then
+      Exit(True);
   end;
   Result := False;
 end;
 
 procedure TListViewFilterEdit.MoveEnd(ASelect: Boolean);
 begin
-  if fFilteredListview.Items.Count = 0 then
-    Exit;
+  if (fFilteredListview = nil) or (fFilteredListview.Items.Count = 0) then Exit;
   MoveTo(fFilteredListview.Items.Count-1, ASelect);
 end;
 
 procedure TListViewFilterEdit.MoveHome(ASelect: Boolean);
 begin
-  if fFilteredListview.Items.Count = 0 then
-    Exit;
+  if (fFilteredListview = nil) or (fFilteredListview.Items.Count = 0) then Exit;
   MoveTo(0, ASelect);
 end;
 
@@ -179,12 +206,12 @@ procedure TListViewFilterEdit.SortAndFilter;
 // Copy data from fOriginalData to fSortedData in sorted order
 var
   Origi: Integer;
-  Data: TStringArray;
+  Data: TListViewDataItem;
 begin
   fFilteredData.Clear;
   for Origi:=0 to fOriginalData.Count-1 do begin
     Data:=fOriginalData[Origi];
-    if MatchesFilter(Data) then
+    if MatchesFilter(Data, Filter) then
       fFilteredData.Add(Data);
   end;
 end;
@@ -193,8 +220,7 @@ procedure TListViewFilterEdit.ApplyFilterCore;
 var
   i: Integer;
 begin
-  if fFilteredListview = nil then
-    exit;
+  if fFilteredListview = nil then exit;
   fFilteredListview.Clear;
   fFilteredListview.Items.BeginUpdate;
   for i:=0 to fFilteredData.Count-1 do
@@ -207,8 +233,7 @@ procedure TListViewFilterEdit.StoreSelection;
 var
   i: Integer;
 begin
-  if fFilteredListview = nil then
-    exit;
+  if fFilteredListview = nil then exit;
   fSelectionList.Clear;
   if fFilteredListview.SelCount > 0 then
     for i := 0 to fFilteredListview.Items.Count-1 do
@@ -220,7 +245,7 @@ procedure TListViewFilterEdit.RestoreSelection;
 var
   i: Integer;
 begin
-  if fSelectionList.Count > 0 then
+  if (fSelectionList.Count > 0) and Assigned(fFilteredListview) then
     for i := 0 to fFilteredListview.Items.Count-1 do
       if fSelectionList.IndexOf(fFilteredListview.Items[i].Caption) > -1 then
         fFilteredListview.Items[i].Selected:=True;
@@ -230,7 +255,7 @@ procedure TListViewFilterEdit.MoveNext(ASelect: Boolean);
 var
   i: Integer;
 begin
-  if fFilteredListview.Items.Count = 0 then Exit;
+  if (fFilteredListview = nil) or (fFilteredListview.Items.Count = 0) then Exit;
   i := GetLastSelectedIndex + 1;
   if i >= fFilteredListview.Items.Count then
     i := fFilteredListview.Items.Count-1;
@@ -241,8 +266,7 @@ procedure TListViewFilterEdit.MovePageDown(ASelect: Boolean);
 var
   I: Integer;
 begin
-  if fFilteredListview.Items.Count = 0 then
-    Exit;
+  if (fFilteredListview = nil) or (fFilteredListview.Items.Count = 0) then Exit;
   I := GetLastSelectedIndex + fFilteredListview.VisibleRowCount;
   if (I < 0) or (I >= fFilteredListview.Items.Count) then
     I := fFilteredListview.Items.Count-1;
@@ -253,8 +277,7 @@ procedure TListViewFilterEdit.MovePageUp(ASelect: Boolean);
 var
   I: Integer;
 begin
-  if fFilteredListview.Items.Count = 0 then
-    Exit;
+  if (fFilteredListview = nil) or (fFilteredListview.Items.Count = 0) then Exit;
   I := GetLastSelectedIndex - fFilteredListview.VisibleRowCount;
   if (I < 0) or (I >= fFilteredListview.Items.Count) then
     I := 0;
@@ -265,7 +288,7 @@ procedure TListViewFilterEdit.MovePrev(ASelect: Boolean);
 var
   i: Integer;
 begin
-  if fFilteredListview.Items.Count = 0 then Exit;
+  if (fFilteredListview = nil) or (fFilteredListview.Items.Count = 0) then Exit;
   i := GetLastSelectedIndex - 1;
   if i < 0 then
     i := 0;

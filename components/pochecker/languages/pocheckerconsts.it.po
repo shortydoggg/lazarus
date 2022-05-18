@@ -14,7 +14,9 @@ msgstr ""
 "X-Generator: Virtaal 0.6.1\n"
 
 #: pocheckerconsts.rspochecker
-msgid "PO File Checker"
+#, fuzzy
+#| msgid "PO File Checker"
+msgid "Check PO Files ..."
 msgstr "Verificatore di files PO"
 
 #: pocheckerconsts.rs_lang_af_za
@@ -121,28 +123,18 @@ msgstr "Cinese semplificato"
 msgid "All Languages"
 msgstr "Tutte le lingue"
 
-#: pocheckerconsts.scannotfindmaster
-msgid ""
-"Cannot find master po file:\n"
-"%s\n"
-"for selected file\n"
-"%s\n"
+#: pocheckerconsts.scannotwritefileyoucanpressretrytorefreshthistransl
+msgid "Cannot write file%s%s%s%sYou can press \"Retry\" to refresh this translation family again and continue."
 msgstr ""
-"Non trovato il file master po:\n"
-"%s\n"
-"per il file scelto\n"
-"%s\n"
-
-#: pocheckerconsts.scheckforduplicateuntranslatedvalues
-msgid "Check for duplicate untranslated values"
-msgstr "Verifica valori duplicati non tradotti"
 
 #: pocheckerconsts.scheckforincompatibleformatarguments
 msgid "Check for incompatible format arguments"
 msgstr "Verifica argomenti con format incompatibile"
 
 #: pocheckerconsts.scheckformismatchesinuntranslatedstrings
-msgid "Check for mismatches in untranslated strings"
+#, fuzzy
+#| msgid "Check for mismatches in untranslated strings"
+msgid "Check for mismatches of originals"
 msgstr "Verifica mancate corrispondenze in stringhe non tradotte"
 
 #: pocheckerconsts.scheckmissingidentifiers
@@ -153,17 +145,13 @@ msgstr "Verifica identificatori mancanti"
 msgid "Check number of items"
 msgstr "Verifica il numero di voci"
 
-#: pocheckerconsts.scheckstatistics
-msgid "Check percentage of (un)translated and fuzzy strings"
-msgstr "Verifica le percentuali di stringhe tradotte o incerte"
-
 #: pocheckerconsts.sclearlistbox
 msgid "Clear"
 msgstr "Azzera"
 
-#: pocheckerconsts.scopycaption
-msgid "Copy to clipboard"
-msgstr "Copia negli appunti"
+#: pocheckerconsts.scopy
+msgid "&Copy"
+msgstr ""
 
 #: pocheckerconsts.screatingiconxofy
 msgid "Creating icon nr. %d of %d"
@@ -178,8 +166,14 @@ msgid "[Line %d] %s"
 msgstr "[Riga %d] %s"
 
 #: pocheckerconsts.sduplicateoriginals
-msgid "The (untranslated) value \"%s\" is used for more than 1 entry:"
+#, fuzzy
+#| msgid "The (untranslated) value \"%s\" is used for more than 1 entry:"
+msgid "Original value \"%s\" is used for more than 1 entry:"
 msgstr "Il valore (non tradotto) \"%s\" è usato per più di 1 voce:"
+
+#: pocheckerconsts.sduplicateoriginalstab
+msgid "Duplicate Originals"
+msgstr ""
 
 #: pocheckerconsts.serroroncleanup
 msgid ""
@@ -203,6 +197,10 @@ msgstr ""
 msgid "Errors / warnings reported by %s for:"
 msgstr "Errori / avvertimenti riportati da %s per:"
 
+#: pocheckerconsts.sfile
+msgid "File %s"
+msgstr ""
+
 #: pocheckerconsts.sfilesnotfoundandremoved
 msgid ""
 "The following non-existent files were removed from the list:\n"
@@ -211,9 +209,17 @@ msgstr ""
 "I seguenti file inesistenti sono stati rimossi dalla lista:\n"
 "%s\n"
 
-#: pocheckerconsts.sfuzzy
-msgid "Fuzzy"
-msgstr "Incerto"
+#: pocheckerconsts.sfuzzystrings
+msgid "Fuzzy strings"
+msgstr ""
+
+#: pocheckerconsts.sfuzzystringstotal
+msgid "Fuzzy strings (total: %s)"
+msgstr ""
+
+#: pocheckerconsts.sgeneralinfo
+msgid "General Info"
+msgstr ""
 
 #: pocheckerconsts.sgrapstatformcaption
 msgid "Graphical summary"
@@ -227,13 +233,17 @@ msgstr "Strumento GUI di verifica di file po"
 msgid "Identifier [%s] not found in %s"
 msgstr "Identificatore [%s] non trovato in %s"
 
-#: pocheckerconsts.signorefuzzytranslations
-msgid "Ignore translated strings marked as \"fuzzy\""
-msgstr "Ignora le stringhe tradotte marcate come \"incerte\""
-
 #: pocheckerconsts.sincompatibleformatargs
 msgid "[Line: %d] Incompatible and/or invalid format() arguments for:"
 msgstr "[Riga: %d] Argomenti di format()Incompatibili e/o non validi per:"
+
+#: pocheckerconsts.slanguage
+msgid "Language:"
+msgstr ""
+
+#: pocheckerconsts.slastsearchpath
+msgid "Last search path:"
+msgstr ""
 
 #: pocheckerconsts.slineinfilename
 msgid "[Line %d] in %s:"
@@ -246,10 +256,6 @@ msgstr "[Riga: %d]"
 #: pocheckerconsts.smissingmasteridentifier
 msgid "Identifier [%s] found in %s, but it does not exist in %s"
 msgstr "Identificatore [%s] trovato in %s, ma inesistente in %s"
-
-#: pocheckerconsts.snoerrorsfound
-msgid "No errors found"
-msgstr "Nessun errore riscontrato"
 
 #: pocheckerconsts.snofileslefttocheck
 msgid "There are no files left to check."
@@ -279,10 +285,6 @@ msgstr "%s: %d voci"
 msgid "Found %d warnings."
 msgstr "Riscontrati %d avvertimenti."
 
-#: pocheckerconsts.sopenapofile
-msgid "&Open a po-file"
-msgstr "&Aprire un file po"
-
 #: pocheckerconsts.sopenfail
 msgid ""
 "Unable to open file:\n"
@@ -303,37 +305,55 @@ msgstr ""
 "nell'editor esterno\n"
 "\"%s\"\n"
 
-#: pocheckerconsts.sopenfile
-msgid "Open file %s in Ide Editor?"
-msgstr "Aprire il file %s nell'Editor?"
-
-#: pocheckerconsts.sopenfileexternal
-msgid ""
-"Open file:\n"
-"\"%s\"\n"
-"in external editor:\n"
-"\"%s\"?\n"
+#: pocheckerconsts.sopenfileinexternaleditor
+msgid "Open file in external editor"
 msgstr ""
-"Aprire il file:\n"
-"\"%s\"\n"
-"nell'editor esterno:\n"
-"\"%s\"?\n"
+
+#: pocheckerconsts.sopenfileinideeditor
+msgid "Open file in IDE editor"
+msgstr ""
+
+#: pocheckerconsts.sopenfileinsystempoeditor
+msgid "Open file in system PO editor"
+msgstr ""
 
 #: pocheckerconsts.soriginal
 msgid "Original"
 msgstr "Originale"
 
 #: pocheckerconsts.spercfuzzy
-msgid "%s: %4.1f%% fuzzy strings."
+#, fuzzy
+#| msgid "%s: %4.1f%% fuzzy strings."
+msgid "%s: %5.1f%% fuzzy strings."
 msgstr "%s: %4.1f%% stringhe incerte."
 
 #: pocheckerconsts.sperctranslated
-msgid "%s: %4.1f%% translated strings."
+#, fuzzy
+#| msgid "%s: %4.1f%% translated strings."
+msgid "%s: %5.1f%% translated strings."
 msgstr "%s: %4.1f%% stringhe tradotte."
 
 #: pocheckerconsts.spercuntranslated
-msgid "%s: %4.1f%% untranslated strings."
+#, fuzzy
+#| msgid "%s: %4.1f%% untranslated strings."
+msgid "%s: %5.1f%% untranslated strings."
 msgstr "%s: %4.1f%% stringhe non tradotte."
+
+#: pocheckerconsts.sprocessingtranslationfamily
+msgid "Processing translation family..."
+msgstr ""
+
+#: pocheckerconsts.sprocessingtranslationfamilyof
+msgid "Processing translation family %s of %s"
+msgstr ""
+
+#: pocheckerconsts.srefreshalltranslationfamilies
+msgid "Refresh all translation families"
+msgstr ""
+
+#: pocheckerconsts.srefreshcurrenttranslationfamily
+msgid "Refresh current translation family"
+msgstr ""
 
 #: pocheckerconsts.sresults
 msgid "Results"
@@ -343,9 +363,9 @@ msgstr "Risultati"
 msgid "&Run Selected Tests"
 msgstr "A&vvia la verifica"
 
-#: pocheckerconsts.ssavecaption
-msgid "Save to file"
-msgstr "Salva in un file"
+#: pocheckerconsts.ssaveas
+msgid "Save &As ..."
+msgstr ""
 
 #: pocheckerconsts.ssaveerror
 msgid ""
@@ -371,10 +391,6 @@ msgstr "Seleziona tutti i file"
 msgid "Select &All"
 msgstr "Seleziona &Tutto"
 
-#: pocheckerconsts.sselectbasictests
-msgid "Select &Basic"
-msgstr "Seleziona &Base"
-
 #: pocheckerconsts.sselecttesttypes
 msgid "Select test types"
 msgstr "Seleziona i tipi di verifica"
@@ -384,36 +400,78 @@ msgid "Show statistics graph"
 msgstr "Mostra il grafico"
 
 #: pocheckerconsts.sstathint
+#, fuzzy
+#| msgid ""
+#| "%d Translated (%.1f%%)\n"
+#| "%d UnTranslated (%.1f%%)\n"
+#| "%d Fuzzy (%.1f%%)\n"
+#| "%d Error(s) in Selected Tests\n"
 msgid ""
-"%3d Translated (%3.1f%%)\n"
-"%3d UnTranslated (%3.1f%%)\n"
-"%3d Fuzzy (%3.1f%%)\n"
-"%d Error(s) in Selected Tests\n"
+"Translated: %d (%.1f%%)\n"
+"Untranslated: %d (%.1f%%)\n"
+"Fuzzy: %d (%.1f%%)\n"
+"Errors in selected tests: %d\n"
 msgstr ""
 "%3d Tradotte (%3.1f%%)\n"
 "%3d Non tradotte (%3.1f%%)\n"
 "%3d Incerte (%3.1f%%)\n"
 "%d Errori nei test selezionati\n"
 
+#: pocheckerconsts.sthefollowingmissingmasterpofileswereremoved
+msgid "The following %s missing master .po file(s) were removed from the list:"
+msgstr ""
+
+#: pocheckerconsts.sthefollowingorphanedpofilesfound
+msgid "The following %s orphaned .po file(s) found:"
+msgstr ""
+
 #: pocheckerconsts.stotalerrors
-msgid "Total errors found: %d"
+#, fuzzy
+#| msgid "Total errors found: %d"
+msgid "Total errors: %d"
 msgstr "Totale errori trovati: %d"
 
+#: pocheckerconsts.stotalerrorsnonfuzzy
+msgid "Total errors: %d (formatting errors in non-fuzzy strings: %d)"
+msgstr ""
+
+#: pocheckerconsts.stotalfuzzystrings
+msgid "Total fuzzy strings: %s"
+msgstr ""
+
+#: pocheckerconsts.stotaltranslatedstrings
+msgid "Total translated strings: %s (%.1f%%)"
+msgstr ""
+
+#: pocheckerconsts.stotaluntranslatedstrings
+msgid "Total untranslated strings: %s"
+msgstr ""
+
 #: pocheckerconsts.stotalwarnings
-msgid "Total warnings found: %d"
+#, fuzzy
+#| msgid "Total warnings found: %d"
+msgid "Total warnings: %d"
 msgstr "Totale avvertimenti: %d"
 
-#: pocheckerconsts.stranslated
-msgid "Translated"
-msgstr "Tradotte"
+#: pocheckerconsts.stranslatedstrings
+msgid "Translated strings"
+msgstr ""
+
+#: pocheckerconsts.stranslatedstringstotal
+msgid "Translated strings (total: %s [%.1f%%])"
+msgstr ""
 
 #: pocheckerconsts.stranslation
 msgid "Translation"
 msgstr "Traduzione"
 
 #: pocheckerconsts.stranslationstatistics
-msgid "Translation statistics per language:"
-msgstr "Statistiche di traduzione per lingua:"
+msgid "Translation Statistics"
+msgstr ""
+
+#: pocheckerconsts.stroublesomefiles
+msgid "Troublesome files"
+msgstr ""
 
 #: pocheckerconsts.sunselectalltests
 msgid "&Unselect All"
@@ -423,7 +481,11 @@ msgstr "&Deseleziona tutto"
 msgid "Unselect all files"
 msgstr "Deseleziona"
 
-#: pocheckerconsts.suntranslated
-msgid "Untranslated"
-msgstr "Non tradotte"
+#: pocheckerconsts.suntranslatedstrings
+msgid "Untranslated strings"
+msgstr ""
+
+#: pocheckerconsts.suntranslatedstringstotal
+msgid "Untranslated strings (total: %s)"
+msgstr ""
 

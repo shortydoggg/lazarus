@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,9 +30,14 @@ unit FrameDesigner;
 interface
 
 uses
-  Classes, SysUtils, Math, LCLProc, Graphics, GraphType, Forms, Controls,
-  FormEditingIntf, IDEProcs, DesignerProcs, CustomNonFormDesigner;
-  
+  Classes, SysUtils, Math,
+  // LCL
+  LCLProc, Graphics, GraphType, Forms, Controls,
+  // IdeIntf
+  FormEditingIntf,
+  // IDE
+  DesignerProcs, CustomNonFormDesigner;
+
 type
 
   { TFrameDesignerForm }
@@ -120,7 +125,7 @@ end;
 procedure TFrameDesignerForm.Create;
 begin
   inherited Create;
-  // workaround problem with out assumption that Width = ClientWidth, Height = ClientHeight
+  // workaround problem with assumption that Width = ClientWidth, Height = ClientHeight
   NonFormProxyDesignerForm.AutoScroll := False;
 end;
 

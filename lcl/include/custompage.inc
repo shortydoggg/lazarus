@@ -136,7 +136,7 @@ end;
  ------------------------------------------------------------------------------}
 procedure TCustomPage.CMHitTest(var Message: TLMNCHITTEST);
 begin
-  if Parent is TCustomTabControl and
+  if (Parent is TCustomTabControl) and
      (TCustomTabControl(Parent).ActivePageComponent <> Self) then
     Message.Result := 0 // no hit
   else
@@ -258,6 +258,14 @@ begin
   end;
 // else
   Result := -1;
+end;
+
+procedure TCustomPage.CheckNewParent(AParent: TWinControl);
+begin
+  if (AParent<>nil) and (not (AParent is TCustomTabControl)) then
+    raise EInvalidOperation.CreateFmt(rsASCannotHaveAsParent, [ClassName,
+      AParent.ClassName]);
+  inherited CheckNewParent(AParent);
 end;
 
 {------------------------------------------------------------------------------

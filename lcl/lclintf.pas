@@ -1,4 +1,4 @@
-{  $Id: lclintf.pas 49494 2015-07-04 23:08:00Z juha $  }
+{  $Id: lclintf.pas 61638 2019-07-28 10:44:39Z martin $  }
 {
  /***************************************************************************
                                 LCLIntf.pas
@@ -47,12 +47,14 @@ unit LCLIntf;
 interface
 
 uses
-  {$IFDEF Windows}Windows, ShellApi,{$ENDIF}
+  {$IFDEF Windows}Windows, ShellApi, LazUtf16,{$ENDIF}
   {$IFDEF UNIX}Unix, {$ENDIF}
   {$IFDEF Darwin}MacOSAll, CocoaAll,{$ENDIF}
-  Types, Math, Classes, SysUtils, LCLType, LCLProc, GraphType, InterfaceBase,
-  FileUtil, LazFileUtils, UTF8Process, Maps, LMessages, LazUTF8, lazutf8sysutils,
-  LCLStrConsts;
+  Math, Classes, SysUtils, Types,
+  // LCL
+  LCLType, LCLProc, LMessages, LCLStrConsts, GraphType, InterfaceBase,
+  // LazUtils
+  FileUtil, LazFileUtils, UTF8Process, LazUTF8, LazSysUtils, Maps;
 
 {$ifdef Trace}
   {$ASSERTIONS ON}
@@ -65,7 +67,6 @@ uses
 {$I lclintfh.inc}
 
 function PredefinedClipboardFormat(AFormat: TPredefinedClipboardFormat): TClipboardFormat;
-
 
 function MsgKeyDataToShiftState(KeyData: PtrInt): TShiftState;
 
@@ -148,12 +149,12 @@ end;
 
 function GetTickCount(): DWord;
 begin
-  Result := DWord(lazutf8sysutils.GetTickCount64());
+  Result := DWord(LazSysUtils.GetTickCount64());
 end;
 
 function GetTickCount64(): QWord;
 begin
-  Result := lazutf8sysutils.GetTickCount64();
+  Result := LazSysUtils.GetTickCount64();
 end;
 
 {$IFDEF DebugLCL}
@@ -200,7 +201,7 @@ begin
   if GetKeyState(VK_SHIFT) < 0 then Include(Result, ssShift);
   if GetKeyState(VK_CONTROL) < 0 then Include(Result, ssCtrl);
   if GetKeyState(VK_LWIN) < 0 then Include(Result, ssMeta);
-  if KeyData and $20000000 <> 0 then Include(Result, ssAlt);
+  if KeyData and MK_ALT <> 0 then Include(Result, ssAlt);
 end;
 
 {$I winapi.inc}
@@ -209,16 +210,19 @@ end;
 // System APIs which have an operating-system specific implementation
 // They should be moved to FPC eventually
 {$I sysenvapis.inc}
-{$ifdef Windows}
+{$IFDEF Windows}
   {$I sysenvapis_win.inc}
-{$endif}
-{$ifdef UNIX}
-  {$ifdef darwin}
+{$ENDIF}
+{$IFDEF HASAMIGA}
+  {$I sysenvapis_amiga.inc}
+{$ENDIF}
+{$IFDEF UNIX}
+  {$IFDEF darwin}
     {$I sysenvapis_mac.inc}
-  {$else}
+  {$ELSE}
     {$I sysenvapis_unix.inc}
-  {$endif}
-{$endif}
+  {$ENDIF}
+{$ENDIF}
 
 procedure InternalInit;
 var

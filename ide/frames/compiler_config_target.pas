@@ -13,7 +13,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -28,10 +28,18 @@ unit compiler_config_target;
 interface
 
 uses
-  Classes, SysUtils, strutils, Controls, Dialogs, Graphics, StdCtrls,
-  LCLProc, LazFileUtils, DefineTemplates, IDEOptionsIntf, MacroIntf,
-  IDEDialogs, CompilerOptions, LazarusIDEStrConsts,
-  TransferMacros, PackageDefs, Project, compiler_parsing_options;
+  Classes, SysUtils, strutils,
+  // LCL
+  Controls, Dialogs, Graphics, StdCtrls,
+  // LazUtils
+  LazFileUtils, LazStringUtils,
+  // CodeTools
+  DefineTemplates,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, MacroIntf, IDEDialogs,
+  // IDE
+  CompilerOptions, LazarusIDEStrConsts, TransferMacros, PackageDefs, Project,
+  compiler_parsing_options;
 
 type
 
@@ -198,6 +206,7 @@ begin
     if not IDEMacros.SubstituteMacros(AValue) then
       AValue := '';
   end;
+  //debugln(['TCompilerConfigTargetFrame.UpdateWidgetSet ',AValue]);
   CurrentWidgetTypeLabel.Caption := Format(lisCurrentLCLWidgetSet, [AValue]);
 end;
 
@@ -207,14 +216,14 @@ begin
   begin
     aTargetOS := '$(TargetOS)';
     if not GlobalMacroList.SubstituteStr(aTargetOS) then
-      raise Exception.CreateFmt('Cannot substitute macro "%s".', [aTargetOS]);
+      raise Exception.CreateFmt(lisCannotSubstituteMacroS, [aTargetOS]);
   end;
-  // Now hide/show the whole GroupBox because there is only one setting.
-  grbTargetOptions.Visible := AnsiStartsText('Win', aTargetOS);
-  if grbTargetOptions.Visible then
-    CurrentWidgetTypeLabel.AnchorSideTop.Control := grbTargetOptions
+
+  if AnsiStartsText('Win', aTargetOS) then
+    chkWin32GraphicApp.Caption := dlgWin32GUIApp + ' (-WG)'
   else
-    CurrentWidgetTypeLabel.AnchorSideTop.Control := grbTargetPlatform;
+    chkWin32GraphicApp.Caption := dlgWin32GUIApp + ' (-WG, '+
+      lisOptionValueIgnored+')';
 end;
 
 procedure TCompilerConfigTargetFrame.UpdateByTargetCPU(aTargetCPU: string);
@@ -227,7 +236,7 @@ begin
   begin
     aTargetCPU := '$(TargetCPU)';
     if not GlobalMacroList.SubstituteStr(aTargetCPU) then
-      raise Exception.CreateFmt('Cannot substitute macro "%s".', [aTargetCPU]);
+      raise Exception.CreateFmt(lisCannotSubstituteMacroS, [aTargetCPU]);
   end;
 
   // Update selection list for target processor
@@ -250,43 +259,57 @@ end;
 procedure TCompilerConfigTargetFrame.Setup(ADialog: TAbstractOptionsEditorDialog);
 var
   s: ShortString;
+  List: TStringList;
 begin
-  FDialog := ADialog;
-  // Config
-  grbConfigFile.Caption := dlgConfigFiles;
-  chkConfigFile.Caption := dlgUseFpcCfg + ' ('+lisIfNotChecked+' -n)';
-  chkCustomConfigFile.Caption := dlgUseCustomConfig + ' (@)';
-  edtConfigPath.Text := '';
+  List:=TStringList.Create;
+  try
+    //debugln(['TCompilerConfigTargetFrame.Setup ']);
+    FDialog := ADialog;
+    // Config
+    grbConfigFile.Caption := dlgConfigFiles;
+    chkConfigFile.Caption := dlgUseFpcCfg + ' ('+lisIfNotChecked+' -n)';
+    chkCustomConfigFile.Caption := dlgUseCustomConfig + ' (@)';
+    edtConfigPath.Text := '';
 
-  // Target platform
-  grbTargetPlatform.Caption := dlgTargetPlatform;
-  lblTargetOS.Caption := dlgTargetOS + ' (-T)';
-  with TargetOSComboBox do
-  begin
-    Items.Add('(' + lisDefault + ')');
+    // Target platform
+    grbTargetPlatform.Caption := dlgTargetPlatform;
+    lblTargetOS.Caption := dlgTargetOS + ' (-T)';
+    List.Clear;
+    List.Add('(' + lisDefault + ')');
     for s in FPCOperatingSystemCaptions do
-      Items.Add(s);
-    ItemIndex := 0;
-  end;
+      List.Add(s);
+    for s in Pas2jsPlatformNames do
+      List.Add(s);
+    with TargetOSComboBox do
+    begin
+      Items.Assign(List);
+      ItemIndex := 0;
+    end;
 
-  // Target CPU
-  lblTargetCPU.Caption := dlgTargetCPUFamily + ' (-P)';
-  with TargetCPUComboBox do
-  begin
-    Items.Add('(' + lisDefault + ')');
+    // Target CPU
+    lblTargetCPU.Caption := dlgTargetCPUFamily + ' (-P)';
+    List.Clear;
+    List.Add('(' + lisDefault + ')');
     for s in FPCProcessorNames do
-      Items.Add(s);
-    ItemIndex := 0;
-  end;
+      List.Add(s);
+    for s in Pas2jsProcessorNames do
+      List.Add(s);
+    with TargetCPUComboBox do
+    begin
+      Items.Assign(List);
+      ItemIndex := 0;
+    end;
 
-  // Target CPU
-  lblTargetProc.Caption := dlgTargetProc+' (-Cp)';
-  // Target-specific options
-  grbTargetOptions.Caption := dlgTargetSpecificOptions;
-  chkWin32GraphicApp.Caption := dlgWin32GUIApp + ' (-WG)';
-  // WidgetSet
-  UpdateWidgetSet;
-  LCLWidgetTypeLabel.Caption := lisSelectAnotherLCLWidgetSet;
+    // Target CPU
+    lblTargetProc.Caption := dlgTargetProc+' (-Cp)';
+    // Target-specific options
+    grbTargetOptions.Caption := dlgTargetSpecificOptions;
+    chkWin32GraphicApp.Caption := dlgWin32GUIApp + ' (-WG)';
+    // WidgetSet
+    LCLWidgetTypeLabel.Caption := lisSelectAnotherLCLWidgetSet;
+  finally
+    List.Free;
+  end;
 end;
 
 procedure TCompilerConfigTargetFrame.ReadSettings(AOptions: TAbstractIDEOptions);
@@ -336,6 +359,8 @@ begin
     chkWin32GraphicApp.Checked := Win32GraphicApp;
     chkWin32GraphicApp.Enabled := NeedsLinkerOpts;
   end;
+
+  UpdateWidgetSet;
 end;
 
 procedure TCompilerConfigTargetFrame.WriteSettings(AOptions: TAbstractIDEOptions);

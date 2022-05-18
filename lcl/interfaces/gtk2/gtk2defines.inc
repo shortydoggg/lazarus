@@ -1,5 +1,5 @@
 {%MainUnit gtk2proc.pp}{%MainUnit gtkint.pp}
-{ $Id: gtk2defines.inc 44972 2014-05-07 20:11:25Z maxim $ }
+{ $Id: gtk2defines.inc 58176 2018-06-07 19:49:58Z mattias $ }
 
 {******************************************************************************
   Centralized includefile for some common gtk defines
@@ -83,7 +83,9 @@
    keyboardlayouts are used. With UseOwnShiftState we keep track of the shiftate
    ourself
   *)
-  {$define UseOwnShiftState}
+  {$ifndef DisableUseOwnShiftState}
+    {$define UseOwnShiftState}
+  {$endif}
 {$endif}
 
 // see http://bugs.freepascal.org/view.php?id=12145.

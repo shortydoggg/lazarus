@@ -31,7 +31,7 @@ interface
 
 uses
   Classes, StdCtrls, ExtCtrls,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -52,9 +52,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -103,7 +103,7 @@ end;
 
 procedure TfTransform.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Transform do
+  with FormattingSettings.Transform do
   begin
     rbBeginEnd.ItemIndex := Ord(BeginEndStyle);
     cbBlockEndSemicolons.Checked := AddBlockEndSemicolon;
@@ -123,7 +123,7 @@ end;
 
 procedure TfTransform.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Transform do
+  with FormattingSettings.Transform do
   begin
     BeginEndStyle := TTriOptionStyle(rbBeginEnd.ItemIndex);
     AddBlockEndSemicolon := cbBlockEndSemicolons.Checked;
@@ -144,7 +144,7 @@ end;
 
 class function TfTransform.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 initialization

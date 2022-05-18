@@ -1,4 +1,4 @@
-{ $Id: debugger.pp 49494 2015-07-04 23:08:00Z juha $ }
+{ $Id: debugger.pp 59705 2018-11-29 23:01:14Z maxim $ }
 {                        ----------------------------------------
                            Debugger.pp  -  Debugger base classes
                          ----------------------------------------
@@ -25,7 +25,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -38,8 +38,12 @@ unit Debugger;
 interface
 
 uses
-  TypInfo, Classes, SysUtils, Laz2_XMLCfg, math, LazFileUtils, LazLoggerBase,
-  LCLProc, LazConfigStorage, LazClasses, maps,
+  TypInfo, Classes, SysUtils, math,
+  // LCL
+  LCLProc,
+  // LazUtils
+  Laz2_XMLCfg, LazFileUtils, LazLoggerBase, LazConfigStorage, LazClasses, Maps,
+  // DebuggerIntf
   DbgIntfBaseTypes, DbgIntfMiscClasses, DbgIntfDebuggerBase;
 
 const
@@ -79,9 +83,22 @@ type
     property ColumnValueWidth: Integer read FColumnValueWidth write FColumnValueWidth;
   end;
 
+  { TDebuggerWatchesDlgConfig }
+
+  TDebuggerCallStackDlgConfig = class(TDebuggerConfigStoreBase)
+  private
+    FViewCount: Integer;
+  public
+    constructor Create;
+    procedure Init; override;
+  published
+    property ViewCount: Integer read FViewCount write FViewCount;
+  end;
+
   TDebuggerConfigStore = class(TDebuggerConfigStoreBase)
   private
     FDebuggerClass: String;
+    FDlgCallStackConfig: TDebuggerCallStackDlgConfig;
     FTDebuggerWatchesDlgConfig: TDebuggerWatchesDlgConfig;
   public
     procedure Load; override;
@@ -91,6 +108,7 @@ type
     destructor Destroy; override;
     property DebuggerClass: String read FDebuggerClass write FDebuggerClass;
     property DlgWatchesConfig: TDebuggerWatchesDlgConfig read FTDebuggerWatchesDlgConfig;
+    property DlgCallStackConfig: TDebuggerCallStackDlgConfig read FDlgCallStackConfig write FDlgCallStackConfig;
   published
   end;
 
@@ -328,10 +346,9 @@ type
     property Items[AIndex: Integer]: TIDEBreakPointGroup read GetItem; default;
   end;
 
-  TIDEBreakPoint = class(TBaseBreakPoint)
+  TIDEBreakPoint = class(TIDEBreakPointBase)
   private
     FLogEvalExpression: String;
-    FMaster: TDBGBreakPoint;
     FAutoContinueTime: Cardinal;
     FActions: TIDEBreakPointActions;
     FDisableGroupList: TIDEBreakPointGroupList;
@@ -352,6 +369,7 @@ type
     procedure SetEnabled(const AValue: Boolean); override;
     procedure SetInitialEnabled(const AValue: Boolean); override;
     procedure SetExpression(const AValue: String); override;
+    procedure SetKind(const AValue: TDBGBreakPointKind);
     function  DebugExeLine: Integer; virtual;  // Same as line, but in Subclass: the line in the compiled exe
 
     procedure DisableGroups;
@@ -432,10 +450,10 @@ type
   public
     constructor Create(const ABreakPointClass: TIDEBreakPointClass);
     destructor Destroy; override;
-    function Add(const ASource: String; const ALine: Integer): TIDEBreakPoint; overload;
-    function Add(const AAddress: TDBGPtr): TIDEBreakPoint; overload;
+    function Add(const ASource: String; const ALine: Integer; AnUpdating: Boolean = False): TIDEBreakPoint; overload; reintroduce;
+    function Add(const AAddress: TDBGPtr; AnUpdating: Boolean = False): TIDEBreakPoint; overload; reintroduce;
     function Add(const AData: String; const AScope: TDBGWatchPointScope;
-                 const AKind: TDBGWatchPointKind): TIDEBreakPoint; overload;
+                 const AKind: TDBGWatchPointKind; AnUpdating: Boolean = False): TIDEBreakPoint; overload; reintroduce;
     function Find(const ASource: String; const ALine: Integer): TIDEBreakPoint; overload;
     function Find(const ASource: String; const ALine: Integer; const AIgnore: TIDEBreakPoint): TIDEBreakPoint; overload;
     function Find(const AAddress: TDBGPtr): TIDEBreakPoint; overload;
@@ -538,7 +556,7 @@ const
      'wdfChar', 'wdfString',
      'wdfDecimal', 'wdfUnsigned', 'wdfFloat', 'wdfHex',
      'wdfPointer',
-     'wdfMemDump'
+     'wdfMemDump', 'wdfBinary'
     );
 
 type
@@ -666,7 +684,7 @@ type
     procedure SetSnapShot(const AValue: TIdeWatchValue);
   protected
     procedure RequestData; override;
-    procedure DoDataValidityChanged(AnOldValidity: TDebuggerDataState); override;
+    procedure DoDataValidityChanged({%H-}AnOldValidity: TDebuggerDataState); override;
   public
     property SnapShot: TIdeWatchValue read FSnapShot write SetSnapShot;
   end;
@@ -803,7 +821,7 @@ type
                               APath: string);
   public
     constructor CreateFromXMLConfig(const AConfig: TXMLConfig; APath: string);
-    procedure SetDataValidity(AValidity: TDebuggerDataState); override;
+    procedure SetDataValidity({%H-}AValidity: TDebuggerDataState); override;
   end;
 
   { TCurrentLocals }
@@ -926,7 +944,7 @@ type
     procedure AddNotification(const ANotification: TIDELineInfoNotification);
     procedure RemoveNotification(const ANotification: TIDELineInfoNotification);
     function Count: Integer; override;
-    function GetAddress(const AIndex: Integer; const ALine: Integer): TDbgPtr; override;
+    function HasAddress(const AIndex: Integer; const ALine: Integer): Boolean; override;
     function GetInfo(AAdress: TDbgPtr; out ASource, ALine, AOffset: Integer): Boolean; override;
     function IndexOf(const ASource: String): integer; override;
     procedure Request(const ASource: String); override;
@@ -956,7 +974,7 @@ type
   TIDERegisterValue = class(TRegisterValue)
   protected
     procedure DoDataValidityChanged(AnOldValidity: TDebuggerDataState); override;
-    procedure DoDisplayFormatChanged(AnOldFormat: TRegisterDisplayFormat); override;
+    procedure DoDisplayFormatChanged({%H-}AnOldFormat: TRegisterDisplayFormat); override;
   end;
 
   { TIDERegisters }
@@ -1129,10 +1147,10 @@ type
   public
     procedure DoEntriesCreated; override;
     procedure DoEntriesUpdated; override;
-    procedure SetCountValidity(AValidity: TDebuggerDataState); override;
-    procedure SetHasAtLeastCountInfo(AValidity: TDebuggerDataState; AMinCount: Integer = - 1);
+    procedure SetCountValidity({%H-}AValidity: TDebuggerDataState); override;
+    procedure SetHasAtLeastCountInfo({%H-}AValidity: TDebuggerDataState; {%H-}AMinCount: Integer = - 1);
       override;
-    procedure SetCurrentValidity(AValidity: TDebuggerDataState); override;
+    procedure SetCurrentValidity({%H-}AValidity: TDebuggerDataState); override;
   public
     constructor Create;
     function CreateCopy: TCallStackBase; override;
@@ -1330,6 +1348,9 @@ type
     FThread: TIdeThreadEntry;
   protected
     function GetUnitInfoProvider: TDebuggerUnitInfoProvider; override;
+  public
+    function CreateCopy: TCallStackEntry; override;
+    procedure Assign(AnOther: TCallStackEntry); override;
   end;
 
   { TThreadEntry }
@@ -1381,7 +1402,7 @@ type
                        const AThreadId: Integer; const AThreadName: String;
                        const AThreadState: String;
                        AState: TDebuggerDataState = ddsValid): TThreadEntry; override;
-    procedure SetValidity(AValidity: TDebuggerDataState); override;
+    procedure SetValidity({%H-}AValidity: TDebuggerDataState); override;
     property Entries[const AnIndex: Integer]: TIdeThreadEntry read GetEntry; default;
     property EntryById[const AnID: Integer]: TIdeThreadEntry read GetEntryById;
   end;
@@ -1726,6 +1747,7 @@ const
     'StepOverInstr',
     'StepIntoInstr',
     'SendConsoleInput'
+//    'SendSignal'
     );
 
   DBGStateNames: array[TDBGState] of string = (
@@ -1751,7 +1773,6 @@ const
     );
 
 function DBGCommandNameToCommand(const s: string): TDBGCommand;
-function DBGStateNameToState(const s: string): TDBGState; deprecated;
 function DBGBreakPointActionNameToAction(const s: string): TIDEBreakPointAction;
 
 function dbgs(AFlag: TDebuggerLocationFlag): String; overload;
@@ -1802,13 +1823,6 @@ begin
   Result:=dcStop;
 end;
 
-function DBGStateNameToState(const s: string): TDBGState;
-begin
-  for Result:=Low(TDBGState) to High(TDBGState) do
-    if AnsiCompareText(s,DBGStateNames[Result])=0 then exit;
-  Result:=dsNone;
-end;
-
 function DBGBreakPointActionNameToAction(const s: string): TIDEBreakPointAction;
 begin
   for Result:=Low(TIDEBreakPointAction) to High(TIDEBreakPointAction) do
@@ -1816,11 +1830,37 @@ begin
   Result:=bpaStop;
 end;
 
+{ TDebuggerCallStackDlgConfig }
+
+constructor TDebuggerCallStackDlgConfig.Create;
+begin
+  Init;
+end;
+
+procedure TDebuggerCallStackDlgConfig.Init;
+begin
+  inherited Init;
+end;
+
 { TIdeThreadFrameEntry }
 
 function TIdeThreadFrameEntry.GetUnitInfoProvider: TDebuggerUnitInfoProvider;
 begin
   Result := FThread.GetUnitInfoProvider;
+end;
+
+function TIdeThreadFrameEntry.CreateCopy: TCallStackEntry;
+begin
+  Result := TIdeThreadFrameEntry.Create;
+  Result.Assign(Self);
+end;
+
+procedure TIdeThreadFrameEntry.Assign(AnOther: TCallStackEntry);
+begin
+  inherited Assign(AnOther);
+  if AnOther is TIdeThreadFrameEntry then begin
+    FThread := TIdeThreadFrameEntry(AnOther).FThread;
+  end;
 end;
 
 { TIDEBreakPointGroupList }
@@ -1942,6 +1982,13 @@ begin
   finally
     ConfigStore.UndoAppendBasePath;
   end;
+  ConfigStore.AppendBasePath('CallStackDlg/');
+  try
+    FDlgCallStackConfig.ConfigStore := ConfigStore;
+    FDlgCallStackConfig.Load;
+  finally
+    ConfigStore.UndoAppendBasePath;
+  end;
 end;
 
 procedure TDebuggerConfigStore.Save;
@@ -1956,17 +2003,26 @@ begin
   finally
     ConfigStore.UndoAppendBasePath;
   end;
+  ConfigStore.AppendBasePath('CallStackDlg/');
+  try
+    FDlgCallStackConfig.ConfigStore := ConfigStore;
+    FDlgCallStackConfig.Save;
+  finally
+    ConfigStore.UndoAppendBasePath;
+  end;
 end;
 
 constructor TDebuggerConfigStore.Create;
 begin
   FTDebuggerWatchesDlgConfig := TDebuggerWatchesDlgConfig.Create;
+  FDlgCallStackConfig := TDebuggerCallStackDlgConfig.Create;
 end;
 
 destructor TDebuggerConfigStore.Destroy;
 begin
   inherited Destroy;
   FreeAndNil(FTDebuggerWatchesDlgConfig);
+  FreeAndNil(FDlgCallStackConfig);
 end;
 
 { TDebuggerUnitInfoProvider }
@@ -3613,17 +3669,17 @@ end;
 
 function TCurrentCallStack.GetCurrent: Integer;
 begin
+  Result := 0;
   case FCurrentValidity of
     ddsUnknown:   begin
-        Result := 0;
         FCurrentValidity := ddsRequested;
         FMonitor.RequestCurrent(self);
         if FCurrentValidity = ddsValid then
           Result := inherited GetCurrent();
       end;
-    ddsRequested, ddsEvaluating: Result := 0;
     ddsValid:                    Result := inherited GetCurrent;
-    ddsInvalid, ddsError:        Result := 0;
+    //ddsRequested, ddsEvaluating: Result := 0;
+    //ddsInvalid, ddsError:        Result := 0;
   end;
 end;
 
@@ -3697,17 +3753,17 @@ end;
 
 function TCurrentCallStack.GetCount: Integer;
 begin
+  Result := 0;
   case FCountValidity of
     ddsUnknown:   begin
-        Result := 0;
         FCountValidity := ddsRequested;
         FMonitor.RequestCount(self);
         if FCountValidity = ddsValid then
           Result := FCount;
       end;
-    ddsRequested, ddsEvaluating: Result := 0;
     ddsValid:                    Result := FCount;
-    ddsInvalid, ddsError:        Result := 0;
+    //ddsRequested, ddsEvaluating: Result := 0;
+    //ddsInvalid, ddsError:        Result := 0;
   end;
 end;
 
@@ -3840,27 +3896,20 @@ end;
 
 function TCurrentCallStack.HasAtLeastCount(ARequiredMinCount: Integer): TNullableBool;
 begin
-  if FCountValidity = ddsValid then begin
-    Result := inherited HasAtLeastCount(ARequiredMinCount);
-    exit;
-  end;
-
-  if FAtLeastCountOld >= ARequiredMinCount then begin
-    Result := nbTrue;
-    exit;
-  end;
-
+  if FCountValidity = ddsValid then
+    exit(inherited HasAtLeastCount(ARequiredMinCount));
+  if FAtLeastCountOld >= ARequiredMinCount then
+    exit(nbTrue);
   if (FAtLeastCountValidity = ddsValid) and (FAtLeastCount < ARequiredMinCount) then begin
     FAtLeastCountOld := FAtLeastCount;
     FAtLeastCountValidity := ddsUnknown;
   end;
 
+  Result := nbUnknown;
   case FAtLeastCountValidity of
     ddsUnknown:   begin
-        Result := nbUnknown;
         if FCountValidity in [ddsRequested, ddsEvaluating] then
           exit;
-
         FAtLeastCountValidity := ddsRequested;
         FMonitor.RequestAtLeastCount(self, ARequiredMinCount);
         if FCountValidity = ddsValid then
@@ -4103,7 +4152,7 @@ procedure TIdeThreadsMonitor.DoStateEnterPause;
 begin
   inherited DoStateEnterPause;
   if (CurrentThreads = nil) then Exit;
-  CurrentThreads.SetValidity(ddsUnknown);
+  CurrentThreads.SetValidity(ddsUnknown); // TODO: this may be wrong, for any debugger that keeps threads updated while running
   CurrentThreads.Paused := True;
 end;
 
@@ -4489,18 +4538,18 @@ begin
   if (Collection <> nil) and (TIDEBreakPoints(Collection).FMaster <> nil)
   and (Dest is TDBGBreakPoint)
   then begin
-    Assert(FMaster=nil, 'TManagedBreakPoint.AssignTO already has Master');
-    if FMaster <> nil then FMaster.Slave := nil;
-    FMaster := TDBGBreakPoint(Dest);
-    FMaster.Slave := Self;
+    Assert(Master=nil, 'TManagedBreakPoint.AssignTO already has Master');
+    if Master <> nil then Master.Slave := nil;
+    Master := TDBGBreakPoint(Dest);
+    Master.Slave := Self;
   end;
 end;
 
 procedure TIDEBreakPoint.DoChanged;
 begin
-  if (FMaster <> nil)
-  and (FMaster.Slave = nil)
-  then FMaster := nil;
+  if (Master <> nil)
+  and (Master.Slave = nil)
+  then Master := nil;
 
   inherited DoChanged;
 end;
@@ -4513,16 +4562,16 @@ end;
 
 function TIDEBreakPoint.GetHitCount: Integer;
 begin
-  if FMaster = nil
+  if Master = nil
   then Result := 0
-  else Result := FMaster.HitCount;
+  else Result := Master.HitCount;
 end;
 
 function TIDEBreakPoint.GetValid: TValidState;
 begin
-  if FMaster = nil
+  if Master = nil
   then Result := vsUnknown
-  else Result := FMaster.Valid;
+  else Result := Master.Valid;
 end;
 
 procedure TIDEBreakPoint.SetBreakHitCount(const AValue: Integer);
@@ -4530,7 +4579,7 @@ begin
   if BreakHitCount = AValue then exit;
   inherited SetBreakHitCount(AValue);
   DoUserChanged;
-  if FMaster <> nil then FMaster.BreakHitCount := AValue;
+  if Master <> nil then Master.BreakHitCount := AValue;
 end;
 
 procedure TIDEBreakPoint.SetEnabled(const AValue: Boolean);
@@ -4538,7 +4587,7 @@ begin
   if Enabled = AValue then exit;
   inherited SetEnabled(AValue);
   InitialEnabled:=Enabled;
-  if FMaster <> nil then FMaster.Enabled := AValue;
+  if Master <> nil then Master.Enabled := AValue;
 end;
 
 procedure TIDEBreakPoint.SetInitialEnabled(const AValue: Boolean);
@@ -4546,7 +4595,7 @@ begin
   if InitialEnabled = AValue then exit;
   inherited SetInitialEnabled(AValue);
   DoUserChanged;
-  if FMaster <> nil then FMaster.InitialEnabled := AValue;
+  if Master <> nil then Master.InitialEnabled := AValue;
 end;
 
 procedure TIDEBreakPoint.SetExpression(const AValue: String);
@@ -4554,7 +4603,15 @@ begin
   if AValue=Expression then exit;
   inherited SetExpression(AValue);
   DoUserChanged;
-  if FMaster <> nil then FMaster.Expression := AValue;
+  if Master <> nil then Master.Expression := AValue;
+end;
+
+procedure TIDEBreakPoint.SetKind(const AValue: TDBGBreakPointKind);
+begin
+  if AValue=Kind then exit;
+  inherited SetKind(AValue);
+  DoUserChanged;
+  if Master <> nil then Master.Kind := AValue;
 end;
 
 function TIDEBreakPoint.DebugExeLine: Integer;
@@ -4573,7 +4630,7 @@ function TIDEBreakPoint.DebugText: string;
 var
   s: String;
 begin
-  WriteStr(s, FKind);
+  //WriteStr(s, FKind);
   Result := dbgs(self) + ' ' + s + ' at ' + Source +':' + IntToStr(Line);
 end;
 {$ENDIF}
@@ -4591,11 +4648,7 @@ destructor TIDEBreakPoint.Destroy;
 var
   Grp: TIDEBreakPointGroup;
 begin
-  if FMaster <> nil
-  then begin
-    FMaster.Slave := nil;
-    ReleaseRefAndNil(FMaster);
-  end;
+  ReleaseMaster;
 
   if (TIDEBreakPoints(Collection) <> nil)
   then TIDEBreakPoints(Collection).NotifyRemove(Self);
@@ -4634,11 +4687,11 @@ begin
   inherited DoHit(ACount, AContinue);
   AContinue := AContinue or not (bpaStop in Actions);
   if bpaLogMessage in Actions
-  then FMaster.DoLogMessage(FLogMessage);
+  then Master.DoLogMessage(FLogMessage);
   if (bpaEValExpression in Actions) and (Trim(FLogEvalExpression) <> '')
-  then FMaster.DoLogExpression(Trim(FLogEvalExpression));
+  then Master.DoLogExpression(Trim(FLogEvalExpression));
   if bpaLogCallStack in Actions
-  then FMaster.DoLogCallStack(FLogCallStackLimit);
+  then Master.DoLogCallStack(FLogCallStackLimit);
   // SnapShot is taken in TDebugManager.DebuggerChangeState
   if bpaEnableGroup in Actions
   then EnableGroups;
@@ -4698,7 +4751,7 @@ var
 begin
   FLoading:=true;
   try
-    Kind:=TDBGBreakPointKind(GetEnumValueDef(TypeInfo(TDBGBreakPointKind),XMLConfig.GetValue(Path+'Kind/Value',''),0));
+    SetKind(TDBGBreakPointKind(GetEnumValueDef(TypeInfo(TDBGBreakPointKind),XMLConfig.GetValue(Path+'Kind/Value',''),0)));
     GroupName:=XMLConfig.GetValue(Path+'Group/Name','');
     Group:=OnGetGroup(GroupName);
     Expression:=XMLConfig.GetValue(Path+'Expression/Value','');
@@ -4718,7 +4771,7 @@ begin
     FSource:=Filename;
 
     InitialEnabled:=XMLConfig.GetValue(Path+'InitialEnabled/Value',true);
-    Enabled:=FInitialEnabled;
+    Enabled:=InitialEnabled;
     FLine:=XMLConfig.GetValue(Path+'Line/Value',-1);
     FLogEvalExpression := XMLConfig.GetValue(Path+'LogEvalExpression/Value', '');
     FLogMessage:=XMLConfig.GetValue(Path+'LogMessage/Value','');
@@ -4796,26 +4849,30 @@ end;
 procedure TIDEBreakPoint.SetAddress(const AValue: TDBGPtr);
 begin
   inherited SetAddress(AValue);
-  if FMaster<>nil then FMaster.Address := Address;
+  if Master<>nil then Master.Address := Address;
+
+  //TODO: Why not DoUserChanged; ?
 end;
 
 procedure TIDEBreakPoint.SetLocation(const ASource: String; const ALine: Integer);
 begin
   inherited SetLocation(ASource, ALine);
-  if FMaster<>nil then FMaster.SetLocation(ASource, DebugExeLine);
+  if Master<>nil then Master.SetLocation(ASource, DebugExeLine);
+  //TODO: Why not DoUserChanged; ?
 end;
 
 procedure TIDEBreakPoint.SetWatch(const AData: String; const AScope: TDBGWatchPointScope;
   const AKind: TDBGWatchPointKind);
 begin
   inherited SetWatch(AData, AScope, AKind);
-  if FMaster<>nil then FMaster.SetWatch(AData, AScope, AKind);
+  if Master<>nil then Master.SetWatch(AData, AScope, AKind);
+  //TODO: Why not DoUserChanged; ?
 end;
 
 procedure TIDEBreakPoint.ResetMaster;
 begin
-  if FMaster <> nil then FMaster.Slave := nil;
-  FMaster := nil;
+  if Master <> nil then Master.Slave := nil;
+  Master := nil;
   Changed;
 end;
 
@@ -4879,23 +4936,25 @@ end;
 { TIDEBreakPoints }
 { =========================================================================== }
 
-function TIDEBreakPoints.Add(const ASource: String;
-  const ALine: Integer): TIDEBreakPoint;
+function TIDEBreakPoints.Add(const ASource: String; const ALine: Integer;
+  AnUpdating: Boolean): TIDEBreakPoint;
 begin
-  Result := TIDEBreakPoint(inherited Add(ASource, ALine));
+  Result := TIDEBreakPoint(inherited Add(ASource, ALine, AnUpdating));
   NotifyAdd(Result);
 end;
 
-function TIDEBreakPoints.Add(const AAddress: TDBGPtr): TIDEBreakPoint;
+function TIDEBreakPoints.Add(const AAddress: TDBGPtr; AnUpdating: Boolean
+  ): TIDEBreakPoint;
 begin
-  Result := TIDEBreakPoint(inherited Add(AAddress));
+  Result := TIDEBreakPoint(inherited Add(AAddress, AnUpdating));
   NotifyAdd(Result);
 end;
 
-function TIDEBreakPoints.Add(const AData: String; const AScope: TDBGWatchPointScope;
-  const AKind: TDBGWatchPointKind): TIDEBreakPoint;
+function TIDEBreakPoints.Add(const AData: String;
+  const AScope: TDBGWatchPointScope; const AKind: TDBGWatchPointKind;
+  AnUpdating: Boolean): TIDEBreakPoint;
 begin
-  Result := TIDEBreakPoint(inherited Add(AData, AScope, AKind));
+  Result := TIDEBreakPoint(inherited Add(AData, AScope, AKind, AnUpdating));
   NotifyAdd(Result);
 end;
 
@@ -4999,8 +5058,8 @@ begin
 
   if FMaster <> nil
   then begin
-    // create without source. it will be set in assign (but during Begin/EndUpdate)
-    BP := FMaster.Add('', 0);
+    // create without data. it will be set in assign (but during Begin/EndUpdate)
+    BP :=  TBaseBreakPoint(FMaster.Add);
     BP.Assign(ABreakPoint); // will set ABreakPoint.FMaster := BP;
   end;
 end;
@@ -6823,11 +6882,12 @@ begin
   else Result := Master.Count;
 end;
 
-function TIDELineInfo.GetAddress(const AIndex: Integer; const ALine: Integer): TDbgPtr;
+function TIDELineInfo.HasAddress(const AIndex: Integer; const ALine: Integer
+  ): Boolean;
 begin
   if Master = nil
-  then Result := inherited GetAddress(AIndex, ALine)
-  else Result := Master.GetAddress(AIndex, ALine);
+  then Result := inherited HasAddress(AIndex, ALine)
+  else Result := Master.HasAddress(AIndex, ALine);
 end;
 
 function TIDELineInfo.GetInfo(AAdress: TDbgPtr; out ASource, ALine,

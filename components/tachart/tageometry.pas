@@ -44,6 +44,7 @@ type
 
 function CopyPoints(
   APoints: array of TPoint; AStartIndex, ANumPts: Integer): TPointArray;
+function DotProduct(A, B: TDoublePoint): Double;
 function DoublePoint(AX, AY: Double): TDoublePoint; inline; overload;
 function DoublePoint(const AP: TPoint): TDoublePoint; inline; overload;
 function DoubleRect(AX1, AY1, AX2, AY2: Double): TDoubleRect; inline;
@@ -75,6 +76,9 @@ function NextNumberSeq(
 function PointDist(const A, B: TPoint): Integer; inline;
 function PointDistX(const A, B: TPoint): Integer; inline;
 function PointDistY(const A, B: TPoint): Integer; inline;
+function PointLineDist(const P, A, B: TPoint): Integer;
+function ProjToLine(const P, A, B: TDoublePoint): TDoublePoint; overload;
+function ProjToLine(const P, A, B: TPoint): TPoint; overload;
 function ProjToRect(
   const APt: TDoublePoint; const ARect: TDoubleRect): TDoublePoint;
 function RectIntersectsRect(
@@ -121,6 +125,11 @@ begin
   SetLength(Result, ANumPts);
   for i := 0 to ANumPts - 1 do
     Result[i] := APoints[i + AStartIndex];
+end;
+
+function DotProduct(A, B: TDoublePoint): Double;
+begin
+  Result := A.X * B.X + A.Y * B.Y;
 end;
 
 function DoublePoint(AX, AY: Double): TDoublePoint; inline;
@@ -540,6 +549,44 @@ end;
 function PointDistY(const A, B: TPoint): Integer; inline;
 begin
   Result := Min(Abs(Int64(A.Y) - B.Y), MaxInt);
+end;
+
+function PointLineDist(const P, A,B: TPoint): Integer;
+var
+  v, w, Q: TPoint;
+  dot: Int64;
+  lv: Integer;
+begin
+  if A = B then
+    Result := PointDist(A, P)
+  else begin
+    v := B - A;                // Vector pointing along line from A to B
+    w := P - A;                // Vector pointing from A to P
+    dot := Int64(v.x) * w.x + Int64(v.y) * w.y;  // dot product v . w
+    lv := PointDist(A, B);     // Length of vector AB
+    Q := (v * dot) div lv;     // Projection of P onto line A-B, seen from A
+    Result := PointDist(Q, w); // Length from A to Q
+  end;
+end;
+
+function ProjToLine(const P, A,B: TDoublePoint): TDoublePoint;
+var
+  v, s: TDoublePoint;
+begin
+  if P = A then
+    Result := A
+  else if P = B then
+    Result := B
+  else begin
+    s := B - A;
+    v := P - A;
+    Result := A + s * (DotProduct(v, s) / DotProduct(s, s));
+  end;
+end;
+
+function ProjToLine(const P, A, B: TPoint): TPoint;
+begin
+  Result := RoundPoint(ProjToLine(DoublePoint(P), DoublePoint(A), DoublePoint(B)));
 end;
 
 function ProjToRect(

@@ -14,7 +14,7 @@ unit LCLTranslator;
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 {
 This unit is needed for using translated form strings made by Lazarus IDE.
@@ -35,8 +35,15 @@ in directory where your program translation files are placed.
 interface
 
 uses
-  Classes, SysUtils, LResources, GetText, Controls, typinfo, LazFileUtils,
-  Translations, Forms, LazUTF8;
+  // RTL + FCL
+  Classes, SysUtils, typinfo, GetText,
+  // LCL
+  LResources, Forms, LCLType,
+  // LazUtils
+  {$IFDEF VerbosePOTranslator}
+  LazLoggerBase,
+  {$ENDIF}
+  Translations, LazFileUtils, LazUTF8;
 
 type
 
@@ -45,7 +52,7 @@ type
   TUpdateTranslator = class(TAbstractTranslator)
   private
     FStackPath: string;
-    procedure IntUpdateTranslation(AnInstance: TPersistent);
+    procedure IntUpdateTranslation(AnInstance: TPersistent; Level: integer = 0);
   public
     procedure UpdateTranslation(AnInstance: TPersistent);
   end;
@@ -78,8 +85,6 @@ function GetDefaultLang: String;
 
 implementation
 
-uses
-  Menus;
 
 type
   TPersistentAccess = class(TPersistent);
@@ -89,7 +94,7 @@ var
 
 function FindLocaleFileName(LCExt: string; Lang: string; Dir: string): string;
 var
-  T: string;
+  T, CurParam: string;
   i: integer;
 
   function GetLocaleFileName(const LangID, LCExt: string; Dir: string): string;
@@ -100,16 +105,17 @@ var
   begin
     DefaultLang := LangID;
 
+    AppDir := ExtractFilePath(ParamStrUTF8(0));
+    LCFileName := ChangeFileExt(ExtractFileName(ParamStrUTF8(0)), LCExt);
+
     if LangID <> '' then
     begin
-      AppDir := ExtractFilePath(ParamStrUTF8(0));
-      LCFileName := ChangeFileExt(ExtractFileName(ParamStrUTF8(0)), LCExt);
       FullLCFileName := ChangeFileExt(ExtractFileName(ParamStrUTF8(0)), '.' + LangID) + LCExt;
 
       if Dir<>'' then
       begin
         Dir := AppendPathDelim(Dir);
-        absoluteDir := FilenameIsWinAbsolute(Dir) or FilenameIsUnixAbsolute(Dir);
+        absoluteDir := FilenameIsAbsolute(Dir);
         if absoluteDir then
           Result := Dir + LangID + DirectorySeparator + LCFileName
         else
@@ -144,7 +150,7 @@ var
       if FileExistsUTF8(Result) then
         exit;
       {$ENDIF}
-      //Let us search for reducted files
+      //Let us search for short id files
       LangShortID := copy(LangID, 1, 2);
       Defaultlang := LangShortID;
 
@@ -238,6 +244,18 @@ var
         exit;
     end;
 
+    Result := AppDir + LCFileName;
+    if FileExistsUTF8(Result) then
+      exit;
+
+    Result := AppDir + 'locale' + DirectorySeparator + LCFileName;
+    if FileExistsUTF8(Result) then
+      exit;
+
+    Result := AppDir + 'languages' + DirectorySeparator + LCFileName;
+    if FileExistsUTF8(Result) then
+      exit;
+
     Result := '';
     DefaultLang := '';
   end;
@@ -246,12 +264,23 @@ begin
   Result := '';
 
   if Lang = '' then
-    for i := 1 to Paramcount - 1 do
-      if (ParamStrUTF8(i) = '--LANG') or (ParamStrUTF8(i) = '-l') or
-        (ParamStrUTF8(i) = '--lang') then
-        Lang := ParamStrUTF8(i + 1);
+    for i := 1 to ParamCount do
+    begin
+      CurParam := ParamStrUTF8(i);
+      if (CurParam = '-l') or (UTF8LowerCase(CurParam) = '--lang') then
+      begin
+        if i < ParamCount then
+          Lang := ParamStrUTF8(i + 1);
+      end
+      else
+        if UTF8StartsText('--lang=', CurParam) then
+        begin
+          Lang := CurParam;
+          UTF8Delete(Lang, 1, Length('--lang='));
+        end;
+    end;
 
-  //Win32 user may decide to override locale with LANG variable.
+  //User can decide to override locale with LANG variable.
   if Lang = '' then
     Lang := GetEnvironmentVariableUTF8('LANG');
 
@@ -259,15 +288,6 @@ begin
     LazGetLanguageIDs(Lang, T);
 
   Result := GetLocaleFileName(Lang, LCExt, Dir);
-  if Result <> '' then
-    exit;
-
-  Result := ChangeFileExt(ParamStrUTF8(0), LCExt);
-  if FileExistsUTF8(Result) then
-    exit;
-
-  Result := '';
-  DefaultLang := '';
 end;
 
 function GetIdentifierPath(Sender: TObject;
@@ -279,8 +299,7 @@ var
   Reader: TReader;
 begin
   Result := '';
-  if (PropInfo = nil) or
-     (SysUtils.CompareText(PropInfo^.PropType^.Name, 'TTRANSLATESTRING') <> 0) then
+  if (PropInfo=nil) or (PropInfo^.PropType<>TypeInfo(TTranslateString)) then
     exit;
 
   // do not translate at design time
@@ -303,15 +322,12 @@ begin
       Result := Instance.ClassName + '.' + PropInfo^.Name;
   end else if (Sender is TUpdateTranslator) then
     Result := TUpdateTranslator(Sender).FStackPath + '.' + PropInfo^.Name;
-  Result := UpperCase(Result);
+  Result := LowerCase(Result); // GetText requires same case as in .po file, which is lowercase
 end;
-
-var
-  lcfn: string;
 
 { TUpdateTranslator }
 
-procedure TUpdateTranslator.IntUpdateTranslation(AnInstance: TPersistent);
+procedure TUpdateTranslator.IntUpdateTranslation(AnInstance: TPersistent; Level: integer = 0);
 var
   i,j: integer;
   APropCount: integer;
@@ -320,76 +336,92 @@ var
   TmpStr: string;
   APersistentProp: TPersistent;
   StoreStackPath: string;
+  AComponent, SubComponent: TComponent;
 begin
+  {$IFDEF VerbosePOTranslator}
+  debugln(['TUpdateTranslator.IntUpdateTranslation START ',DbgSName(AnInstance),' Level=',Level]);
+  {$ENDIF}
   APropCount := GetPropList(AnInstance.ClassInfo, APropList);
   try
     for i := 0 to APropCount-1 do
       begin
       APropInfo:=APropList^[i];
       if Assigned(PPropInfo(APropInfo)^.GetProc) and
-         assigned(APropInfo^.PropType) and
+         Assigned(APropInfo^.PropType) and
          IsStoredProp(AnInstance, APropInfo) then
         case APropInfo^.PropType^.Kind of
           tkSString,
           tkLString,
-          tkAString:  begin
-                      TmpStr := '';
-                      LRSTranslator.TranslateStringProperty(self,aninstance,APropInfo,TmpStr);
-                      if TmpStr <>'' then
-                        SetStrProp(AnInstance, APropInfo, TmpStr);
-                      end;
-          tkclass:    begin
-                      APersistentProp := TPersistent(GetObjectProp(AnInstance, APropInfo, TPersistent));
-                      if Assigned(APersistentProp) then
-                        begin
-                        if APersistentProp is TCollection then
-                          begin
-                          for j := 0 to TCollection(APersistentProp).Count-1 do
-                            begin
-                            StoreStackPath:=FStackPath;
-                            FStackPath:=FStackPath+'.'+APropInfo^.Name+'['+inttostr(j)+']';
-                            IntUpdateTranslation(TCollection(APersistentProp).Items[j]);
-                            FStackPath:=StoreStackPath;
-                            end;
-                          end
-                        else
-                          begin
-                          if APersistentProp is TComponent then
-                            begin
-                            if (csSubComponent in TComponent(APersistentProp).ComponentStyle) then
-                              begin
-                              StoreStackPath:=FStackPath;
-                              FStackPath:=FStackPath+'.'+TComponent(APersistentProp).Name;
-                              IntUpdateTranslation(APersistentProp);
-                              FStackPath:=StoreStackPath;
-                              end
-                            end
-                          else
-                            begin
-                            StoreStackPath:=FStackPath;
-                            FStackPath:=FStackPath+'.'+APropInfo^.Name;
-                            IntUpdateTranslation(APersistentProp);
-                            FStackPath:=StoreStackPath;
-                            end;
-                          end;
-                        end;
-                      end;
+          tkAString:
+            if APropInfo^.PropType=TypeInfo(TTranslateString) then
+            begin
+              TmpStr := '';
+              {$IFDEF VerbosePOTranslator}
+              debugln(['TUpdateTranslator.IntUpdateTranslation ',GetStrProp(AnInstance,APropInfo)]);
+              {$ENDIF}
+              LRSTranslator.TranslateStringProperty(Self,AnInstance,APropInfo,TmpStr);
+              if TmpStr <>'' then
+                SetStrProp(AnInstance, APropInfo, TmpStr);
+            end;
+          tkClass:
+            begin
+              APersistentProp := TPersistent(GetObjectProp(AnInstance, APropInfo, TPersistent));
+              if Assigned(APersistentProp) then
+              begin
+                if APersistentProp is TCollection then
+                begin
+                  for j := 0 to TCollection(APersistentProp).Count-1 do
+                  begin
+                    StoreStackPath:=FStackPath;
+                    FStackPath:=FStackPath+'.'+APropInfo^.Name+'['+IntToStr(j)+']';
+                    IntUpdateTranslation(TCollection(APersistentProp).Items[j],Level+1);
+                    FStackPath:=StoreStackPath;
+                  end;
+                end
+                else
+                begin
+                  if APersistentProp is TComponent then
+                  begin
+                    AComponent:=TComponent(APersistentProp);
+                    if (csSubComponent in AComponent.ComponentStyle) then
+                    begin
+                      StoreStackPath:=FStackPath;
+                      FStackPath:=FStackPath+'.'+APropInfo^.Name;
+                      IntUpdateTranslation(APersistentProp,Level+1);
+                      FStackPath:=StoreStackPath;
+                    end
+                  end
+                  else
+                  begin
+                    StoreStackPath:=FStackPath;
+                    FStackPath:=FStackPath+'.'+APropInfo^.Name;
+                    IntUpdateTranslation(APersistentProp,Level+1);
+                    FStackPath:=StoreStackPath;
+                  end;
+                end;
+              end;
+            end;
           end;
       end;
   finally
-    freemem(APropList);
+    Freemem(APropList);
   end;
 
-  if (AnInstance is TComponent) then
-    for i := 0 to TComponent(AnInstance).ComponentCount-1 do
-      begin
+  if (Level=0) and (AnInstance is TComponent) then
+  begin
+    AComponent:=TComponent(AnInstance);
+    for i := 0 to AComponent.ComponentCount-1 do
+    begin
+      SubComponent:=AComponent.Components[i];
       StoreStackPath:=FStackPath;
-      if TComponent(AnInstance).Components[i] is TCustomFrame then
-        UpdateTranslation(TComponent(AnInstance).Components[i]);
-      FStackPath:=StoreStackPath+'.'+TComponent(AnInstance).Components[i].Name;
-      IntUpdateTranslation(TComponent(AnInstance).Components[i]);
+      if SubComponent is TCustomFrame then
+        UpdateTranslation(SubComponent);
+      if SubComponent.Name='' then continue;
+      FStackPath:=StoreStackPath+'.'+SubComponent.Name;
+      IntUpdateTranslation(SubComponent,Level+1);
       FStackPath:=StoreStackPath;
-      end;
+    end;
+  end;
 end;
 
 procedure TUpdateTranslator.UpdateTranslation(AnInstance: TPersistent);
@@ -442,7 +474,7 @@ constructor TPOTranslator.Create(POFileName: string);
 begin
   inherited Create;
   // TPOFile expects AFileName in UTF-8 encoding, no conversion required
-  FPOFile := TPOFile.Create(POFileName);
+  FPOFile := TPOFile.Create(POFileName, true);
 end;
 
 constructor TPOTranslator.Create(aPOFile: TPOFile);
@@ -468,6 +500,9 @@ begin
   if Assigned(FPOFile) then
   begin
     s := GetIdentifierPath(Sender, Instance, PropInfo);
+    {$IFDEF VerbosePOTranslator}
+    debugln(['TPOTranslator.TranslateStringProperty Content="',Content,'" s="',s,'" Instance=',Instance.ClassName,' PropInfo.Name=',PropInfo^.Name]);
+    {$ENDIF}
     if s <> '' then
     begin
       s := FPOFile.Translate(s, Content);
@@ -487,7 +522,7 @@ procedure SetDefaultLang(Lang: string; Dir: string = ''; ForceUpdate: boolean = 
 }
 var
   Dot1: integer;
-  LCLPath: string;
+  LCLPath, lcfn: string;
   LocalTranslator: TUpdateTranslator;
   i: integer;
 
@@ -515,7 +550,7 @@ begin
 
   if lcfn='' then
   begin
-    // try now with MO traslation resources
+    // try now with MO translation resources
     try
       lcfn := FindLocaleFileName('.mo', Lang, Dir);
       if lcfn <> '' then

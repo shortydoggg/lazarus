@@ -1,8 +1,32 @@
-{**********************************************************************
- This file is originally part of CodeTyphon Studio (http://www.pilotlogic.com/)
- Copied to Lazarus and modified.
-***********************************************************************}
+{
+***************************************************************************
+*                                                                         *
+*   This source is free software; you can redistribute it and/or modify   *
+*   it under the terms of the GNU General Public License as published by  *
+*   the Free Software Foundation; either version 2 of the License, or     *
+*   (at your option) any later version.                                   *
+*                                                                         *
+*   This code is distributed in the hope that it will be useful, but      *
+*   WITHOUT ANY WARRANTY; without even the implied warranty of            *
+*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU     *
+*   General Public License for more details.                              *
+*                                                                         *
+*   A copy of the GNU General Public License is available on the World    *
+*   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
+*   obtain it by writing to the Free Software Foundation,                 *
+*   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
+*                                                                         *
+***************************************************************************
 
+  Abstract:
+    A drop-down list with all component tab names.
+    Allows selection of any tab, including the ones not visible in tab control.
+    This list is opened from a button at the right edge of component palette.
+
+    This file is originally part of CodeTyphon Studio (http://www.pilotlogic.com/).
+    They improved Lazarus GPL code with this feature, then it was copied
+    and backported to Lazarus. Later it was modified with a different button etc.
+}
 unit CompPagesPopup;
 
 {$mode objfpc}{$H+}
@@ -10,8 +34,10 @@ unit CompPagesPopup;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, ComCtrls,
-  ExtCtrls, Buttons, MainBar, LazarusIDEStrConsts, LCLIntf, LMessages;
+  Classes, SysUtils, FileUtil, Forms, Controls, Graphics, LMessages,
+  Dialogs, ComCtrls, ExtCtrls, Buttons, LCLIntf,
+  IDEImagesIntf,
+  LazarusIDEStrConsts, MainBar, ComponentPalette_Options, MainBase;
 
 type
 
@@ -19,15 +45,16 @@ type
 
   TDlgCompPagesPopup = class(TForm)
     cBtnClose: TSpeedButton;
-    ImageList1: TImageList;
     Panel1: TPanel;
     Panel2: TPanel;
     TreeView1: TTreeView;
     procedure cBtnCloseClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
     procedure FormDeactivate(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure TreeView1Click(Sender: TObject);
   private
+    fViewAllNode, fOptionsNode: TTreeNode;
     fGroups: TStringList;   // Objects have group TreeNodes
     fLastCloseUp: QWord;
     fLastCanShowCheck: Boolean;
@@ -81,6 +108,15 @@ begin
   Close;
 end;
 
+procedure TDlgCompPagesPopup.FormCreate(Sender: TObject);
+begin
+  IDEImages.AssignImage(cBtnClose, 'menu_close');
+
+  TreeView1.Images := IDEImages.Images_16;
+  {TIDEImages.AddImageToImageList(ImageList1, 'item_package');
+  TIDEImages.AddImageToImageList(ImageList1, 'pkg_open');}
+end;
+
 procedure TDlgCompPagesPopup.DoClose(var CloseAction: TCloseAction);
 begin
   inherited DoClose(CloseAction);
@@ -113,14 +149,21 @@ end;
 procedure TDlgCompPagesPopup.TreeView1Click(Sender: TObject);
 var
   i: integer;
+  SelNode: TTreeNode;
 begin
-  if (TreeView1.Selected=nil) or (TreeView1.Selected.ImageIndex=1) then exit;
-  with MainIDEBar do
+  SelNode:=TreeView1.Selected;
+  if (SelNode=nil) or (SelNode.ImageIndex=1) then exit;
+  if SelNode=fViewAllNode then
+    MainIDE.DoShowComponentList
+  else if SelNode=fOptionsNode then
+    MainIDE.DoOpenIDEOptions(TCompPaletteOptionsFrame, '', [], [])
+  else with MainIDEBar do
     if Assigned(ComponentPageControl) and (ComponentPageControl.PageCount>0) then
       for i:=0 to ComponentPageControl.PageCount-1 do
-        if SameText(TreeView1.Selected.Text, ComponentPageControl.Page[i].Caption) then
+        if SameText(SelNode.Text, ComponentPageControl.Page[i].Caption) then
         begin
           ComponentPageControl.PageIndex:=i;
+          ComponentPageControl.OnChange(Self);
           Break;
         end;
   Close;
@@ -140,7 +183,7 @@ end;
 procedure TDlgCompPagesPopup.FindGroups;
 // Find groups. Page names with many words are grouped by the first word.
 var
-  i, grInd: integer;
+  i, grpIndex: integer;
   Word1: string;
 begin
   for i:=0 to MainIDEBar.ComponentPageControl.PageCount-1 do
@@ -148,11 +191,11 @@ begin
     Word1 := FirstWord(MainIDEBar.ComponentPageControl.Page[i].Caption);
     if (Word1 <> '') and (Word1 <> 'Data') then  // "Data" is an exception
     begin
-      grInd := fGroups.IndexOf(Word1);
-      if grInd > -1 then // Found, mark as group. TreeNode will be created later.
-        fGroups.Objects[grInd] := TObject(0)
+      grpIndex := fGroups.IndexOf(Word1);
+      if grpIndex > -1 then // Found, mark as group. TreeNode will be created later.
+        fGroups.Objects[grpIndex] := nil
       else               // Will be a group only if other members are found.
-        fGroups.AddObject(Word1, TObject(1));   // "1" means a single item now.
+        fGroups.AddObject(Word1, Self);   // <>nil means a single item now.
     end;
   end;
   // Delete single items (marked with "1") from groups list.
@@ -184,7 +227,7 @@ begin
     end;
   end;
   ItemNode:=TreeView1.Items.AddChild(GroupNode, aPageCapt);
-  ItemNode.ImageIndex:=0;
+  ItemNode.ImageIndex:=IDEImages.GetImageIndex('item_package');
   ItemNode.SelectedIndex:=0;
 end;
 
@@ -197,11 +240,13 @@ procedure TDlgCompPagesPopup.BuildList;
 var
   i: integer;
 begin
-  TreeView1.Items.Clear;
   TreeView1.BeginUpdate;
+  TreeView1.Items.Clear;
+  fViewAllNode:=nil;
+  fOptionsNode:=nil;
   if MainIDEBar.ComponentPageControl=nil then
   begin
-    TreeView1.Items.AddChild(nil,'Sorry, NO Pages');
+    TreeView1.Items.AddChild(nil,'Sorry, No Pages');
     Exit;
   end;
   fGroups := TStringList.Create;
@@ -212,6 +257,17 @@ begin
   finally
     fGroups.Free;
   end;
+
+  // add 'View all'
+  fViewAllNode:=TreeView1.Items.AddChild(nil, lisCompPalComponentList);
+  fViewAllNode.ImageIndex:=IDEImages.GetImageIndex('item_package');
+  fViewAllNode.SelectedIndex:=fViewAllNode.ImageIndex;
+
+  // add 'Options'
+  fOptionsNode:=TreeView1.Items.AddChild(nil, lisOptions);
+  fOptionsNode.ImageIndex:=IDEImages.LoadImage('menu_environment_options');
+  fOptionsNode.SelectedIndex:=fOptionsNode.ImageIndex;
+
   TreeView1.EndUpdate;
   TreeView1.FullExpand;
   Panel2.Caption:=Format(lisTotalPages,

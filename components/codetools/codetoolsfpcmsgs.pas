@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -42,7 +42,11 @@ unit CodeToolsFPCMsgs;
 interface
 
 uses
-  Classes, SysUtils, FileProcs, LazUTF8Classes, AVL_Tree;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LazUtils
+  LazUTF8Classes,
+  // Codetools
+  FileProcs;
 
 type
   TfmiSpecialItem = (
@@ -131,7 +135,7 @@ type
     Encoding: String;
   end;
 const
-  FPCMsgFileToEncoding: array[1..20] of TFPCMsgFileToEncoding = (
+  FPCMsgFileToEncoding: array[1..21] of TFPCMsgFileToEncoding = (
     (Filename: 'errorct.msg';  Encoding: 'CP1252'), // Catalan
     (Filename: 'errord.msg';   Encoding: 'CP437'), // German
     (Filename: 'errorda.msg';  Encoding: 'UTF-8'), // Danish
@@ -151,7 +155,8 @@ const
     (Filename: 'errorptu.msg'; Encoding: 'UTF-8'), // Portuguese
     (Filename: 'errorr.msg';   Encoding: 'CP866'), // Russian
     (Filename: 'errorru.msg';  Encoding: 'UTF-8'), // Russian
-    (Filename: 'errorues.msg'; Encoding: 'UTF-8') // Spanish
+    (Filename: 'errorues.msg'; Encoding: 'UTF-8'), // Spanish
+    (Filename: 'errorcn.msg';  Encoding: 'CP936') // Chinese
   );
 
 function CompareFPCMsgId(item1, item2: Pointer): integer;

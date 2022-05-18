@@ -221,25 +221,6 @@ begin
   im_context_string:=Str;
 end;
 
-{$IfNDef GTK2_2}
-procedure gtkTreeSelectionCountSelectedRows({%H-}model : PGtkTreeModel; {%H-}path : PGtkTreePath;
-                                  {%H-}iter : PGtkTreeIter; data : PGint); cdecl;
-begin
-  If Assigned(Data) then
-    Inc(Data^);
-end;
-
-Type
-  PPGList = ^PGList;
-  
-procedure gtkTreeSelectionGetSelectedRows({%H-}model : PGtkTreeModel; path : PGtkTreePath;
-                                  {%H-}iter : PGtkTreeIter; data : PPGList); cdecl;
-begin
-  If Assigned(Data) then
-    Data^ := g_list_append(Data^, gtk_tree_path_copy(path));
-end;
-{$EndIf}
-
 {------------------------------------------------------------------------------
   Function: TGtk2WidgetSet._SetCallbackEx
 
@@ -451,24 +432,15 @@ begin
        else if ALCLObject is TCustomCheckbox then
        begin
          ConnectSenderSignal(gObject, 'toggled', @gtktoggledCB)
-       // in gtk2 callback signal of SpinEdit is 'value-changed' (in gtk1- 'changed')
-       end else
-       if ALCLObject is TCustomFloatSpinEdit then
-       begin
-         ConnectSenderSignalAfter(gObject, 'changed', @gtkchanged_spinbox);
-         ConnectSenderSignal(gObject, 'value-changed', @gtkchanged_editbox);
        end else
        begin
-         {$IFDEF VerboseTWinControlRealText}
-         ConnectSenderSignalAfter(gObject, 'changed', @gtkchanged_editbox);
-         {$ELSE}
          if GTK_IS_ENTRY(gObject) then
          begin
-           ConnectSenderSignal(gObject,'backspace', @gtkchanged_editbox_backspace);
+           ConnectSenderSignal(gObject,'delete-text', @gtkchanged_editbox_delete_text);
+           ConnectSenderSignal(gObject,'insert-text', @gtkchanged_editbox_insert_text);
            ConnectSenderSignal(gObject,'delete-from-cursor', @gtkchanged_editbox_delete);
          end;
          ConnectSenderSignal(gObject, 'changed', @gtkchanged_editbox);
-         {$ENDIF}
        end;
     end;
 
@@ -492,9 +464,11 @@ begin
     begin
       //DebugLn(['TGtkWidgetSet.SetCallback ',DbgSName(ALCLObject),' ',GetWidgetDebugReport(PGtkWIdget(gfixed))]);
       ConnectSenderSignal(gFixed,'expose-event', @GTKExposeEvent);
-      ConnectSenderSignalAfter(gFixed,'style-set', @GTKStyleChangedAfter);
       ConnectSenderSignalAfter(gFixed,'expose-event', @GTKExposeEventAfter);
+      {$IFDEF EventTrace}
       ConnectSenderSignal(gFixed,'style-set', @GTKStyleChanged);
+      ConnectSenderSignalAfter(gFixed,'style-set', @GTKStyleChangedAfter);
+      {$ENDIF}
     end;
 
 
@@ -517,7 +491,8 @@ begin
     LM_LBUTTONDOWN,
     LM_RBUTTONDOWN,
     LM_MBUTTONDOWN,
-    LM_MOUSEWHEEL :
+    LM_MOUSEWHEEL,
+    LM_MOUSEHWHEEL:
     begin
       ConnectSenderSignal(gMouse, 'button-press-event', @gtkMouseBtnPress,
                           GDK_BUTTON_PRESS_MASK);
@@ -804,9 +779,8 @@ begin
     LM_SYSKEYDOWN,
     LM_SYSKEYUP:
     begin
-      if (ALCLObject is TCustomComboBox) then
-        ConnectKeyPressReleaseEvents(PgtkObject(PgtkCombo(gObject)^.entry))
-      else if (ALCLObject is TCustomForm) then
+      if ((ALCLObject is TCustomComboBox) and gtk_is_combo_box_entry(gObject))
+      or (ALCLObject is TCustomForm) then
         ConnectKeyPressReleaseEvents(gObject);
 
       ConnectKeyPressReleaseEvents(gCore);
@@ -861,6 +835,7 @@ begin
   SetCallback(LM_MBUTTONDOWN, AGTKObject, ALCLObject);
   SetCallback(LM_MBUTTONUP, AGTKObject, ALCLObject);
   SetCallback(LM_MOUSEWHEEL, AGTKObject, ALCLObject);
+  SetCallback(LM_MOUSEHWHEEL, AGTKObject, ALCLObject);
   SetCallback(LM_DROPFILES, AGTKObject, ALCLObject);
   SetCallback(LM_CONTEXTMENU, AGtkObject, ALCLObject);
 
@@ -1025,6 +1000,18 @@ begin
   Result:= lpGtk2;
 end;
 
+function TGtk2WidgetSet.GetLCLCapability(ACapability: TLCLCapability): PtrUInt;
+begin
+  case ACapability of
+    // Transparency partly works but code completion window would go behind SynEdit -> NO
+    lcTransparentWindow: Result := LCL_CAPABILITY_NO;
+  else
+    Result := inherited GetLCLCapability(ACapability);
+  end;
+end;
+
+function gdk_screen_get_resolution(screen:PGdkScreen):gdouble; cdecl; external gdklib;
+
 {------------------------------------------------------------------------------
   Method: TGtk2WidgetSet.AppInit
   Params:  None
@@ -1046,9 +1033,16 @@ begin
   InitKeyboardTables;
   { Compute pixels per inch variable }
   ScreenInfo.PixelsPerInchX :=
-    RoundToInt(gdk_screen_width / (GetScreenWidthMM / 25.4));
+    RoundToInt(gdk_screen_get_resolution(gdk_screen_get_default));
   ScreenInfo.PixelsPerInchY :=
-    RoundToInt(gdk_screen_height / (GetScreenHeightMM / 25.4));
+    ScreenInfo.PixelsPerInchX;
+  if ScreenInfo.PixelsPerInchX <= 0 then
+  begin
+    ScreenInfo.PixelsPerInchX :=
+      RoundToInt(gdk_screen_width / (GetScreenWidthMM / 25.4));
+    ScreenInfo.PixelsPerInchY :=
+      RoundToInt(gdk_screen_height / (GetScreenHeightMM / 25.4));
+  end;
   ScreenInfo.ColorDepth := gdk_visual_get_system^.depth;
 end;
 
@@ -1123,6 +1117,10 @@ const
   TGtk2TopForms: Array[Boolean] of TGtk2TempFormStyleSet = (fsAllNonSystemStayOnTop,
     fsAllStayOnTop);
 
+
+procedure gdk_window_restack(w, s: PGdkWindow; above: gboolean); cdecl; external gdklib;
+function gdk_screen_get_active_window(screen: PGdkScreen):PGdkWindow; cdecl; external gdklib;
+
 function TGtk2WidgetSet.AppRemoveStayOnTopFlags(const ASystemTopAlso: Boolean
   ): Boolean;
 var
@@ -1131,10 +1129,20 @@ var
   W: PGtkWidget;
   Flags: TGdkWindowState;
   B: Boolean;
+  act: PGdkWindow;
+  nact: PGdkWindow;
 begin
   Result := True;
   if StayOnTopList = nil then
     StayOnTopList := TMap.Create(TMapIdType(ituPtrSize), SizeOf(TGtkWidget));
+
+  // todo: all screens should be evaluated
+  // depending on the screen of a window
+  act:=gdk_screen_get_active_window(gdk_screen_get_default);
+  // act is typically returned for X11. other systems might
+  // not implement it.
+  nact:=act;
+
   for i := 0 to Screen.CustomFormZOrderCount - 1 do
   begin
     AForm := Screen.CustomFormsZOrdered[i];
@@ -1142,7 +1150,7 @@ begin
     begin
       W := {%H-}PGtkWidget(AForm.Handle);
       // do not raise assertion in case of invalid PGdkWindow
-      B := GTK_IS_WINDOW(W^.Window);
+      B := GDK_IS_WINDOW(W^.Window);
       if B then
         Flags := gdk_window_get_state(W^.Window);
       if B and (AForm.Parent = nil) and
@@ -1153,11 +1161,21 @@ begin
          (Flags and GDK_WINDOW_STATE_ICONIFIED = 0) then
       begin
         gdk_window_set_keep_above(W^.Window, False);
+        if Assigned(nact) then
+        begin
+          gdk_window_restack(W^.Window, act, False);
+          nact:=W^.Window;
+        end
+        else begin
+          gdk_window_lower(W^.Window); // send to the bottom
+          gdk_window_raise(W^.Window); // restore back
+        end;
         if not StayOnTopList.HasId(W) then
           StayOnTopList.Add(W, W);
       end;
     end;
   end;
+  if Assigned(act) then g_object_unref(act);
 end;
 
 function TGtk2WidgetSet.AppRestoreStayOnTopFlags(const ASystemTopAlso: Boolean
@@ -1179,7 +1197,7 @@ begin
     begin
       W := {%H-}PGtkWidget(AForm.Handle);
       // do not raise assertion in case of invalid PGdkWindow
-      B := GTK_IS_WINDOW(W^.Window);
+      B := GDK_IS_WINDOW(W^.Window);
       if B then
         Flags := gdk_window_get_state(W^.Window);
       if B and (AForm.Parent = nil) and
@@ -1251,12 +1269,16 @@ begin
     Level := 'CRITICAL';
     Ex := EInterfaceCritical;
   end
+{ Commented out for issue #31138. The whole system freezed because of GTK2 exception:
+"Invalid borders specified for theme pixmap: .../line-h.png. Borders don't fit within the image."
+ToDo: Fix the issue properly.
   else
   if ALogLevel and G_LOG_LEVEL_WARNING <> 0
   then begin
     Level := 'WARNING';
     Ex := EInterfaceWarning;
   end
+}
   else
   if ALogLevel and G_LOG_LEVEL_INFO <> 0
   then begin
@@ -1861,7 +1883,7 @@ type
 
 var
   AllWindows: TFPList;
-  List: PGList;
+  List,orgList: PGList;
   Window: PGTKWindow;
   ATransientWindow: PTransientWindow;
   LCLObject: TObject;
@@ -1888,6 +1910,7 @@ begin
 
     // find all currently visible gtkwindows
     List := gdk_window_get_toplevels;
+    orgList := List;
     while List <> nil do
     begin
       if (List^.Data <> nil)
@@ -1929,6 +1952,11 @@ begin
         end;
       end;
       list := g_list_next(list);
+    end;
+    if Assigned(orgList) then
+    begin
+      g_list_free(orgList);
+      list:=nil; orgList:=nil;
     end;
 
     if AllWindows=nil then exit;
@@ -4669,8 +4697,6 @@ procedure TGtk2WidgetSet.DestroyLCLComponent(Sender : TObject);
 var
   handle: hwnd; // handle of sender
   Widget: PGtkWidget;
-  APage: TCustomPage;
-  NoteBookWidget: PGtkNotebook;
   GtkWindow: PGtkWidget;
 begin
   Handle := HWnd({%H-}PtrUInt(ObjectToGtkObject(Sender)));
@@ -4685,48 +4711,25 @@ begin
   GtkWindow:=gtk_widget_get_toplevel(Widget);
   if GtkWidgetIsA(GtkWindow,GTK_TYPE_WINDOW)
   and (GetNearestLCLObject(PGtkWindow(GtkWindow)^.Focus_Widget)=Sender)
-  then begin
+  then
     gtk_window_set_focus(PGtkWindow(GtkWindow),nil);
-  end;
 
-  if Sender is TControl then begin
-    if Sender is TCustomPage then begin
-      // a notebook always need at least one page
-      // -> if this is the last page, then add a dummy page
-      APage:=TCustomPage(Sender);
-      if (APage.Parent<>nil) and APage.Parent.HandleAllocated
-      and (APage.Parent is TPageControl) then
-      begin
-        NoteBookWidget:={%H-}PGtkNotebook(TCustomTabControl(APage.Parent).Handle);
-        if GetGtkNoteBookPageCount(NoteBookWidget)=1 then
-        begin
-          {$IFDEF GTK2USEDUMMYNOTEBOOKPAGE}
-          AddDummyNoteBookPage(NoteBookWidget);
-          UpdateNoteBookClientWidget(TCustomTabControl(APage.Parent));
-          {$ENDIF}
-        end;
-      end;
-    end;
-  end
-  else if Sender is TCommonDialog then begin
+  if Sender is TCommonDialog then
     DestroyCommonDialogAddOns(TCommonDialog(Sender));
-  end;
+
+  if GTK_IS_ENTRY(Widget) then
+    g_idle_remove_by_data(Widget);
 
   // destroy widget and properties
   DestroyConnectedWidget(Widget,false);
 
   // clean up unneeded containers
-  if Sender is TMenuItem then begin
+  if Sender is TMenuItem then
     DestroyEmptySubmenu(TMenuItem(Sender));
-  end;
 
   // mouse click messages
-  if LastLeft.Component=Sender then
-    LastLeft:=EmptyLastMouseClick;
-  if LastMiddle.Component=Sender then
-    LastMiddle:=EmptyLastMouseClick;
-  if LastRight.Component=Sender then
-    LastRight:=EmptyLastMouseClick;
+  if LastMouse.WinControl=Sender then
+    LastMouse.Button := 0;
 end;
 
 procedure TGtk2WidgetSet.FinishCreateHandle(const AWinControl: TWinControl;
@@ -5270,38 +5273,6 @@ begin
   {$IFDEF DebugGDK}EndGDKErrorTrap;{$ENDIF}
   FreeMem(ImgData);
 end;
-
-{-------------------------------------------------------------------------------
-  procedure AddDummyNoteBookPage(NoteBookWidget: PGtkNoteBook);
-
-  Adds the dummy page.
-  A gtk notebook must have at least one page, but TCustomTabControl also allows
-  no pages at all. Therefore at least a dummy page is added. This dummy page is
-  removed as soon as other pages are added.
--------------------------------------------------------------------------------}
-{$IFDEF GTK2USEDUMMYNOTEBOOKPAGE}
-procedure TGtk2WidgetSet.AddDummyNoteBookPage(NoteBookWidget: PGtkNoteBook);
-var
-  DummyWidget: PGtkWidget;
-  ALabel: PGtkWidget;
-  MenuLabel: PGtkWidget;
-begin
-  if NoteBookWidget=nil then exit;
-  DummyWidget:=GetGtkNoteBookDummyPage(NoteBookWidget);
-  if (DummyWidget=nil) then begin
-    // the notebook has no pages
-    // -> add a dummy page
-    DummyWidget := gtk_hbox_new(false, 0);
-    gtk_widget_show(DummyWidget);
-    ALabel:=gtk_label_new('');
-    gtk_widget_show(ALabel);
-    MenuLabel:=gtk_label_new('');
-    gtk_widget_show(MenuLabel);
-    gtk_notebook_append_page_menu(NoteBookWidget,DummyWidget,ALabel,MenuLabel);
-    SetGtkNoteBookDummyPage(NoteBookWidget,DummyWidget);
-  end;
-end;
-{$ENDIF}
 
 {------------------------------------------------------------------------------
   Method: TGtk2WidgetSet.SetPixel
@@ -6294,7 +6265,7 @@ var
         Result:=LineStart;
         LineWidth:=0;
         repeat
-          charLen:=UTF8CharacterLength(@AText[result]);
+          charLen:=UTF8CodepointSize(@AText[result]);
           CharWidth:=GetLineWidthInPixel(Result,charLen);
           inc(LineWidth,CharWidth);
           if LineWidth>MaxWidthInPixel then break;
@@ -6303,7 +6274,7 @@ var
         until false;
         // at least one char
         if Result=LineStart then begin
-          charLen:=UTF8CharacterLength(@AText[result]);
+          charLen:=UTF8CodepointSize(@AText[result]);
           inc(Result,charLen);
         end;
       end;
@@ -6328,7 +6299,7 @@ var
   end;
 
 var
-  LinesList: TFPList;
+  LinesList: TIntegerList;
   LineStart, LineEnd, LineLen: integer;
   ArraySize, TotalSize: integer;
   i: integer;
@@ -6341,15 +6312,15 @@ begin
     exit;
   end;
   InitFont;
-  LinesList:=TFPList.Create;
+  LinesList:=TIntegerList.Create;
   LineStart:=0;
 
   // find all line starts and line ends
   repeat
-    LinesList.Add({%H-}Pointer(PtrInt(LineStart)));
+    LinesList.Add(LineStart);
     // find line end
     LineEnd:=FindLineEnd(LineStart);
-    LinesList.Add({%H-}Pointer(PtrInt(LineEnd)));
+    LinesList.Add(LineEnd);
     // find next line start
     LineStart:=LineEnd;
     if AText[LineStart] in [#10,#13] then begin
@@ -6372,7 +6343,7 @@ begin
   i:=0;
   while i<LinesList.Count do begin
     // add  LineEnd - LineStart + 1 for the #0
-    LineLen:={%H-}PtrUInt(LinesList[i+1])-{%H-}PtrUInt(LinesList[i])+1;
+    LineLen:=LinesList[i+1]-LinesList[i]+1;
     inc(TotalSize,LineLen);
     inc(i,2);
   end;
@@ -6387,8 +6358,8 @@ begin
     // set the pointer to the start of the current line
     CurLineEntry[i shr 1]:=CurLineStart;
     // copy the line
-    LineStart:=integer({%H-}PtrUInt(LinesList[i]));
-    LineEnd:=integer({%H-}PtrUInt(LinesList[i+1]));
+    LineStart:=LinesList[i];
+    LineEnd:=LinesList[i+1];
     LineLen:=LineEnd-LineStart;
     if LineLen>0 then
       Move(AText[LineStart],CurLineStart^,LineLen);
@@ -6443,7 +6414,10 @@ begin
   end;
   ReallocMem(Lines, 0);
   If TmpStr <> nil then
-    Result := StrNew(TmpStr^.str)
+  begin
+    Result := StrNew(TmpStr^.str);
+    g_string_free(TmpStr, True);
+  end
   else
     Result:=nil;
 end;

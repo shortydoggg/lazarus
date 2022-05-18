@@ -31,7 +31,7 @@ interface
 
 uses
   Classes, Graphics, Controls, Forms, StdCtrls, ExtCtrls,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -51,9 +51,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -120,7 +120,7 @@ end;
 
 procedure TfCompilerDirectReturns.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Returns do
+  with FormattingSettings.Returns do
   begin
     rgBeforeUses.ItemIndex := Ord(BeforeCompilerDirectUses);
     rgBeforeStatements.ItemIndex := Ord(BeforeCompilerDirectStatements);
@@ -134,7 +134,7 @@ end;
 
 procedure TfCompilerDirectReturns.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Returns do
+  with FormattingSettings.Returns do
   begin
     BeforeCompilerDirectUses := TTriOptionStyle(rgBeforeUses.ItemIndex);
     BeforeCompilerDirectStatements := TTriOptionStyle(rgBeforeStatements.ItemIndex);
@@ -149,7 +149,7 @@ end;
 
 class function TfCompilerDirectReturns.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 initialization

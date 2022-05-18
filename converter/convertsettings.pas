@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,11 +30,19 @@ unit ConvertSettings;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Dialogs, IDEProcs, StdCtrls, Buttons,
-  ButtonPanel, ComCtrls, DialogProcs, FileUtil, LazFileUtils,
-  LazarusIDEStrConsts, CodeToolsStructs, CodeToolManager, CodeCache,
-  DividerBevel, BaseIDEIntf, IDEMsgIntf, IDEExternToolIntf, AVL_Tree,
-  LazConfigStorage, ConverterTypes, ReplaceNamesUnit, ReplaceFuncsUnit;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  Forms, Controls, Dialogs, StdCtrls, Buttons, ButtonPanel, ComCtrls,
+  // LazUtils
+  FileUtil, LazFileUtils, DividerBevel, LazConfigStorage, AvgLvlTree,
+  // CodeTools
+  CodeToolManager, CodeCache,
+  // IdeIntf
+  BaseIDEIntf, IDEMsgIntf, IDEExternToolIntf, IDEImagesIntf,
+  // IDE
+  IDEProcs, DialogProcs, LazarusIDEStrConsts,
+  // Converter
+  ConverterTypes, ReplaceNamesUnit, ReplaceFuncsUnit;
 
 const
   ConverterVersion: integer = 2;
@@ -116,10 +124,10 @@ type
     // Create Lazarus file name and copy/rename from Delphi file with new suffix.
     function RenameDelphiToLazFile(const DelphiFilename, LazExt: string;
       out LazFilename: string; LowercaseFilename: Boolean): TModalResult; overload;
-    function RenameFile(const SrcFilename, DestFilename: string): TModalResult;
     function MaybeBackupFile(const AFilename: string): TModalResult;
     procedure ClearLog;
-    function AddLogLine(const ALine: string; Urgency: TMessageLineUrgency = mluHint): integer;
+    procedure AddLogLine(Urgency: TMessageLineUrgency; const Msg: string;
+      const Filename: string=''; LineNumber: integer=0; Column: integer=0);
     function SaveLog: Boolean;
   public
     property MainFilenames: TStringlist read fMainFilenames;
@@ -204,7 +212,6 @@ type
   public
     constructor Create(AOwner: TComponent; ASettings: TConvertSettings); reintroduce;
     destructor Destroy; override;
-    property CacheUnitsThread: TThread read fCacheUnitsThread;
   end;
 
 
@@ -291,7 +298,6 @@ begin
   fOmitProjUnits['SynHighlighterMulti']:='SynEdit';
   fOmitProjUnits['SynHighlighterPas']  :='SynEdit';
   fOmitProjUnits['SynTextDrawer']      :='SynEdit';
-  fOmitProjUnits['SynRegExpr']         :='SynEdit';
 end;
 
 destructor TConvertSettings.Destroy;
@@ -329,7 +335,7 @@ end;
 procedure TConvertSettings.SaveStringToStringTree(Path: string; Tree: TStringToStringTree);
 var
   Node: TAVLTreeNode;
-  Item: PStringToStringTreeItem;
+  Item: PStringToStringItem;
   SubPath: String;
   i: Integer;
 begin
@@ -338,7 +344,7 @@ begin
   Node:=Tree.Tree.FindLowest;
   i:=0;
   while Node<>nil do begin
-    Item:=PStringToStringTreeItem(Node.Data);
+    Item:=PStringToStringItem(Node.Data);
     SubPath:=Path+'Item'+IntToStr(i)+'/';
     fConfigStorage.SetDeleteValue(SubPath+'Name',Item^.Name,'');
     fConfigStorage.SetDeleteValue(SubPath+'Value',Item^.Value,'');
@@ -521,6 +527,8 @@ begin
   MapReplacement('MMSystem',            '');
   MapReplacement('.*dll.*',             '');
   MapReplacement('^Q(.+)',              '$1');         // Kylix unit names.
+  // SynEdit has an identical RegExpr as FCL has, but names differ.
+  MapReplacement('SynRegExpr',          'RegExpr');
   // Tnt* third party components.
   MapReplacement('TntLXStringGrids',    'Grids');
   MapReplacement('TntLXCombos',         '');
@@ -590,8 +598,8 @@ begin
     AddDefaultCategory(Categ);
     //AddFunc(Categ, 'CreateFile', 'FileCreate($1)','','SysUtils');
     //AddFunc(Categ, 'ReadFile',   'FileRead($1)'  ,'','SysUtils');
-    AddFunc(Categ, 'GetFileSize','FileSize($1)'  ,'','SysUtils');
     AddFunc(Categ, 'CloseHandle','FileClose($1)' ,'','SysUtils');
+    AddFunc(Categ, 'GetFileSize','FileSize($1)'  ,'LazUtils','FileUtil');
     // WindowsAPI
     Categ:='WindowsAPI';
     AddDefaultCategory(Categ);
@@ -755,13 +763,6 @@ begin
   Result:=RenameFileWithErrorDialogs(DelphiFilename,LazFilename,[mbAbort]);
 end;
 
-function TConvertSettings.RenameFile(const SrcFilename, DestFilename: string): TModalResult;
-begin
-  Result:=MaybeBackupFile(SrcFilename); // Save before rename.
-  if Result<>mrOK then exit;
-  Result:=RenameFileWithErrorDialogs(SrcFilename,DestFilename,[mbAbort]);
-end;
-
 function TConvertSettings.MaybeBackupFile(const AFilename: string): TModalResult;
 var
   BackupFN: String;
@@ -780,11 +781,20 @@ begin
   fLog.Clear;
 end;
 
-function TConvertSettings.AddLogLine(
-  const ALine: string; Urgency: TMessageLineUrgency): integer;
+procedure TConvertSettings.AddLogLine(Urgency: TMessageLineUrgency;
+  const Msg: string; const Filename: string; LineNumber: integer; Column: integer);
+var
+  FN, Coords, Urg: String;
 begin
-  IDEMessagesWindow.AddCustomMessage(Urgency,aLine); // Show in message window
-  Result:=fLog.Add(MessageLineUrgencyNames[Urgency]+': '+ALine);// and store for log.
+  // Show in message window
+  IDEMessagesWindow.AddCustomMessage(Urgency, Msg, Filename, LineNumber, Column);
+  // and store for log.
+  FN := ExtractFileName(Filename);
+  if (LineNumber<>0) or (Column<>0) then
+    Coords := Format('(%d,%d)', [LineNumber, Column]);
+  if Urgency <> mluImportant then
+    Urg := MessageLineUrgencyNames[Urgency];
+  fLog.Add(FN + Coords + ' ' + Urg + ': ' + Msg);
 end;
 
 function TConvertSettings.SaveLog: Boolean;
@@ -842,8 +852,6 @@ end;
 
 destructor TConvertSettingsForm.Destroy;
 begin
-  if Assigned(fCacheUnitsThread) and not fThreadStarted then
-    fCacheUnitsThread.Free;
   inherited Destroy;
 end;
 
@@ -875,11 +883,11 @@ begin
   // File system scanning
   ScanLabel.Caption := lisScanParentDir;
   StopScanButton.Caption:=lisStop;
-  StopScanButton.LoadGlyphFromResourceName(HInstance, 'menu_stop');
+  IDEImages.AssignImage(StopScanButton, 'menu_stop');
   // Unit Replacements
   UnitReplaceDivider.Caption:=lisConvUnitReplacements;
   UnitReplaceButton.Caption:=lisEdit;    // Recycled string.
-  UnitReplaceButton.LoadGlyphFromResourceName(HInstance, 'laz_edit');
+  IDEImages.AssignImage(UnitReplaceButton, 'laz_edit');
   UnitReplaceDivider.Hint:=lisConvUnitReplHint;
   UnitReplaceButton.Hint:=lisConvUnitReplHint;
   UnitReplaceComboBox.Items.Add(lisDisabled);    // 'Disabled'
@@ -893,7 +901,7 @@ begin
   // Type Replacements
   TypeReplaceDivider.Caption:=lisConvTypeReplacements;
   TypeReplaceButton.Caption:=lisEdit;
-  TypeReplaceButton.LoadGlyphFromResourceName(HInstance, 'laz_edit');
+  IDEImages.AssignImage(TypeReplaceButton, 'laz_edit');
   TypeReplaceDivider.Hint:=lisConvTypeReplHint;
   TypeReplaceButton.Hint:=lisConvTypeReplHint;
   TypeReplaceComboBox.Items.Add(lisInteractive);
@@ -901,7 +909,7 @@ begin
   // Func Replacements
   FuncReplaceDivider.Caption:=lisConvFuncReplacements;
   FuncReplaceButton.Caption:=lisEdit;
-  FuncReplaceButton.LoadGlyphFromResourceName(HInstance, 'laz_edit');
+  IDEImages.AssignImage(FuncReplaceButton, 'laz_edit');
   FuncReplaceDivider.Hint:=lisConvFuncReplHint;
   FuncReplaceButton.Hint:=lisConvFuncReplHint;
   FuncReplaceComboBox.Items.Add(lisDisabled);
@@ -910,7 +918,7 @@ begin
   // Coordinate Offsets
   CoordOffsDivider.Caption:=lisConvCoordOffs;
   CoordOffsButton.Caption:=lisEdit;
-  CoordOffsButton.LoadGlyphFromResourceName(HInstance, 'laz_edit');
+  IDEImages.AssignImage(CoordOffsButton, 'laz_edit');
   CoordOffsDivider.Hint:=lisConvCoordHint;
   CoordOffsButton.Hint:=lisConvCoordHint;
   CoordOffsComboBox.Items.Add(lisDisabled);
@@ -955,7 +963,6 @@ begin
   if ScanParentDirCheckBox.Checked and Assigned(fCacheUnitsThread) then
   begin
     ThreadGuiShow(True);
-    fCacheUnitsThread.FreeOnTerminate:=True;
     fCacheUnitsThread.OnTerminate:=@ThreadTerminated;
     fCacheUnitsThread.Start;
     fThreadStarted := True;
@@ -991,7 +998,6 @@ end;
 procedure TConvertSettingsForm.ThreadTerminated(Sender: TObject);
 begin
   ThreadGuiShow(False);
-  fCacheUnitsThread := nil;  // Thread frees itself. Make the variable nil, too.
 end;
 
 // Edit replacements in grids

@@ -2,7 +2,10 @@
 {$mode objfpc}{$H+}
 program fpmake;
 
-uses fpmkunit;
+uses
+  fpmkunit,
+  sysutils,
+  classes;
 {$endif ALLPACKAGES}
 
 function IdeGetApplicationName: string;
@@ -153,7 +156,6 @@ begin
 
     T := P.Targets.AddProgram('lazarus.pp');
     t.Dependencies.AddUnit('packagesystem');
-    t.Dependencies.AddUnit('adddirtopkgdlg');
     t.Dependencies.AddUnit('addfiletoapackagedlg');
     t.Dependencies.AddUnit('addtopackagedlg');
     t.Dependencies.AddUnit('basepkgmanager');
@@ -345,7 +347,6 @@ begin
     P.Sources.AddSrc('msgquickfixes.pas');
     P.Sources.AddSrc('msgview.pp');
     P.Sources.AddSrc('msgvieweditor.pas');
-    P.Sources.AddSrc('multireplacedlg.pas');
     P.Sources.AddSrc('newdialog.pas');
     P.Sources.AddSrc('newprojectdlg.pp');
     P.Sources.AddSrc('objectlists.pas');
@@ -361,7 +362,7 @@ begin
     P.Sources.AddSrc('projectresources.pas');
     P.Sources.AddSrc('projectwizarddlg.pas');
     P.Sources.AddSrc('publishmodule.pas');
-    P.Sources.AddSrc('publishprojectdlg.pas');
+    P.Sources.AddSrc('publishmoduledlg.pas');
     P.Sources.AddSrc('restrictionbrowser.pas');
     P.Sources.AddSrc('runparamsopts.pas');
     P.Sources.AddSrc('searchfrm.pas');
@@ -404,7 +405,7 @@ begin
     T:=P.Targets.AddUnit('../packager/missingpkgfilesdlg.pas');
     T:=P.Targets.AddUnit('../packager/openinstalledpkgdlg.pas');
     T:=P.Targets.AddUnit('../packager/packagedefs.pas');
-    T.Dependencies.AddUnit('projpackbase');
+    T.Dependencies.AddUnit('projpackcommon');
     T:=P.Targets.AddUnit('../packager/packageeditor.pas');
     T:=P.Targets.AddUnit('../packager/packagelinks.pas');
     T:=P.Targets.AddUnit('../packager/pkggraphexplorer.pas');
@@ -436,7 +437,7 @@ begin
     T:=P.Targets.AddUnit('lazarusidestrconsts.pas');
     T:=P.Targets.AddUnit('environmentopts.pp');
     T:=P.Targets.AddUnit('compileroptions.pp');
-    T:=P.Targets.AddUnit('../packager/projpackbase.pas');
+    T:=P.Targets.AddUnit('../packager/projpackcommon.pas');
     T.Dependencies.AddUnit('filereferencelist');
     T:=P.Targets.AddUnit('filereferencelist.pas');
 

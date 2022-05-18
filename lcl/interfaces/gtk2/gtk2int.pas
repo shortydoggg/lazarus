@@ -34,23 +34,19 @@ uses
   Types, Classes, SysUtils, Math,
   {$IfNDef GTK2_2}
     {$IfDef HasX}
-     XLib, xatom, X, gdk2x, //XUtil,
+     XLib, xatom, X, gdk2x,
     {$EndIf}
   {$EndIf}
   gdk2pixbuf, gtk2, gdk2, glib2, Pango,
+  // LazUtils
+  LazFileUtils, LazUTF8, DynHashArray, Maps, IntegerList, LazLoggerBase, LazStringUtils,
   // LCL
-  Maps, LazFileUtils, Dialogs, Controls, Forms, LCLStrConsts,
-  LMessages, LCLProc, LazUTF8, LCLIntf, LCLType, DynHashArray, GraphType, GraphMath,
-  Graphics, Menus, Themes, WSLCLClasses,
-
-  Buttons, StdCtrls, CheckLst,
-  ComCtrls, Spin,
-  ExtCtrls, LResources,
-
-  InterfaceBase,
-  Gtk2WinApiWindow,
-  Gtk2Globals, Gtk2Proc,
-  Gtk2Def, Gtk2FontCache, Gtk2Extra,
+  Dialogs, Controls, Forms, LCLStrConsts,
+  LMessages, LCLProc, LCLIntf, LCLType, GraphType, GraphMath,
+  Graphics, Menus, Themes, Buttons, StdCtrls, CheckLst, ComCtrls, ExtCtrls,
+  LCLPlatformDef, InterfaceBase,
+  WSLCLClasses, WSControls,
+  Gtk2WinApiWindow, Gtk2Globals, Gtk2Proc, Gtk2Def, Gtk2FontCache, Gtk2Extra,
   Gtk2MsgQueue;
 
 type
@@ -240,9 +236,6 @@ type
     function DestroyTimer(TimerHandle: THandle) : boolean; override;
     procedure DestroyLCLComponent(Sender: TObject);
     // notebook
-    {$IFDEF GTK2USEDUMMYNOTEBOOKPAGE}
-    procedure AddDummyNoteBookPage(NoteBookWidget: PGtkNoteBook);
-    {$ENDIF}
 
     procedure DCSetAntialiasing(CanvasHandle: HDC; AEnabled: Boolean); override;
     function  DCGetPixel(CanvasHandle: HDC; X, Y: integer): TGraphicsColor; override;
@@ -266,6 +259,7 @@ type
     destructor Destroy; override;
 
     function LCLPlatform: TLCLPlatform; override;
+    function GetLCLCapability(ACapability: TLCLCapability): PtrUInt; override;
 
     procedure AppInit(var ScreenInfo: TScreenInfo); override;
     procedure AppBringToFront; override;
@@ -1075,10 +1069,6 @@ begin
   gtk_handler_quark := g_quark_from_static_string('gtk-signal-handlers');
 
   MouseCaptureWidget := nil;
-
-  LastLeft:=EmptyLastMouseClick;
-  LastMiddle:=EmptyLastMouseClick;
-  LastRight:=EmptyLastMouseClick;
 
   // clipboard
   ClipboardSelectionData:=TFPList.Create;

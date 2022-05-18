@@ -31,7 +31,7 @@ interface
 
 uses
   SysUtils, StdCtrls, ExtCtrls, Spin,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -54,9 +54,9 @@ type
     procedure FrameResize(Sender:TObject);
   public
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -103,10 +103,8 @@ end;
 
 procedure TfAsm.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-
-  with FormatSettings.SetAsm do
+  with FormattingSettings.SetAsm do
   begin
-
     cbStatementIndent.Checked := StatementIndentEnabled;
     edtStatementIndent.Value := StatementIndent;
 
@@ -118,13 +116,11 @@ begin
 
     rgCaps.ItemIndex := Ord(Capitalisation);
   end;
-
 end;
 
 procedure TfAsm.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-
-  with FormatSettings.SetAsm do
+  with FormattingSettings.SetAsm do
   begin
     StatementIndentEnabled := cbStatementIndent.Checked;
     StatementIndent := edtStatementIndent.Value;
@@ -141,7 +137,7 @@ end;
 
 class function TfAsm.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 initialization

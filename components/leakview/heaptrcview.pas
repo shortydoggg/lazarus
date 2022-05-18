@@ -5,12 +5,12 @@ unit HeapTrcView;
 interface
 
 uses
-  Classes, SysUtils, XMLConf, contnrs, Clipbrd, LCLProc,
+  Classes, SysUtils, XMLConf, DOM, contnrs, Clipbrd, LCLProc, LCLType,
   LResources, Forms, Controls, Graphics, Dialogs, StdCtrls, ComCtrls, ExtCtrls,
   // LazUtils
   FileUtil, LazFileUtils,
   // IDEIntf
-  LazIDEIntf, MenuIntf,
+  LazIDEIntf, MenuIntf, ToolBarIntf, IDECommands,
   // LeakView
   LeakInfo;
 
@@ -45,7 +45,7 @@ type
     procedure trvTraceInfoDblClick(Sender: TObject);
   private
     Finfo  : TLeakInfo;
-    fItems  : TList;
+    fItems  : TStackTraceList;
 
     procedure DoUpdateLeaks(FromClip: Boolean = False);
 
@@ -176,7 +176,7 @@ begin
   Result:=TXMLConfig.Create(nil);
   Result.RootName:='config';
   if (ConfigFileName='') and Assigned(LazarusIDE) then
-    ConfigFileName:=IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath)+'leakview.xml';
+    ConfigFileName:=AppendPathDelim(LazarusIDE.GetPrimaryConfigPath)+'leakview.xml';
   Result.FileName:=ConfigFileName;
 end;
 
@@ -191,7 +191,7 @@ begin
   BtnResolve.Caption:=sbtnResolve;
   chkUseRaw.Caption:=schkRaw;
   chkStayOnTop.Caption:=schkTop;
-  fItems:=TList.Create;
+  fItems:=TStackTraceList.Create;
   try
     cfg:=CreateXMLConfig;
     try
@@ -247,11 +247,14 @@ var
   i   : integer;
   sz  : Integer;
 begin
-  sz := 16 + trace.Count * 16; // 8 hex digits for Size + 8 hex digits for Size
+  sz := 32 + trace.Count * 16; // 8 hex digits for Size + 8 hex digits for Size
   SetLength(Result, sz);
   HexInt64ToStr(trace.BlockSize, Result, 1);
+  HexInt64ToStr(hash(trace.RawStackData), Result, 17);
   for i := 0 to trace.Count - 1 do
-    HexInt64ToStr(trace.lines[i].Addr, Result, 17 + i * 16);
+    if trace.lines[i].Addr <> 0
+    then HexInt64ToStr(trace.lines[i].Addr, Result, 33 + i * 16)
+    else HexInt64ToStr(Hash(trace.lines[i].RawLineData), Result, 17 + i * 16);
 end;
 
 procedure THeapTrcViewForm.ItemsToTree;
@@ -269,12 +272,13 @@ begin
     // removing duplicates
     for i := 0 to fItems.Count - 1 do begin
       trace := TStackTrace(fItems[i]);
+      if trace = nil then
+        continue;
       s := GetHashString(trace);
       hashed := TStackTrace(hash.Items[s]);
       if Assigned(hashed) then begin
         inc(hashed.LeakCount);
-        trace.Free; // remove from list
-        fItems[i] := nil;
+        fItems[i] := nil; // this call destroy on the old trace object
       end else
         hash.Add(s, trace)
     end;
@@ -301,8 +305,6 @@ procedure THeapTrcViewForm.ClearItems;
 var
   i : integer;
 begin
-  for i := 0 to fItems.Count - 1 do
-    TObject(fItems[i]).Free;
   fItems.Clear;
 end;
 
@@ -437,7 +439,7 @@ begin
   cfg.SetValue('bottom', b.Bottom);
   cfg.CloseKey;
   for i:=0 to edtTrcFileName.Items.Count-1 do
-    cfg.SetValue('path'+IntToStr(i), UTF8Decode(edtTrcFileName.Items[i]) );
+    cfg.SetValue(DOMString('path'+IntToStr(i)), UTF8Decode(edtTrcFileName.Items[i]) );
 end;
 
 function PointInRect(p: TPoint; const r: TRect): Boolean;
@@ -491,7 +493,7 @@ begin
     if b.Bottom-b.Top<=0 then b.Bottom:=b.Top+40;
 
     for i:=0 to 7 do begin
-      s:=cfg.GetValue('path'+IntToStr(i), '');
+      s:=cfg.GetValue(DOMString('path'+IntToStr(i)), '');
       if s<>'' then st.Add(UTF8Encode(s));
     end;
 
@@ -549,9 +551,25 @@ begin
 end;
 
 procedure Register;
+var
+  IDEShortCutX: TIDEShortCut;
+  IDECommandCategory: TIDECommandCategory;
+  IDECommand: TIDECommand;
+  IDEButtonCommand: TIDEButtonCommand;
 begin
-  RegisterIDEMenuCommand(itmViewMainWindows, 'mnuLeakView', rsLeakView, nil,
-    @IDEMenuClicked);
+  RegisterIDEMenuCommand(itmViewMainWindows, 'mnuLeakView', rsLeakView, nil, @IDEMenuClicked);
+
+  IDEShortCutX := IDEShortCut(VK_UNKNOWN, [], VK_UNKNOWN, []);
+  IDECommandCategory := IDECommandList.FindCategoryByName(CommandCategoryViewName);
+  if IDECommandCategory <> nil then
+  begin
+    IDECommand := RegisterIDECommand(IDECommandCategory, 'Leaks and Traces', rsLeakView, IDEShortCutX, nil, @IDEMenuClicked);
+    if IDECommand <> nil then
+    begin
+      IDEButtonCommand := RegisterIDEButtonCommand(IDECommand);
+      if IDEButtonCommand=nil then ;
+    end;
+  end;
 end;
 
 end.

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -32,10 +32,17 @@ unit etSrcEditMarks;
 interface
 
 uses
-  Classes, SysUtils, math, LazLogger, LazFileUtils, AvgLvlTree,
-  KeywordFuncLists, Graphics, Controls, Forms, ImgList,
+  Classes, SysUtils, math, Laz_AVL_Tree,
+  // LCL
+  Graphics, Controls, Forms, ImgList,
+  // LazUtils
+  LazLoggerBase, LazFileUtils,
+  // Codetools
+  KeywordFuncLists,
+  // SynEdit
   SynEditMarkupGutterMark,
   SynEditMarks, SynEditMiscClasses, SynEditTypes, SynEdit, LazSynEditText,
+  // IdeIntf
   IDEExternToolIntf;
 
 type
@@ -167,9 +174,9 @@ type
 
   TETMultiSrcChanges = class(TComponent)
   private
-    fAllChanges: TAvgLvlTree; // tree of TETSingleSrcChanges sorted for Filename
+    fAllChanges: TAvlTree; // tree of TETSingleSrcChanges sorted for Filename
     FAutoSync: boolean;
-    fPendingChanges: TAvgLvlTree; // tree of TETSingleSrcChanges sorted for Filename
+    fPendingChanges: TAvlTree; // tree of TETSingleSrcChanges sorted for Filename
     FOnSync: TNotifyEvent;
     FSyncQueued: boolean;
     procedure SetSyncQueued(AValue: boolean);
@@ -184,8 +191,8 @@ type
     function AdaptCaret(const aFilename: string; var Line,Col: integer;
       LeftBound: boolean // true = position is bound to character on the left
                  ): boolean;
-    property AllChanges: TAvgLvlTree read fAllChanges; // tree of TETSingleSrcChanges sorted for Filename
-    property PendingChanges: TAvgLvlTree read fPendingChanges; // tree of TETSingleSrcChanges sorted for Filename
+    property AllChanges: TAvlTree read fAllChanges; // tree of TETSingleSrcChanges sorted for Filename
+    property PendingChanges: TAvlTree read fPendingChanges; // tree of TETSingleSrcChanges sorted for Filename
     property SyncQueued: boolean read FSyncQueued write SetSyncQueued;
     property OnSync: TNotifyEvent read FOnSync write FOnSync; // called by Application.QueueAsyncCall
     property AutoSync: boolean read FAutoSync write FAutoSync; // true = call OnSync via Application.QueueAsyncCall
@@ -582,8 +589,7 @@ end;
 
 procedure TETMultiSrcChanges.DoSync(Data: PtrInt);
 var
-  Node: TAvgLvlTreeNode;
-  NextNode: TAvgLvlTreeNode;
+  Node, NextNode: TAvlTreeNode;
 begin
   //debugln(['TETMultiSrcChanges.DoSync Files=',fPendingChanges.Count]);
   FSyncQueued:=false;
@@ -604,8 +610,8 @@ end;
 constructor TETMultiSrcChanges.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  fAllChanges:=TAvgLvlTree.Create(@CompareETSrcChangesFilenames);
-  fPendingChanges:=TAvgLvlTree.Create(@CompareETSrcChangesFilenames);
+  fAllChanges:=TAvlTree.Create(@CompareETSrcChangesFilenames);
+  fPendingChanges:=TAvlTree.Create(@CompareETSrcChangesFilenames);
 end;
 
 destructor TETMultiSrcChanges.Destroy;
@@ -627,7 +633,7 @@ end;
 function TETMultiSrcChanges.GetChanges(const aFilename: string;
   CreateIfNotExists: boolean): TETSingleSrcChanges;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   Node:=fAllChanges.FindKey(Pointer(aFilename),@CompareFilenameAndETSrcChanges);
   if Node<>nil then

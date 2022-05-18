@@ -17,41 +17,16 @@ resourcestring
   oisError = 'Error';
   oisMixed = '(Mixed)';
   oisItemsSelected = '%u items selected';
-  
-  oiscAdd = '&Add';
+  //oiscAdd = '&Add';
   oiscDelete = 'Delete?';
-  oisDeleteSelectedFieldS = 'Delete selected field(s)';
-  oisNew = '&New';
-  oisCreateNewFieldAndAddItAtCurrentPosition = 'Create new field and add it '
-    +'at current position';
-  oisMoveUp = 'Move &Up';
-  oisMoveDown = 'Move &Down';
-  oisSelectAll = '&Select all';
-  oisUnselectAll = '&Unselect all';
-  oisConfirmDelete = 'Confirm delete';
-  oisDeleteItem = 'Delete item "%s"?';
-  oisUnknown = 'Unknown';
-  oisObject = 'Object';
-  oisClass = 'Class';
-  oisWord = 'Word';
-  oisString = 'String';
-  oisFloat = 'Float';
-  oisSet = 'Set';
-  oisMethod = 'Method';
-  oisVariant = 'Variant';
-  oisArray = 'Array';
-  oisRecord = 'Record';
-  oisInterface = 'Interface';
   oisProperties = 'Properties';
   oisBtnProperties = '&Properties';
   oisEvents = 'Events';
   oisFavorites = 'Favorites';
   oisRestricted = 'Restricted';
-  
   oisWidgetSetRestrictions = 'General widget set restrictions: ';
   oisComponentRestrictions = 'Component restrictions: ';
 
-  
   //Object Inspector Popup Menu
   oisZOrder = 'Z-order';
   oisOrderMoveToFront = 'Move to Front';
@@ -85,15 +60,39 @@ resourcestring
   oisShowStatusBar = 'Show Status Bar';
   oisOptions = 'Options';
 
-  
-  // typeinfo
+  // typeinfo, PropEdits
+  oisInvalid = '(Invalid)';
+  oisUnknown = 'Unknown';
+  oisObject = 'Object';
+  oisClass = 'Class';
+  oisWord = 'Word';
+  oisString = 'String';
+  oisFloat = 'Float';
+  oisSet = 'Set';
+  oisMethod = 'Method';
+  oisVariant = 'Variant';
+  oisArray = 'Array';
+  oisRecord = 'Record';
+  oisInterface = 'Interface';
   oisValue = 'Value:';
   oisInteger = 'Integer';
   oisInt64 = 'Int64';
   oisBoolean = 'Boolean';
   oisEnumeration = 'Enumeration';
   oisChar = 'Char';
-  
+
+  // Editors
+  oisDeleteSelectedFieldS = 'Delete selected field(s)';
+  oisNew = '&New';
+  oisCreateNewFieldAndAddItAtCurrentPosition = 'Create new field and add it '
+    +'at current position';
+  oisMoveUp = 'Move &Up';
+  oisMoveDown = 'Move &Down';
+  oisSelectAll = '&Select all';
+  oisUnselectAll = '&Unselect all';
+  oisConfirmDelete = 'Confirm delete';
+  oisDeleteItem = 'Delete item "%s"?';
+
   // TreeView Items Editor
   sccsTrEdtCaption         = 'TreeView Items Editor';
   sccsTrEdt                = 'Edit Items ...';
@@ -134,6 +133,10 @@ resourcestring
   sccsILEdtGrpLCaption = 'Images';
   sccsILEdtGrpRCaption = 'Selected Image';
   sccsILEdtAdd         = '&Add ...';
+  sccsILEdtAddMoreResolutions = 'Add more resolutions ...';
+  sccsILEdtAddSliced   = 'Add sliced ...';
+  sccsILEdtReplace     = '&Replace ...';
+  sccsILEdtReplaceAllResolutions = 'Replace all resolutions ...';
   sccsILEdtDelete      = '&Delete';
   sccsILEdtApply       = '&Apply';
   sccsILEdtClear       = '&Clear';
@@ -141,9 +144,16 @@ resourcestring
   sccsILEdtMoveDown    = 'Move D&own';
   sccsILEdtSave        = '&Save ...';
   sccsILEdtSaveAll     = 'Save All ...';
+  sccsILEdtAddNewResolution = 'New resolution ...';
+  sccsILEdtDeleteResolution = 'Delete resolution ...';
+  sccsILEdtDeleteResolutionConfirmation = 'Select the resolution to delete.';
+  sccsILEdtCannotDeleteResolution = 'Cannot delete default resolution.';
+  sccsILEdtImageWidthOfNewResolution = 'Image width of the new resolution:';
   sccsILEdtransparentColor = 'Transparent Color:';
   sccsILEdtAdjustment  = 'Adjustment';
   sccsILEdtNone        = 'None';
+  sccsILEdtAddSlicedIconError = 'Adding sliced icons is not supported.';
+  sccsILEdtCannotSlice = 'Source image size must be an integer multiple of the ImageList''s Width and Height.';
   liisIf               = 'If';
   liisIfDef            = 'IfDef';
   liisIfNDef           = 'IfNDef';
@@ -158,6 +168,7 @@ resourcestring
   rscdVisible          = 'Visible';
   rscdAutoSize         = 'Auto Size';
   sccsILEdtOpenDialog  = 'Add Images';
+  sccsILEdtOpenDialogN = 'New Image';
   sccsILEdtSaveDialog  = 'Save Image';
   
   // StringGrid Editor
@@ -213,7 +224,6 @@ resourcestring
   cgCheckDuplicateMsg = 'The "%s" Item is already listed. Add it anyway?';
 
   // Collection Editor
-
   oiColEditAdd = 'Add';
   oiColEditDelete = 'Delete';
   oiColEditUp = 'Up';
@@ -350,6 +360,7 @@ resourcestring
   oisInvalidPropertyValue = 'Invalid property value';
   oisNone = '(none)';
   oisPressAKey = 'Press a key ...';
+  oisPressAKeyEGCtrlP = 'You can press e.g. Ctrl+P ...';
   oisSelectShortCut = 'Select short cut';
   srGrabKey = 'Grab key';
   oisComponentNameIsNotAValidIdentifier = 'Component name "%s" is not a valid identifier';
@@ -379,6 +390,7 @@ resourcestring
 
   // image list editor
   s_SuggestSplitImage = 'Do you want to split the image?';
+  s_Confirm_Clear = 'Are you sure to clear image list?';
   s_AddAsSingle = 'Add as single';
   s_SplitImage = 'Split image';
   
@@ -437,6 +449,15 @@ resourcestring
   oisChangeClass = 'Change Class ...';
   oisChangeParent = 'Change Parent';
   lisUnableToFindParserForTool = 'Unable to find parser for tool "%s"';
+  oisShowAllOutputLines = 'Show all output lines';
+  lisUnableToFindParserWithName = 'Unable to find parser with name "%s"';
+
+  // TChangeParentDlg
+  oisShowClasses = 'Show classes';
+  oisSelectedControl = 'Selected control';
+  oisSelectedControls = 'Selected controls';
+  oisCurrentParent = 'Current parent';
+  oisCurrentParents = 'Current parents';
 
   // Dbgrid Columns editor
   dceAddFields = 'Add Fields';
@@ -451,6 +472,16 @@ resourcestring
 
   // DBPropedits
   dpeUnableToRetrieveFieldsDefinitions = 'Unable to retrieve fields definition from dataset.';
+
+  // PagesPropEditDlg
+  oisPagesEditorDialog = 'Pages Editor';
+  oisPages = 'Pages';
+  oisAdd = 'Add';
+  oisAddPage = 'Add Page';
+  oisInsertPageName = 'Insert Page Name';
+  oisRename = 'Rename';
+  oisRenamePage = 'Rename Page';
+  oisDeletePageQuestion = 'Do you want to delete the page?';
 
 implementation
 

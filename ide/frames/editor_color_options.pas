@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,24 +25,39 @@ unit editor_color_options;
 interface
 
 uses
-  Classes, Controls, math, types, typinfo, sysutils, Laz2_XMLCfg, LazFileUtils,
-  LCLProc, LCLType, LCLIntf, LazUTF8, StdCtrls, ExtCtrls, Graphics,
-  ComCtrls, Dialogs, Menus, SynEdit, SynEditMiscClasses,
-  SynGutterCodeFolding, SynGutterLineNumber, SynEditTypes, SynGutterChanges,
-  SynEditMouseCmds, SynEditHighlighter, SynTextDrawer, SynColorAttribEditor,
-  DividerBevel, IDEOptionsIntf, IDEImagesIntf, IDEUtils, EditorOptions,
-  editor_general_options, LazarusIDEStrConsts, IDEProcs, LazConf, SourceMarks;
+  Classes, Controls, math, types, typinfo, sysutils,
+  // LazUtils
+  Laz2_XMLCfg, LazFileUtils, LazUTF8,
+  // LCL
+  LCLProc, LCLType, LCLIntf, StdCtrls, ExtCtrls, Graphics, ComCtrls, Dialogs, Menus,
+  // LazControls
+  DividerBevel,
+  // SynEdit
+  SynEdit, SynEditMiscClasses, SynGutterCodeFolding, SynGutterLineNumber,
+  SynEditTypes, SynGutterChanges, SynEditMouseCmds, SynEditHighlighter,
+  SynColorAttribEditor,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf, IDEUtils,
+  // IDE
+  EditorOptions, editor_general_options, LazarusIDEStrConsts, IDEProcs, LazConf,
+  SourceMarks;
 
 type
 
   // for priority
-  TMarkupField = (mfForeGround, mfBackGround, mfFrame, mfUnknown);
+  TMarkupField = (mfForeGround, mfBackGround, mfFrame, mfStyle, mfUnknown);
 
   { TEditorColorOptionsFrame }
 
   TEditorColorOptionsFrame = class(TAbstractIDEOptionsEditor)
+    StylePriorEdit: TEdit;
+    StylePriorLabel: TLabel;
     BackPriorList: TTreeView;
+    StylePriorList: TTreeView;
+    StylePriorPanel: TPanel;
+    StylePriorUpDown: TUpDown;
     BackPriorValPanel: TPanel;
+    StylePriorValPanel: TPanel;
     bvlAttributeSection: TDividerBevel;
     BackPriorEdit: TEdit;
     FramePriorEdit: TEdit;
@@ -173,6 +188,8 @@ type
     procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
     procedure SelectAhaColor(aha: TAdditionalHilightAttribute);
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
+    property UnsavedColorSchemeSettings: TColorSchemeFactory read FTempColorSchemeSettings;
+    property UnsavedColorSchemeDefaultNames: TStringList read FColorSchemes;
   end;
 
 implementation
@@ -243,13 +260,13 @@ begin
   end;
   NodeRect := Node.DisplayRect(true);
   FullAbcWidth := TheTree.Canvas.TextExtent(COLOR_NODE_PREFIX).cx;
-  TextY := (NodeRect.Top + NodeRect.Bottom - TheTree.Canvas.TextHeight(Node.Text)) div 2;
+  TextY := NodeRect.Top + (NodeRect.Bottom - NodeRect.Top - TheTree.Canvas.TextHeight(Node.Text)) div 2;
   TheTree.Canvas.FillRect(NodeRect);
   TheTree.Canvas.TextOut(NodeRect.Left+FullAbcWidth, TextY, copy(Node.Text, 1+length(COLOR_NODE_PREFIX), MaxInt)); // Attri.Name);
 
   // Draw preview box - Background
   c := clNone;
-  if (hafBackColor in  Attri.Features) then
+  if (hafBackColor in  Attri.Features) and not (AttriIdx = ord(ahaCaretColor)) then
     c := Attri.Background;
   // Fallback Background-color for gutter
   if ((c = clNone) or (c = clDefault)) and
@@ -267,13 +284,33 @@ begin
   TheTree.Canvas.FillRect(NodeRect.Left+2, NodeRect.Top+2, NodeRect.Left+FullAbcWidth-2, NodeRect.Bottom-2);
 
   // Special draw Modified line gutter
-  if AttriIdx = ord(ahaModifiedLine) then begin
+  if (AttriIdx = ord(ahaModifiedLine)) then begin
     TextY := NodeRect.Bottom - NodeRect.Top - 4;
     TheTree.Canvas.Brush.Color := Attri.Foreground;
     TheTree.Canvas.FillRect(NodeRect.Left+2, NodeRect.Top+2, NodeRect.Left+5, NodeRect.Bottom-2);
     TheTree.Canvas.Brush.Color := Attri.FrameColor;
     TheTree.Canvas.FillRect(NodeRect.Left+2, NodeRect.Top+2+ (TextY div 2), NodeRect.Left+5, NodeRect.Bottom-2);
     exit;
+  end;
+
+  // Special draw oultine color // Caret color
+  if (Attri.Group = agnOutlineColors) or (AttriIdx = ord(ahaCaretColor)) then begin
+    c := Attri.MarkupFoldLineColor;
+    if (AttriIdx = ord(ahaCaretColor)) then
+      c := Attri.Foreground;
+    if c <> clNone then begin
+      TheTree.Canvas.Pen.Color := c;
+      TheTree.Canvas.MoveTo(NodeRect.Left+2, NodeRect.Top+2);
+      TheTree.Canvas.LineTo(NodeRect.Left+2, NodeRect.Bottom-2);
+      TheTree.Canvas.MoveTo(NodeRect.Left+2+1, NodeRect.Top+2);
+      TheTree.Canvas.LineTo(NodeRect.Left+2+1, NodeRect.Bottom-2);
+    end;
+    NodeRect.Left := NodeRect.Left + 6;
+    FullAbcWidth := FullAbcWidth - 6;
+    TheTree.Canvas.Brush.Color := Attri.Background;
+    TheTree.Canvas.FillRect(NodeRect.Left+2, NodeRect.Top+2, NodeRect.Left+FullAbcWidth-2, NodeRect.Bottom-2);
+    if (AttriIdx = ord(ahaCaretColor)) then
+      exit;
   end;
 
   // Draw preview Frame
@@ -335,12 +372,16 @@ begin
       s := 'abc';
       if AttriIdx = ord(ahaFoldedCode) then
         s:= '...';
+      if (AttriIdx = ord(ahaFoldedCodeLine)) or (AttriIdx = ord(ahaHiddenCodeLine)) then
+        s:= '---';
       if AttriIdx = ord(ahaLineNumber) then
         s:= '123';
+      if Attri.Group = agnOutlineColors then
+        s:= 'ab';
       TheTree.Canvas.Font.Color := c;
       TheTree.Canvas.Font.Style := Attri.Style;
       TheTree.Canvas.Font.Height := -(NodeRect.Bottom - NodeRect.Top - 7);
-      TextY := (NodeRect.Top + NodeRect.Bottom - canvas.TextHeight(s)) div 2;
+      TextY := NodeRect.Top + (NodeRect.Bottom - NodeRect.Top - canvas.TextHeight(s)) div 2;
       AbcWidth := TheTree.Canvas.TextExtent(s).cx;
       SetBkMode(TheTree.Canvas.Handle, TRANSPARENT);
       TheTree.Canvas.TextOut(NodeRect.Left+(FullAbcWidth - AbcWidth) div 2, TextY, s);
@@ -365,7 +406,7 @@ begin
     l := length(ExtractFileExt(NewName));
     if (l > 0) and (l+1 < Length(NewName)) then
       NewName := Copy(NewName, 1, Length(NewName) - l);
-    l := UTF8CharacterLength(PChar(NewName));
+    l := UTF8CodepointSize(PChar(NewName));
     if l > 0 then
       NewName := UTF8UpperCase(copy(NewName, 1, l)) + copy(NewName, 1+l, length(NewName));
 
@@ -853,6 +894,8 @@ procedure TEditorColorOptionsFrame.FillPriorEditor;
         mfFrame:     Result := (hafFrameColor in AnAttr.Features) and
                      (AnAttr.FrameColor <> clNone) and
                      (AnAttr.FrameColor <> clDefault);
+        mfStyle:     Result := (hafStyle in AnAttr.Features) and
+                     ( (AnAttr.Style <> []) or (AnAttr.StyleMask <> []) );
     end
   end;
 
@@ -883,6 +926,7 @@ begin
   FillList(ForePriorList, mfForeGround);
   FillList(BackPriorList, mfBackGround);
   FillList(FramePriorList, mfFrame);
+  FillList(StylePriorList, mfStyle);
 
   SelectCurInPriorEditor;
 
@@ -929,6 +973,18 @@ begin
   if n = nil then
     FramePriorList.Selected := nil;
   SetPriorEditVal(FramePriorEdit, GetAttrPriorVal(FCurHighlightElement, mfFrame));
+
+  n := StylePriorList.Items.FindNodeWithData(FCurHighlightElement);
+  StylePriorValPanel.Enabled := n <> nil;
+  if (n <> nil) and not(n.Selected) then begin
+    n.Selected := True;
+    i := Max(0, n.Index - Max(0, (StylePriorList.Height div n.Height div 2) - 1));
+    StylePriorList.TopItem := StylePriorList.Items[i];
+  end
+  else
+  if n = nil then
+    StylePriorList.Selected := nil;
+  SetPriorEditVal(StylePriorEdit, GetAttrPriorVal(FCurHighlightElement, mfStyle));
 end;
 
 function TEditorColorOptionsFrame.AttrForNode(ANode: TTreeNode): TColorSchemeAttribute;
@@ -951,6 +1007,9 @@ begin
   If ASender = FramePriorEdit then
     Result := mfFrame
   else
+  If ASender = StylePriorEdit then
+    Result := mfStyle
+  else
   if ASender = ForePriorUpDown then
     Result := mfForeGround
   else
@@ -960,6 +1019,9 @@ begin
   if ASender = FramePriorUpDown then
     Result := mfFrame
   else
+  if ASender = StylePriorUpDown then
+    Result := mfStyle
+  else
   if ASender = ForePriorList then
     Result := mfForeGround
   else
@@ -968,6 +1030,9 @@ begin
   else
   if ASender = FramePriorList then
     Result := mfFrame
+  else
+  if ASender = StylePriorList then
+    Result := mfStyle
   else
     Result := mfUnknown;
 end;
@@ -979,6 +1044,7 @@ begin
     mfForeGround: Result := ForePriorEdit;
     mfBackGround: Result := BackPriorEdit;
     mfFrame:      Result := FramePriorEdit;
+    mfStyle:      Result := StylePriorEdit;
   end;
 end;
 
@@ -989,6 +1055,7 @@ begin
     mfForeGround: Result := ForePriorList;
     mfBackGround: Result := BackPriorList;
     mfFrame:      Result := FramePriorList;
+    mfStyle:      Result := StylePriorList;
   end;
 end;
 
@@ -1000,7 +1067,12 @@ begin
   case AField of
     mfForeGround: AnAttr.ForePriority := AValue;
     mfBackGround: AnAttr.BackPriority := AValue;
-    mfFrame:      AnAttr.FramePriority := AValue
+    mfFrame:      AnAttr.FramePriority := AValue;
+    mfStyle:      begin
+        AnAttr.StylePriority[fsBold] := AValue;
+        AnAttr.StylePriority[fsItalic] := AValue;
+        AnAttr.StylePriority[fsUnderline] := AValue;
+      end;
   end;
 end;
 
@@ -1014,7 +1086,8 @@ begin
   case AField of
     mfForeGround: Result := AnAttr.ForePriority;
     mfBackGround: Result := AnAttr.BackPriority;
-    mfFrame:      Result := AnAttr.FramePriority
+    mfFrame:      Result := AnAttr.FramePriority;
+    mfStyle:      Result := AnAttr.StylePriority[fsBold];
   end;
 end;
 
@@ -1393,16 +1466,16 @@ begin
   end;
 
 
-  UseSyntaxHighlightCheckBox.ImageIndex := IDEImages.LoadImage(16, 'laz_highlighter');
+  UseSyntaxHighlightCheckBox.ImageIndex := IDEImages.LoadImage('laz_highlighter');
   UseSyntaxHighlightCheckBox.Hint := dlgUseSyntaxHighlight;
   LanguageButton.Hint := dlgLang;
   ColorSchemeButton.Hint := dlgClrScheme;
   FileExtensionsComboBox.hint := dlgFileExts;
-  SetAttributeToDefaultButton.ImageIndex := IDEImages.LoadImage(16, 'laz_set_color_default');
+  SetAttributeToDefaultButton.ImageIndex := IDEImages.LoadImage('restore_default');
   SetAttributeToDefaultButton.Hint := dlgSetElementDefault;
-  SetAllAttributesToDefaultButton.ImageIndex := IDEImages.LoadImage(16, 'laz_set_colors_default');
+  SetAllAttributesToDefaultButton.ImageIndex := IDEImages.LoadImage('restore_defaults');
   SetAllAttributesToDefaultButton.Hint := dlgSetAllElementDefault;
-  btnExport.ImageIndex := IDEImages.LoadImage(16, 'laz_save');
+  btnExport.ImageIndex := IDEImages.LoadImage('laz_save');
   btnExport.Hint := lisExport;
 
   tbtnGlobal.Caption := dlgUseSchemeDefaults;
@@ -1414,6 +1487,7 @@ begin
   ForePriorLabel.Caption := dlgForecolor;
   BackPriorLabel.Caption := dlgBackColor;
   FramePriorLabel.Caption := dlgFrameColor;
+  StylePriorLabel.Caption := dlgTextStyle;
 
   bvlAttributeSection.Caption := dlgElementAttributes;
   SynColorAttrEditor1.Setup;

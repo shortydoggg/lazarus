@@ -19,10 +19,20 @@ unit EduNewProgram;
 interface
 
 uses
-  Classes, LCLProc, SysUtils, FileUtil, LResources, Forms, StdCtrls, ExtCtrls,
-  SynEdit, SynHighlighterPas, BasicCodeTools, ComCtrls, Dialogs, Controls,
-  LazConfigStorage, IDEOptionsIntf, MenuIntf, IDEImagesIntf, LazIDEIntf,
-  IDEDialogs, ProjectIntf, IDECommands, EduOptions;
+  Classes, SysUtils,
+  // LazUtils
+  FileUtil, LazConfigStorage,
+  // LCL
+  LCLProc, LResources, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls, Dialogs,
+  // SynEdit
+  SynEdit, SynHighlighterPas,
+  // CodeTools
+  BasicCodeTools,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, MenuIntf, IDEImagesIntf, LazIDEIntf, ProjectIntf,
+  IDECommands, IDEDialogs,
+  // Education
+  EduOptions;
 
 const
   FileDescNameSingleFileProgram = 'Single file program for education';
@@ -211,7 +221,7 @@ begin
     Parent := ToolBar;
     Enabled := True;
     OnClick :=@FButtonClick;
-    ImageIndex := IDEImages.LoadImage(16, 'item_unit');
+    ImageIndex := IDEImages.LoadImage('item_unit');
     Hint := ersNewSingleFileProgram;
   end;
 end;
@@ -305,10 +315,10 @@ begin
   SrcToolBar.Images:=IDEImages.Images_16;
   SrcLoadDefaultSrcToolButton.ShowHint:=true;
   SrcLoadDefaultSrcToolButton.Hint:=ersReplaceCurrentSourceWithDefaultSourceCode;
-  SrcLoadDefaultSrcToolButton.ImageIndex:=IDEImages.LoadImage(16, 'item_unit');
+  SrcLoadDefaultSrcToolButton.ImageIndex:=IDEImages.LoadImage('item_unit');
   SrcLoadFileToolButton.ShowHint:=true;
   SrcLoadFileToolButton.Hint:=ersLoadSourceFromFile;
-  SrcLoadFileToolButton.ImageIndex:=IDEImages.LoadImage(16, 'laz_open');
+  SrcLoadFileToolButton.ImageIndex:=IDEImages.LoadImage('laz_open');
 end;
 
 class function TEduNewPrgFrame.SupportedOptionsClass: TAbstractIDEOptionsClass;

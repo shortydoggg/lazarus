@@ -104,7 +104,7 @@ constructor TLazAccessibleObject.Create(AOwner: TControl);
 begin
   inherited Create;//(AOwner);
   OwnerControl := AOwner;
-  FChildrenSortedForDataObject := TAvgLvlTree.Create(@CompareDataObjectWithLazAccessibleObject);
+  FChildrenSortedForDataObject := TAvlTree.Create(@CompareDataObjectWithLazAccessibleObject);
   WSRegisterClass();
 end;
 
@@ -193,7 +193,7 @@ end;
 procedure TLazAccessibleObject.ClearChildAccessibleObjects;
 var
   lXObject: TLazAccessibleObject;
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
 begin
   if FChildrenSortedForDataObject = nil then Exit;
   //DebugLn(Format('[TControl.ClearChildAccessibleObjects] Name=%s Count=%d', [Name, FAccessibleChildren.Count]));
@@ -211,7 +211,7 @@ end;
 procedure TLazAccessibleObject.RemoveChildAccessibleObject(
   AObject: TLazAccessibleObject; AFreeObject: Boolean = True);
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   if FChildrenSortedForDataObject = nil then Exit;
   Node:=FChildrenSortedForDataObject.Find(AObject);
@@ -224,7 +224,7 @@ end;
 function TLazAccessibleObject.GetChildAccessibleObjectWithDataObject(
   ADataObject: TObject): TLazAccessibleObject;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   Result := nil;
   if FChildrenSortedForDataObject = nil then Exit;
@@ -242,7 +242,7 @@ end;
 
 function TLazAccessibleObject.GetChildAccessibleObject(AIndex: Integer): TLazAccessibleObject;
 var
-  lNode: TAvgLvlTreeNode = nil;
+  lNode: TAvlTreeNode = nil;
 begin
   Result := nil;
   if AIndex = 0 then lNode := FChildrenSortedForDataObject.FindLowest()
@@ -481,6 +481,7 @@ var
   end;
 
 begin
+  Result:=alNone;
   BestDistance:=High(Integer);
   FindMinDistance(alLeft,MousePos.X);
   FindMinDistance(alRight,Width-MousePos.X);
@@ -624,25 +625,23 @@ procedure TControl.ChangeBounds(ALeft, ATop, AWidth, AHeight: integer;
   KeepBase: boolean);
 var
   SizeChanged, PosChanged : boolean;
-  OldLeft: Integer;
-  OldTop: Integer;
-  OldWidth: Integer;
-  OldHeight: Integer;
+  OldLeft, OldTop, OldWidth, OldHeight: Integer;
 
-  function PosSizeKept: boolean;
+  function PosSizeChanged: boolean;
   begin
     SizeChanged:= (FWidth <> OldWidth) or (FHeight <> OldHeight);
     PosChanged:= (FLeft <> OldLeft) or (FTop <> OldTop);
-    Result:=(not SizeChanged) and (not PosChanged);
+    Result:= SizeChanged or PosChanged;
   end;
 
-  procedure CheckLoop;
+  procedure DebugInvalidPos(N: integer);
   begin
-    if (not KeepBase) and (cfKillChangeBounds in GetTopParent.FControlFlags) then
-      raise Exception.Create('TControl.ChangeBounds loop detected '+DbgSName(Self)
-        +' Left='+dbgs(Left)+',Top='+dbgs(Top)+',Width='+dbgs(Width)+',Height='+dbgs(Height)
-        +' NewLeft='+dbgs(aLeft)+',NewTop='+dbgs(aTop)+',NewWidth='+dbgs(aWidth)+',NewHeight='+dbgs(aHeight)
-        );
+    if (FLeft < Low(Smallint)) or (FLeft > High(Smallint))
+    or (FTop  < Low(Smallint)) or (FTop  > High(Smallint)) then
+      DebugLn(['TControl.ChangeBounds test(',N,')',DbgSName(Self),
+        ' Old=',OldLeft,',',OldTop,',',OldWidth,',',OldHeight,
+        ' New=',ALeft,',',ATop,',',AWidth,',',AHeight,
+        ' Real=',FLeft,',',FTop,',',FWidth,',',FHeight]);
   end;
 
 begin
@@ -653,8 +652,8 @@ begin
     ' KeepBase=',KeepBase]);
   //if (Parent=nil) and (Left>0) and (ALeft=0) then DumpStack; // This can happen if the interface has not yet moved the window and for some reason something applies the interface coords back to the LCL
   {$ENDIF}
-  if not KeepBase then
-    UpdateAlignIndex;
+  if Assigned(Parent) and not KeepBase then
+    Parent.UpdateAlignIndex(Self);
 
   // constraint the size
   DoConstrainedResize(ALeft, ATop, AWidth, AHeight);
@@ -662,39 +661,45 @@ begin
   // check if something would change
   SizeChanged := (FWidth <> AWidth) or (FHeight <> AHeight);
   PosChanged := (FLeft <> ALeft) or (FTop <> ATop);
-  if (not SizeChanged) and (not PosChanged) then Exit;
+  if not (SizeChanged or PosChanged) then Exit;
 
-  CheckLoop;
-
+  // check for loop.
+  if (not KeepBase) and (cfKillChangeBounds in GetTopParent.FControlFlags) then
+    raise Exception.Create('TControl.ChangeBounds loop detected '+DbgSName(Self)
+      +' Left='+dbgs(Left)+',Top='+dbgs(Top)+',Width='+dbgs(Width)+',Height='+dbgs(Height)
+      +' NewLeft='+dbgs(aLeft)+',NewTop='+dbgs(aTop)+',NewWidth='+dbgs(aWidth)+',NewHeight='+dbgs(aHeight)
+      );
   OldLeft := FLeft;
   OldTop := FTop;
   OldWidth := FWidth;
   OldHeight := FHeight;
 
   //DebugLn('TControl.ChangeBounds A ',DbgSName(Self),' Old=',dbgs(BoundsRect),' New=',dbgs(Bounds(ALeft,ATop,AWidth,AHeight)));
-  if (not (csLoading in ComponentState))
-  and (not (Self is TWinControl)) then
+  if not ((csLoading in ComponentState) or (Self is TWinControl)) then
     InvalidateControl(IsControlVisible, False, true);
   //DebugLn('TControl.ChangeBounds B ',Name,':',ClassName);
   DoSetBounds(ALeft, ATop, AWidth, AHeight);
+  DebugInvalidPos(1);
 
   // change base bounds
   // (base bounds are the base for the automatic resizing)
   if not KeepBase then
     UpdateAnchorRules;
+  DebugInvalidPos(2);
 
   // lock size messages
   inc(FSizeLock);
   try
     // notify before autosizing
     BoundsChanged;
-    if PosSizeKept then exit;
+    if not PosSizeChanged then exit;
     if (Parent<>nil) or SizeChanged then
       AdjustSize;
   finally
     dec(FSizeLock);
   end;
-  if PosSizeKept then exit;
+  if not PosSizeChanged then exit;
+  DebugInvalidPos(3);
 
   // send messages, if this is the top level call
   if FSizeLock > 0 then exit;
@@ -705,14 +710,17 @@ begin
   else
   if (not (csLoading in ComponentState)) and (not (Self is TWinControl)) then
     Invalidate;
+  DebugInvalidPos(4);
   // notify user about resize
   if (not (csLoading in ComponentState)) then
   begin
     Resize;
+    DebugInvalidPos(5);
     CheckOnChangeBounds;
+    DebugInvalidPos(6);
     // for delphi compatibility send size/move messages
-    PosSizeKept;
-    SendMoveSizeMessages(SizeChanged,PosChanged);
+    if PosSizeChanged then
+      SendMoveSizeMessages(SizeChanged,PosChanged);
   end;
 end;
 
@@ -762,6 +770,77 @@ begin
     if MaxHeight > 0 then
       MaxHeight := MulDiv(MaxHeight, Multiplier, Divider);
   end;
+end;
+
+function TControl.ScaleDesignToForm(const ASize: Integer): Integer;
+var
+  ParentForm: TCustomDesignControl;
+begin
+  ParentForm := NeedParentDesignControl(Self);
+  Result := MulDiv(ASize, ParentForm.PixelsPerInch, ParentForm.DesignTimePPI);
+end;
+
+function TControl.Scale96ToForm(const ASize: Integer): Integer;
+var
+  ParentForm: TCustomDesignControl;
+begin
+  ParentForm := NeedParentDesignControl(Self);
+  Result := MulDiv(ASize, ParentForm.PixelsPerInch, 96);
+end;
+
+function TControl.Scale96ToScreen(const ASize: Integer): Integer;
+begin
+  Result := MulDiv(ASize, Screen.PixelsPerInch, 96);
+end;
+
+function TControl.ScaleFormTo96(const ASize: Integer): Integer;
+var
+  ParentForm: TCustomDesignControl;
+begin
+  ParentForm := NeedParentDesignControl(Self);
+  Result := MulDiv(ASize, 96, ParentForm.PixelsPerInch);
+end;
+
+function TControl.ScaleFormToDesign(const ASize: Integer): Integer;
+var
+  ParentForm: TCustomDesignControl;
+begin
+  ParentForm := NeedParentDesignControl(Self);
+  Result := MulDiv(ASize, ParentForm.DesignTimePPI, ParentForm.PixelsPerInch);
+end;
+
+function TControl.ScaleScreenTo96(const ASize: Integer): Integer;
+begin
+  Result := MulDiv(ASize, 96, Screen.PixelsPerInch);
+end;
+
+function TControl.Scale96ToFont(const ASize: Integer): Integer;
+begin
+  Result := MulDiv(ASize, Font.PixelsPerInch, 96);
+end;
+
+function TControl.ScaleFontTo96(const ASize: Integer): Integer;
+begin
+  Result := MulDiv(ASize, 96, Font.PixelsPerInch);
+end;
+
+function TControl.ScaleScreenToFont(const ASize: Integer): Integer;
+begin
+  Result := MulDiv(ASize, Font.PixelsPerInch, Screen.PixelsPerInch);
+end;
+
+function TControl.ScaleFontToScreen(const ASize: Integer): Integer;
+begin
+  Result := MulDiv(ASize, Screen.PixelsPerInch, Font.PixelsPerInch);
+end;
+
+procedure TControl.ScaleFontsPPI(const AToPPI: Integer;
+  const AProportion: Double);
+begin
+  // Problem: all fonts have to be scaled.
+  // Override this function - list all custom fonts in the overriden procedure
+
+  DoScaleFontPPI(Font, AToPPI, AProportion);
 end;
 
 {------------------------------------------------------------------------------
@@ -853,13 +932,28 @@ begin
     NewHeight:=Result.Height-Result.ClientHeight+NewClientHeight;
     Result.SetBounds(Bounds.Left,Bounds.Top,NewWidth,NewHeight);
     Result.SetClientSize(Point(NewClientWidth,NewClientHeight));
+    {$IFDEF DebugDisableAutoSizing}
     debugln('TControl.CreateFloatingDockSite A ',DbgSName(Self),' ',DbgSName(Result),' ',dbgs(Result.BoundsRect));
+    {$ENDIF}
     Result.EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TControl.CreateFloatingDockSite'){$ENDIF};
   end;
 end;
 
 procedure TControl.ExecuteDefaultAction;
 begin
+end;
+
+procedure TControl.FixDesignFontsPPI(const ADesignTimePPI: Integer);
+begin
+  // Problem: Font.PixelsPerInch isn't saved in the LFM, therefore the
+  // design-time font PPI is different from the one that is loaded on target
+  // machine, which results in different font scaling.
+  // DoFixDesignFont restores the corrent design-time font PPI so that it can
+  // be used for LCL HighDPI scaling.
+  // Override this function - list all custom fonts in the overriden procedure
+  // To-Do: maybe save Font.PixelsPerInch in the LFM and remove this?
+
+  DoFixDesignFontPPI(Font, ADesignTimePPI);
 end;
 
 procedure TControl.ExecuteCancelAction;
@@ -1049,10 +1143,10 @@ end;
 ------------------------------------------------------------------------------}
 procedure TControl.CMMouseEnter(var Message: TLMessage);
 begin
-  if FMouseEntered then
+  if FMouseInClient then
     Exit;
 
-  FMouseEntered := True;
+  FMouseInClient := True;
 
   // broadcast to parents first
   if Assigned(Parent) then
@@ -1068,10 +1162,10 @@ end;
 ------------------------------------------------------------------------------}
 procedure TControl.CMMouseLeave(var Message: TLMessage);
 begin
-  if not FMouseEntered then
+  if not FMouseInClient then
     Exit;
 
-  FMouseEntered := False;
+  FMouseInClient := False;
 
   // broadcast to parents first
   if Assigned(Parent) then
@@ -1142,7 +1236,16 @@ begin
 
   if FParentFont then
   begin
-    Font := FParent.Font;
+    if Assigned(FParent) then
+    begin
+      Font.BeginUpdate;
+      try
+        Font.PixelsPerInch := FParent.Font.PixelsPerInch; // PixelsPerInch isn't assigned
+        Font := FParent.Font;
+      finally
+        Font.EndUpdate;
+      end;
+    end;
     FParentFont := True;
   end;
   //call here for compatibility with older LCL code
@@ -1372,8 +1475,6 @@ end;
 ------------------------------------------------------------------------------}
 procedure TControl.DoConstraintsChange(Sender : TObject);
 begin
-  Width:=Constraints.MinMaxWidth(Width);
-  Height:=Constraints.MinMaxHeight(Height);
   AdjustSize;
 end;
 
@@ -1436,6 +1537,33 @@ begin
   DebugLn('TControl.DoEndDrag ',Name,':',ClassName,' XY=',IntToStr(X),',',IntToStr(Y));
   {$ENDIF}
   if Assigned(FOnEndDrag) then FOnEndDrag(Self,Target,X,Y);
+end;
+
+{------------------------------------------------------------------------------
+       TControl.DoFixDesignFontPPI
+------------------------------------------------------------------------------}
+procedure TControl.DoFixDesignFontPPI(const AFont: TFont;
+  const ADesignTimePPI: Integer);
+var
+  H: Integer;
+  OldParentFont: Boolean;
+begin
+  if AFont.PixelsPerInch <> ADesignTimePPI then
+  begin
+    OldParentFont := ParentFont;
+    try
+      H := AFont.Height;
+      AFont.BeginUpdate;
+      try
+        AFont.Height := MulDiv(H, AFont.PixelsPerInch, ADesignTimePPI);
+        AFont.PixelsPerInch := ADesignTimePPI;
+      finally
+        AFont.EndUpdate;
+      end;
+    finally
+      FParentFont := OldParentFont; // change ParentFont without triggering CM_PARENTFONTCHANGED
+    end;
+  end;
 end;
 
 {------------------------------------------------------------------------------
@@ -1622,11 +1750,9 @@ begin
   {$IFDEF VerboseDrag}
   DebugLn('TControl.DragOver ',Name,':',ClassName,' XY=',IntToStr(X),',',IntToStr(Y));
   {$ENDIF}
-  Accept := False;
-  if Assigned(FOnDragOver) then begin
-    Accept := True;
+  Accept := Assigned(FOnDragOver);
+  if Accept then
     FOnDragOver(Self,Source,X,Y,State,Accept);
-  end;
 end;
 
 {------------------------------------------------------------------------------
@@ -1675,25 +1801,6 @@ end;
 function TControl.CanAutoSize(var NewWidth, NewHeight : Integer): Boolean;
 begin
   Result := True;
-end;
-
-{------------------------------------------------------------------------------
-       TControl UpdateAlignIndex
-
-  Move this control to position 0 of Parent.FAlignOrder
-------------------------------------------------------------------------------}
-procedure TControl.UpdateAlignIndex;
-var
-  i: Integer;
-begin
-  if Parent=nil then exit;
-  if Parent.FAlignOrder=nil then
-    Parent.FAlignOrder:=TFPList.Create;
-  i:=Parent.FAlignOrder.IndexOf(Self);
-  if i<0 then
-    Parent.FAlignOrder.Insert(0,Self)
-  else
-    Parent.FAlignOrder.Move(i,0);
 end;
 
 {------------------------------------------------------------------------------
@@ -1762,6 +1869,17 @@ begin
   Result := (Parent<>nil) and Parent.HandleAllocated and (GetCaptureControl = Self);
 end;
 
+function TControl.GetMousePosFromMessage(const MessageMousePos: TSmallPoint
+  ): TPoint;
+begin
+  if (Width>32767) or (Height>32767) then
+  begin
+    GetCursorPos(Result);
+    Result := ScreenToClient(Result);
+  end else
+    Result := SmallPointToPoint(MessageMousePos);
+end;
+
 function TControl.GetTBDockHeight: Integer;
 begin
   if FTBDockHeight>0 then
@@ -1785,6 +1903,19 @@ procedure TControl.DoOnShowHint(HintInfo: PHintInfo);
 begin
   if Assigned(OnShowHint) then
     OnShowHint(Self,HintInfo);
+end;
+
+procedure TControl.DoScaleFontPPI(const AFont: TFont; const AToPPI: Integer;
+  const AProportion: Double);
+begin
+  // If AFont.PixelsPerInch is different from "Screen.PixelsPerInch" (=GetDeviceCaps(DC, LOGPIXELSX))
+  // then the font doesn't scale -> we have to assign a nonzero height value.
+  if (AFont.Height=0) and not (csDesigning in ComponentState) then
+    AFont.Height := MulDiv(GetFontData(AFont.Reference.Handle).Height, AFont.PixelsPerInch, Screen.PixelsPerInch);
+  if AToPPI>0 then
+    AFont.PixelsPerInch := AToPPI
+  else
+    AFont.PixelsPerInch := Round(AFont.PixelsPerInch*AProportion);
 end;
 
 function TControl.IsAParentAligning: boolean;
@@ -1853,6 +1984,22 @@ begin
   i := FControlHandlers[HandlerType].Count;
   while FControlHandlers[HandlerType].NextDownIndex(i) do
     TKeyEvent(FControlHandlers[HandlerType][i])(Self, Key, Shift);
+end;
+
+procedure TControl.DoCallMouseWheelEventHandler(HandlerType: TControlHandlerType;
+  Shift: TShiftState; WheelDelta: Integer;
+  MousePos: TPoint; var Handled: Boolean);
+var
+  i: Integer;
+begin
+  i := FControlHandlers[HandlerType].Count;
+  //debugln('TControl.DoCallMouseWheelEventHandler A: Handled = ',DbgS(Handled),', Count = ',DbgS(i));
+  while (not Handled) and FControlHandlers[HandlerType].NextDownIndex(i) do
+  begin
+    TMouseWheelEvent(FControlHandlers[HandlerType][i])(Self, Shift, WheelDelta, MousePos, Handled);
+    //debugln('TControl.DoCallMouseWheelEventHandler B: i = ',Dbgs(i),', Handled = ',DbgS(Handled));
+  end;
+  //debugln('TControl.DoCallMouseWheelEventHandler End: Handled = ',DbgS(Handled));
 end;
 
 {------------------------------------------------------------------------------
@@ -2033,7 +2180,7 @@ begin
   if (csDesigning in ComponentState) then
   begin
     // redirect messages to designer
-    Form := GetParentForm(Self);
+    Form := GetDesignerForm(Self);
     //debugln(['TControl.WndProc ',dbgsname(Self)]);
     if Assigned(Form) and Assigned(Form.Designer) and Form.Designer.IsDesignMsg(Self, TheMessage) then
       Exit;
@@ -2048,36 +2195,6 @@ begin
   or ((TheMessage.Msg>=LM_MOUSEFIRST2) and (TheMessage.Msg<=LM_MOUSELAST2))
   then begin
     // mouse messages
-    
-    // map double clicks for controls, that do not want doubleclicks
-    if not (csDoubleClicks in ControlStyle) then
-    begin
-      case TheMessage.Msg of
-        LM_LButtonDBLCLK,
-        LM_RButtonDBLCLK,
-        LM_MButtonDBLCLK:
-          Dec(TheMessage.Msg, LM_LBUTTONDBLCLK - LM_LBUTTONDOWN);
-      end;
-    end;
-    // map triple clicks for controls, that do not want tripleclicks
-    if not (csTripleClicks in ControlStyle) then
-    begin
-      case TheMessage.Msg of
-        LM_LBUTTONTRIPLECLK: TheMessage.Msg:=LM_LBUTTONDOWN;
-        LM_MBUTTONTRIPLECLK: TheMessage.Msg:=LM_MBUTTONDOWN;
-        LM_RBUTTONTRIPLECLK: TheMessage.Msg:=LM_RBUTTONDOWN;
-      end;
-    end;
-    // map quad clicks for controls, that do not want quadclicks
-    if not (csQuadClicks in ControlStyle) then
-    begin
-      case TheMessage.Msg of
-        LM_LBUTTONQUADCLK: TheMessage.Msg:=LM_LBUTTONDBLCLK;
-        LM_MBUTTONQUADCLK: TheMessage.Msg:=LM_MBUTTONDBLCLK;
-        LM_RBUTTONQUADCLK: TheMessage.Msg:=LM_RBUTTONDBLCLK;
-      end;
-    end;
-
     case TheMessage.Msg of
 
       LM_MOUSEMOVE:
@@ -2154,11 +2271,14 @@ end;
 ------------------------------------------------------------------------------}
 procedure TControl.DoMouseDown(var Message: TLMMouse; Button: TMouseButton;
   Shift: TShiftState);
+var
+  MP: TPoint;
 begin
   //DebugLn('TControl.DoMouseDown ',DbgSName(Self),' ');
-  if not (csNoStdEvents in ControlStyle) then begin
-    with Message do
-      MouseDown(Button, KeysToShiftState(Keys) + Shift, XPos, YPos);
+  if not (csNoStdEvents in ControlStyle) then
+  begin
+    MP := GetMousePosFromMessage(Message.Pos);
+    MouseDown(Button, KeysToShiftState(Message.Keys) + Shift, MP.X, MP.Y);
   end;
 end;
 
@@ -2167,19 +2287,19 @@ end;
 ------------------------------------------------------------------------------}
 procedure TControl.DoMouseUp(var Message: TLMMouse; Button: TMouseButton);
 var
-  P: TPoint;
+  P, MP: TPoint;
 begin
   if not (csNoStdEvents in ControlStyle) then
-    with Message do
+  begin
+    MP := GetMousePosFromMessage(Message.Pos);
+    if (Button in [mbLeft, mbRight]) and DragManager.IsDragging then
     begin
-      if (Button in [mbLeft, mbRight]) and DragManager.IsDragging then
-      begin
-        P := ClientToScreen(Point(XPos, YPos));
-        DragManager.MouseUp(Button, KeysToShiftState(Keys), P.X, P.Y);
-        Message.Result := 1;
-      end;
-      MouseUp(Button, KeysToShiftState(Keys), XPos, YPos);
+      P := ClientToScreen(MP);
+      DragManager.MouseUp(Button, KeysToShiftState(Message.Keys), P.X, P.Y);
+      Message.Result := 1;
     end;
+    MouseUp(Button, KeysToShiftState(Message.Keys), MP.X, MP.Y);
+  end;
 end;
 
 {------------------------------------------------------------------------------
@@ -2191,13 +2311,39 @@ begin
   Result := False;
 
   if Assigned(FOnMouseWheel)
-  then FOnMouseWheel(Self, Shift, WheelDelta, MousePos, Result);
+    then FOnMouseWheel(Self, Shift, WheelDelta, MousePos, Result);
+  if not Result then
+  begin
+    //debugln('TControl.DoMouseWheel calling DoCallMouseWheelEventHandler');
+    DoCallMouseWheelEventHandler(chtOnMouseWheel, Shift, WheelDelta, MousePos, Result);
+  end;
 
   if not Result
   then begin
     if WheelDelta < 0
     then Result := DoMouseWheelDown(Shift, MousePos)
     else Result := DoMouseWheelUp(Shift, MousePos);
+  end;
+end;
+
+function TControl.DoMouseWheelHorz(Shift: TShiftState; WheelDelta: Integer;
+  MousePos: TPoint): Boolean;
+begin
+  Result := False;
+
+  if Assigned(FOnMouseWheelHorz)
+    then FOnMouseWheelHorz(Self, Shift, WheelDelta, MousePos, Result);
+  if not Result then
+  begin
+    //debugln('TControl.DoMouseWheelHorz calling DoCallMouseWheelEventHandler');
+    DoCallMouseWheelEventHandler(chtOnMouseWheelHorz, Shift, WheelDelta, MousePos, Result);
+  end;
+
+  if not Result
+  then begin
+    if WheelDelta < 0
+    then Result := DoMouseWheelLeft(Shift, MousePos)
+    else Result := DoMouseWheelRight(Shift, MousePos);
   end;
 end;
 
@@ -2219,6 +2365,26 @@ begin
   Result := False;
   if Assigned(FOnMouseWheelUp) then
     FOnMouseWheelUp(Self, Shift, MousePos, Result);
+end;
+
+{------------------------------------------------------------------------------
+       TControl DoMouseWheelLeft  "Event Handler"
+------------------------------------------------------------------------------}
+function TControl.DoMouseWheelLeft(Shift: TShiftState; MousePos: TPoint): Boolean;
+begin
+  Result := False;
+  if Assigned(FOnMouseWheelLeft) then
+    FOnMouseWheelLeft(Self, Shift, MousePos, Result);
+end;
+
+{------------------------------------------------------------------------------
+       TControl DoMouseWheelRight  "Event Handler"
+------------------------------------------------------------------------------}
+function TControl.DoMouseWheelRight(Shift: TShiftState; MousePos: TPoint): Boolean;
+begin
+  Result := False;
+  if Assigned(FOnMouseWheelRight) then
+    FOnMouseWheelRight(Self, Shift, MousePos, Result);
 end;
 
 procedure TControl.SetAnchorSide(Kind: TAnchorKind; AValue: TAnchorSide);
@@ -2247,7 +2413,7 @@ var
   Handled: Boolean;
 begin
   if (csDesigning in ComponentState) or (Message.Result <> 0) then Exit;
-  P := SmallPointToPoint(Message.Pos);
+  P := GetMousePosFromMessage(Message.Pos);
   // X and Y = -1 when user clicks on keyboard menu button
   if P.X <> -1 then
     P := ScreenToClient(P);
@@ -2337,12 +2503,10 @@ procedure TControl.WMXButtonDown(var Message: TLMXButtonDown);
 var
   Btn: TMouseButton;
 begin
-  case (Message.Keys shr 16) and $FFFF of
-    1: Btn := mbExtra1;
-    2: Btn := mbExtra2;
-  else
-    Exit;
-  end;
+  if (Message.Keys and MK_XBUTTON1) <> 0 then Btn := mbExtra1
+  else if (Message.Keys and MK_XBUTTON2) <> 0 then Btn := mbExtra2
+  else Exit;
+
   if (csCaptureMouse in ControlStyle) and (Btn in CaptureMouseButtons) then
   begin
     {$IFDEF VerboseMouseCapture}
@@ -2419,12 +2583,10 @@ procedure TControl.WMXButtonDBLCLK(var Message: TLMXButtonDblClk);
 var
   Btn: TMouseButton;
 begin
-  case (Message.Keys shr 16) and $FFFF of
-    1: Btn := mbExtra1;
-    2: Btn := mbExtra2;
-  else
-    Exit;
-  end;
+  if (Message.Keys and MK_XBUTTON1) <> 0 then Btn := mbExtra1
+  else if (Message.Keys and MK_XBUTTON2) <> 0 then Btn := mbExtra2
+  else Exit;
+
   if (csCaptureMouse in ControlStyle) and (Btn in CaptureMouseButtons) then
   begin
     {$IFDEF VerboseMouseCapture}
@@ -2498,12 +2660,10 @@ procedure TControl.WMXButtonTripleCLK(var Message: TLMXButtonTripleClk);
 var
   Btn: TMouseButton;
 begin
-  case (Message.Keys shr 16) and $FFFF of
-    1: Btn := mbExtra1;
-    2: Btn := mbExtra2;
-  else
-    Exit;
-  end;
+  if (Message.Keys and MK_XBUTTON1) <> 0 then Btn := mbExtra1
+  else if (Message.Keys and MK_XBUTTON2) <> 0 then Btn := mbExtra2
+  else Exit;
+
   if (csCaptureMouse in ControlStyle) and (Btn in CaptureMouseButtons) then
   begin
     {$IFDEF VerboseMouseCapture}
@@ -2577,12 +2737,10 @@ procedure TControl.WMXButtonQuadCLK(var Message: TLMXButtonQuadClk);
 var
   Btn: TMouseButton;
 begin
-  case (Message.Keys shr 16) and $FFFF of
-    1: Btn := mbExtra1;
-    2: Btn := mbExtra2;
-  else
-    Exit;
-  end;
+  if (Message.Keys and MK_XBUTTON1) <> 0 then Btn := mbExtra1
+  else if (Message.Keys and MK_XBUTTON2) <> 0 then Btn := mbExtra2
+  else Exit;
+
   if (csCaptureMouse in ControlStyle) and (Btn in CaptureMouseButtons) then
   begin
     {$IFDEF VerboseMouseCapture}
@@ -2615,7 +2773,7 @@ begin
   begin
     Exclude(FControlState, csClicked);
     //DebugLn('TControl.WMLButtonUp B ',dbgs(ClientRect.Left),',',dbgs(ClientRect.Top),',',dbgs(ClientRect.Right),',',dbgs(ClientRect.Bottom),' ',dbgs(Message.Pos.X),',',dbgs(Message.Pos.Y));
-    if PtInRect(ClientRect, SmallPointToPoint(Message.Pos))
+    if PtInRect(ClientRect, GetMousePosFromMessage(Message.Pos))
     then begin
       //DebugLn('TControl.WMLButtonUp C');
       Click;
@@ -2670,12 +2828,10 @@ procedure TControl.WMXButtonUp(var Message: TLMXButtonUp);
 var
   Btn: TMouseButton;
 begin
-  case (Message.Keys shr 16) and $FFFF of
-    1: Btn := mbExtra1;
-    2: Btn := mbExtra2;
-  else
-    Exit;
-  end;
+  if (Message.Keys and MK_XBUTTON1) <> 0 then Btn := mbExtra1
+  else if (Message.Keys and MK_XBUTTON2) <> 0 then Btn := mbExtra2
+  else Exit;
+
   if (csCaptureMouse in ControlStyle) and (Btn in CaptureMouseButtons) then
   begin
     {$IFDEF VerboseMouseCapture}
@@ -2698,12 +2854,31 @@ procedure TControl.WMMouseWheel(var Message: TLMMouseEvent);
 var
   MousePos: TPoint;
   lState: TShiftState;
+  SP: TSmallPoint;
 begin
-  MousePos.X := Message.X;
-  MousePos.Y := Message.Y;
+  SP.X := Message.X; // cannot use SmallPoint() here due to FPC inconsistency in Classes.TSmallPoint<>Types.TSmallPoint on Linux
+  SP.Y := Message.Y;
+  MousePos := GetMousePosFromMessage(SP);
 
   lState := Message.State - [ssCaps, ssNum, ssScroll]; // Remove unreliable states, see http://bugs.freepascal.org/view.php?id=20065
   if DoMouseWheel(lState, Message.WheelDelta, MousePos) then
+    Message.Result := 1 // handled, skip further handling by interface
+  else
+    inherited;
+end;
+
+procedure TControl.WMMouseHWheel(var Message: TLMMouseEvent);
+var
+  MousePos: TPoint;
+  lState: TShiftState;
+  SP: TSmallPoint;
+begin
+  SP.X := Message.X; // cannot use SmallPoint() here due to FPC inconsistency in Classes.TSmallPoint<>Types.TSmallPoint on Linux
+  SP.Y := Message.Y;
+  MousePos := GetMousePosFromMessage(SP);
+
+  lState := Message.State - [ssCaps, ssNum, ssScroll]; // Remove unreliable states, see http://bugs.freepascal.org/view.php?id=20065
+  if DoMouseWheelHorz(lState, Message.WheelDelta, MousePos) then
     Message.Result := 1 // handled, skip further handling by interface
   else
     inherited;
@@ -2924,6 +3099,108 @@ begin
   {$IFDEF VerboseAllAutoSize}
   DebugLn(['TControl.DoAllAutoSize END ',DbgSName(Self),' ',dbgs(BoundsRect)]);
   {$ENDIF}
+end;
+
+procedure TControl.DoAutoAdjustLayout(const AMode: TLayoutAdjustmentPolicy;
+  const AXProportion, AYProportion: Double);
+var
+  AAWidth, AAHeight: Boolean;
+  NewLeft, NewTop, NewWidth, NewHeight, NewRight, NewBottom, OldWidth, OldHeight,
+    NewBaseLeft, NewBaseTop, NewBaseWidth, NewBaseHeight: Integer;
+begin
+  // Apply the changes
+  if AMode in [lapAutoAdjustWithoutHorizontalScrolling, lapAutoAdjustForDPI] then
+  begin
+    // Dimensions
+    AAWidth := False;
+    AAHeight := False;
+    NewLeft := Left;
+    NewTop := Top;
+    NewWidth := Width;
+    NewHeight := Height;
+    OldWidth := Width;
+    OldHeight := Height;
+
+    ShouldAutoAdjust(AAWidth, AAHeight);
+    AAWidth := AAWidth and (Align in [alNone, alLeft, alRight])
+      and not((akLeft in Anchors) and (akRight in Anchors));
+    AAHeight := AAHeight and (Align in [alNone, alTop, alBottom])
+      and not((akTop in Anchors) and (akBottom in Anchors));
+
+    if (Align=alNone) and (akLeft in Anchors) then
+      NewLeft := Round(NewLeft * AXProportion);
+    if (Align=alNone) and (akRight in Anchors) and (Parent<>nil)
+    and (AnchorSideRight.Control=nil) then
+    begin
+      if not(akLeft in Anchors) then
+      begin
+        NewRight := Round((Parent.ClientWidth-NewLeft-OldWidth) * AXProportion);
+        NewLeft := Parent.ClientWidth-NewRight-OldWidth
+      end else
+      begin
+        NewRight := Round((Parent.ClientWidth-Left-OldWidth) * AXProportion);
+        NewWidth := Parent.ClientWidth-NewLeft-NewRight;
+      end;
+    end;
+
+    if (Align=alNone) and (akTop in Anchors) then
+      NewTop := Round(NewTop * AYProportion);
+    if (Align=alNone) and (akBottom in Anchors) and (Parent<>nil)
+    and (AnchorSideBottom.Control=nil) then
+    begin
+      if not(akTop in Anchors) then
+      begin
+        NewBottom := Round((Parent.ClientHeight-NewTop-OldHeight) * AYProportion);
+        NewTop := Parent.ClientHeight-NewBottom-OldHeight
+      end else
+      begin
+        NewBottom := Round((Parent.ClientHeight-Top-OldHeight) * AYProportion);
+        NewHeight := Parent.ClientHeight-NewTop-NewBottom;
+      end;
+    end;
+
+    if AAWidth then
+      NewWidth := Round(Width * AXProportion);
+    if AAHeight then
+      NewHeight := Round(Height * AYProportion);
+
+    BorderSpacing.AutoAdjustLayout(AXProportion, AYProportion);
+    Constraints.AutoAdjustLayout(AXProportion, AYProportion);
+
+    NewBaseLeft := NewLeft;
+    NewBaseTop := NewTop;
+    NewBaseWidth := NewWidth;
+    NewBaseHeight := NewHeight;
+    NewWidth := Constraints.MinMaxWidth(NewWidth);
+    NewHeight := Constraints.MinMaxHeight(NewHeight);
+
+    if AAWidth or (NewBaseWidth<>NewWidth) then
+    begin
+      if akRight in Anchors then
+        NewLeft := NewLeft-NewWidth+OldWidth;
+    end;
+    if AAHeight or (NewBaseHeight<>NewHeight) then
+    begin
+      if akBottom in Anchors then
+        NewTop := NewTop-NewHeight+OldHeight;
+    end;
+    if AAWidth and (akRight in Anchors) then
+      NewBaseLeft := NewBaseLeft-NewBaseWidth+OldWidth;
+    if AAHeight and (akBottom in Anchors) then
+      NewBaseTop := NewBaseTop-NewBaseHeight+OldHeight;
+
+    FBaseBounds.Left:=NewBaseLeft;
+    FBaseBounds.Top:=NewBaseTop;
+    FBaseBounds.Right:=NewBaseLeft+NewBaseWidth;
+    FBaseBounds.Bottom:=NewBaseTop+NewBaseHeight;
+    if Parent<>nil then
+    begin
+      FBaseParentClientSize.cx:=Parent.ClientWidth;
+      FBaseParentClientSize.cy:=Parent.ClientHeight;
+    end;
+
+    SetBoundsKeepBase(NewLeft, NewTop, NewWidth, NewHeight);
+  end;
 end;
 
 procedure TControl.AnchorSideChanged(TheAnchorSide: TAnchorSide);
@@ -3193,7 +3470,7 @@ begin
   ChangeText :=
     (csSetCaption in ControlStyle) and not (csLoading in ComponentState) and
     (Name = Text) and
-    ((Owner = nil) or not (Owner is TControl) or not (csLoading in TControl(Owner).ComponentState));
+    ((Owner = nil) or not (Owner is TControl) or not (csLoading in Owner.ComponentState));
   inherited SetName(Value);
   if ChangeText then Text := Value;
 end;
@@ -3354,7 +3631,7 @@ end;
 
 procedure TControl.WMCancelMode(var Message: TLMessage);
 begin
-  MouseCapture := False;
+  SetCaptureControl(nil);
 end;
 
 function TControl.IsEnabledStored: Boolean;
@@ -3715,31 +3992,34 @@ var
 begin
   if FAlign = Value then exit;
   //DebugLn(['TControl.SetAlign ',DbgSName(Self),' Old=',DbgS(FAlign),' New=',DbgS(Value),' ',Anchors<>AnchorAlign[FAlign]]);
-  DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TControl.setalign'){$ENDIF};
-  OldBaseBounds:=BaseBounds;
-  OldAlign := FAlign;
-  FAlign := Value;
-  if (not (csLoading in ComponentState))
-  and (Align in [alLeft,alTop,alRight,alBottom,alClient]) then begin
-    // Align for alLeft,alTop,alRight,alBottom,alClient takes precedence
-    // over AnchorSides => clean up
-    for a:=low(TAnchorKind) to High(TAnchorKind) do
-    begin
-      if not (a in AnchorAlign[FAlign]) then continue;
-      AnchorSide[a].Control:=nil;
-      AnchorSide[a].Side:=asrTop;
+  DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TControl.SetAlign'){$ENDIF};
+  try
+    OldBaseBounds:=BaseBounds;
+    OldAlign := FAlign;
+    FAlign := Value;
+    if (not (csLoading in ComponentState))
+    and (Align in [alLeft,alTop,alRight,alBottom,alClient]) then begin
+      // Align for alLeft,alTop,alRight,alBottom,alClient takes precedence
+      // over AnchorSides => clean up
+      for a:=low(TAnchorKind) to High(TAnchorKind) do
+      begin
+        if not (a in AnchorAlign[FAlign]) then continue;
+        AnchorSide[a].Control:=nil;
+        AnchorSide[a].Side:=asrTop;
+      end;
     end;
+    // Notes:
+    // - if anchors had default values then change them to new default values
+    //   This is done for Delphi compatibility.
+    // - Anchors are not stored if they are AnchorAlign[Align]
+    if (Anchors = AnchorAlign[OldAlign]) and (Anchors <> AnchorAlign[FAlign]) then
+      Anchors := AnchorAlign[FAlign];
+    if not (csLoading in ComponentState) then
+      BoundsRect:=OldBaseBounds;
+    //DebugLn(['TControl.SetAlign ',DbgSName(Self),' Cur=',DbgS(FAlign),' New=',DbgS(Value),' ',Anchors<>AnchorAlign[FAlign],' Anchors=',dbgs(Anchors)]);
+  finally
+    EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TControl.SetAlign'){$ENDIF};
   end;
-  // Notes:
-  // - if anchors had default values then change them to new default values
-  //   This is done for Delphi compatibility.
-  // - Anchors are not stored if they are AnchorAlign[Align]
-  if (Anchors = AnchorAlign[OldAlign]) and (Anchors <> AnchorAlign[FAlign]) then
-    Anchors := AnchorAlign[FAlign];
-  if not (csLoading in ComponentState) then
-    BoundsRect:=OldBaseBounds;
-  //DebugLn(['TControl.SetAlign ',DbgSName(Self),' Cur=',DbgS(FAlign),' New=',DbgS(Value),' ',Anchors<>AnchorAlign[FAlign],' Anchors=',dbgs(Anchors)]);
-  EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TControl.setalign'){$ENDIF};
 end;
 
 {------------------------------------------------------------------------------
@@ -3848,10 +4128,9 @@ begin
 end;
 
 procedure TControl.AutoAdjustLayout(AMode: TLayoutAdjustmentPolicy;
-  const AFromDPI, AToDPI, AOldFormWidth, ANewFormWidth: Integer);
+  const AFromPPI, AToPPI, AOldFormWidth, ANewFormWidth: Integer);
 var
   lXProportion, lYProportion: Double;
-  NewLeft, NewTop, NewHeight, NewWidth: Integer;
   lMode: TLayoutAdjustmentPolicy;
 begin
   // First resolve ladDefault
@@ -3866,52 +4145,29 @@ begin
   end
   else if lMode = lapAutoAdjustForDPI then
   begin
-    if AFromDPI > 0 then lXProportion := AToDPI / AFromDPI;
+    if AFromPPI > 0 then lXProportion := AToPPI / AFromPPI;
   end;
 
   // y-axis adjustment proportion
-  if AFromDPI > 0 then lYProportion := AToDPI / AFromDPI
+  if AFromPPI > 0 then lYProportion := AToPPI / AFromPPI
   else lYProportion := 1.0;
 
-  // Apply the changes
-  if lMode in [lapAutoAdjustWithoutHorizontalScrolling, lapAutoAdjustForDPI] then
-  begin
-    if ShouldAutoAdjustLeftAndTop then
-    begin
-      NewLeft := Round(Left * lXProportion);
-      NewTop := Round(Top * lYProportion);
-    end
-    else
-    begin
-      NewLeft := Left;
-      NewTop := Top;
-    end;
-    if ShouldAutoAdjustWidthAndHeight then
-    begin
-      NewWidth := Round(Width * lXProportion);
-      NewHeight := Round(Height * lYProportion);
-    end
-    else
-    begin
-      // Give a shake at the autosize to recalculate font sizes for example
-      if AutoSize then AdjustSize();
-      NewWidth := Width;
-      NewHeight := Height;
-    end;
-    SetBounds(NewLeft, NewTop, NewWidth, NewHeight);
+  DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TControl.AutoAdjustLayout'){$ENDIF};
+  try
+    if AMode in [lapAutoAdjustWithoutHorizontalScrolling, lapAutoAdjustForDPI] then
+      ScaleFontsPPI(AToPPI, lYProportion);
+
+    DoAutoAdjustLayout(lMode, lXProportion, lYProportion);
+  finally
+    EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TControl.AutoAdjustLayout'){$ENDIF};
   end;
 end;
 
-// The layout should only be auto-adjusted for controls with the most simple
-// default absolute positioning
-function TControl.ShouldAutoAdjustLeftAndTop: Boolean;
+// Auto-adjust the layout of controls.
+procedure TControl.ShouldAutoAdjust(var AWidth, AHeight: Boolean);
 begin
-  Result := (Align = alNone) and (Anchors = [akTop, akLeft]) and (Parent <> nil);
-end;
-
-function TControl.ShouldAutoAdjustWidthAndHeight: Boolean;
-begin
-  Result := (Align = alNone) and (Anchors = [akTop, akLeft]) and (AutoSize = False);
+  AWidth := not AutoSize;
+  AHeight := not AutoSize;
 end;
 
 procedure TControl.UpdateAnchorRules;
@@ -4162,14 +4418,16 @@ end;
   TControl WMMouseMove
 ------------------------------------------------------------------------------}
 procedure TControl.WMMouseMove(var Message: TLMMouseMove);
+var
+  MP: TPoint;
 begin
   {$IFDEF VerboseMouseBugfix}
   DebugLn(['[TControl.WMMouseMove] ',Name,':',ClassName,' ',Message.XPos,',',Message.YPos]);
   {$ENDIF}
-  UpdateMouseCursor(Message.XPos,Message.YPos);
+  MP := GetMousePosFromMessage(Message.Pos);
+  UpdateMouseCursor(MP.X,MP.Y);
   if not (csNoStdEvents in ControlStyle) then
-    with Message do
-      MouseMove(KeystoShiftState(Word(Keys)), XPos, YPos);
+    MouseMove(KeystoShiftState(Word(Message.Keys)), MP.X, MP.Y);
 end;
 
 {------------------------------------------------------------------------------
@@ -4453,7 +4711,8 @@ begin
       if OldHostDockSite<>nil then OldHostDockSite.DoRemoveDockClient(Self);
     end;
   finally
-    if (FHostDockSite<>NewDockSite) and (NewDockSite.FDockClients<>nil) then
+    if (FHostDockSite<>NewDockSite)
+    and (NewDockSite<>nil) and (NewDockSite.FDockClients<>nil) then
       NewDockSite.FDockClients.Remove(Self);
     Exclude(FControlState, csDocking);
   end;
@@ -4700,6 +4959,18 @@ procedure TControl.RemoveHandlerOnBeforeDestruction(
   const OnBeforeDestructionEvent: TNotifyEvent);
 begin
   RemoveHandler(chtOnBeforeDestruction,TMethod(OnBeforeDestructionEvent));
+end;
+
+procedure TControl.AddHandlerOnMouseWheel(
+  const OnMouseWheelEvent: TMouseWheelEvent; AsFirst: boolean);
+begin
+  AddHandler(chtOnMouseWheel,TMethod(OnMouseWheelEvent),AsFirst);
+end;
+
+procedure TControl.RemoveHandlerOnMouseWheel(
+  const OnMouseWheelEvent: TMouseWheelEvent);
+begin
+  RemoveHandler(chtOnMouseWheel,TMethod(OnMouseWheelEvent));
 end;
 
 procedure TControl.RemoveAllHandlersOfObject(AnObject: TObject);
@@ -4971,10 +5242,6 @@ begin
   Result := Parent;
 end;
 
-{------------------------------------------------------------------------------
-  function TControl.IsParentOf(AControl: TControl): boolean;
-
- ------------------------------------------------------------------------------}
 function TControl.IsParentOf(AControl: TControl): boolean;
 begin
   Result := False;
@@ -4991,6 +5258,25 @@ begin
   Result := Self;
   while Assigned(Result.Parent) do
     Result := Result.Parent;
+end;
+
+function TControl.FindSubComponent(AName: string): TComponent;
+// Like TComponent.FindComponent but finds also a subcomponent which name is
+//  separated by a dot. For example 'LabeledEdit1.SubLabel'.
+var
+  i: Integer;
+  SubName: String;
+begin
+  i := Pos('.', AName);
+  if i > 0 then begin
+    SubName := Copy(AName, i+1, Length(AName));
+    Delete(AName, i, Length(AName));
+  end
+  else
+    SubName := '';
+  Result := FindComponent(AName);
+  if Assigned(Result) and (SubName<>'') then
+    Result := Result.FindComponent(SubName);
 end;
 
 {------------------------------------------------------------------------------
@@ -5012,7 +5298,7 @@ end;
   Setup AnchorSide to anchor one side to the side of a neighbour sibling.
   For example Right side to Left side, or Top side to Bottom.
  ------------------------------------------------------------------------------}
-procedure TControl.AnchorToNeighbour(Side: TAnchorKind; Space: integer;
+procedure TControl.AnchorToNeighbour(Side: TAnchorKind; Space: TSpacingSize;
   Sibling: TControl);
 begin
   if Parent<>nil then Parent.DisableAlign;
@@ -5031,7 +5317,7 @@ begin
   end;
 end;
 
-procedure TControl.AnchorParallel(Side: TAnchorKind; Space: integer;
+procedure TControl.AnchorParallel(Side: TAnchorKind; Space: TSpacingSize;
   Sibling: TControl);
 begin
   if Parent<>nil then Parent.DisableAlign;
@@ -5089,7 +5375,7 @@ begin
   end;
 end;
 
-procedure TControl.AnchorToCompanion(Side: TAnchorKind; Space: integer;
+procedure TControl.AnchorToCompanion(Side: TAnchorKind; Space: TSpacingSize;
   Sibling: TControl; FreeCompositeSide: boolean);
 
   procedure AnchorCompanionSides(
@@ -5142,7 +5428,7 @@ begin
   end;
 end;
 
-procedure TControl.AnchorAsAlign(TheAlign: TAlign; Space: Integer);
+procedure TControl.AnchorAsAlign(TheAlign: TAlign; Space: TSpacingSize);
 begin
   Parent.DisableAlign;
   try
@@ -5172,7 +5458,7 @@ begin
   end;
 end;
 
-procedure TControl.AnchorClient(Space: Integer);
+procedure TControl.AnchorClient(Space: TSpacingSize);
 begin
   AnchorAsAlign(alClient,Space);
 end;
@@ -5263,6 +5549,11 @@ begin
   end;
 end;
 
+function TControl.GetCanvasScaleFactor: Double;
+begin
+  Result := TWSControlClass(WidgetSetClass).GetCanvasScaleFactor(Self);
+end;
+
 {------------------------------------------------------------------------------
   function TControl.GetDefaultWidth: integer;
 
@@ -5273,14 +5564,14 @@ function TControl.GetDefaultWidth: integer;
 begin
   if WidthIsAnchored then
     // if width is anchored the read and base bounds were changed at designtime
-    Result := GetControlClassDefaultSize.cx
+    Result := Scale96ToFont(GetControlClassDefaultSize.cx)
   else if cfBaseBoundsValid in FControlFlags then
     Result := FBaseBounds.Right - FBaseBounds.Left
   else
   if cfWidthLoaded in FControlFlags then
     Result := FReadBounds.Right - FReadBounds.Left
   else
-    Result := GetControlClassDefaultSize.cx;
+    Result := Scale96ToFont(GetControlClassDefaultSize.cx);
 end;
 
 {------------------------------------------------------------------------------
@@ -5293,14 +5584,14 @@ function TControl.GetDefaultHeight: integer;
 begin
   if HeightIsAnchored then
     // if height is anchored the read and base bounds were changed at designtime
-    Result := GetControlClassDefaultSize.cy
+    Result := Scale96ToFont(GetControlClassDefaultSize.cy)
   else if cfBaseBoundsValid in FControlFlags then
     Result := BaseBounds.Bottom - BaseBounds.Top
   else
   if cfHeightLoaded in FControlFlags then
     Result := FReadBounds.Bottom - FReadBounds.Top
   else
-    Result := GetControlClassDefaultSize.CY;
+    Result := Scale96ToFont(GetControlClassDefaultSize.cy);
 end;
 
 {------------------------------------------------------------------------------
@@ -5316,7 +5607,7 @@ begin
 end;
 
 {------------------------------------------------------------------------------
-  procedure TControl.CNPreferredSizeChanged;
+  procedure TControl.GetSidePosition;
 
   Utility function to retrieve Left,Top,Right and Bottom.
  ------------------------------------------------------------------------------}
@@ -5578,6 +5869,12 @@ procedure TControl.CMBiDiModeChanged(var Message: TLMessage);
 begin
   if (Message.wParam = 0) then
     Invalidate;
+end;
+
+procedure TControl.CMChanged(var Message: TLMessage);
+begin
+  if FParent<>nil then
+    FParent.WindowProc(Message);
 end;
 
 procedure TControl.CMSysFontChanged(var Message: TLMessage);

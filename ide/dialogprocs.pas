@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -36,9 +36,16 @@ unit DialogProcs;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LResources, Forms, Controls, Dialogs, ComCtrls,
-  FileProcs, FileUtil, LazFileUtils, Laz2_XMLCfg, lazutf8classes, LazFileCache,
-  CodeToolsConfig, CodeCache, CodeToolManager, LazIDEIntf, IDEDialogs,
+  Classes, SysUtils,
+  // LCL
+  LCLProc, LResources, Forms, Controls, Dialogs, ComCtrls,
+  // LazUtils
+  FileUtil, LazFileUtils, LazFileCache, Laz2_XMLCfg, LazUTF8Classes,
+  // CodeTools
+  FileProcs, CodeToolsConfig, CodeCache, CodeToolManager,
+  // IdeIntf
+  LazIDEIntf, IDEDialogs,
+  // IDE
   IDEProcs, LazarusIDEStrConsts;
 
 type
@@ -84,8 +91,6 @@ function LoadXMLConfigFromCodeBuffer(const Filename: string; Config: TXMLConfig;
 function SaveXMLConfigToCodeBuffer(const Filename: string; Config: TXMLConfig;
                                    var ACodeBuffer: TCodeBuffer;
                                    KeepFileAttributes: boolean): TModalResult;
-function CreateEmptyFile(const Filename: string;
-                         ErrorButtons: TMsgDlgButtons): TModalResult;
 function CheckCreatingFile(const AFilename: string;
                            CheckReadable: boolean;
                            WarnOverwrite: boolean = false;
@@ -98,9 +103,8 @@ function CheckDirectoryIsWritable(const Filename: string;
 function CheckExecutable(const OldFilename,
   NewFilename: string; const ErrorCaption, ErrorMsg: string;
   SearchInPath: boolean = true): boolean;
-function CheckDirPathExists(const Dir,
-  ErrorCaption, ErrorMsg: string): TModalResult;
-function ChooseSymlink(var Filename: string; AskOnSymlink: boolean): TModalResult;
+function CheckDirPathExists(const Dir, ErrorCaption, ErrorMsg: string): TModalResult;
+function ChooseSymlink(var Filename: string; const TargetFilename: string): TModalResult;
 function CreateSymlinkInteractive(const {%H-}LinkFilename, {%H-}TargetFilename: string;
                                   {%H-}ErrorButtons: TMsgDlgButtons = []): TModalResult;
 function ForceDirectoryInteractive(Directory: string;
@@ -393,35 +397,6 @@ begin
   end;
 end;
 
-function CreateEmptyFile(const Filename: string; ErrorButtons: TMsgDlgButtons
-  ): TModalResult;
-var
-  Buffer: TCodeBuffer;
-begin
-  repeat
-    Buffer:=CodeToolBoss.CreateFile(Filename);
-    if Buffer<>nil then begin
-      break;
-    end else begin
-      Result:=IDEMessageDialog(lisUnableToCreateFile,
-        Format(lisUnableToCreateFile2, [Filename]),
-        mtError,ErrorButtons+[mbCancel]);
-      if Result<>mrRetry then exit;
-    end;
-  until false;
-  repeat
-    if Buffer.Save then begin
-      break;
-    end else begin
-      Result:=IDEMessageDialog(lisUnableToWriteFile,
-        Format(lisUnableToWriteToFile2, [Buffer.Filename]),
-        mtError,ErrorButtons+[mbCancel]);
-      if Result<>mrRetry then exit;
-    end;
-  until false;
-  Result:=mrOk;
-end;
-
 function CheckCreatingFile(const AFilename: string;
   CheckReadable: boolean; WarnOverwrite: boolean; CreateBackup: boolean
   ): TModalResult;
@@ -446,7 +421,8 @@ begin
     if WarnOverwrite then begin
       Result:=IDEQuestionDialog(lisOverwriteFile,
         Format(lisAFileAlreadyExistsReplaceIt, [AFilename, LineEnding]),
-        mtConfirmation, [mrYes, lisOverwriteFileOnDisk, mbCancel]);
+        mtConfirmation, [mrYes, lisOverwriteFileOnDisk,
+                         mrCancel]);
       if Result=mrCancel then exit;
     end;
     if CreateBackup then begin
@@ -506,29 +482,18 @@ begin
   Result:=mrOk;
 end;
 
-function ChooseSymlink(var Filename: string; AskOnSymlink: boolean
-  ): TModalResult;
-var
-  TargetFilename: String;
+function ChooseSymlink(var Filename: string; const TargetFilename: string): TModalResult;
 begin
-  if not FileExistsCached(Filename) then
-    exit(mrOk); // no symlink to choose
-  TargetFilename:=GetPhysicalFilenameCached(Filename,false);
-  if TargetFilename=Filename then begin
-    // no symlink to choose
-  end else if not AskOnSymlink then begin
-    // choose physical file
-    Filename:=TargetFilename;
-  end else begin
-    // ask which filename to use
-    case IDEQuestionDialog(lisFileIsSymlink,
-      Format(lisTheFileIsASymlinkOpenInstead,[Filename,LineEnding+LineEnding,TargetFilename]),
-      mtConfirmation, [mbYes, lisOpenTarget, mbNo, lisOpenSymlink, mbCancel])
-    of
+  // ask which filename to use
+  case IDEQuestionDialog(lisFileIsSymlink,
+    Format(lisTheFileIsASymlinkOpenInstead,[Filename,LineEnding+LineEnding,TargetFilename]),
+    mtConfirmation, [mrYes, lisOpenTarget,
+                     mrNo, lisOpenSymlink,
+                     mrCancel])
+  of
     mrYes: Filename:=TargetFilename;
-    mrNo:  ;
-    else   exit(mrCancel);
-    end;
+    mrNo: ;
+    else exit(mrCancel);
   end;
   Result:=mrOk;
 end;
@@ -616,8 +581,7 @@ begin
   end;
 end;
 
-function CheckDirPathExists(const Dir,
-  ErrorCaption, ErrorMsg: string): TModalResult;
+function CheckDirPathExists(const Dir, ErrorCaption, ErrorMsg: string): TModalResult;
 begin
   if not DirPathExists(Dir) then begin
     Result:=IDEMessageDialog(ErrorCaption,Format(ErrorMsg,[Dir]),mtWarning,
@@ -747,7 +711,8 @@ begin
   if Ask then begin
     Result:=IDEQuestionDialog(lisCCOErrorCaption,
       Format(lisTheCodetoolsFoundAnError, [LineEnding, ErrMsg]),
-      mtWarning, [mrIgnore, lisIgnoreAndContinue, mrAbort]);
+      mtWarning, [mrIgnore, lisIgnoreAndContinue,
+                  mrAbort]);
     if Result=mrIgnore then Result:=mrCancel;
   end else begin
     Result:=mrCancel;

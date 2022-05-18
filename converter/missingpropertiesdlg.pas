@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -33,17 +33,18 @@ interface
 
 uses
   // FCL+LCL
-  Classes, SysUtils, LCLProc, Forms, Controls, Grids, LResources,
-  LConvEncoding, Graphics, Dialogs, Buttons, StdCtrls, ExtCtrls, contnrs,
-  LazFileUtils, LazUTF8Classes, LCLType, LazUTF8,
+  Classes, SysUtils, contnrs,
+  LCLProc, Forms, Controls, Grids, LResources, Dialogs, Buttons, StdCtrls, ExtCtrls,
+  // LazUtils
+  LazFileUtils, LazUTF8Classes, LazUTF8, AvgLvlTree,
   // components
-  SynHighlighterLFM, SynEdit, SynEditMiscClasses, LFMTrees,
+  SynHighlighterLFM, SynEdit, SynEditMiscClasses,
   // codetools
-  CodeCache, CodeToolManager, CodeToolsStructs, CodeCompletionTool,
+  CodeCache, CodeToolManager, CodeCompletionTool, LFMTrees,
+  // IdeIntf
+  IDEExternToolIntf, ComponentReg, IDEImagesIntf,
   // IDE
-  ComponentReg, PackageIntf, IDEWindowIntf,
-  CustomFormEditor, LazarusIDEStrConsts, IDEProcs,
-  EditorOptions, CheckLFMDlg, Project, SourceMarks,
+  LazarusIDEStrConsts, EditorOptions, CheckLFMDlg, Project, SourceMarks,
   // Converter
   ConverterTypes, ConvertSettings, ReplaceNamesUnit,
   ConvCodeTool, FormFileConv, UsedUnits;
@@ -161,15 +162,20 @@ end;
 function TDFMConverter.Convert(const DfmFilename: string): TModalResult;
 var
   s: String;
+  Urgency: TMessageLineUrgency;
 begin
   Result:=ConvertDfmToLfm(DfmFilename);
   if Result=mrOK then begin
-    if fOrigFormat=sofBinary then
-      s:=Format(lisFileSIsConvertedToTextFormat, [DfmFilename])
-    else
+    if fOrigFormat=sofBinary then begin
+      s:=Format(lisFileSIsConvertedToTextFormat, [DfmFilename]);
+      Urgency:=mluHint;
+    end
+    else begin
       s:=Format(lisFileSHasIncorrectSyntax, [DfmFilename]);
+      Urgency:=mluError;
+    end;
     if Assigned(fSettings) then
-      fSettings.AddLogLine(s)
+      fSettings.AddLogLine(Urgency, s, DfmFilename)
     else
       ShowMessage(s);
   end;
@@ -319,7 +325,7 @@ begin
     FixWideString(LFMStream, Utf8LFMStream);
     // Save the converted file.
     try
-      Utf8LFMStream.SaveToFile(aFilename);
+      Utf8LFMStream.SaveToFile(ChangeFileExt(aFilename, '.lfm'));
     except
       on E: Exception do begin
         Result:=MessageDlg(lisCodeToolsDefsWriteError,
@@ -416,8 +422,9 @@ begin
           NewIdent:=ObjNode.Name+':'+ObjNode.TypeName;
           fCTLink.CodeTool.AddClassInsertion(UpperCase(ObjNode.Name),
                                    NewIdent+';', ObjNode.Name, ncpPublishedVars);
-          fSettings.AddLogLine(Format(lisAddedMissingObjectSToPascalSource,
-                                      [NewIdent]));
+          fSettings.AddLogLine(mluNote,
+            Format(lisAddedMissingObjectSToPascalSource, [NewIdent]),
+            fUsedUnitsTool.Filename);
         end
         else if IsMissingType(CurError) then
         begin
@@ -429,8 +436,9 @@ begin
           if NewIdent<>'' then begin
             StartPos:=ObjNode.TypeNamePosition;
             EndPos:=StartPos+Length(OldIdent);
-            fSettings.AddLogLine(Format(lisReplacedTypeSWithS,
-                                        [OldIdent, NewIdent]));
+            fSettings.AddLogLine(mluNote,
+              Format(lisReplacedTypeSWithS, [OldIdent, NewIdent]),
+              fUsedUnitsTool.Filename);
             AddReplacement(ChgEntryRepl,StartPos,EndPos,NewIdent);
             Result:=mrRetry;
           end;
@@ -444,11 +452,12 @@ begin
             // Delete the whole property line if no replacement.
             if NewIdent='' then begin
               FindNiceNodeBounds(TheNode,StartPos,EndPos);
-              fSettings.AddLogLine(Format(lisRemovedPropertyS, [OldIdent]));
+              fSettings.AddLogLine(mluNote, Format(lisRemovedPropertyS, [OldIdent]),
+                fUsedUnitsTool.Filename);
             end
             else
-              fSettings.AddLogLine(Format(lisReplacedPropertySWithS,
-                                          [OldIdent, NewIdent]));
+              fSettings.AddLogLine(mluNote,
+                Format(lisReplacedPropertySWithS, [OldIdent, NewIdent]));
             AddReplacement(ChgEntryRepl,StartPos,EndPos,NewIdent);
             Result:=mrRetry;
           end;
@@ -501,8 +510,9 @@ begin
       if NewNum<0 then
         NewNum:=0;
       fLFMBuffer.Replace(TopOffs.StartPos, Len, IntToStr(NewNum));
-      fSettings.AddLogLine(Format(lisChangedSCoordOfSFromDToDInsideS,
-        [TopOffs.PropName, TopOffs.ChildType, OldNum, NewNum, TopOffs.ParentType]));
+      fSettings.AddLogLine(mluNote, Format(lisChangedSCoordOfSFromDToDInsideS,
+        [TopOffs.PropName, TopOffs.ChildType, OldNum, NewNum, TopOffs.ParentType]),
+        fUsedUnitsTool.Filename);
     end;
   end;
 end;
@@ -518,8 +528,9 @@ begin
     Entry:=TAddPropEntry(aNewProps[i]);
     fLFMBuffer.Replace(Entry.StartPos, Entry.EndPos-Entry.StartPos,
                        Entry.NewPrefix+Entry.NewText);
-    fSettings.AddLogLine(Format(lisAddedPropertySForS,
-                                [Entry.NewText, Entry.ParentType]));
+    fSettings.AddLogLine(mluNote,
+      Format(lisAddedPropertySForS, [Entry.NewText, Entry.ParentType]),
+      fUsedUnitsTool.Filename);
   end;
 end;
 
@@ -601,7 +612,8 @@ var
 begin
   Result:=mrOK;
   if not Assigned(fUsedUnitsTool) then Exit;
-  for i := 0 to aMissingTypes.Count-1 do begin
+  for i := 0 to aMissingTypes.Count-1 do
+  begin
     RegComp:=IDEComponentPalette.FindComponent(aMissingTypes[i]);
     NeededUnitName:='';
     if (RegComp<>nil) then begin
@@ -610,14 +622,17 @@ begin
         if NeededUnitName='' then
           NeededUnitName:=RegComp.GetUnitName;
       end;
-    end else begin
+    end
+    else begin
       ClassUnitInfo:=Project1.UnitWithComponentClassName(aMissingTypes[i]);
       if ClassUnitInfo<>nil then
         NeededUnitName:=ClassUnitInfo.GetUsesUnitName;
     end;
-    if NeededUnitName<>'' then begin
-      if fUsedUnitsTool.AddUnitImmediately(NeededUnitName) then
-        Result:=mrRetry;  // Caller must check LFM validity again
+    if (NeededUnitName<>'')
+    and fUsedUnitsTool.AddUnitImmediately(NeededUnitName) then
+    begin
+      Result:=mrRetry;  // Caller must check LFM validity again
+      fUsedUnitsTool.MaybeAddPackageDep(NeededUnitName);
     end;
   end;
 end;
@@ -726,7 +741,7 @@ begin
   PropertiesText.Caption:=lisProperties;
   TypesText.Caption:=lisTypes;
   ReplaceAllButton.Caption:=lisReplaceRemoveUnknown;
-  ReplaceAllButton.LoadGlyphFromResourceName(HInstance, 'laz_refresh');
+  IDEImages.AssignImage(ReplaceAllButton, 'laz_refresh');
   EditorOpts.GetHighlighterSettings(SynLFMSyn1);
   EditorOpts.GetSynEditSettings(LFMSynEdit);
 end;

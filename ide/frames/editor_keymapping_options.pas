@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,11 +25,17 @@ unit editor_keymapping_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, TreeFilterEdit, Forms, StdCtrls, ComCtrls,
-  Controls, Dialogs, LCLType, LazUTF8, Menus, Buttons, Clipbrd, EditorOptions,
-  LazarusIDEStrConsts, IDEOptionsIntf, IDEImagesIntf, editor_general_options,
-  KeymapSchemeDlg, KeyMapping, IDECommands, KeyMapShortCutDlg, SrcEditorIntf,
-  EditBtn, ExtCtrls;
+  Classes, SysUtils,
+  // LCL
+  Forms, StdCtrls, ComCtrls, Controls, Dialogs, LCLType, LazUTF8, Menus, Buttons,
+  Clipbrd, EditBtn, ExtCtrls,
+  // LazControls
+  TreeFilterEdit,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf, SrcEditorIntf,
+  // IDE
+  EditorOptions, LazarusIDEStrConsts, editor_general_options,
+  KeymapSchemeDlg, KeyMapping, IDECommands, KeyMapShortCutDlg;
 
 type
 
@@ -60,9 +66,10 @@ type
     procedure ChooseSchemeButtonClick(Sender: TObject);
     procedure ClearButtonClick(Sender: TObject);
     procedure FilterEditAfterFilter(Sender: TObject);
-    function FilterEditFilterItem(Item: TObject; out Done: Boolean): Boolean;
+    function FilterEditFilterItem(ItemData: Pointer; out Done: Boolean): Boolean;
     procedure FilterEditKeyPress(Sender: TObject; var {%H-}Key: char);
     procedure FindKeyButtonClick(Sender: TObject);
+    procedure KeyMapSplitterMoved(Sender: TObject);
     procedure OnIdle(Sender: TObject; var {%H-}Done: Boolean);
     procedure ResetKeyFilterBtnClick(Sender: TObject);
     procedure TreeViewDblClick(Sender: TObject);
@@ -161,7 +168,7 @@ begin
   CopyMenuItem := TMenuItem.Create(Self);
   CopyMenuItem.Caption := lisCopyAllItemsToClipboard;
   CopyMenuItem.OnClick := @CopyMenuItemClick;
-  CopyMenuItem.ImageIndex := IDEImages.LoadImage(16, 'laz_copy');
+  CopyMenuItem.ImageIndex := IDEImages.LoadImage('laz_copy');
   ErrorsPopupMenu.Items.Add(CopyMenuItem);
 
   ListBox.AnchorToNeighbour(akBottom,6,BackButton);
@@ -221,17 +228,19 @@ begin
   ClearCommandMapping(TreeView.Selected)
 end;
 
-function TEditorKeymappingOptionsFrame.FilterEditFilterItem(Item: TObject; out Done: Boolean): Boolean;
+function TEditorKeymappingOptionsFrame.FilterEditFilterItem(ItemData: Pointer;
+  out Done: Boolean): Boolean;
 var
   KeyRel: TKeyCommandRelation;
 begin
   Done:=True;
   Result:=False;
-  if Item is TKeyCommandRelation then begin
-    KeyRel:=TKeyCommandRelation(Item);        // Tree item is actual key command.
+  if TObject(ItemData) is TKeyCommandRelation then
+  begin
+    KeyRel:=TKeyCommandRelation(ItemData);      // Tree item is actual key command.
     Done:=False;
     Result:=KeyMapKeyFilter.Key1<>VK_UNKNOWN;
-    if Result then begin                      // Key filter is defined
+    if Result then begin                        // Key filter is defined.
       Done:=True;
       Result:=(CompareIDEShortCutKey1s(@KeyMapKeyFilter,@KeyRel.ShortcutA)=0)
            or (CompareIDEShortCutKey1s(@KeyMapKeyFilter,@KeyRel.ShortcutB)=0);
@@ -263,6 +272,12 @@ begin
   finally
     ShortCutDialog.Free;
   end;
+end;
+
+procedure TEditorKeymappingOptionsFrame.KeyMapSplitterMoved(Sender: TObject);
+begin
+  TreeView.Update;
+  ConflictsTreeView.Update;
 end;
 
 procedure TEditorKeymappingOptionsFrame.OnIdle(Sender: TObject;
@@ -375,17 +390,17 @@ begin
 
   TreeView.Images := IDEImages.Images_16;
   ConflictsTreeView.Images := IDEImages.Images_16;
-  imgKeyCategory := IDEImages.LoadImage(16, 'item_keyboard');
-  imgKeyItem := IDEImages.LoadImage(16, 'item_character');
-  ChooseSchemeButton.LoadGlyphFromResourceName(HInstance, 'item_keyboard'); // keymapcategory
-  FindKeyButton.LoadGlyphFromResourceName(HInstance, 'menu_search_find');
-  EditButton.LoadGlyphFromResourceName(HInstance, 'laz_edit');
-  ClearButton.LoadGlyphFromResourceName(HInstance, 'menu_clean');
+  imgKeyCategory := IDEImages.LoadImage('item_keyboard');
+  imgKeyItem := IDEImages.LoadImage('item_character');
+  IDEImages.AssignImage(ChooseSchemeButton, 'item_keyboard'); // keymapcategory
+  IDEImages.AssignImage(FindKeyButton, 'menu_search_find');
+  IDEImages.AssignImage(EditButton, 'laz_edit');
+  IDEImages.AssignImage(ClearButton, 'menu_clean');
   PopupMenu1.Images := IDEImages.Images_16;
-  EditMenuItem.ImageIndex := IDEImages.LoadImage(16, 'laz_edit');
-  ClearMenuItem.ImageIndex := IDEImages.LoadImage(16, 'menu_clean');
+  EditMenuItem.ImageIndex := IDEImages.LoadImage('laz_edit');
+  ClearMenuItem.ImageIndex := IDEImages.LoadImage('menu_clean');
 
-  ResetKeyFilterBtn.LoadGlyphFromResourceName(HInstance, ResBtnListFilter);
+  IDEImages.AssignImage(ResetKeyFilterBtn, ResBtnListFilter);
   ResetKeyFilterBtn.Enabled := not IDEShortCutEmpty(KeyMapKeyFilter);
 
 //  FillKeyMappingTreeView;    ... Done in ReadSettings.
@@ -504,8 +519,7 @@ function TEditorKeymappingOptionsFrame.KeyShortCutToCaption(
   const aKey: TKeyCommandRelation; const aShortCut: TIDEShortCut): string;
 begin
   Result:=aKey.Category.Description+'/'
-        +EditorCommandToDescriptionString(aKey.Command)
-        +'->'+KeyAndShiftStateToEditorKeyString(aShortCut);
+        +KeyMappingRelationToCaption(aKey);
 end;
 
 function TEditorKeymappingOptionsFrame.CaptionToKeyMappingRelation(

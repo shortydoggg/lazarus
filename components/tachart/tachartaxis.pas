@@ -244,15 +244,15 @@ type
   { TAxisCoeffHelper }
 
   TAxisCoeffHelper = object
-    FAxis: TChartAxis;
+    FAxisIsFlipped: Boolean;
     FImageLo, FImageHi: Integer;
     FLo, FHi: Integer;
     FMin, FMax: PDouble;
     function CalcOffset(AScale: Double): Double;
     function CalcScale(ASign: Integer): Double;
-    constructor Init(
-      AAxis: TChartAxis; AImageLo, AImageHi, AMarginLo, AMarginHi: Integer;
-      AMin, AMax: PDouble);
+    constructor Init(AAxis: TChartAxis; AImageLo, AImageHi: Integer;
+      AMarginLo, AMarginHi, ARequiredMarginLo, ARequiredMarginHi, AMinDataSpace: Integer;
+      AAxisIsVertical: Boolean; AMin, AMax: PDouble);
     procedure UpdateMinMax(AConv: TAxisConvFunc);
   end;
 
@@ -266,7 +266,7 @@ type
 implementation
 
 uses
-  LResources, Math, PropEdits, TAGeometry, TAMath;
+  LResources, Math, PropEdits, TAChartStrConsts, {%H-}TAGeometry, TAMath;
 
 var
   VIdentityTransform: TChartAxisTransformations;
@@ -427,7 +427,6 @@ begin
       Self.FTransformations := Transformations;
       Self.FZPosition := ZPosition;
       Self.FMarginsForMarks := MarginsForMarks;
-
       Self.FOnMarkToText := OnMarkToText;
     end;
   inherited Assign(ASource);
@@ -446,6 +445,7 @@ begin
   TickLength := DEF_TICK_LENGTH;
   FTitle := TChartAxisTitle.Create(ACollection.Owner as TCustomChart);
   FMarginsForMarks := true;
+  FMarks.SetInsideDir(1, 0);
 end;
 
 destructor TChartAxis.Destroy;
@@ -473,23 +473,26 @@ procedure TChartAxis.Draw;
     for j := 0 to Minors.Count - 1 do begin
       minorMarks := Minors[j].GetMarkValues(AMin, AMax);
       if minorMarks = nil then continue;
-      with FHelper.Clone do begin
-        FAxis := Minors[j];
-        // Only draw minor marks strictly inside the major mark interval.
-        FValueMin := Max(FAxisTransf(AMin), FValueMin);
-        FValueMax := Min(FAxisTransf(AMax), FValueMax);
-        if FValueMax <= FValueMin then continue;
-        ExpandRange(FValueMin, FValueMax, -EPS);
-        FClipRangeDelta := 1;
+      with FHelper.Clone do
         try
-          BeginDrawing;
-          for m in minorMarks do
-            DrawMark(AFixedCoord, FHelper.FAxisTransf(m.FValue), m.FText);
-          EndDrawing;
+          FAxis := Minors[j];
+          // Only draw minor marks strictly inside the major mark interval.
+          FValueMin := Max(FAxisTransf(AMin), FValueMin);
+          FValueMax := Min(FAxisTransf(AMax), FValueMax);
+          if FValueMax <= FValueMin then
+            continue;
+          ExpandRange(FValueMin, FValueMax, -EPS);
+          FClipRangeDelta := 1;
+          try
+            BeginDrawing;
+            for m in minorMarks do
+              DrawMark(AFixedCoord, FHelper.FAxisTransf(m.FValue), m.FText);
+          finally
+            EndDrawing;
+          end;
         finally
           Free;
         end;
-      end;
     end;
   end;
 
@@ -549,14 +552,13 @@ end;
 
 function TChartAxis.GetDisplayName: String;
 const
-  SIDE_NAME: array [TChartAxisAlignment] of String =
-    ('Left', 'Top', 'Right', 'Bottom');
-  VISIBLE_NAME: array [Boolean] of String = (' Hidden', '');
-  INVERTED_NAME: array [Boolean] of String = ('', ' Inverted');
+  SIDE_NAME: array [TChartAxisAlignment] of PStr =
+    (@rsLeft, @rsTop, @rsRight, @rsBottom);
 begin
-  Result :=
-    SIDE_NAME[Alignment] + VISIBLE_NAME[Visible] + INVERTED_NAME[IsFlipped] +
-    FormatIfNotEmpty(' (%s)', Title.Caption);
+  Result := SIDE_NAME[Alignment]^;
+  if not Visible then Result := Result + ', ' + rsHidden;
+  if IsFlipped then Result := Result + ', ' + rsInverted;
+  Result := Result + FormatIfNotEmpty(' (%s)', Title.Caption);
 end;
 
 function TChartAxis.GetMarks: TChartAxisMarks;
@@ -605,6 +607,7 @@ begin
     FMaxForMarks := Max(FMaxForMarks, GetTransform.AxisToGraph(d.FMax));
     EnsureOrder(FValueMin, FValueMax);
     EnsureOrder(FMinForMarks, FMaxForMarks);
+    FRotationCenter := Marks.RotationCenter;
   end;
 
   if Assigned(FOnMarkToText) then
@@ -631,7 +634,7 @@ end;
 
 function TChartAxis.IsDefaultPosition: Boolean;
 begin
-  Result := (PositionUnits = cuPercent) and (Position = 0);
+  Result := (PositionUnits = cuPercent) and SameValue(Position, 0.0);
 end;
 
 function TChartAxis.IsFlipped: Boolean;
@@ -781,7 +784,7 @@ end;
 
 function TChartAxis.PositionIsStored: Boolean;
 begin
-  Result := Position <> 0;
+  Result := not SameValue(Position, 0.0);
 end;
 
 function TChartAxis.PositionToCoord(const ARect: TRect): Integer;
@@ -827,12 +830,21 @@ begin
   FHelper.FAtDataOnly := AtDataOnly;
   FHelper.FMaxForMarks := NegInfinity;
   FHelper.FMinForMarks := SafeInfinity;
+  FHelper.FRotationCenter := Marks.RotationCenter;
 end;
 
 procedure TChartAxis.SetAlignment(AValue: TChartAxisAlignment);
 begin
   if FAlignment = AValue then exit;
   FAlignment := AValue;
+  // Define the "inside" direction of an axis such that rotated labels with
+  // rotation center at the text start or end never reach into the chart.
+  case FAlignment of
+    calBottom: FMarks.SetInsideDir(0, +1);
+    calTop   : FMarks.SetInsideDir(0, -1);
+    calLeft  : FMarks.SetInsideDir(+1, 0);
+    calRight : FMarks.SetInsideDir(-1, 0);
+  end;
   StyleChanged(Self);
 end;
 
@@ -905,7 +917,7 @@ end;
 
 procedure TChartAxis.SetPosition(AValue: Double);
 begin
-  if FPosition = AValue then exit;
+  if SameValue(FPosition, AValue) then exit;
   FPosition := AValue;
   StyleChanged(Self);
 end;
@@ -1203,37 +1215,80 @@ end;
 
 { TAxisCoeffHelper }
 
-constructor TAxisCoeffHelper.Init(
-  AAxis: TChartAxis; AImageLo, AImageHi, AMarginLo, AMarginHi: Integer;
-  AMin, AMax: PDouble);
+procedure EnsureGuaranteedSpace(var AValue1, AValue2: Integer;
+  AImage1, AImage2, AMargin1, AMargin2, AGuaranteed: Integer);
+var
+  HasMarksInMargin1, HasMarksInMargin2: Boolean;
+  delta1, delta2: Integer;
 begin
-  FAxis := AAxis;
+  HasMarksInMargin1 := (AValue1 = AImage1 + AMargin1);
+  HasMarksInMargin2 := (AValue2 = AImage2 - AMargin2);
+
+  if HasMarksInMargin2 and not HasMarksInMargin1 then
+    AValue1 := AValue2 - AGuaranteed
+  else
+  if HasMarksInMargin1 and not HasMarksInMargin2 then
+    AValue2 := AValue1 + AGuaranteed
+  else
+  begin
+    delta1 := AImage1 - AValue1;
+    delta2 := AImage2 - AValue2;
+    AValue1 := (AImage1 + AImage2 - AGuaranteed) div 2;
+    AValue2 := AValue1 + AGuaranteed;
+    if AValue1 + delta1 >= AImage1 then begin
+      AValue1 := AImage1 - delta1;
+      AValue2 := AValue1 + AGuaranteed;
+    end else
+    if AValue2 + delta2 <= AImage2 then begin
+      AValue2 := AImage2 - delta2;
+      AValue1 := AValue2 - AGuaranteed;
+    end;
+  end;
+end;
+
+constructor TAxisCoeffHelper.Init(AAxis: TChartAxis; AImageLo, AImageHi: Integer;
+  AMarginLo, AMarginHi, ARequiredMarginLo, ARequiredMarginHi, AMinDataSpace: Integer;
+  AAxisIsVertical: Boolean; AMin, AMax: PDouble);
+begin
+  FAxisIsFlipped := (AAxis <> nil) and AAxis.IsFlipped;
   FImageLo := AImageLo;
   FImageHi := AImageHi;
   FMin := AMin;
   FMax := AMax;
   FLo := FImageLo + AMarginLo;
   FHi := FImageHi + AMarginHi;
+
+  if AAxisIsVertical then begin
+    if (FHi + AMinDataSpace >= FLo) then
+      EnsureGuaranteedSpace(FHi, FLo, FImageHi, FImageLo,
+        ARequiredMarginHi, ARequiredMarginLo, AMinDataSpace);
+  end else begin
+    if (FLo + AMinDataSpace >= FHi) then
+      EnsureGuaranteedSpace(FLo, FHi, FImageLo, FImageHi,
+        ARequiredMarginLo, ARequiredMarginHi, AMinDataSpace);
+  end;
 end;
 
 function TAxisCoeffHelper.CalcScale(ASign: Integer): Double;
 begin
-  if (FMax^ = FMin^) or (Sign(FHi - FLo) <> ASign) then exit(1.0);
-  if (FAxis <> nil) and FAxis.IsFlipped then
-    Exchange(FLo, FHi);
-  Result := (FHi - FLo) / (FMax^ - FMin^);
+  if (FMax^ <= FMin^) or (Sign(FHi - FLo) <> ASign) then
+    Result := ASign
+  else
+    Result := (FHi - FLo) / (FMax^ - FMin^);
+  if FAxisIsFlipped then
+    Result := -Result;
 end;
 
 function TAxisCoeffHelper.CalcOffset(AScale: Double): Double;
 begin
-  Result := (FLo + FHi) / 2 - AScale * (FMin^ + FMax^) / 2;
+  Result := ((FLo + FHi) - AScale * (FMin^ + FMax^)) * 0.5;
 end;
 
 procedure TAxisCoeffHelper.UpdateMinMax(AConv: TAxisConvFunc);
 begin
   FMin^ := AConv(FImageLo);
   FMax^ := AConv(FImageHi);
-  if (FAxis <> nil) and FAxis.IsFlipped then
+  if FAxisIsFlipped then
     Exchange(FMin^, FMax^);
 end;
 

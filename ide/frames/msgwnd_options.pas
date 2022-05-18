@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,10 +30,15 @@ unit MsgWnd_Options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, LazLoggerBase, SynEdit, Forms,
-  Controls, Graphics, Dialogs, StdCtrls, ColorBox, ExtCtrls, Spin, ComCtrls,
-  IDEOptionsIntf, IDEExternToolIntf,
-  LazarusIDEStrConsts, EnvironmentOpts, editor_general_options, EditorOptions;
+  Classes, SysUtils,
+  // LazUtils
+  LazLoggerBase,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, StdCtrls, ColorBox, ExtCtrls, Spin, Buttons,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEExternToolIntf, IDEImagesIntf,
+  // IDE
+  LazarusIDEStrConsts, EnvironmentOpts, editor_general_options;
 
 type
 
@@ -56,17 +61,9 @@ type
     MWColorsGroupBox: TGroupBox;
     MWOptionsLabel: TLabel;
     MWOptsRightBevel: TBevel;
-    MWSetDefaultColorsButton: TButton;
+    MWSetDefaultColorsButton: TBitBtn;
     MWSetEditorColorsButton: TButton;
     MWSpeedSetColorsGroupBox: TGroupBox;
-    Notebook1: TNotebook;
-    PageHeader: TPage;
-    PageMsg: TPage;
-    ToolBar1: TToolBar;
-    BtnHeaderColor: TToolButton;
-    BtnMsgColor: TToolButton;
-    procedure BtnHeaderColorClick(Sender: TObject);
-    procedure BtnMsgColorClick(Sender: TObject);
     procedure MsgColorBoxChange(Sender: TObject);
     procedure MsgColorListBoxGetColors(Sender: TCustomColorListBox; Items: TStrings);
     procedure MsgColorListBoxSelectionChange(Sender: TObject; User: boolean);
@@ -118,16 +115,6 @@ begin
   if not fReady or (i < 0) then
     exit;
   MWColorListBox.Colors[i]:=MWColorBox.Selected;
-end;
-
-procedure TMsgWndOptionsFrame.BtnHeaderColorClick(Sender: TObject);
-begin
-  Notebook1.PageIndex := 0;
-end;
-
-procedure TMsgWndOptionsFrame.BtnMsgColorClick(Sender: TObject);
-begin
-  Notebook1.PageIndex := 1;
 end;
 
 procedure TMsgWndOptionsFrame.MsgColorBoxChange(Sender: TObject);
@@ -236,25 +223,23 @@ begin
   inherited Create(AOwner);
 
   MWOptionsLabel.Caption:=lisOptions;
-  BtnHeaderColor.Caption := lisHeaderColors;
-  BtnMsgColor.Caption := lisMsgColors;
-  MWColorsGroupBox.Caption:=dlgColors;
-  MsgColorGroupBox.Caption:=dlgColors;
+  MWColorsGroupBox.Caption:= lisHeaderColors;
+  MsgColorGroupBox.Caption:= lisMsgColors;
   MWSpeedSetColorsGroupBox.Caption:=lisSetAllColors;
   MWSetDefaultColorsButton.Caption:=lisLazarusDefault;
+  IDEImages.AssignImage(MWSetDefaultColorsButton, 'restore_defaults');
   MWSetPastelColorsButton.Caption:=lisPastelColors;
   MWSetEditorColorsButton.Caption:=lisEditorColors;
   MWShowIconsCheckBox.Caption:=dlgShowMessagesIcons;
   MWShowIconsCheckBox.Hint:=dlgAnIconForErrorWarningHintIsShown;
   MWAlwaysDrawFocusedCheckBox.Caption:=lisAlwaysDrawSelectedItemsFocused;
   MWAlwaysDrawFocusedCheckBox.Hint:=lisDrawTheSelectionFocusedEvenIfTheMessagesWindowHasN;
-  MWFocusCheckBox.Caption:=dlgEOFocusMessagesAfterCompilation;
-  MWMaxProcsLabel.Caption:=Format(lisMaximumParallelProcesses0MeansDefault, [
-    IntToStr(DefaultMaxProcessCount)]);
+  MWFocusCheckBox.Caption:=dlgEOFocusMessagesAtCompilation;
+  MWMaxProcsLabel.Caption:=Format(lisMaximumParallelProcesses0MeansDefault,
+                                  [IntToStr(DefaultMaxProcessCount)]);
   MWShowFPCMsgLinesCompiledCheckBox.Caption:=lisShowFPCMessageLinesCompiled;
   MWShowFPCMsgLinesCompiledCheckBox.Hint:=
     lisElevateTheMessagePriorityToAlwaysShowItByDefaultIt;
-  Notebook1.PageIndex := 0;
 end;
 
 function TMsgWndOptionsFrame.GetTitle: String;

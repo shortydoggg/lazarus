@@ -1,10 +1,10 @@
-{ $Id: registersdlg.pp 48218 2015-03-10 14:51:21Z mattias $ }
+{ $Id: registersdlg.pp 60384 2019-02-09 08:47:19Z mattias $ }
 {               ----------------------------------------------  
                  registersdlg.pp  -  Overview of registers 
                 ---------------------------------------------- 
  
  @created(Sun Nov 16th WET 2008)
- @lastmod($Date: 2015-03-10 15:51:21 +0100 (Di, 10 Mär 2015) $)
+ @lastmod($Date: 2019-02-09 09:47:19 +0100 (Sa, 09 Feb 2019) $)
  @author(Marc Weustink <marc@@dommelstein.net>)                       
 
  This unit contains the registers debugger dialog.
@@ -25,7 +25,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -145,8 +145,8 @@ begin
   ActionList1.Images := IDEImages.Images_16;
   ToolBar1.Images := IDEImages.Images_16;
 
-  FPowerImgIdx := IDEImages.LoadImage(16, 'debugger_power');
-  FPowerImgIdxGrey := IDEImages.LoadImage(16, 'debugger_power_grey');
+  FPowerImgIdx := IDEImages.LoadImage('debugger_power');
+  FPowerImgIdxGrey := IDEImages.LoadImage('debugger_power_grey');
   actPower.ImageIndex := FPowerImgIdx;
   //actPower.Caption := lisDbgWinPower;
   actPower.Hint := lisDbgWinPowerHint;
@@ -363,15 +363,21 @@ begin
   end;
   FNeedUpdateAgain := False;
 
-  Reg := GetCurrentRegisters;
-  if Reg = nil then begin
-    lvRegisters.Items.Clear;
-    exit;
-  end;
-
-  List := TStringList.Create;
+  BeginUpdate;
   try
-    BeginUpdate;
+    Reg := GetCurrentRegisters;
+    if (Reg = nil) or (reg.DataValidity<> ddsValid) then begin
+      if (DebugBoss = nil) or not (DebugBoss.State in [dsPause, dsInternalPause, dsRun]) then
+        lvRegisters.Items.Clear;
+
+      if (reg <> nil) then
+        reg.Count;
+      for n := 0 to lvRegisters.Items.Count - 1 do
+        lvRegisters.Items[n].SubItems[0] := '<Unavailable>';
+      exit;
+    end;
+
+    List := TStringList.Create;
     try
       //Get existing items
       for n := 0 to lvRegisters.Items.Count - 1 do
@@ -412,10 +418,10 @@ begin
         lvRegisters.Items.Delete(TListItem(List.Objects[n]).Index);
 
     finally
-      EndUpdate;
+      List.Free;
     end;
   finally
-    List.Free;
+    EndUpdate;
   end;
 
   lvRegistersSelectItem(nil, nil, True);

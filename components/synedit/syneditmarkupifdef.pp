@@ -23,10 +23,15 @@ unit SynEditMarkupIfDef;
 interface
 
 uses
-  SysUtils, Classes, SynEditMiscClasses, SynHighlighterPas, SynEditMarkupHighAll,
+  SysUtils, Classes,
+  // LCL
+  Graphics, LCLProc,
+  // LazUtils
+  LazClasses, LazLoggerBase, LazMethodList,
+  // SynEdit
+  SynEditMiscClasses, SynHighlighterPas, SynEditMarkupHighAll,
   SynEditHighlighterFoldBase, SynEditFoldedView, LazSynEditText, SynEditMiscProcs,
-  SynEditMarkup, SynEditPointClasses, SynEditHighlighter, LazClasses, LazLoggerBase, Graphics,
-  LCLProc;
+  SynEditMarkup, SynEditPointClasses, SynEditHighlighter;
 
 type
 
@@ -779,7 +784,7 @@ end;
 
 function TSynEditMarkupIfDefBase.RealEnabled: Boolean;
 begin
-  Result := Enabled and HasEnabledMarkup;
+  Result := Enabled and (not IsTempDisabled) and HasEnabledMarkup;
 end;
 
 { TSynRefCountedDictIfDef }
@@ -1229,9 +1234,9 @@ function TSynMarkupHighIfDefEntry.DebugText(Short: Boolean): String;
 begin
   If Self = nil then
     exit('NODE IS NIL');
-  Result := Format('Line=%d NType=%s State=%s OpenState=%s Flags=%s ' +
+  Result := Format('Line=%s   NType=%s State=%s OpenState=%s Flags=%s ' +
                    ' StartCol=%d EndCol=%d',
-                   [FLine, dbgs(FNodeType), dbgs(FNodeState), dbgs(FOpeningPeerNodeState) ,
+                   [FLine.DebugText, dbgs(FNodeType), dbgs(FNodeState), dbgs(FOpeningPeerNodeState) ,
                     dbgs(FNodeFlags), FStartColumn, FEndColumn]
                   );
   if Short or (FPeers[idpOpeningPeer] = nil) then
@@ -2446,7 +2451,7 @@ end;
 
 function TSynMarkupHighIfDefLinesTree.CreateOpeningList: TLazSynEditNestedFoldsList;
 begin
-  Result := TLazSynEditNestedFoldsList.Create(@GetHighLighterWithLines);
+  Result := TLazSynEditNestedFoldsList.Create(FLines, FHighlighter);
   Result.ResetFilter;
   Result.Clear;
   //Result.Line :=
@@ -3829,12 +3834,14 @@ begin
   if FHighlighter = AValue then Exit;
   FHighlighter := AValue;
   FIfDefTree.Highlighter := AValue;
+  FOuterLines.HighLighter := AValue;
 end;
 
 procedure TSynEditMarkupIfDef.DoBufferChanging(Sender: TObject);
 begin
   FIfDefTree.Clear;
   FIfDefTree.Lines := nil;
+  FOuterLines.Lines := nil;
 end;
 
 procedure TSynEditMarkupIfDef.ValidateMatches;
@@ -3890,6 +3897,7 @@ begin
   //FIfDefTree.Lines  pointing to view => so still valid
   FIfDefTree.Clear;
   FIfDefTree.Lines := Lines;
+  FOuterLines.Lines := Lines;
 
   FLastValidTopLine  := 0;
   FLastValidLastLine := 0;
@@ -3922,18 +3930,19 @@ end;
 procedure TSynEditMarkupIfDef.SetLines(const AValue: TSynEditStrings);
 begin
   if Lines <> nil then begin
-    Lines.RemoveGenericHandler(senrTextBufferChanged, TMethod(@DoBufferChanged));
-    Lines.RemoveGenericHandler(senrTextBufferChanging, TMethod(@DoBufferChanging));
+    Lines.RemoveNotifyHandler(senrTextBufferChanged, @DoBufferChanged);
+    Lines.RemoveNotifyHandler(senrTextBufferChanging, @DoBufferChanging);
     //FLines.RemoveEditHandler(@DoLinesEdited);
 //    FLines.RemoveChangeHandler(senrHighlightChanged, @DoHighlightChanged);
   end;
 
   inherited SetLines(AValue);
   FIfDefTree.Lines := AValue;
+  FOuterLines.Lines := AValue;
 
   if Lines <> nil then begin
-    Lines.AddGenericHandler(senrTextBufferChanged, TMethod(@DoBufferChanged));
-    Lines.AddGenericHandler(senrTextBufferChanging, TMethod(@DoBufferChanging));
+    Lines.AddNotifyHandler(senrTextBufferChanged, @DoBufferChanged);
+    Lines.AddNotifyHandler(senrTextBufferChanging, @DoBufferChanging);
     //FLines.AddChangeHandler(senrHighlightChanged, @DoHighlightChanged);
 //    FLines.AddEditHandler(@DoLinesEdited);
   end;

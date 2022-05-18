@@ -55,6 +55,14 @@ msgstr ""
 msgid "fpmake compiler config"
 msgstr "fpmake-Compilerkonfiguration"
 
+#: fppkg_const.rsfppkgenvironmentoptions
+msgid "Fppkg"
+msgstr ""
+
+#: fppkg_const.rsfppkgenvironmentoptionscaption
+msgid "Compilation"
+msgstr ""
+
 #: fppkg_const.rsfppkgoptions
 msgid "fppkg options"
 msgstr "fppkg-Einstellungen"
@@ -103,7 +111,7 @@ msgstr ""
 msgid "Remote repository"
 msgstr "Entferntes Repository"
 
-#: fppkg_const.rsshowlazaruspackagemanager
-msgid "Show Lazarus Package Manager"
-msgstr "Zeige Lazarus-Packagemanager"
+#: fppkg_const.rsshowfppkgpackagemanager
+msgid "Show Fppkg Package Manager"
+msgstr ""
 

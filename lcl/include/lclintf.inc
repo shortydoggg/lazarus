@@ -1,5 +1,5 @@
 {%MainUnit ../lclintf.pas}
-{ $Id: lclintf.inc 48908 2015-04-30 08:34:13Z sekelsenmat $
+{ $Id: lclintf.inc 58530 2018-07-15 10:23:43Z martin $
 ******************************************************************************
   All interface communication related stuff goes here.
   This file is used by LCLIntf.pas
@@ -89,6 +89,11 @@ end;
 function ClipboardRegisterFormat(const AMimeType: string): TClipboardFormat;
 begin
   Result := WidgetSet.ClipboardRegisterFormat(AMimeType);
+end;
+
+function ClipboardFormatNeedsNullByte(const AFormat: TPredefinedClipboardFormat): Boolean;
+begin
+  Result := WidgetSet.ClipboardFormatNeedsNullByte(AFormat);
 end;
 
 function CreateEmptyRegion: hRGN;

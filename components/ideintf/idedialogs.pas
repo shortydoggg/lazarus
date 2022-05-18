@@ -17,27 +17,35 @@ unit IDEDialogs;
 interface
 
 uses
-  Classes, SysUtils, Controls, Dialogs;
+  Classes, SysUtils,
+  // LCL
+  Dialogs,
+  // LazUtils
+  UITypes,
+  // IdeIntf
+  LazMsgDialogs;
 
 type
   TIDESelectDirectory = function(const Title, InitialDir: string): string of object;
   TInitIDEFileDialog = procedure(AFileDialog: TFileDialog) of object;
   TStoreIDEFileDialog = procedure(AFileDialog: TFileDialog) of object;
-  TIDEMessageDialog = function(const aCaption, aMsg: string;
-                               DlgType: TMsgDlgType; Buttons: TMsgDlgButtons;
-                               const HelpKeyword: string = ''): Integer of object;
-  TIDEQuestionDialog = function(const aCaption, aMsg: string;
-                                DlgType: TMsgDlgType; Buttons: array of const;
-                                const HelpKeyword: string = ''): Integer of object;
-function LazSelectDirectory(const Title: string; const InitialDir: string = ''
-  ): string;
 
-var
-  LazIDESelectDirectory: TIDESelectDirectory = nil;// set by the IDE
+var  // set by the IDE
+  LazIDESelectDirectory: TIDESelectDirectory = nil;
   InitIDEFileDialog: TInitIDEFileDialog = nil;
-  StoreIDEFileDialog: TStoreIDEFileDialog = nil  ;
-  IDEMessageDialog: TIDEMessageDialog = nil;
-  IDEQuestionDialog: TIDEQuestionDialog = nil;
+  StoreIDEFileDialog: TStoreIDEFileDialog = nil;
+
+// Wrapper function for LazIDESelectDirectory with a default parameter.
+function LazSelectDirectory(const Title: string; const InitialDir: string = ''): string;
+
+// Wrapper function for LazMessageDialog in LazMsgDialogs.
+function IDEMessageDialog(const aCaption, aMsg: string;
+                          DlgType: TMsgDlgType; Buttons: TMsgDlgButtons;
+                          const HelpKeyword: string = ''): Integer;
+// Wrapper function for LazQuestionDialog in LazMsgDialogs.
+function IDEQuestionDialog(const aCaption, aMsg: string;
+                           DlgType: TMsgDlgType; Buttons: array of const;
+                           const HelpKeyword: string = ''): Integer;
 
 function IDEMessageDialogAb(const aCaption, aMsg: string;
                    DlgType: TMsgDlgType; Buttons: TMsgDlgButtons;
@@ -83,19 +91,30 @@ var
 
 implementation
 
-function LazSelectDirectory(const Title: string; const InitialDir: string
-  ): string;
+function LazSelectDirectory(const Title: string; const InitialDir: string): string;
 begin
   Result:=LazIDESelectDirectory(Title,InitialDir);
 end;
 
+function IDEMessageDialog(const aCaption, aMsg: string;
+                          DlgType: TMsgDlgType; Buttons: TMsgDlgButtons;
+                          const HelpKeyword: string = ''): Integer;
+begin
+  Result := LazMessageDialog(aCaption, aMsg, DlgType, Buttons, HelpKeyword);
+end;
+
+function IDEQuestionDialog(const aCaption, aMsg: string;
+                           DlgType: TMsgDlgType; Buttons: array of const;
+                           const HelpKeyword: string = ''): Integer;
+begin
+  Result := LazQuestionDialog(aCaption, aMsg, DlgType, Buttons, HelpKeyword);
+end;
+
 function IDEMessageDialogAb(const aCaption, aMsg: string; DlgType: TMsgDlgType;
-  Buttons: TMsgDlgButtons; ShowAbort: boolean; const HelpKeyword: string
-  ): Integer;
+  Buttons: TMsgDlgButtons; ShowAbort: boolean; const HelpKeyword: string): Integer;
 begin
   if ShowAbort then begin
-    // add an abort button for 'Cancel all'
-    // and replace a Cancel with Ignore
+    // add an abort button for 'Cancel all' and replace a Cancel with Ignore
     Buttons:=Buttons+[mbAbort];
     if mbCancel in Buttons then
       Buttons:=Buttons-[mbCancel]+[mbIgnore];

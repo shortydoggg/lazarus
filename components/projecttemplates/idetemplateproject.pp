@@ -5,8 +5,15 @@ unit IDETemplateProject;
 interface
 
 uses
-  Classes, SysUtils, LResources, Forms, Controls, Graphics, Dialogs,
-  ProjectTemplates, ProjectIntf, BaseIDEIntf, LazIDEIntf;
+  Classes, SysUtils, ContNrs,
+  // LCL
+  LResources, Forms, Controls, Graphics, Dialogs,
+  // LazUtils
+  LazFileUtils,
+  // IdeIntf
+  ProjectIntf, NewItemIntf, MenuIntf, BaseIDEIntf, LazIDEIntf,
+  // ProjectTemplates
+  ProjectTemplates, frmTemplateSettings, frmTemplateVariables;
 
 type
 
@@ -29,17 +36,11 @@ type
     function InitProject(AProject: TLazProject) : TModalResult; override;
     function CreateStartFiles({%H-}AProject: TLazProject) : TModalResult; override;
     Property template : TProjectTemplate Read FTemplate Write FTemplate;
-  published
-    { Published declarations }
   end;
   
 procedure Register;
 
 implementation
-
-uses
-  ContNrs, frmTemplateSettings, frmTemplateVariables,
-  NewItemIntf, MenuIntf;
 
 Var
   IDETemplates : TProjectTemplates = nil;
@@ -84,7 +85,7 @@ Function GetTemplateDir : String;
 begin
   With GetIDEConfigStorage('projtemplate.xml',True) do
     try
-      Result:=GetValue('TemplateDir',IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath)+'templates');
+      Result:=GetValue('TemplateDir',AppendPathDelim(LazarusIDE.GetPrimaryConfigPath)+'templates');
     Finally
       Free;
     end;

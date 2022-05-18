@@ -1,4 +1,4 @@
-{ $Id: gtkwscomctrls.pp 41387 2013-05-24 18:30:06Z juha $}
+{ $Id: gtkwscomctrls.pp 57164 2018-01-27 18:12:35Z ondrej $}
 {
  *****************************************************************************
  *                             GtkWSComCtrls.pp                              *
@@ -64,7 +64,7 @@ type
     class procedure RemovePage(const ATabControl: TCustomTabControl;
       const AIndex: integer); override;
 
-    class function GetCapabilities: TNotebookCapabilities; override;
+    class function GetCapabilities: TCTabControlCapabilities; override;
     class function GetNotebookMinTabHeight(const AWinControl: TWinControl): integer; override;
     class function GetNotebookMinTabWidth(const AWinControl: TWinControl): integer; override;
     class function GetTabIndexAtPos(const ATabControl: TCustomTabControl; const AClientPos: TPoint): integer; override;
@@ -159,7 +159,7 @@ type
     class procedure SetHotTrackStyles(const ALV: TCustomListView; const AValue: TListHotTrackStyles); override;
     class procedure SetHoverTime(const ALV: TCustomListView; const AValue: Integer); override;
 //    class procedure SetIconOptions(const ALV: TCustomListView; const AValue: TIconOptions); override;
-    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageList); override;
+    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageListResolution); override;
     class procedure SetProperty(const ALV: TCustomListView; const AProp: TListViewProperty; const AIsSet: Boolean); override;
     class procedure SetProperties(const ALV: TCustomListView; const AProps: TListViewProperties); override;
     class procedure SetScrollBars(const ALV: TCustomListView; const AValue: TScrollStyle); override;

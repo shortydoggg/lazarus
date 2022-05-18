@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.5.4\n"
+"X-Generator: Poedit 1.8.7.1\n"
 
 #: lr_const.saboutformcapt
 msgid "About FastReport"
@@ -256,6 +256,143 @@ msgstr "Az osztályobjektum nem található: \"%s\""
 msgid "Confirm"
 msgstr "Megerősítés"
 
+#: lr_const.scrosseditoraverage
+msgid "Average"
+msgstr "Átlag"
+
+#: lr_const.scrosseditorblue
+msgid "Blue"
+msgstr "Kék"
+
+#: lr_const.scrosseditorbluewhite
+msgid "Blue and White"
+msgstr "Kék és fehér"
+
+#: lr_const.scrosseditorcaption
+msgid "Cross tab editor"
+msgstr "Kereszttábla szerkesztő"
+
+#: lr_const.scrosseditorcount
+msgid "Count"
+msgstr "Darabszám"
+
+#: lr_const.scrosseditorcyan
+msgid "Cyan"
+msgstr "Türkizkék"
+
+#: lr_const.scrosseditorgray
+msgid "Gray"
+msgstr "Szürke"
+
+#: lr_const.scrosseditorgreen
+msgid "Green"
+msgstr "Zöld"
+
+#: lr_const.scrosseditorgreenorange
+msgid "Green and Orange"
+msgstr "Zöld és narancssárga"
+
+#: lr_const.scrosseditormax
+msgid "Max"
+msgstr "Max"
+
+#: lr_const.scrosseditormin
+msgid "Min"
+msgstr "Min"
+
+#: lr_const.scrosseditornone
+msgctxt "lr_const.scrosseditornone"
+msgid "None"
+msgstr "Nincs"
+
+#: lr_const.scrosseditororange
+msgid "Orange"
+msgstr "Narancssárga"
+
+#: lr_const.scrosseditorshowcolheader
+msgid "Show column header"
+msgstr "Oszlop fejlécének megjelenítése"
+
+#: lr_const.scrosseditorshowcoltotal
+msgid "Show column total"
+msgstr "Oszlop összegzésének megjelenítése"
+
+#: lr_const.scrosseditorshowcorner1
+msgid "Show corner 1"
+msgstr "1. sarok megjelenítése"
+
+#: lr_const.scrosseditorshowcorner2
+msgid "Show corner 2"
+msgstr "2. sarok megjelenítése"
+
+#: lr_const.scrosseditorshowgrantotal
+msgid "Show grand total"
+msgstr "Végösszeg megjelenítése"
+
+#: lr_const.scrosseditorshowrowheader
+msgid "Show row header"
+msgstr "Sor fejlécének megjelenítése"
+
+#: lr_const.scrosseditorshowrowtotal
+msgid "Show row total"
+msgstr "Sor összegzésének megjelenítése"
+
+#: lr_const.scrosseditorshowtitle
+msgid "Show title"
+msgstr "Cím megjelenítése"
+
+#: lr_const.scrosseditorsource
+msgid "Source data"
+msgstr "Adatok forrása"
+
+#: lr_const.scrosseditorstructure
+msgid "Cross-tab structure"
+msgstr "Kereszttábla szerkezete"
+
+#: lr_const.scrosseditorstyle
+msgid "Select style"
+msgstr "Stílus választása"
+
+#: lr_const.scrosseditorsum
+msgid "Sum"
+msgstr "Összeg"
+
+#: lr_const.scrosseditorwhite
+msgid "White"
+msgstr "Fehér"
+
+#: lr_const.scrosstabcoltitle
+msgid "Col title"
+msgstr "Oszlop címkéje"
+
+#: lr_const.scrosstabcoltotal
+msgid "Col total"
+msgstr "Oszlop összegzése"
+
+#: lr_const.scrosstabdata
+msgid "Data"
+msgstr "Adat"
+
+#: lr_const.scrosstabgrantotal
+msgid "Grand total"
+msgstr "Végösszeg"
+
+#: lr_const.scrosstabrowtitle
+msgid "Row title"
+msgstr "Sor címkéje"
+
+#: lr_const.scrosstabrowtotal
+msgid "Row total"
+msgstr "Sor összegzése"
+
+#: lr_const.scrosstabtotalchcell
+msgid "Total CH cell"
+msgstr "Oszlopfejlécek összefoglalása"
+
+#: lr_const.scrosstabtotalrhcell
+msgid "Total RH cell"
+msgstr "Sorfejlécek összefoglalása"
+
 #: lr_const.scsvfile
 msgid "CSV File"
 msgstr "CSV fájl"
@@ -263,6 +400,15 @@ msgstr "CSV fájl"
 #: lr_const.scurmemo
 msgid "Memo:"
 msgstr "Jegyzet:"
+
+#: lr_const.sdatainspfields
+msgid "Fields"
+msgstr "Mezők"
+
+#: lr_const.sdatainspvariables
+msgctxt "lr_const.sdatainspvariables"
+msgid "Variables"
+msgstr "Változók"
 
 #: lr_const.sdateformat1
 msgid "mm.dd.yy"
@@ -327,6 +473,10 @@ msgstr "FORMATTEXT(<Maszk>, <Karakterlánc>)/Alkalmazza a <Maszk>-ot az adott <K
 #: lr_const.sdescriptionfrac
 msgid "FRAC(<Value>)/Returns the fractional part of floating point <Value>."
 msgstr "FRAC(<Érték>)/A lebegőpontos <Érték> tört részét adja vissza."
+
+#: lr_const.sdescriptionif
+msgid "IF(<expression>, <Value1>, <Value2>)/Returns <Value1>, if <expression> is true; otherwise returns <Value2>."
+msgstr "IF(<Kifejezés>, <Érték1>, <Érték2>)/Ha a <Kifejezés> igaz akkor <Érték1>-et, ha hamis akkor <Érték2>-t adja vissza."
 
 #: lr_const.sdescriptioninc
 msgid "INC(<Value>)/Increment <Value>."
@@ -477,6 +627,10 @@ msgstr "Rács"
 #: lr_const.sdesoptionsforminch
 msgid "&Inches"
 msgstr "Hüvelyk"
+
+#: lr_const.sdesoptionsforminplace
+msgid "Use inplace editor"
+msgstr "Szerkesztés helyben"
 
 #: lr_const.sdesoptionsformmm
 msgid "&MM"
@@ -632,6 +786,54 @@ msgstr "&Változó"
 #: lr_const.seditorformword
 msgid "&Word wrap"
 msgstr "Szótördelés"
+
+#: lr_const.serrexpectedassign
+msgid "Expected \":=\""
+msgstr "\":=\" szükséges"
+
+#: lr_const.serrexpectedclosingbracket1
+msgid "Expected \")\""
+msgstr "\")\" szükséges"
+
+#: lr_const.serrexpectedclosingbracket2
+msgid "Expected \"]\""
+msgstr "\"]\" szükséges"
+
+#: lr_const.serrexpectedcomma
+msgid "Expected \",\" or \")\""
+msgstr "\",\" vagy \")\" szükséges"
+
+#: lr_const.serrexpecteddo
+msgid "Expected \"do\""
+msgstr "\"do\" szükséges"
+
+#: lr_const.serrexpectedend
+msgid "Expected \";\" or \"end\""
+msgstr "\";\" vagy \"end\" szükséges"
+
+#: lr_const.serrexpectedthen
+msgid "Expected \"then\""
+msgstr "\"then\" szükséges"
+
+#: lr_const.serrexpecteduntil
+msgid "Expected \";\" or \"until\""
+msgstr "\";\" vagy \"until\" szükséges"
+
+#: lr_const.serrlabelgoto
+msgid "Label in goto must be a number"
+msgstr "A goto címkéjének egy számot kell megadni"
+
+#: lr_const.serrline
+msgid "Line"
+msgstr "Sor"
+
+#: lr_const.serrneeddo
+msgid "Need \"do\" here"
+msgstr "Ide \"do\" kell"
+
+#: lr_const.serrneedto
+msgid "Need \"to\" here"
+msgstr "Ide \"to\" kell"
 
 #: lr_const.serror
 msgid "Error"
@@ -1433,7 +1635,7 @@ msgstr "Hüvelyk"
 
 #: lr_const.sinsbarcode
 msgid "Insert Barcode object"
-msgstr "Vonalkód objektum beszúrása"
+msgstr "Vonalkód beszúrása"
 
 #: lr_const.sinschart
 msgid "Insert Chart object"
@@ -1442,6 +1644,10 @@ msgstr "Diagram beszúrása"
 #: lr_const.sinscheckbox
 msgid "Insert CheckBox object"
 msgstr "Jelölőnégyzet beszúrása"
+
+#: lr_const.sinscrosstab
+msgid "Insert Cross-tab object"
+msgstr "Kereszttábla beszúrása"
 
 #: lr_const.sinsert
 msgid "Insert"
@@ -1515,6 +1721,10 @@ msgstr "A(z) \"%s\" nem érvényes változónév."
 msgid "Keep aspect ratio"
 msgstr "Méretarány megtartása"
 
+#: lr_const.skeepchild
+msgid "Keep child together with parent"
+msgstr "A gyermek legyen együtt tartva a szülővel"
+
 #: lr_const.slazformfile
 msgid "LazReport form"
 msgstr "LazReport űrlap"
@@ -1547,6 +1757,14 @@ msgstr "Nem"
 msgctxt "lr_const.snotassigned"
 msgid "[None]"
 msgstr "[Nincs]"
+
+#: lr_const.snovalidexportfilenamewassupplied
+msgid "No valid export filename was supplied"
+msgstr "Nincs megadva érvényes exportálási fájlnév"
+
+#: lr_const.snovalidfilterclasswassupplied
+msgid "No valid filterclass was supplied"
+msgstr "Nincs megadva érvényes szűrőosztály"
 
 #: lr_const.sobjectinspector
 msgid "Object inspector"
@@ -2294,6 +2512,14 @@ msgstr "Megjelenítés minden oldalon"
 msgid "Report file"
 msgstr "Jelentés &fájl"
 
+#: lr_const.sreportcorruptoldknowversion
+msgid "This report is corrupt, it probably needs \"LRE_OLDV%d_FRF_READ\"=true"
+msgstr "Ez a jelentés sérült. Valószínűleg szüksége van erre: \"LRE_OLDV%d_FRF_READ\"=true"
+
+#: lr_const.sreportcorruptunknownversion
+msgid "This report is corrupt, frVersion=%d"
+msgstr "Ez a jelentés sérült. frVersion=%d"
+
 #: lr_const.sreportcreatedate
 msgid "Report creation date"
 msgstr "Jelentés létrehozásának dátuma"
@@ -2552,6 +2778,7 @@ msgid "Variable format ..."
 msgstr "Változó formátuma ..."
 
 #: lr_const.svarformcapt
+msgctxt "lr_const.svarformcapt"
 msgid "Variables"
 msgstr "Változók"
 

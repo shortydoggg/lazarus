@@ -1,4 +1,4 @@
-{ $Id: win32wscomctrls.pp 53785 2016-12-27 22:31:57Z maxim $}
+{ $Id: win32wscomctrls.pp 62667 2020-02-24 04:12:44Z dmitry $}
 {
  *****************************************************************************
  *                            Win32WSComCtrls.pp                             * 
@@ -26,7 +26,7 @@ uses
   CommCtrl, Windows, Classes, SysUtils, Math, Win32Extra,
   // LCL
   ComCtrls, LCLType, Controls, Graphics, Themes,
-  ImgList, StdCtrls, Forms, LCLIntf,
+  ImgList, StdCtrls, Forms, LCLIntf, LCLProc,
   LMessages, LazUTF8, LCLMessageGlue, InterfaceBase,
   // widgetset
   WSComCtrls, WSLCLClasses, WSControls, WSProc,
@@ -50,6 +50,8 @@ type
   { TWin32WSCustomTabControl }
 
   TWin32WSCustomTabControl = class(TWSCustomTabControl)
+  public
+    class procedure DeletePage(const ATabControl: TCustomTabControl; const AIndex: integer);
   published
     class function CreateHandle(const AWinControl: TWinControl;
           const AParams: TCreateParams): HWND; override;
@@ -67,9 +69,10 @@ type
     class function GetNotebookMinTabWidth(const AWinControl: TWinControl): integer; override;
     class function GetTabIndexAtPos(const ATabControl: TCustomTabControl; const AClientPos: TPoint): integer; override;
     class function GetTabRect(const ATabControl: TCustomTabControl; const AIndex: Integer): TRect; override;
-    class function GetCapabilities: TCTabControlCapabilities;override;
+    class function GetCapabilities: TCTabControlCapabilities; override;
     class function GetDesignInteractive(const AWinControl: TWinControl; AClientPos: TPoint): Boolean; override;
-    class procedure SetImageList(const ATabControl: TCustomTabControl; const AImageList: TCustomImageList); override;
+    class procedure SetTabSize(const ATabControl: TCustomTabControl; const ATabWidth, ATabHeight: integer); override;
+    class procedure SetImageList(const ATabControl: TCustomTabControl; const AImageList: TCustomImageListResolution); override;
     class procedure SetPageIndex(const ATabControl: TCustomTabControl; const AIndex: integer); override;
     class procedure SetTabPosition(const ATabControl: TCustomTabControl; const ATabPosition: TTabPosition); override;
     class procedure ShowTabs(const ATabControl: TCustomTabControl; AShowTabs: boolean); override;
@@ -134,6 +137,7 @@ type
     class procedure ColumnSetMinWidth(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const AMinWidth: integer); override;
     class procedure ColumnSetWidth(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const AWidth: Integer); override;
     class procedure ColumnSetVisible(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const AVisible: Boolean); override;
+    class procedure ColumnSetSortIndicator(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const AAndicator: TSortIndicator); override;
 
     // items
     class procedure ItemDelete(const ALV: TCustomListView; const AIndex: Integer); override;
@@ -179,7 +183,7 @@ type
     class procedure SetHotTrackStyles(const ALV: TCustomListView; const AValue: TListHotTrackStyles); override;
     class procedure SetHoverTime(const ALV: TCustomListView; const AValue: Integer); override;
     class procedure SetIconArrangement(const ALV: TCustomListView; const AValue: TIconArrangement); override;
-    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageList); override;
+    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageListResolution); override;
     class procedure SetItemsCount(const ALV: TCustomListView; const AValue: Integer); override;
     class procedure SetOwnerData(const ALV: TCustomListView; const AValue: Boolean); override;
     class procedure SetProperty(const ALV: TCustomListView; const AProp: TListViewProperty; const AIsSet: Boolean); override;
@@ -206,6 +210,7 @@ type
     class procedure ApplyChanges(const AProgressBar: TCustomProgressBar); override;
     class procedure SetPosition(const AProgressBar: TCustomProgressBar; const NewPosition: integer); override;
     class procedure SetStyle(const AProgressBar: TCustomProgressBar; const NewStyle: TProgressBarStyle); override;
+    class function GetConstraints(const AControl: TControl; const AConstraints: TObject): Boolean; override;
   end;
 
   { TWin32WSCustomUpDown }
@@ -236,7 +241,7 @@ type
     class function  GetButtonCount(const AToolBar: TToolBar): integer; override;
     class procedure InsertToolButton(const AToolBar: TToolbar; const AControl: TControl); override;
     class procedure DeleteToolButton(const AToolBar: TToolbar; const AControl: TControl); override;
-{$endif}    
+{$endif}
   end;
 
   { TWin32WSTrackBar }
@@ -274,6 +279,7 @@ const
   DefMarqueeTime = 50; // ms
 
 {$I win32pagecontrol.inc}
+{$I win32treeview.inc}
 
 type
   TStatusPanelAccess = class(TStatusPanel);
@@ -292,16 +298,19 @@ var
   Parent: HWND;
   PreferredSizeStatusBar: HWND;
   R: TRect;
+  AErrorCode: Cardinal;
 begin
   Flags := WS_CHILD or WS_CLIPSIBLINGS or WS_CLIPCHILDREN;
   Parent := TWin32WidgetSet(WidgetSet).AppHandle;
-  if UnicodeEnabledOS then
-    PreferredSizeStatusBar := CreateWindowExW(0, STATUSCLASSNAMEW,
-      nil, Flags,
-      0, 0, 0, 0, Parent, 0, HInstance, nil)
-  else
-    PreferredSizeStatusBar := CreateWindowEx(0, STATUSCLASSNAME, nil,
-      Flags, 0, 0, 0, 0, Parent,0 , HInstance, nil);
+  PreferredSizeStatusBar := CreateWindowExW(0, STATUSCLASSNAMEW,
+    nil, Flags,
+    0, 0, 0, 0, Parent, 0, HInstance, nil);
+  if PreferredSizeStatusBar = 0 then
+  begin
+    AErrorCode := GetLastError;
+    DebugLn(['Failed to create win32 control, error: ', AErrorCode, ' : ', GetLastErrorText(AErrorCode)]);
+    raise Exception.Create('Failed to create win32 control, error: ' + IntToStr(AErrorCode) + ' : ' + GetLastErrorText(AErrorCode));
+  end;
   GetWindowRect(PreferredSizeStatusBar, R);
   PreferredStatusBarHeight := R.Bottom - R.Top;
   DestroyWindow(PreferredSizeStatusBar);
@@ -344,10 +353,7 @@ begin
   else
     WParam := WParam or StatusPanel.Index;
   if StatusPanel.StatusBar.UseRightToLeftReading then WParam := WParam or SBT_RTLREADING;
-    if UnicodeEnabledOS then
-      Windows.SendMessageW(StatusPanel.StatusBar.Handle, SB_SETTEXTW, WParam, LPARAM(PWideChar(UTF8ToUTF16(Text))))
-    else
-      Windows.SendMessage(StatusPanel.StatusBar.Handle, SB_SETTEXT, WParam, LPARAM(PChar(Utf8ToAnsi(Text))));
+    Windows.SendMessageW(StatusPanel.StatusBar.Handle, SB_SETTEXTW, WParam, LPARAM(PWideChar(UTF8ToUTF16(Text))));
 end;
 
 procedure UpdateStatusBarPanelWidths(const StatusBar: TStatusBar);
@@ -421,7 +427,7 @@ begin
     Result := WindowProc(Window, Msg, WParam, LParam);
   end
   else
-  if ThemeServices.ThemesEnabled then
+  if Assigned(ThemeServices) and ThemeServices.ThemesEnabled then
   begin
     // Paul: next is a slightly modified code of TThemeManager.StatusBarWindowProc
     // of Mike Lischke Theme manager library (Mike granted us permition to use his code)
@@ -550,10 +556,7 @@ begin
       WParam := SB_SIMPLEID or SBT_RTLREADING
     else
       WParam := SB_SIMPLEID;
-    if UnicodeEnabledOS then
-      Windows.SendMessageW(AStatusBar.Handle, SB_SETTEXTW, WParam, LPARAM(PWideChar(UTF8ToUTF16(AStatusBar.SimpleText))))
-    else
-      Windows.SendMessage(AStatusBar.Handle, SB_SETTEXT, WParam, LPARAM(PChar(Utf8ToAnsi(AStatusBar.SimpleText))))
+    Windows.SendMessageW(AStatusBar.Handle, SB_SETTEXTW, WParam, LPARAM(PWideChar(UTF8ToUTF16(AStatusBar.SimpleText))));
   end
   else
     UpdateStatusBarPanel(AStatusBar.Panels[PanelIndex]);
@@ -720,6 +723,30 @@ begin
   end;
 end;
 
+class function TWin32WSProgressBar.GetConstraints(const AControl: TControl;
+  const AConstraints: TObject): Boolean;
+var
+  SizeConstraints: TSizeConstraints absolute AConstraints;
+  MinWidth, MinHeight, MaxWidth, MaxHeight: Integer;
+begin
+  Result := True;
+
+  if (AConstraints is TSizeConstraints) then
+  begin
+    MinWidth := 0;
+    MinHeight := 0;
+    MaxWidth := 0;
+    MaxHeight := 0;
+
+    // The ProgressBar needs a minimum Height of 10 on Windows XP when themed,
+    // as required by Windows, otherwise it's image is corrupted
+    if (Win32MajorVersion < 6) and ThemeServices.ThemesEnabled then
+      MinHeight := 10;
+
+    SizeConstraints.SetInterfaceConstraints(MinWidth, MinHeight, MaxWidth, MaxHeight);
+  end;
+end;
+
 { TWin32WSToolbar}
 
 {$ifdef OldToolbar}
@@ -730,7 +757,7 @@ var
   Params: TCreateWindowExParams;
 begin
   // general initialization of Params
-  PrepareCreateWindow(AWinControl, Params);
+  PrepareCreateWindow(AWinControl, AParams, Params);
   // customization of Params
   with Params do
   begin
@@ -742,7 +769,7 @@ begin
   Result := Params.Window;
 end;
 
-function  TWin32WSToolbar.GetButtonCount(const AToolBar: TToolBar): integer;
+class function TWin32WSToolbar.GetButtonCount(const AToolBar: TToolBar): integer;
 begin
   Result := SendMessage(AToolbar.Handle, TB_BUTTONCOUNT, 0, 0)
 end;
@@ -943,6 +970,7 @@ class procedure TWin32WSTrackBar.ApplyChanges(const ATrackBar: TCustomTrackBar);
 var
   wHandle: HWND;
   NewStyle: integer;
+  lTickStyle: DWORD;
 const
   StyleMask = TBS_AUTOTICKS or TBS_NOTICKS or TBS_VERT or TBS_TOP or TBS_BOTH or
     TBS_ENABLESELRANGE or TBS_REVERSED;
@@ -956,7 +984,12 @@ begin
   begin
     { cache handle }
     wHandle := Handle;
-    NewStyle := TickStyleStyle[TickStyle] or OrientationStyle[Orientation] or
+    lTickStyle := TickStyleStyle[TickStyle];
+    {$IFNDEF WIN32}
+    if Max - Min > $7FFF then  // Workaround for #36046:
+      lTickStyle := 0;         // No ticks to avoid hanging if range is too large
+    {$ENDIF}
+    NewStyle := lTickStyle or OrientationStyle[Orientation] or
                 TickMarksStyle[TickMarks] or SelRangeStyle[ShowSelRange] or ReversedStyle[Reversed];
     UpdateWindowStyle(wHandle, NewStyle, StyleMask);
     Windows.SendMessage(wHandle, TBM_SETRANGEMAX, Windows.WPARAM(True), Max);

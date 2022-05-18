@@ -1,7 +1,7 @@
 object ExternalToolOptionDlg: TExternalToolOptionDlg
-  Left = 348
+  Left = 350
   Height = 592
-  Top = 119
+  Top = 163
   Width = 661
   Caption = 'ExternalToolOptionDlg'
   ClientHeight = 592
@@ -12,7 +12,7 @@ object ExternalToolOptionDlg: TExternalToolOptionDlg
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   Position = poScreenCenter
-  LCLVersion = '1.5'
+  LCLVersion = '1.9.0.0'
   object TitleLabel: TLabel
     AnchorSideLeft.Control = Owner
     AnchorSideTop.Control = TitleEdit
@@ -92,53 +92,65 @@ object ExternalToolOptionDlg: TExternalToolOptionDlg
     BorderSpacing.Around = 6
     Caption = 'OptionsGroupBox'
     ChildSizing.Layout = cclTopToBottomThenLeftToRight
-    ChildSizing.ControlsPerLine = 5
+    ChildSizing.ControlsPerLine = 3
     ClientHeight = 87
     ClientWidth = 645
     TabOrder = 4
-    object OptionScanOutputForFPCMessagesCheckBox: TCheckBox
+    object ScanOutputForFPCMessagesCheckBox: TCheckBox
+      AnchorSideTop.Side = asrBottom
       Left = 6
       Height = 19
       Top = 6
-      Width = 269
+      Width = 232
       BorderSpacing.Around = 6
-      Caption = 'OptionScanOutputForFPCMessagesCheckBox'
+      Caption = 'ScanOutputForFPCMessagesCheckBox'
       TabOrder = 0
     end
-    object OptionScanOutputForMakeMessagesCheckBox: TCheckBox
+    object ScanOutputForMakeMessagesCheckBox: TCheckBox
       AnchorSideTop.Side = asrBottom
       AnchorSideBottom.Side = asrBottom
       Left = 6
       Height = 19
       Top = 31
-      Width = 269
+      Width = 232
       BorderSpacing.Around = 6
-      Caption = 'OptionScanOutputForMakeMessagesCheckBox'
+      Caption = 'ScanOutputForMakeMessagesCheckBox'
+      ParentShowHint = False
       TabOrder = 1
     end
     object ScannersButton: TButton
-      AnchorSideLeft.Control = OptionsGroupBox
-      AnchorSideTop.Control = OptionScanOutputForMakeMessagesCheckBox
       AnchorSideTop.Side = asrBottom
       Left = 6
       Height = 25
       Top = 56
-      Width = 323
+      Width = 232
+      AutoSize = True
       BorderSpacing.Around = 6
       Caption = 'ScannersButton'
-      TabOrder = 3
+      TabOrder = 2
     end
-    object chkHideMainForm: TCheckBox
-      AnchorSideLeft.Control = OptionScanOutputForFPCMessagesCheckBox
-      AnchorSideLeft.Side = asrBottom
-      AnchorSideTop.Control = OptionScanOutputForFPCMessagesCheckBox
-      Left = 281
+    object ShowConsoleCheckBox: TCheckBox
+      Left = 244
       Height = 19
       Top = 6
-      Width = 119
-      BorderSpacing.Left = 6
-      Caption = 'chkHideMainForm'
-      TabOrder = 2
+      Width = 144
+      Caption = 'ShowConsoleCheckBox'
+      OnChange = ShowConsoleCheckBoxChange
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 3
+      Visible = False
+    end
+    object HideWindowCheckBox: TCheckBox
+      Left = 244
+      Height = 19
+      Top = 31
+      Width = 144
+      Caption = 'HideWindowCheckBox'
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 4
+      Visible = False
     end
   end
   object KeyGroupBox: TGroupBox
@@ -192,6 +204,7 @@ object ExternalToolOptionDlg: TExternalToolOptionDlg
       ItemHeight = 0
       OnClick = MacrosListboxClick
       OnDblClick = MacrosListboxDblClick
+      ScrollWidth = 503
       TabOrder = 0
     end
     object MacrosInsertButton: TButton
@@ -261,7 +274,7 @@ object ExternalToolOptionDlg: TExternalToolOptionDlg
     DialogOptions = [ofPathMustExist, ofFileMustExist, ofEnableSizing, ofViewDetail]
     FilterIndex = 1
     HideDirectories = False
-    ButtonWidth = 45
+    ButtonWidth = 25
     NumGlyphs = 1
     FocusOnButtonClick = True
     Anchors = [akTop, akLeft, akRight]
@@ -282,7 +295,7 @@ object ExternalToolOptionDlg: TExternalToolOptionDlg
     Top = 160
     Width = 543
     ShowHidden = False
-    ButtonWidth = 45
+    ButtonWidth = 25
     NumGlyphs = 1
     FocusOnButtonClick = True
     Anchors = [akTop, akLeft, akRight]

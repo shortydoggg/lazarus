@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -122,7 +122,7 @@ begin
       and (CodeToolBoss.IdentifierList.StartContextPos.Code<>nil) then begin
         BaseDir:=CodeToolBoss.IdentifierList.StartContextPos.Code.Filename;
         HelpResult:=CodeHelpBoss.GetHTMLHintForUnit(Item.Identifier,'',BaseDir,
-                                        [chhoDeclarationHeader],
+                                        [chhoDeclarationHeader,chhoComments],
                                         FBaseURL,FHTMLHint,CacheWasUsed);
         if HelpResult<>chprSuccess then begin
           DebugLn(['TFPDocHintProvider.DoUpdateHint FAILED Unit=',Item.Identifier]);
@@ -157,7 +157,7 @@ begin
     end;
     //DebugLn(['TFPDocHintProvider.DoUpdateHint ',Item.Identifier,' ',Item.Tool.MainFilename,' ',Caret.Code.Filename,' ',Caret.X,',',Caret.Y]);
     HelpResult:=CodeHelpBoss.GetHTMLHint(Caret.Code,Caret.X,Caret.Y,
-                                    [chhoDeclarationHeader],
+                                    [chhoDeclarationHeader,chhoComments],
                                     FBaseURL,FHTMLHint,PropDetails,CacheWasUsed);
     if HelpResult<>chprSuccess then begin
       DebugLn(['TFPDocHintProvider.DoUpdateHint FAILED Identifier=',Item.Identifier]);

@@ -59,18 +59,6 @@ begin
   FScrollOpposite:=AValue;
 end;
 
-procedure TTabControlStrings.SetTabHeight(const AValue: Smallint);
-begin
-  if FTabHeight=AValue then exit;
-  FTabHeight:=AValue;
-end;
-
-procedure TTabControlStrings.SetTabWidth(const AValue: Smallint);
-begin
-  if FTabWidth=AValue then exit;
-  FTabWidth:=AValue;
-end;
-
 constructor TTabControlStrings.Create(TheTabControl: TTabControl);
 begin
   inherited Create;
@@ -81,8 +69,6 @@ begin
   FOwnerDraw:=false;
   FRaggedRight:=false;
   FScrollOpposite:=false;
-  FTabHeight:=0;
-  FTabWidth:=0;
 end;
 
 procedure TTabControlStrings.TabControlBoundsChange;
@@ -144,8 +130,8 @@ end;
 procedure TNoteBookStringsTabControl.CreateHandle;
 begin
   inherited CreateHandle;
-  if FHandelCreated <> nil then
-    FHandelCreated(self);
+  if FHandleCreated <> nil then
+    FHandleCreated(self);
 end;
 
 procedure TNoteBookStringsTabControl.DoStartDrag(var DragObject: TDragObject);
@@ -210,6 +196,14 @@ begin
   inherited MouseLeave;
   if (Parent is TTabControl) and Assigned(TTabControl(Parent).OnMouseLeave) then
     TTabControl(Parent).OnMouseLeave(Parent);
+end;
+
+function TNoteBookStringsTabControl.GetPopupMenu: TPopupMenu;
+begin
+  if (Parent is TTabControl) and (nboHidePageListPopup in Self.Options) then
+    Result:=TTabControl(Parent).PopupMenu
+  else
+    Result:=inherited GetPopupMenu;
 end;
 
 class procedure TNoteBookStringsTabControl.WSRegisterClass;
@@ -322,20 +316,6 @@ begin
     FNoteBook.Pages.EndUpdate;
 end;
 
-procedure TTabControlNoteBookStrings.SetTabHeight(const AValue: Smallint);
-begin
-  if TabHeight=AValue then exit;
-  inherited SetTabHeight(AValue);
-  TabControlBoundsChange;
-end;
-
-procedure TTabControlNoteBookStrings.SetTabWidth(const AValue: Smallint);
-begin
-  if TabWidth=AValue then exit;
-  inherited SetTabWidth(AValue);
-  TabControlBoundsChange;
-end;
-
 function TTabControlNoteBookStrings.GetTabIndex: integer;
 begin
   Result:=FNoteBook.PageIndex;
@@ -355,7 +335,7 @@ begin
   FNoteBook.OnGetImageIndex := @NBGetImageIndex;
   FNoteBook.OnChanging := @NBChanging;
   FNoteBook.OnChange := @NBPageChanged;
-  TNoteBookStringsTabControl(FNoteBook).FHandelCreated := @NBHandleCreated;
+  TNoteBookStringsTabControl(FNoteBook).FHandleCreated := @NBHandleCreated;
   TabControlBoundsChange;
 end;
 
@@ -401,7 +381,7 @@ begin
   case TabControl.TabPosition of
   tpTop,tpBottom:
     begin
-      NewHeight:=TabHeight;
+      NewHeight:=TabControl.TabHeight;
       if NewHeight<=0 then
         NewHeight:=FNoteBook.GetMinimumTabHeight;
       NewHeight:=Min(TabControl.ClientHeight,NewHeight);
@@ -414,9 +394,7 @@ begin
 
   tpLeft,tpRight:
     begin
-      NewWidth:=TabWidth;
-      if NewWidth<=0 then
-        NewWidth:=FNoteBook.GetMinimumTabWidth;
+      NewWidth:=Max(TabControl.TabHeight,FNoteBook.GetMinimumTabWidth);
       NewWidth:=Min(TabControl.Width,NewWidth);
       if TabControl.TabPosition=tpLeft then
         FNoteBook.SetBounds(0,0,NewWidth,TabControl.ClientHeight)
@@ -487,19 +465,9 @@ begin
   Result:=TTabControlStrings(FTabs).ScrollOpposite;
 end;
 
-function TTabControl.GetTabHeight: Smallint;
-begin
-  Result:=TTabControlStrings(FTabs).TabHeight;
-end;
-
 function TTabControl.GetTabIndex: Integer;
 begin
   Result:=TTabControlStrings(FTabs).TabIndex;
-end;
-
-function TTabControl.GetTabWidth: Smallint;
-begin
-  Result:=TTabControlStrings(FTabs).TabWidth;
 end;
 
 procedure TTabControl.SetHotTrack(const AValue: Boolean);
@@ -551,9 +519,12 @@ begin
   TTabControlNoteBookStrings(FTabs).Style := AValue;
 end;
 
-procedure TTabControl.SetTabHeight(const AValue: Smallint);
+procedure TTabControl.SetTabHeight(AValue: Smallint);
 begin
-  TTabControlStrings(FTabs).TabHeight:=AValue;
+  if FTabHeight = AValue then exit;
+  if not (nbcTabsSizeable in GetCapabilities) then Exit;
+  FTabHeight := AValue;
+  TTabControlNoteBookStrings(FTabs).NoteBook.TabHeight := AValue;
 end;
 
 procedure TTabControl.SetTabPosition(AValue: TTabPosition);
@@ -569,9 +540,25 @@ begin
   FTabs.Assign(AValue);
 end;
 
-procedure TTabControl.SetTabWidth(const AValue: Smallint);
+procedure TTabControl.SetTabStop(const AValue: Boolean);
 begin
-  TTabControlStrings(FTabs).TabWidth:=AValue;
+  TTabControlNoteBookStrings(FTabs).NoteBook.TabStop := AValue;
+end;
+
+procedure TTabControl.SetTabWidth(AValue: Smallint);
+begin
+  if FTabWidth = AValue then Exit;
+  if not (nbcTabsSizeable in GetCapabilities) then Exit;
+  FTabWidth := AValue;
+  TTabControlNoteBookStrings(FTabs).NoteBook.TabWidth := AValue;
+end;
+
+procedure TTabControl.SetOptions(const AValue: TCTabControlOptions);
+begin
+  inherited SetOptions(AValue);
+  //propagate the changes to FTabs.NoteBook, this is needed in TCustomTabControl.SetPageIndex
+  //since SetTabIndex eventually does FTabs.NoteBook.SetPageIndex
+  TTabControlNoteBookStrings(FTabs).NoteBook.Options := AValue;
 end;
 
 procedure TTabControl.AddRemovePageHandle(APage: TCustomPage);
@@ -750,6 +737,11 @@ begin
   end;
 end;
 
+function TTabControl.GetTabStop: Boolean;
+begin
+  Result := TTabControlNoteBookStrings(FTabs).NoteBook.TabStop;
+end;
+
 procedure TTabControl.AdjustClientRect(var ARect: TRect);
 begin
   AdjustDisplayRect(ARect);
@@ -770,8 +762,8 @@ begin
   FImageChangeLink := TChangeLink.Create;
   FImageChangeLink.OnChange := @ImageListChange;
   FTabs := CreateTabNoteBookStrings;
-  //Set FTab's internal NoteBook.TabStop to False, otherwise TTabControl can always be tabbed into (Issue #0021332)
-  TTabControlNoteBookStrings(FTabs).NoteBook.TabStop := False;
+  TWinControl(Self).TabStop := False; // workaround, see #30305
+  TTabControlNoteBookStrings(FTabs).NoteBook.TabStop := True;
   with GetControlClassDefaultSize do
     SetInitialBounds(0, 0, CX, CY);
   BorderWidth:=0;

@@ -31,7 +31,8 @@ interface
 { preprocessor symbols }
 
 uses
-  Classes, StdCtrls, IDEOptionsIntf;
+  Classes, StdCtrls,
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -49,9 +50,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -83,7 +84,7 @@ end;
 
 procedure TfPreProcessor.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.PreProcessor do
+  with FormattingSettings.PreProcessor do
   begin
     cbEnable.Checked := Enabled;
     mSymbols.Lines.Assign(DefinedSymbols);
@@ -93,7 +94,7 @@ end;
 
 procedure TfPreProcessor.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.PreProcessor do
+  with FormattingSettings.PreProcessor do
   begin
     Enabled := cbEnable.Checked;
     DefinedSymbols.Assign(mSymbols.Lines);
@@ -103,7 +104,7 @@ end;
 
 class function TfPreProcessor.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 procedure TfPreProcessor.FrameResize(Sender: TObject);

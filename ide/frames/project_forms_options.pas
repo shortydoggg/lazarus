@@ -5,9 +5,13 @@ unit project_forms_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs,
-  StdCtrls, Buttons, IDEOptionsIntf, PackageDefs, ProjectIntf, Project,
-  LazarusIDEStrConsts, CodeToolManager;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, StdCtrls, Buttons,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, ProjectIntf, IDEImagesIntf,
+  // IDE
+  PackageDefs, Project, LazarusIDEStrConsts;
 
 type
 
@@ -186,10 +190,10 @@ begin
   FormsAvailFormsLabel.Caption := dlgAvailableForms;
   FormsAvailFormsListBox.Hint := dlgAvailableFormsHint;
   FormsAutoCreateNewFormsCheckBox.Caption := dlgAutoCreateNewForms;
-  FormsMoveAutoCreatedFormUpBtn.LoadGlyphFromResourceName(HInstance, 'arrow_up');
-  FormsMoveAutoCreatedFormsDownBtn.LoadGlyphFromResourceName(HInstance, 'arrow_down');
-  FormsAddToAutoCreatedFormsBtn.LoadGlyphFromResourceName(HInstance, 'arrow_left');
-  FormsRemoveFromAutoCreatedFormsBtn.LoadGlyphFromResourceName(HInstance, 'arrow_right');
+  IDEImages.AssignImage(FormsMoveAutoCreatedFormUpBtn, 'arrow_up');
+  IDEImages.AssignImage(FormsMoveAutoCreatedFormsDownBtn, 'arrow_down');
+  IDEImages.AssignImage(FormsAddToAutoCreatedFormsBtn, 'arrow_left');
+  IDEImages.AssignImage(FormsRemoveFromAutoCreatedFormsBtn, 'arrow_right');
 end;
 
 procedure TProjectFormsOptionsFrame.ReadSettings(AOptions: TAbstractIDEOptions);
@@ -246,7 +250,7 @@ var
         for i := 0 to Project.UnitCount - 1 do
           if (Project.Units[i].IsPartOfProject) and
             (Project.Units[i].ComponentName <> '') and
-            (Project.Units[i].ResourceBaseClass in [pfcbcForm, pfcbcDataModule]) and
+            (Project.Units[i].ResourceBaseClass in [pfcbcForm, pfcbcCustomForm,pfcbcDataModule]) and
             (IndexOfAutoCreateForm(Project.Units[i].ComponentName) < 0) then
             sl.Add(Project.Units[i].ComponentName);
         sl.Sort;

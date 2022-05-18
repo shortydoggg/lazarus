@@ -38,6 +38,14 @@ msgstr ""
 msgid "can not execute %s"
 msgstr "kann %s nicht ausführen"
 
+#: lazutilsstrconsts.lrscreatinggdbcatchableerror
+msgid "Creating gdb catchable error:"
+msgstr ""
+
+#: lazutilsstrconsts.lrserrorincode
+msgid "ERROR in code: "
+msgstr ""
+
 #: lazutilsstrconsts.lrsevalinvalidargcount
 msgid "Invalid number of function arguments"
 msgstr "Ungültige Anzahl von Funktionsargumenten"
@@ -78,6 +86,16 @@ msgstr "%s ist kein symbolischer Link"
 #: lazutilsstrconsts.lrsisnotexecutable
 msgid "%s is not executable"
 msgstr "%s ist nicht ausführbar"
+
+#: lazutilsstrconsts.lrslistindexexceedsbounds
+msgctxt "lazutilsstrconsts.lrslistindexexceedsbounds"
+msgid "List index exceeds bounds (%d)"
+msgstr ""
+
+#: lazutilsstrconsts.lrslistmustbeempty
+msgctxt "lazutilsstrconsts.lrslistmustbeempty"
+msgid "List must be empty"
+msgstr ""
 
 #: lazutilsstrconsts.lrsmodified
 msgctxt "lazutilsstrconsts.lrsmodified"

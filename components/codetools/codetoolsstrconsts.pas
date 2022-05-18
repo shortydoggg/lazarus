@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -55,9 +55,13 @@ ResourceString
   ctsIdentExpectedButAtomFound = 'identifier expected, but %s found';
   ctsIdentExpectedButKeyWordFound = 'identifier expected, but keyword %s found';
   ctsStrExpectedButAtomFound = 'expected %s, but %s found';
+  ctsCanNotAddAUnitToTheImplementationBecauseOnlyAUnitH = 'cannot add a unit '
+    +'to the implementation, because only a unit has one';
   ctsEndOfFile = 'end of file';
   ctsPositionNotInSource = 'Position not in source';
   ctsInvalidClassName = 'invalid class name="%s"';
+  ctsInvalidPositionForInsertionOfStatements = 'invalid position for insertion'
+    +' of statements';
   ctsclassNotFound = 'class "%s" not found';
   ctsinvalidClassName2 = 'invalid class name "%s"';
   ctsinvalidVariableName = 'invalid variable name "%s"';
@@ -95,7 +99,7 @@ ResourceString
   ctsConstant = 'constant';
   ctsSemicolonAfterPropSpecMissing =
     '; expected after "%s" property specifier, but %s found';
-  ctsUnknownSectionKeyword = 'unknown section keyword %s found';
+  ctsUnexpectedSectionKeyword = 'unexpected section keyword %s found';
   ctsIllegalQualifier = 'illegal qualifier %s found';
   ctsMethodSignatureSNotFoundInClass = 'Method signature %s not found in class';
   ctsUnexpectedEndOfSource = 'unexpected end of source';
@@ -251,30 +255,18 @@ ResourceString
   ctsSetsIncPathTo = 'sets IncPath to %s';
   ctsSetsSrcPathTo = 'sets SrcPath to %s';
   ctsNamedDirectory = '%s Directory';
-  ctsWidgetDirectory = 'Widget Directory';
-  ctsIntfDirectory = 'interface directory';
   ctsIfLCLWidgetTypeEqualsGtk2 = 'If LCLWidgetType=gtk2 then';
   ctsElse = 'else';
   ctsIfTargetOSIsNotWin32 = 'If TargetOS<>win32 then';
-  ctsDefineMacroGTK1 = 'Define macro gtk1';
-  ctsDefineMacroGTK2 = 'Define macro gtk2';
-  ctsDefineMacroCarbon1 = 'Define macro carbon1';
-  ctsDefineMacroQT1 = 'Define macro qt1';
-  ctsGtk2IntfDirectory = 'gtk2 interface directory';
-  ctsDefineMacroWinCE1 = 'Define macro wince1';
   ctsComponentsDirectory = 'Components Directory';
   ctsCustomComponentsDirectory = 'Custom Components Directory';
   ctsToolsDirectory = 'Tools Directory';
   ctsInstallDirectory = 'Install Directory';
   ctsDesignerDirectory = 'Designer Directory';
-  ctsIDEIntfDirectory = 'IDEIntf Directory';
-  ctsJITFormDirectory = 'JITForm Directory';
-  ctsDesignerUnitsDirectory = 'Designer Units';
   ctsCompiledSrcPath = 'Compiled SrcPath';
   ctsPackagerDirectory = 'Packager Directory';
   ctsPackagerRegistrationDirectory = 'Packager Registration Directory';
   ctsPackagerUnitsDirectory = 'Packager Units Directory';
-  ctsCPUDirectory = 'CPU directory';
   ctsLazarusMainDirectory = 'lazarus main directory';
   ctsDebuggerDirectory = 'Debugger Directory';
   ctsConverterDirectory = 'Converter Directory';
@@ -294,19 +286,9 @@ ResourceString
   ctsMethodTypeDefinitionNotFound = 'method type definition not found';
   ctsExpectedAMethodTypeButFound = 'expected a method type, but found %s';
   ctsOldMethodNotFound = 'old method not found: %s';
+  ctsClassNotFound2 = 'class not found "%s"';
+  ctsMethodHasNoDeclaration = 'method "%s" has no declaration';
   
-  // fileprocs
-  ctsExecuteAccessDeniedForFile = 'execute access denied for %s';
-  ctsDirComponentDoesNotExistsOrIsDanglingSymLink =
-    'a directory component in %s does not exist or is a dangling symlink';
-  ctsDirComponentIsNotDir = 'a directory component in %s is not a directory';
-  ctsInsufficientMemory = 'insufficient memory';
-  ctsFileHasCircularSymLink = '%s has a circular symbolic link';
-
-  // misc
-  ctsSrcPathForCompiledUnits = 'src path for compiled units';
-  ctsTCodeToolManagerConsistencyCheck = 'TCodeToolManager.ConsistencyCheck=%d';
-
 implementation
 
 end.

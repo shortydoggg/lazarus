@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -49,14 +49,18 @@ uses
   Windows,
   {$ENDIF}
   LCLProc, Forms, Controls, LCLType, StdCtrls, ExtCtrls, Buttons, Dialogs,
-  FileUtil, LazFileUtils, LazUTF8, LazLogger, lazutf8classes, LazFileCache,
-  InterfaceBase, CheckLst, Menus, ComCtrls, DividerBevel, DefineTemplates,
-  CodeToolManager,
+  LCLPlatformDef, CheckLst, Menus, ComCtrls,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8, LazLoggerBase, lazutf8classes, LazFileCache,
+  // LazControls
+  DividerBevel,
+  // Codetools
+  CodeToolManager, DefineTemplates,
   // IDEIntf
   LazIDEIntf, IDEMsgIntf, IDEHelpIntf, IDEImagesIntf, IDEWindowIntf, IDEDialogs,
-  PackageIntf, IDEExternToolIntf, IDEOptionsIntf,
+  PackageIntf, IDEExternToolIntf,
   // IDE
-  LazarusIDEStrConsts, TransferMacros, LazConf, IDEProcs, DialogProcs,
+  LazarusIDEStrConsts, TransferMacros, LazConf, DialogProcs,
   MainBar, EnvironmentOpts,
   ApplicationBundle, ModeMatrixOpts, CompilerOptions, BuildProfileManager,
   GenericListEditor, GenericCheckList, PackageSystem, PackageDefs;
@@ -187,7 +191,7 @@ type
     // Methods used by CreateIDEMakeOptions :
     procedure BackupExe(Flags: TBuildLazarusFlags);
     function CreateAppleBundle: TModalResult;
-    procedure AppendExtraOption(const aOption: string; EncloseIfSpace: boolean = True);
+    procedure AppendExtraOption(const aOption: string; AutoQuote: boolean = True);
     // This is used by MakeLazarus and SaveIDEMakeOptions
     function PrepareTargetDir(Flags: TBuildLazarusFlags): TModalResult;
   public
@@ -318,7 +322,7 @@ begin
   CleanDir(fWorkingDir+PathDelim+'test');
 
   // clean config directory
-  CleanDir(GetPrimaryConfigPath+PathDelim+'units');
+  CleanDir(AppendPathDelim(GetPrimaryConfigPath)+'units');
 
   // clean custom target directory
   if fProfile.TargetDirectory<>'' then begin
@@ -372,20 +376,22 @@ function TLazarusBuilder.MakeLazarus(Profile: TBuildLazarusProfile;
   Flags: TBuildLazarusFlags): TModalResult;
 var
   Tool: TAbstractExternalTool;
-  Executable, CmdLineParams, Cmd: String;
+  Executable, Cmd: String;
+  CmdLineParams: TStrings;
   EnvironmentOverrides: TStringList;
 
-  function Run(CurTitle: string): TModalResult;
-  var
-    Params: String;
+  procedure AddCmdLineParam(Param: string; ExecMacros: boolean);
   begin
-    Params:=UTF8Trim(CmdLineParams,[]);
-    if fMacros<>nil then
-      fMacros.SubstituteStr(Params);
-    if Params<>'' then
-      Params:=Cmd+' '+Params
-    else
-      Params:=Cmd;
+    if Param='' then exit;
+    if ExecMacros and (fMacros<>nil) then
+      fMacros.SubstituteStr(Param);
+    if Param<>'' then
+      CmdLineParams.Add(Param);
+  end;
+
+  function Run(CurTitle: string): TModalResult;
+  begin
+    AddCmdLineParam(Cmd,false);
     Tool:=ExternalToolList.Add(CurTitle);
     Tool.Reference(Self,ClassName);
     try
@@ -397,7 +403,7 @@ var
       Tool.AddParsers(SubToolMake);
       Tool.Process.CurrentDirectory:=fWorkingDir;
       Tool.EnvironmentOverrides:=EnvironmentOverrides;
-      Tool.CmdLineParams:=Params;
+      Tool.CmdLineParams:=MergeCmdLineParams(CmdLineParams);
       Tool.Execute;
       Tool.WaitForExit;
       if Tool.ErrorMessage='' then
@@ -424,6 +430,7 @@ begin
   IdeBuildMode:=Profile.IdeBuildMode;
 
   EnvironmentOverrides:=TStringList.Create;
+  CmdLineParams:=TStringListUTF8.Create;
   Tool:=nil;
   try
     // setup external tool
@@ -447,13 +454,17 @@ begin
     end;
 
     // add -w option to print leaving/entering messages of "make"
-    CmdLineParams:=' -w';
+    AddCmdLineParam('-w',false);
     // append target OS
-    if fTargetOS<>fCompilerTargetOS then
-      CmdLineParams+=' OS_TARGET='+fTargetOS+' OS_SOURCE='+fTargetOS;
+    if fTargetOS<>fCompilerTargetOS then begin
+      AddCmdLineParam('OS_TARGET='+fTargetOS,true);
+      AddCmdLineParam('OS_SOURCE='+fTargetOS,true);
+    end;
     // append target CPU
-    if fTargetCPU<>fCompilerTargetCPU then
-      CmdLineParams+=' CPU_TARGET='+fTargetCPU+' CPU_SOURCE='+fTargetCPU;
+    if fTargetCPU<>fCompilerTargetCPU then begin
+      AddCmdLineParam('CPU_TARGET='+fTargetCPU,true);
+      AddCmdLineParam('CPU_SOURCE='+fTargetCPU,true);
+    end;
 
     // create target directory and bundle
     Result:=PrepareTargetDir(Flags);
@@ -531,6 +542,7 @@ begin
     end;
     Result:=mrOk;
   finally
+    CmdLineParams.Free;
     EnvironmentOverrides.Free;
     if LazarusIDE<>nil then
       LazarusIDE.MainBarSubTitle:='';
@@ -622,7 +634,7 @@ begin
 
   fTargetFilename:='';
   fUnitOutDir:='';
-  CodeToolBoss.FPCDefinesCache.ConfigCaches.GetDefaultCompilerTarget(
+  CodeToolBoss.CompilerDefinesCache.ConfigCaches.GetDefaultCompilerTarget(
     EnvironmentOptions.GetParsedCompilerFilename,'',fCompilerTargetOS,fCompilerTargetCPU);
   if fCompilerTargetOS='' then
     fCompilerTargetOS:=GetCompiledTargetOS;
@@ -837,13 +849,13 @@ begin
   end;
 end;
 
-procedure TLazarusBuilder.AppendExtraOption(const aOption: string; EncloseIfSpace: boolean);
+procedure TLazarusBuilder.AppendExtraOption(const aOption: string; AutoQuote: boolean);
 begin
   if aOption='' then exit;
   if fExtraOptions<>'' then
     fExtraOptions:=fExtraOptions+' ';
-  if EncloseIfSpace and (Pos(' ',aOption)>0) then
-    fExtraOptions:=fExtraOptions+'"'+aOption+'"'
+  if AutoQuote and (pos(' ',aOption)>0) then
+    fExtraOptions:=fExtraOptions+AnsiQuotedStr(aOption,'"')
   else
     fExtraOptions:=fExtraOptions+aOption;
   //DebugLn(['AppendExtraOption ',fExtraOptions]);
@@ -866,7 +878,7 @@ begin
 
   // create apple bundle if needed
   //debugln(['CreateIDEMakeOptions NewTargetDirectory=',fTargetDir]);
-  if (compareText(fTargetOS,'darwin')=0)
+  if (CompareText(fTargetOS,'darwin')=0)
   and fOutputDirRedirected and DirectoryIsWritableCached(fTargetDir) then
   begin
     Result:=CreateAppleBundle;
@@ -1032,13 +1044,13 @@ begin
   ConfirmBuildCheckBox.Hint := lisLazBuildShowConfirmationDialogWhenBuilding;
 
   CompileButton.Caption := lisBuild;
-  CompileButton.LoadGlyphFromResourceName(HInstance, 'menu_build');
+  IDEImages.AssignImage(CompileButton, 'menu_build');
   CompileAdvancedButton.Caption := lisLazBuildBuildMany;
-  CompileAdvancedButton.LoadGlyphFromResourceName(HInstance, 'menu_build_all');
+  IDEImages.AssignImage(CompileAdvancedButton, 'menu_build_all');
   SaveSettingsButton.Caption := lisSaveSettings;
   SaveSettingsButton.LoadGlyphFromStock(idButtonSave);
   if SaveSettingsButton.Glyph.Empty then
-    SaveSettingsButton.LoadGlyphFromResourceName(HInstance, 'laz_save');
+    IDEImages.AssignImage(SaveSettingsButton, 'laz_save');
   CancelButton.Caption := lisCancel;
   HelpButton.Caption := lisMenuHelp;
 
@@ -1069,6 +1081,7 @@ begin
       Add('watcom');
       Add('netwlibc');
       Add('amiga');
+      Add('aros');
       Add('atari');
       Add('palmos');
       Add('gba');
@@ -1091,6 +1104,7 @@ begin
       Add('i386');
       Add('m68k');
       Add('powerpc');
+      Add('powerpc64');
       Add('sparc');
       Add('x86_64');
     end;
@@ -1224,9 +1238,9 @@ procedure TConfigureBuildLazarusDlg.SetupInfoPage;
 begin
   InfoTabSheet.Caption:=lisInformation;
 
-  fImageIndexPackage := IDEImages.LoadImage(16, 'item_package');
-  fImageIndexRequired := IDEImages.LoadImage(16, 'pkg_required');
-  fImageIndexInherited := IDEImages.LoadImage(16, 'pkg_inherited');
+  fImageIndexPackage := IDEImages.LoadImage('item_package');
+  fImageIndexRequired := IDEImages.LoadImage('pkg_required');
+  fImageIndexInherited := IDEImages.LoadImage('pkg_inherited');
   InhTreeView.Images := IDEImages.Images_16;
 
   UpdateInheritedTree;

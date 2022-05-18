@@ -1,6 +1,6 @@
 {%MainUnit ../interfacebase.pp}
 
-{ $Id: intfbasewinapi.inc 52457 2016-06-08 22:15:55Z maxim $ }
+{ $Id: intfbasewinapi.inc 58863 2018-09-04 21:58:29Z juha $ }
 {******************************************************************************
                                   TWidgetSet
 
@@ -100,6 +100,11 @@ begin
 end;
 
 function TWidgetSet.CreateBrushIndirect(const LogBrush: TLogBrush): HBRUSH;
+begin
+  Result := 0;
+end;
+
+function TWidgetSet.CreateBrushWithRadialGradient(const LogBrush: TLogRadialGradient): HBRUSH;
 begin
   Result := 0;
 end;
@@ -418,40 +423,38 @@ var
     Result := (Flags and DT_NoPrefix) = DT_NoPrefix;
   end;
 
-  function Breakable(Breaks : TList; Index : Integer) : Boolean;
+  function Breakable(Breaks : TIntegerList; Index : Integer) : Boolean;
   begin
     If not Assigned(Breaks) then
       exit(false);
-    Result := Breaks.IndexOf(Pointer(PtrInt(Index))) <> -1;
+    Result := Breaks.IndexOf(Index) <> -1;
   end;
 
-  function NextBreakable(Breaks : TList; Index : Integer) : Integer;
+  function NextBreakable(Breaks : TIntegerList; Index : Integer) : Integer;
   begin
     Result := -1;
-    If (not Assigned(Breaks)) or
-      (not Breakable(Breaks,Index))
-    then
+    If (not Assigned(Breaks)) or (not Breakable(Breaks,Index)) then
       exit;
-    If Breaks.IndexOf(Pointer(PtrInt(Index))) >= Breaks.Count - 1 then
+    If Breaks.IndexOf(Index) >= Breaks.Count - 1 then
       exit;
-    Result := integer(PtrUInt(Breaks[Breaks.IndexOf(Pointer(PtrInt(Index))) + 1]));
+    Result := Breaks[Breaks.IndexOf(Index) + 1];
   end;
 
-  function GetBreakablePoints(const Source : String) : TList;
+  function GetBreakablePoints(const Source : String) : TIntegerList;
   var
     I : Integer;
   begin
-    Result := TList.Create;
-    If Length(Source) < 1 then
+    Result := TIntegerList.Create;
+    If Source = '' then
       exit;
     For I := 1 to Length(Source) do
       If Source[I] = ' ' then
         If not Breakable(Result, I) then
-          Result.Add(Pointer(PtrInt(I)));
+          Result.Add(I);
     If not Breakable(Result, Length(Source)) then
-      Result.Add(Pointer(PtrInt(Length(Source))));
+      Result.Add(Length(Source));
     If not Breakable(Result, 0) then
-      Result.Insert(0,nil);
+      Result.Insert(0,-1);
   end;
 
   function TextExtent(Handle : hDC; const Source : String) : TSize;
@@ -490,7 +493,7 @@ var
   function BreakString(const Source : String) : TStrings;
   var
     I, FromPos, ToPos : Integer;
-    Breaks : TList;
+    Breaks : TIntegerList;
   begin
     Result := TStringList.Create;
     Breaks := GetBreakablePoints(Source);
@@ -1029,6 +1032,11 @@ begin
   Result := False;
 end;
 
+function TWidgetset.GetDpiForMonitor(hmonitor: HMONITOR; dpiType: TMonitorDpiType; out dpiX: UINT; out dpiY: UINT): HRESULT;
+begin
+  Result := S_FALSE;
+end;
+
 function TWidgetSet.GetObject(GDIObject: HGDIOBJ; BufSize: Integer; Buf: Pointer): Integer;
 begin
   Result := 0;
@@ -1115,42 +1123,70 @@ function TWidgetSet.GetTextExtentExPoint(DC: HDC; Str: PChar;
   Count, MaxWidth: Integer; MaxCount, PartialWidths: PInteger;
   var Size: TSize): Boolean;
 var
-  lPasStr, lCurSubStr: String;
-  lPasStrLen, i: PtrInt;
-  lCurSize: TSize;
-  lBestFitFound: Boolean = False;
+  Utf8Len, CurLen, Left, Right, I: PtrInt;
+  CurSize: TSize;
 begin
   // First obtain the size information which duplicates GetTextExtentPoint
-  Result := GetTextExtentPoint(DC,Str,Count,Size);
-  // Now calculate MaxCount and PartialWidths
-  lPasStr := StrPas(Str);
-  if (Str = nil) or (Count <= 0) or (lPasStr = '') then
+  if not GetTextExtentPoint(DC, Str, Count, Size) then
+    Exit(False);
+
+  if MaxCount <> nil then
+    MaxCount^ := 0
+  else if PartialWidths = nil then
+    Exit(True);
+
+  if Count = 0 then
+    Exit(True);
+  if (Count < -1) or (Str = nil) then
+    Exit(False);
+
+  if Count = -1 then
+    Count := Length(Str);
+  Utf8Len := UTF8Length(Str, Count);
+  if Utf8Len = 0 then
+    Exit(True);
+
+  if PartialWidths = nil then
   begin
-    Result := False;
-    if MaxCount <> nil then
-      MaxCount^ := 0;
-    exit;
-  end;
-  lPasStrLen := UTF8Length(lPasStr);
-  for i := 1 to lPasStrLen do
-  begin
-    if (not lBestFitFound) then
+    if Size.cx <= MaxWidth then
+      MaxCount^ := Utf8Len
+    else
     begin
-      lCurSubStr := UTF8Copy(lPasStr, 1, i);
-      Self.GetTextExtentPoint(DC, PChar(lCurSubStr), Length(lCurSubStr), lCurSize);
-
-      // Calculate the summed partial widths
-      if PartialWidths<>nil then PartialWidths[i-1] := lCurSize.cx;
-
-      // Calculate the width until the utilized size gets bigger then the desired one
-      // Give up when the size surpases MaxWidth to be faster
-      if (MaxCount <> nil) then
+      Left := 0;
+      Right := Utf8Len;
+      while Left <= Right do
       begin
-        if lCurSize.cx <= MaxWidth then MaxCount^ := i
-        else lBestFitFound := True;
+        I := (Left + Right) div 2;
+        CurLen := UTF8CodepointToByteIndex(Str, Count, I);
+        if not GetTextExtentPoint(DC, Str, CurLen, CurSize) then
+          Exit(False);
+        if CurSize.cx <= MaxWidth then
+        begin
+          MaxCount^ := I;
+          Left := I + 1;
+        end else
+          Right := I - 1;
       end;
     end;
+  end else
+  begin
+    CurLen := 0;
+    for I := 1 to Utf8Len do
+    begin
+      Inc(CurLen, UTF8CodepointSize(@Str[CurLen]));
+      if not GetTextExtentPoint(DC, Str, CurLen, CurSize) then
+        Exit(False);
+      if MaxCount <> nil then
+      begin
+        if CurSize.cx > MaxWidth then
+          Break;
+        MaxCount^ := I;
+      end;
+      PartialWidths[I - 1] := CurSize.cx;
+    end;
   end;
+
+  Exit(True);
 end;
 
 // Note that Count is the number of bytes in the utf-8 encoded string Str

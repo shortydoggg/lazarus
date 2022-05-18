@@ -1,4 +1,4 @@
-{%MainUnit ../dbctrls.pas}
+{%MainUnit ../dbctrls.pp}
 
 {******************************************************************************
                                      TDBListBox
@@ -30,6 +30,11 @@ begin
   FLookup.UpdateData(ItemIndex, FScrollListDataset);
 end;
 
+function TDBLookupListBox.IsUnbound: boolean;
+begin
+  Result := (FDataLink.DataSource = nil) or (DataField = '');
+end;
+
 procedure TDBLookupListBox.ActiveChange(Sender: TObject);
 begin
   if FDataLink.Active then
@@ -44,13 +49,28 @@ begin
     ItemIndex := -1;
 end;
 
+procedure TDBLookupListBox.DestroyWnd;
+begin
+  inherited;
+  //after handle destroy Items address changes
+  FLookup.ControlItems := Items;
+end;
+
 procedure TDBLookupListBox.DoSelectionChange(User: Boolean);
 begin
   if User then
-  begin
-    FDataLink.Modified;
-    FDataLink.UpdateRecord;
-  end;
+    if IsUnbound then
+      UpdateData(Self)
+    else
+    begin
+      if FDataLink.CanModify then
+      begin
+        FDataLink.Modified;
+        FDataLink.UpdateRecord;
+      end
+      else
+        DataChange(Self);
+    end;
   inherited DoSelectionChange(User);
 end;
 

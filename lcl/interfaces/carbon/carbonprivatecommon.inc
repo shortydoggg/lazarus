@@ -50,8 +50,8 @@ var
   AStruct : PPaintStruct;
   Win     : WindowRef;
   Content : HIViewRef;
-  Hnd     : RgnHandle;
-  mr      : MacOSAll.Rect;
+  ClpShape: HIShapeRef;
+  mr      : CGRect;
   invr    : TRect;
 begin
   if isRepaint then
@@ -74,18 +74,17 @@ begin
         SizeOf(CGContextRef), nil, @(AWidget.Context.CGContext)),
       'CarbonCommon_Draw', SGetEvent, 'kEventParamCGContextRef') then Exit;
 
-
-    if GetEventParameter(AEvent, kEventParamRgnHandle, typeQDRgnHandle, nil,
-      SizeOf(Hnd), nil, @Hnd)=noErr then
+    if GetEventParameter(AEvent, kEventParamShape, typeHIShapeRef, nil,
+      SizeOf(ClpShape), nil, @ClpShape)=noErr then
     begin
-      GetRegionBounds(RgnHandle(Hnd), mr{%H-});
-      invr.Left:=mr.left;
-      invr.Top:=mr.top;
-      invr.Right:=mr.right;
-      invr.Bottom:=mr.bottom;
+      HIShapeGetBounds(ClpShape, mr);
+      invr := CGRectToRect(mr);
+      TCarbonControlContext(AWidget.Context).ClipShapeRef := ClpShape;
     end
-    else
+    else begin
       AWidget.GetBounds(invr);
+      TCarbonControlContext(AWidget.Context).ClipShapeRef := nil;
+    end;
 
     AWidget.Context.Reset;
 
@@ -206,8 +205,6 @@ end;
 function CarbonCommon_Track(ANextHandler: EventHandlerCallRef;
   AEvent: EventRef;
   AWidget: TCarbonWidget): OSStatus; {$IFDEF darwin}mwpascal;{$ENDIF}
-const
-  MSGKIND: array[1..3] of Integer = (LM_LBUTTONUP, LM_RBUTTONUP, LM_MBUTTONUP);
 var
   ActionUPP, OldActionUPP: ControlActionUPP;
   P: TPoint;
@@ -266,14 +263,18 @@ begin
 
   FillChar(Msg{%H-}, SizeOf(Msg), 0);
 
-  if  (MouseButton >= Low(MSGKIND)) and (MouseButton <= High(MSGKIND)) then
-    Msg.Msg := MSGKIND[MouseButton];
-
   P := AWidget.GetMousePos;
   Msg.XPos := P.X;
   Msg.YPos := P.Y;
   Msg.Keys := GetCarbonMsgKeyState;
-  
+  Msg.Msg := CheckMouseButtonDownUp(TLCLIntfHandle(AWidget), AWidget.LCLObject, LastMouse,
+    AWidget.LCLObject.ClientToScreen(P), MouseButton, False);
+  case LastMouse.ClickCount of
+    2: Msg.Keys := msg.Keys or MK_DOUBLECLICK;
+    3: Msg.Keys := msg.Keys or MK_TRIPLECLICK;
+    4: Msg.Keys := msg.Keys or MK_QUADCLICK;
+  end;
+
   LastMousePos := P;
   
   if (AWidget is TCarbonControl) and

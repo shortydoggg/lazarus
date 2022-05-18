@@ -5,273 +5,274 @@ unit laz_pkgrepos;
 interface
 
 uses
-  SysUtils, Classes, ComCtrls,
-  fprepos{$IF FPC_FULLVERSION > 20602}, fpmkunit{$ENDIF};
+  SysUtils, Classes,
+  LMessages,
+  fgl,
+  pkgFppkg,
+  fprepos;
+
+const
+  WM_LogMessageWaiting = LM_USER + 1;
+  WM_WorkerThreadDone = LM_USER + 2;
 
 type
+  TFppkgConfigOptions = record
+    ConfigFile: string;
+  end;
 
   { TLazFPPackage }
 
-  TLazFPPackage = Class(TFPPackage)
+  TLazFPPackageList = specialize TFPGObjectList<TFPPackage>;
+  TLazPackageInstallState = (lpiDownloadable, lpiAvailabe, lpiInstalled);
+
+  { TLazPackage }
+
+  TLazPackage = Class(TComponent)
   private
-    FLazarusPackageFiles: TStrings;
-    function GetLazarusPackageFiles: TStrings;
-  protected
-    procedure LoadUnitConfigFromStringlist(Const AStringList: TStrings); override;
+    FName: string;
+    FPackageManager: TpkgFPpkg;
+    FPPackageList: TLazFPPackageList;
+    function GetCategory: string;
+    function GetDefaultFPPackage: TFPPackage;
+    function GetDescription: string;
+    function GetFPPackage(index: Integer): TFPPackage;
+    function GetFPPackageCount: Integer;
+    function GetKeywords: string;
+    function GetState: TLazPackageInstallState;
+    function GetSupport: string;
+    function GetVersion: string;
   public
-    function HasLazarusPackageFiles: boolean;
-    property LazarusPackageFiles: TStrings read GetLazarusPackageFiles;
+    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+    procedure AddFPPackage(AFPPackage: TFPPackage);
+
+    function GetInfo(PackageManager: TpkgFPpkg): string;
+
+    property Name: string read FName;
+    property State: TLazPackageInstallState read GetState;
+    property PackageManager: TpkgFPpkg read FPackageManager write FPackageManager;
+    property Version: string read GetVersion;
+    property Description: string read GetDescription;
+    property Category: string read GetCategory;
+    property Keywords: string read GetKeywords;
+    property Support: string read GetSupport;
+    property FPPackageCount: Integer read GetFPPackageCount;
+    property FPPackage[index: Integer]: TFPPackage read GetFPPackage;
   end;
 
-  { TLazFPRepository }
-
-  TLazFPRepository = Class(TFPRepository)
-  protected
-    procedure CreatePackages; override;
-  end;
-
-type
-  TLazPackageData = record
-    Name: string;
-    InstalledVersion: string;
-    AvialableVersion: string;
-    Description: string;
-    Keywords: string;
-    Category: string;
-    State: string;
-    Support: string;
-    Author: string;
-    License: string;
-    HomepageURL: string;
-    DownloadURL: string;
-    FileName: string;
-    Email: string;
-    OS: string;
-    CPU: string;
-  end;
-
-  TPackageSortType = (stNone);
+  TLazPackageList = specialize TFPGObjectList<TLazPackage>;
 
   { TLazPackages }
 
-  TLazPackages = class(TObject)
-    FPkgData: array of TLazPackageData;
+  TLazPackages = class(TComponent)
   private
-    FCount: integer;
-    FSort: TPackageSortType;
-    FSortType: TPackageSortType;
-    function GetPkgData(index: integer): TLazPackageData;
-    procedure SetSort(const AValue: TPackageSortType);
-    procedure SetSortType(const AValue: TPackageSortType);
+    FPackageManager: TpkgFPpkg;
+    FLazPackageList: TLazPackageList;
+    function GetCount: integer;
+    function GetLazPackage(index: integer): TLazPackage;
 
   public
-    constructor Create;
+    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
-    property PkgData[index: integer]: TLazPackageData read GetPkgData;
-    property Count: integer read FCount;
-    procedure Add(Pkg: TLazPackageData);
+    property PkgData[index: integer]: TLazPackage read GetLazPackage;
+    property Count: integer read GetCount;
+    procedure AddFPPackage(AFPPackage: TFPPackage);
     procedure Clear;
+    function FindPackage(const PackageName: string): TLazPackage;
 
-    property SortType: TPackageSortType read FSortType write SetSortType;
-    procedure Sort;
-    function FindPackage(const AName: string): TLazPackageData;
+    property PackageManager: TpkgFPpkg read FPackageManager write FPackageManager;
   end;
 
-procedure Laz_ListPackages;
-
-var
-  Laz_Packages: TLazPackages;
+const
+  SLazPackageInstallStateString: array[TLazPackageInstallState] of string = (
+    'Downloadable',
+    'Available',
+    'Installed'
+  );
 
 implementation
 
 uses
   pkgglobals,
+  pkgoptions,
   pkgrepos;
 
-function Laz_PackageInstalledVersionStr(const AName:String;const ShowUsed: boolean = false;const Local: boolean = false):string;
+{ TLazPackage }
+
+function TLazPackage.GetDefaultFPPackage: TFPPackage;
 var
-  P: TFPPackage;
+  Package: TFPPackage;
+  i: Integer;
 begin
-  P := InstalledRepository.FindPackage(AName);
-  if P <> nil then
-    Result := P.Version.AsString
-  else
-    Result := '-';
-end;
-
-function GetPackage(const AName: string): TFPPackage;
-begin
-  Result := AvailableRepository.FindPackage(AName);
-
-  if not Assigned(Result) then
-    Result := InstalledRepository.FindPackage(AName);
-end;
-
-procedure Laz_ListPackages;
-var
-  i: integer;
-  SL: TStringList;
-  PackageName: string;
-  pkg: TLazPackageData;
-  P: TFPPackage;
-begin
-  SL := TStringList.Create;
-  SL.Sorted := True;
-  SL.Duplicates := dupIgnore;
-
-  for i := 0 to AvailableRepository.PackageCount - 1 do
-    SL.Add(AvailableRepository.Packages[i].Name);
-
-  for i := 0 to InstalledRepository.PackageCount - 1 do
-    SL.Add(InstalledRepository.Packages[i].Name);
-
-  Laz_Packages.Clear;
-
-  for i := 0 to SL.Count - 1 do
-  begin
-    PackageName := SL[i];
-    if (PackageName <> CmdLinePackageName) and (PackageName <>
-      CurrentDirPackageName) then
+  Result := nil;
+  for i := 0 to FPPackageList.Count -1 do
     begin
-      pkg.Name := PackageName;
-
-      pkg.State := PackageInstalledStateStr(PackageName);
-      pkg.InstalledVersion := PackageInstalledVersionStr(PackageName);
-      pkg.AvialableVersion := PackageAvailableVersionStr(PackageName);
-
-      P := GetPackage(PackageName);
-      if Assigned(P) then
-      begin
-        pkg.Description := P.Description;
-        pkg.Author := P.Author;
-        pkg.HomepageURL := P.HomepageURL;
-        pkg.DownloadURL := P.DownloadURL;
-        pkg.FileName := P.FileName;
-        pkg.Email := P.Email;
-        pkg.OS := OSesToString(P.OSes);
-        pkg.CPU := CPUSToString(P.CPUs);
-      end;
-
-      Laz_Packages.Add(pkg);
+    Package := FPPackageList.Items[i];
+    if Package.Repository.RepositoryType = fprtInstalled then
+      Result := Package
+    else if not assigned(Result) then
+      Result := Package;
     end;
-  end;
-
-  FreeAndNil(SL);
 end;
 
-{ TLazFPPackage }
-
-function TLazFPPackage.GetLazarusPackageFiles: TStrings;
+function TLazPackage.GetCategory: string;
 begin
-  if not assigned(FLazarusPackageFiles) then
-    FLazarusPackageFiles := TStringList.Create;
-  Result := FLazarusPackageFiles;
+  Result := GetDefaultFPPackage.Category;
 end;
 
-procedure TLazFPPackage.LoadUnitConfigFromStringlist(const AStringList: TStrings);
+function TLazPackage.GetDescription: string;
+begin
+  Result := GetDefaultFPPackage.Description;
+end;
+
+function TLazPackage.GetFPPackage(index: Integer): TFPPackage;
+begin
+  Result := FPPackageList[index];
+end;
+
+function TLazPackage.GetFPPackageCount: Integer;
+begin
+  Result := FPPackageList.Count;
+end;
+
+function TLazPackage.GetKeywords: string;
+begin
+  Result := GetDefaultFPPackage.Keywords;
+end;
+
+function TLazPackage.GetInfo(PackageManager: TpkgFPpkg): string;
 var
-  S: String;
+  Package: TFPPackage;
+  Reason: string;
 begin
-  inherited LoadUnitConfigFromStringlist(AStringList);
-  S:=AStringList.Values['LazarusPackageFiles'];
-  if s <> '' then
-    LazarusPackageFiles.CommaText:=s;
+  Result := '';
+  Package := GetDefaultFPPackage;
+  if PackageManager.PackageIsBroken(Package, Reason, nil) then
+    begin
+      Result := 'Broken';
+      if Reason <> '' then
+        Result := Result + ', ' + Reason + '.';
+    end;
 end;
 
-function TLazFPPackage.HasLazarusPackageFiles: boolean;
+function TLazPackage.GetState: TLazPackageInstallState;
+var
+  i: Integer;
+  Package: TFPPackage;
+  ArchiveFile: string;
 begin
-  result := assigned(FLazarusPackageFiles) and (FLazarusPackageFiles.Count>0);
+  result := lpiAvailabe;
+  for i := 0 to FPPackageList.Count-1 do
+    begin
+    Package := FPPackageList.Items[i];
+    if Package.Repository.RepositoryType = fprtInstalled then
+      begin
+      Result := lpiInstalled;
+      Exit;
+      end;
+    if Package.PackagesStructure.UnzipBeforeUse then
+      begin
+        ArchiveFile:=PackageManager.PackageLocalArchive(Package);
+        if (ArchiveFile<>'') and not FileExists(ArchiveFile) then
+          result := lpiDownloadable;
+      end;
+    end;
 end;
 
-destructor TLazFPPackage.Destroy;
+function TLazPackage.GetSupport: string;
 begin
-  FLazarusPackageFiles.Free;
+  result := GetDefaultFPPackage.Support;
+end;
+
+function TLazPackage.GetVersion: string;
+begin
+  result := GetDefaultFPPackage.Version.AsString;
+end;
+
+constructor TLazPackage.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FPPackageList := TLazFPPackageList.Create(False);
+end;
+
+destructor TLazPackage.Destroy;
+begin
+  FPPackageList.Free;
   inherited Destroy;
 end;
 
-{ TLazFPRepository }
-
-procedure TLazFPRepository.CreatePackages;
+procedure TLazPackage.AddFPPackage(AFPPackage: TFPPackage);
 begin
-  FPackages:=TFPPackages.Create(TLazFPPackage);
-  FPackages.StreamVersion:=StreamVersion;
+  if FPPackageList.Count = 0 then
+    begin
+    FName := AFPPackage.Name;
+    end;
+  assert(AFPPackage.Name=FName);
+  FPPackageList.Add(AFPPackage);
 end;
 
 { TLazPackages }
 
-function TLazPackages.GetPkgData(index: integer): TLazPackageData;
+function TLazPackages.GetCount: integer;
 begin
-  Result := FPkgData[index];
+  Result := FLazPackageList.Count;
 end;
 
-procedure TLazPackages.SetSort(const AValue: TPackageSortType);
+function TLazPackages.GetLazPackage(index: integer): TLazPackage;
 begin
-  if FSort = AValue then
-    exit;
-  FSort := AValue;
+  result := FLazPackageList.Items[index];
 end;
 
-procedure TLazPackages.SetSortType(const AValue: TPackageSortType);
+constructor TLazPackages.Create(AOwner: TComponent);
 begin
-  if FSortType = AValue then
-    exit;
-  FSortType := AValue;
-end;
-
-constructor TLazPackages.Create;
-begin
-  Clear;
-
-  SortType := stNone;
+  inherited Create(AOwner);
+  FLazPackageList := TLazPackageList.Create(False);
 end;
 
 destructor TLazPackages.Destroy;
 begin
-  Clear;
+  FLazPackageList.Free;
   inherited Destroy;
 end;
 
-procedure TLazPackages.Add(Pkg: TLazPackageData);
+procedure TLazPackages.AddFPPackage(AFPPackage: TFPPackage);
+var
+  i: Integer;
+  LazPackage: TLazPackage;
 begin
-  Inc(FCount);
+  for i := 0 to FLazPackageList.Count -1 do
+    begin
+    if FLazPackageList.Items[i].Name = AFPPackage.Name then
+      begin
+      FLazPackageList.Items[i].AddFPPackage(AFPPackage);
+      Exit;
+      end;
+    end;
 
-  SetLength(FPkgData, FCount);
-  FPkgData[FCount - 1] := Pkg;
+  LazPackage := TLazPackage.Create(Owner);
+  LazPackage.PackageManager := PackageManager;
+  LazPackage.AddFPPackage(AFPPackage);
+  FLazPackageList.Add(LazPackage);
 end;
 
 procedure TLazPackages.Clear;
 begin
-  FCount := 0;
-  SetLength(FPkgData, FCount);
+  FLazPackageList.Clear;
 end;
 
-procedure TLazPackages.Sort;
-begin
-  case SortType of
-    //no sorting
-    stNone:
-  end;
-end;
-
-function TLazPackages.FindPackage(const AName: string): TLazPackageData;
+function TLazPackages.FindPackage(const PackageName: string): TLazPackage;
 var
-  i: integer;
+  i: Integer;
 begin
-  for i := 0 to Count - 1 do
-    if FPkgData[i].Name = AName then
-    begin
-      Result := FPkgData[i];
-      exit;
-    end;
+  Result := nil;
+  for i := 0 to Count-1 do
+    if PkgData[i].Name = PackageName then
+      begin
+      Result := PkgData[i];
+      Exit;
+      end;
 end;
-
-initialization
-  Laz_Packages := TLazPackages.Create;
-
-finalization
-  FreeAndNil(Laz_Packages);
 
 end.
 

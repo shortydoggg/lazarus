@@ -1,4 +1,4 @@
-{  $Id: updatepofiles.pas 49624 2015-08-08 21:06:51Z juha $  }
+{  $Id: updatepofiles.pas 60222 2019-01-25 22:42:15Z maxim $  }
 {
  ***************************************************************************
  *                                                                         *
@@ -15,7 +15,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -86,14 +86,14 @@ begin
 
     if not FileExistsUTF8(Filename) then begin
 
-      if (Ext='.rst') or (Ext='.lrt') or (Ext='.rsj') then
+      if (Ext='.rst') or (Ext='.lrj') or (Ext='.rsj') then
         continue; // ignore resource files
 
       writeln('ERROR: file not found: ',FileName);
       exit;
     end;
 
-    if (Ext<>'.po') and  (Ext<>'.rst') and (Ext<>'.lrt')  and (Ext<>'.rsj') then begin
+    if (Ext<>'.po') and  (Ext<>'.rst') and (Ext<>'.lrj')  and (Ext<>'.rsj') then begin
       writeln('ERROR: invalid extension: ',Filename);
       exit;
     end;

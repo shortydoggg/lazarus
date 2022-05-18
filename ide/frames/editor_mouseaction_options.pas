@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,8 +25,17 @@ unit editor_mouseaction_options;
 interface
 
 uses
-  math, sysutils, EditorOptions, LazarusIDEStrConsts, IDEOptionsIntf, SynEdit, DividerBevel, StdCtrls,
-  ExtCtrls, Classes, LCLProc, editor_mouseaction_options_advanced, Controls, Forms, ComCtrls;
+  sysutils, math,
+  // LCL
+  LCLProc, StdCtrls, ExtCtrls, Classes, Forms, ComCtrls,
+  // LazControls
+  DividerBevel,
+  // SynEdit
+  SynEdit,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  EditorOptions, LazarusIDEStrConsts, editor_mouseaction_options_advanced;
 
 type
 

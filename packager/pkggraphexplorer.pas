@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -37,13 +37,19 @@ unit PkgGraphExplorer;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Buttons, ComCtrls,
-  StdCtrls, Menus, Dialogs, Graphics, LCLType, ExtCtrls, ButtonPanel,
-  AVL_Tree, contnrs, LCLIntf,
-  IDECommands, PackageIntf, IDEImagesIntf, LazIDEIntf,
+  Classes, SysUtils, contnrs, Laz_AVL_Tree,
+  // LCL
+  LCLType, LCLIntf, Forms, Controls, ComCtrls, StdCtrls, ExtCtrls,
+  Menus, ButtonPanel,
+  // LazUtils
+  LazLoggerBase, LazTracer, LazStringUtils,
+  // LazControls
   LvlGraphCtrl,
-  LazConf, LazarusIDEStrConsts, IDEProcs, IDEOptionDefs, EnvironmentOpts,
-  Project, PackageDefs, PackageSystem, PackageEditor, CleanPkgDeps;
+  // IdeIntf
+  IDECommands, PackageIntf, IDEImagesIntf,
+  // IDE
+  LazarusIDEStrConsts, IDEOptionDefs, Project,
+  PackageDefs, PackageSystem, PackageEditor, CleanPkgDeps;
   
 const
   GroupPrefixProject = '-Project-';
@@ -96,7 +102,7 @@ type
     FUpdatingSelection: boolean;
     procedure OpenDependencyOwner(DependencyOwner: TObject);
     procedure SetupComponents;
-    function GetPackageImageIndex(Pkg: TLazPackage): integer;
+    function GetPackageImageIndex(Pkg: TLazPackage; InstallPkgList: TFPList): integer;
     function GetSelectedPackage: TLazPackage;
     function FindPackage(const NodeText: string): TLazPackage;
     function PackageAsNodeText(Pkg: TLazPackage): string;
@@ -282,6 +288,7 @@ var
   ImgIndex: Integer;
   NodeText: String;
   ReqPkg: TLazPackage;
+  InstallPkgList: TFPList;
 begin
   TV:=PkgTreeView;
   Pkg:=FindPackage(Node.Text);
@@ -291,40 +298,47 @@ begin
     Node.HasChildren:=false;
     exit;
   end;
-  i:=0;
-  Dependency:=Pkg.FirstRequiredDependency;
-  while Dependency<>nil do begin
-    ReqPkg:=Dependency.RequiredPackage;
-    if ReqPkg<>nil then
-      NodeText:=PackageAsNodeText(ReqPkg)
-    else
-      NodeText:=Dependency.AsString;
-    if Node.Count=i then
-      SubNode:=TV.Items.AddChild(Node,NodeText)
-    else begin
-      SubNode:=Node[i];
-      SubNode.Text:=NodeText;
-    end;
-    if ReqPkg<>nil then begin
-      CycleNode:=Node;
-      while (CycleNode<>nil) and (CycleNode.Text<>NodeText) do
-        CycleNode:=CycleNode.Parent;
-      if CycleNode<>nil then
-        ImgIndex:=ImgIndexCyclePackage
+  InstallPkgList:=nil;
+  try
+    PackageGraph.GetAllRequiredPackages(nil,
+      PackageGraph.FirstAutoInstallDependency,InstallPkgList,[]);
+    i:=0;
+    Dependency:=Pkg.FirstRequiredDependency;
+    while Dependency<>nil do begin
+      ReqPkg:=Dependency.RequiredPackage;
+      if ReqPkg<>nil then
+        NodeText:=PackageAsNodeText(ReqPkg)
       else
-        ImgIndex:=GetPackageImageIndex(ReqPkg);
-      SubNode.HasChildren:=ReqPkg.FirstRequiredDependency<>nil;
-    end else begin
-      ImgIndex:=ImgIndexMissingPackage;
-      SubNode.HasChildren:=false;
+        NodeText:=Dependency.AsString;
+      if Node.Count=i then
+        SubNode:=TV.Items.AddChild(Node,NodeText)
+      else begin
+        SubNode:=Node[i];
+        SubNode.Text:=NodeText;
+      end;
+      if ReqPkg<>nil then begin
+        CycleNode:=Node;
+        while (CycleNode<>nil) and (CycleNode.Text<>NodeText) do
+          CycleNode:=CycleNode.Parent;
+        if CycleNode<>nil then
+          ImgIndex:=ImgIndexCyclePackage
+        else
+          ImgIndex:=GetPackageImageIndex(ReqPkg,InstallPkgList);
+        SubNode.HasChildren:=ReqPkg.FirstRequiredDependency<>nil;
+      end else begin
+        ImgIndex:=ImgIndexMissingPackage;
+        SubNode.HasChildren:=false;
+      end;
+      SubNode.ImageIndex:=ImgIndex;
+      SubNode.SelectedIndex:=ImgIndex;
+      inc(i);
+      Dependency:=Dependency.NextRequiresDependency;
     end;
-    SubNode.ImageIndex:=ImgIndex;
-    SubNode.SelectedIndex:=ImgIndex;
-    inc(i);
-    Dependency:=Dependency.NextRequiresDependency;
+    while Node.Count>i do
+      Node[Node.Count-1].Free;
+  finally
+    InstallPkgList.Free;
   end;
-  while Node.Count>i do
-    Node[Node.Count-1].Free;
 end;
 
 procedure TPkgGraphExplorerDlg.PkgTreeViewSelectionChanged(Sender: TObject);
@@ -354,13 +368,13 @@ end;
 
 procedure TPkgGraphExplorerDlg.SetupComponents;
 begin
-  ImgIndexProject          := IDEImages.LoadImage(16, 'item_project');
-  ImgIndexPackage          := IDEImages.LoadImage(16, 'item_package');
-  ImgIndexInstalledPackage := IDEImages.LoadImage(16, 'pkg_installed');
-  ImgIndexInstallPackage   := IDEImages.LoadImage(16, 'pkg_package_autoinstall');
-  ImgIndexUninstallPackage := IDEImages.LoadImage(16, 'pkg_package_uninstall');
-  ImgIndexCyclePackage     := IDEImages.LoadImage(16, 'pkg_package_circle');
-  ImgIndexMissingPackage   := IDEImages.LoadImage(16, 'pkg_conflict');
+  ImgIndexProject          := IDEImages.LoadImage('item_project');
+  ImgIndexPackage          := IDEImages.LoadImage('item_package');
+  ImgIndexInstalledPackage := IDEImages.LoadImage('pkg_installed');
+  ImgIndexInstallPackage   := IDEImages.LoadImage('pkg_package_autoinstall');
+  ImgIndexUninstallPackage := IDEImages.LoadImage('pkg_package_uninstall');
+  ImgIndexCyclePackage     := IDEImages.LoadImage('pkg_package_circle');
+  ImgIndexMissingPackage   := IDEImages.LoadImage('pkg_conflict');
 
   PkgTreeView.Images:=IDEImages.Images_16;
 
@@ -369,16 +383,23 @@ begin
   LvlGraphControl1.Caption:='';
 end;
 
-function TPkgGraphExplorerDlg.GetPackageImageIndex(Pkg: TLazPackage): integer;
+function TPkgGraphExplorerDlg.GetPackageImageIndex(Pkg: TLazPackage;
+  InstallPkgList: TFPList): integer;
+var
+  WillInstall: Boolean;
 begin
+  WillInstall:=(Pkg.AutoInstall<>pitNope)
+    or ((InstallPkgList<>nil) and (InstallPkgList.IndexOf(Pkg)>=0));
   if Pkg.Installed<>pitNope then begin
-    if Pkg.AutoInstall<>pitNope then begin
+    // installed
+    if WillInstall then begin
       Result:=ImgIndexInstalledPackage;
     end else begin
       Result:=ImgIndexUninstallPackage;
     end;
   end else begin
-    if Pkg.AutoInstall<>pitNope then begin
+    // not installed
+    if WillInstall then begin
       Result:=ImgIndexInstallPackage;
     end else begin
       Result:=ImgIndexPackage;
@@ -445,7 +466,7 @@ end;
 
 procedure TPkgGraphExplorerDlg.EndUpdate;
 begin
-  if FUpdateLock<=0 then RaiseException('TPkgGraphExplorerDlg.EndUpdate');
+  if FUpdateLock<=0 then RaiseGDBException('TPkgGraphExplorerDlg.EndUpdate');
   dec(FUpdateLock);
   if FChangedDuringLock then UpdateAll;
 end;
@@ -479,13 +500,17 @@ var
   CurPkg: TLazPackage;
   OldExpanded: TTreeNodeExpandedState;
   fSortedPackages: TAVLTree;
+  InstallPkgList: TFPList;
 begin
+  InstallPkgList:=nil;
   fSortedPackages:=TAVLTree.Create(@CompareLazPackageID);
   try
     // get list of packages
     Cnt:=PackageGraph.Count;
     for i:=0 to Cnt-1 do
       fSortedPackages.Add(PackageGraph[i]);
+    PackageGraph.GetAllRequiredPackages(nil,
+      PackageGraph.FirstAutoInstallDependency,InstallPkgList,[]);
     // rebuild the TreeView
     PkgTreeView.BeginUpdate;
     // save old expanded state
@@ -502,7 +527,7 @@ begin
         ViewNode.Text:=PackageAsNodeText(CurPkg);
       ViewNode.HasChildren:=CurPkg.FirstRequiredDependency<>nil;
       ViewNode.Expanded:=false;
-      ViewNode.ImageIndex:=GetPackageImageIndex(CurPkg);
+      ViewNode.ImageIndex:=GetPackageImageIndex(CurPkg,InstallPkgList);
       ViewNode.SelectedIndex:=ViewNode.ImageIndex;
       ViewNode:=ViewNode.GetNextSibling;
       HiddenNode:=fSortedPackages.FindSuccessor(HiddenNode);
@@ -518,6 +543,7 @@ begin
     OldExpanded.Free;
     // completed
   finally
+    InstallPkgList.Free;
     fSortedPackages.Free;
     PkgTreeView.EndUpdate;
   end;
@@ -545,7 +571,9 @@ var
   ProjectNode: TLvlGraphNode;
   IDENode: TLvlGraphNode;
   fSortedPackages: TAVLTree;
+  InstallPkgList: TFPList;
 begin
+  InstallPkgList:=nil;
   fSortedPackages:=TAVLTree.Create(@CompareLazPackageID);
   LvlGraphControl1.BeginUpdate;
   try
@@ -553,6 +581,8 @@ begin
     Cnt:=PackageGraph.Count;
     for i:=0 to Cnt-1 do
       fSortedPackages.Add(PackageGraph[i]);
+    PackageGraph.GetAllRequiredPackages(nil,
+      PackageGraph.FirstAutoInstallDependency,InstallPkgList,[]);
 
     // save old selection
     OldSelected:='';
@@ -578,7 +608,7 @@ begin
     while AVLNode<>nil do begin
       CurPkg:=TLazPackage(AVLNode.Data);
       ViewNode:=LvlGraphControl1.Graph.GetNode(PackageAsNodeText(CurPkg),true);
-      ViewNode.ImageIndex:=GetPackageImageIndex(CurPkg);
+      ViewNode.ImageIndex:=GetPackageImageIndex(CurPkg,InstallPkgList);
       AVLNode:=fSortedPackages.FindSuccessor(AVLNode);
     end;
 
@@ -600,6 +630,7 @@ begin
 
     LvlGraphControl1.SelectedNode:=LvlGraphControl1.Graph.GetNode(OldSelected,false);
   finally
+    InstallPkgList.Free;
     fSortedPackages.Free;
     LvlGraphControl1.EndUpdate;
   end;
@@ -672,8 +703,7 @@ begin
   end;
 end;
 
-function TPkgGraphExplorerDlg.FindLvlGraphNodeWithText(const s: string
-  ): TLvlGraphNode;
+function TPkgGraphExplorerDlg.FindLvlGraphNodeWithText(const s: string): TLvlGraphNode;
 begin
   Result:=LvlGraphControl1.Graph.GetNode(s,false);
 end;

@@ -26,9 +26,13 @@ interface
 {$endif}
 
 uses
-  SysUtils, Types, Classes, LCLStrConsts, LCLType, LCLProc, LResources, Controls,
-  Forms, StdCtrls, lMessages, GraphType, Graphics, LCLIntf, CustomTimer, Themes,
-  LCLClasses, Menus, PopupNotifier, ImgList, contnrs, FGL;
+  SysUtils, Types, Classes, contnrs, FGL,
+  // LCL
+  LCLStrConsts, LCLType, LCLProc, LResources, LMessages, Controls, Forms,
+  StdCtrls, GraphType, Graphics, LCLIntf, CustomTimer, Themes, LCLClasses, Menus,
+  PopupNotifier, ImgList,
+  // LazUtils
+  LazLoggerBase, LazUtilities;
 
 type
 
@@ -37,15 +41,19 @@ type
   TPage = class;
 
   TBeforeShowPageEvent = procedure (ASender: TObject; ANewPage: TPage; ANewIndex: Integer) of object;
+  TImagePaintBackgroundEvent = procedure (ASender: TObject; ACanvas: TCanvas; ARect: TRect) of object;
 
   TPage = class(TCustomControl)
   private
     FOnBeforeShow: TBeforeShowPageEvent;
+    function GetPageIndex: Integer;
   protected
     procedure SetParent(AParent: TWinControl); override;
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
+  public
+    property PageIndex: Integer read GetPageIndex;
   published
     // Lazarus-specific TPage events
     // OnBeforeShow occurs before a page is displayed, so that
@@ -85,20 +93,23 @@ type
 
   TUNBPages = class(TStrings)
   private
-    FPageList: TListWithEvent;
+    FPageList: TObjectList;
     FNotebook: TNotebook;
-    procedure PageListChange(Ptr: Pointer; AnAction: TListNotification);
+    function GetNotebookOwner: TComponent;
   protected
     function Get(Index: Integer): String; override;
     function GetCount: Integer; override;
     function GetObject(Index: Integer): TObject; override;
     procedure Put(Index: Integer; const S: String); override;
   public
-    constructor Create(thePageList: TListWithEvent;
-                       theNotebook: TNotebook);
+    constructor Create(theNotebook: TNotebook);
+    destructor Destroy; override;
+    function Add(const S: string): Integer; override;
+    function AddObject(const S: string; AObject: TObject): Integer; override;
     procedure Clear; override;
     procedure Delete(Index: Integer); override;
-    procedure Insert(Index: Integer; const S: String); override;
+    function IndexOfObject(AObject: TObject): Integer; override;
+    procedure Insert(Index: Integer; const S: string); override;
 //    procedure Move(CurIndex, NewIndex: Integer); override;
   end;
 
@@ -108,18 +119,17 @@ type
   private
     FPages: TStrings; // TUNBPages
     FPageIndex: Integer;
-    FPageList: TListWithEvent;
     function GetActivePage: String;
     function GetActivePageComponent: TPage;
     function GetPage(AIndex: Integer): TPage;
     function GetPageCount : integer;
     function GetPageIndex: Integer;
 {    function FindVisiblePage(Index: Integer): Integer;}
-    procedure InsertPage(APage: TPage; Index: Integer);
 {    procedure MovePage(APage: TCustomPage; NewIndex: Integer);
     procedure RemovePage(Index: Integer);
     procedure SetActivePage(const Value: String);}
     procedure SetPageIndex(AValue: Integer);
+    procedure SetPages(Items: TStrings);
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -127,8 +137,8 @@ type
 {    function TabIndexAtClientPos(ClientPos: TPoint): integer;
     function TabRect(AIndex: Integer): TRect;
     function GetImageIndex(ThePageIndex: Integer): Integer; virtual;
-    function IndexOf(APage: TCustomPage): integer;
     function CustomPage(Index: integer): TCustomPage;}
+    function IndexOf(APage: TPage): integer;
   public
     property ActivePage: String read GetActivePage;// write SetActivePage; // should not be published because the read can raise an exception
     property ActivePageComponent: TPage read GetActivePageComponent;// write SetActivePage; // should not be published because the read can raise an exception
@@ -138,7 +148,7 @@ type
   published
     // LCL TNotebook specific properties
     property PageIndex: Integer read GetPageIndex write SetPageIndex default -1;
-    property Pages: TStrings read FPages;
+    property Pages: TStrings read FPages write SetPages stored False;
     // Generic properties
     property Align;
     property AutoSize;
@@ -297,6 +307,9 @@ type
     property OnMouseWheel;
     property OnMouseWheelDown;
     property OnMouseWheelUp;
+    property OnMouseWheelHorz;
+    property OnMouseWheelLeft;
+    property OnMouseWheelRight;
     property OnPaint;
     property OnResize;
     property OnStartDock;
@@ -348,6 +361,8 @@ type
     procedure SetBeveled(const AValue: boolean);
     procedure SetMinSize(const AValue: integer);
   protected
+    procedure CMEnabledChanged(var Message: TLMEssage); message CM_ENABLEDCHANGED;
+
     class procedure WSRegisterClass; override;
     function AdaptAnchors(const a: TAnchors): TAnchors;
     function CheckNewSize(var NewSize: Integer): Boolean; virtual;
@@ -369,6 +384,7 @@ type
     procedure SetResizeControl(const AValue: TControl); virtual;
     procedure StartSplitterMove(const MouseXY: TPoint);
     procedure StopSplitterMove(const MouseXY: TPoint);
+    procedure UpdateCursor; virtual;
   public
     constructor Create(TheOwner: TComponent); override;
     procedure AnchorSplitter(Kind: TAnchorKind; AControl: TControl);
@@ -402,6 +418,7 @@ type
     property Color;
     property Constraints;
     property Cursor;
+    property DoubleBuffered;
     property Height;
     property MinSize;
     property OnCanOffset;
@@ -413,6 +430,7 @@ type
     property OnMouseWheelUp;
     property OnPaint;
     property ParentColor;
+    property ParentDoubleBuffered;
     property ParentShowHint;
     property PopupMenu;
     property ResizeAnchor;
@@ -479,19 +497,28 @@ type
   private
     FAntialiasingMode: TAntialiasingMode;
     FOnPictureChanged: TNotifyEvent;
+    FOnPaintBackground: TImagePaintBackgroundEvent;
     FPicture: TPicture;
     FCenter: Boolean;
+    FKeepOriginXWhenClipped: Boolean;
+    FKeepOriginYWhenClipped: Boolean;
     FProportional: Boolean;
     FTransparent: Boolean;
     FStretch: Boolean;
+    FStretchOutEnabled: Boolean;
+    FStretchInEnabled: Boolean;
     FUseAncestorCanvas: boolean;
     FPainting: boolean;
     function  GetCanvas: TCanvas;
     procedure SetAntialiasingMode(AValue: TAntialiasingMode);
     procedure SetPicture(const AValue: TPicture);
     procedure SetCenter(const AValue : Boolean);
+    procedure SetKeepOriginX(AValue: Boolean);
+    procedure SetKeepOriginY(AValue: Boolean);
     procedure SetProportional(const AValue: Boolean);
     procedure SetStretch(const AValue : Boolean);
+    procedure SetStretchInEnabled(AValue: Boolean);
+    procedure SetStretchOutEnabled(AValue: Boolean);
     procedure SetTransparent(const AValue : Boolean);
   protected
     class procedure WSRegisterClass; override;
@@ -512,6 +539,8 @@ type
     property Align;
     property AutoSize;
     property Center: Boolean read FCenter write SetCenter default False;
+    property KeepOriginXWhenClipped: Boolean read FKeepOriginXWhenClipped write SetKeepOriginX default False;
+    property KeepOriginYWhenClipped: Boolean read FKeepOriginYWhenClipped write SetKeepOriginY default False;
     property Constraints;
     property Picture: TPicture read FPicture write SetPicture;
     property Visible;
@@ -525,9 +554,12 @@ type
     property OnMouseWheelDown;
     property OnMouseWheelUp;
     property Stretch: Boolean read FStretch write SetStretch default False;
+    property StretchOutEnabled: Boolean read FStretchOutEnabled write SetStretchOutEnabled default True;
+    property StretchInEnabled: Boolean read FStretchInEnabled write SetStretchInEnabled default True;
     property Transparent: Boolean read FTransparent write SetTransparent default False;
     property Proportional: Boolean read FProportional write SetProportional default False;
     property OnPictureChanged: TNotifyEvent read FOnPictureChanged write FOnPictureChanged;
+    property OnPaintBackground: TImagePaintBackgroundEvent read FOnPaintBackground write FOnPaintBackground;
   end;
 
 
@@ -541,6 +573,8 @@ type
     property AutoSize;
     property BorderSpacing;
     property Center;
+    property KeepOriginXWhenClipped;
+    property KeepOriginYWhenClipped;
     property Constraints;
     property DragCursor;
     property DragMode;
@@ -561,6 +595,7 @@ type
     property OnMouseWheelUp;
     property OnPaint;
     property OnPictureChanged;
+    property OnPaintBackground;
     property OnResize;
     property OnStartDrag;
     property ParentShowHint;
@@ -569,6 +604,8 @@ type
     property Proportional;
     property ShowHint;
     property Stretch;
+    property StretchOutEnabled;
+    property StretchInEnabled;
     property Transparent;
     property Visible;
   end;
@@ -701,6 +738,7 @@ type
     property ColumnLayout;
     property Columns;
     property Constraints;
+    property DoubleBuffered;
     property DragCursor;
     property DragMode;
     property Enabled;
@@ -733,6 +771,7 @@ type
     property ParentBidiMode;
     property ParentFont;
     property ParentColor;
+    property ParentDoubleBuffered;
     property ParentShowHint;
     property PopupMenu;
     property ShowHint;
@@ -816,6 +855,7 @@ type
     property ColumnLayout;
     property Columns;
     property Constraints;
+    property DoubleBuffered;
     property DragCursor;
     property DragMode;
     property Enabled;
@@ -847,6 +887,7 @@ type
     property ParentBiDiMode;
     property ParentFont;
     property ParentColor;
+    property ParentDoubleBuffered;
     property ParentShowHint;
     property PopupMenu;
     property ShowHint;
@@ -863,12 +904,17 @@ type
     constructor Create(TheOwner: TComponent); override;
     property FocusControl;
   published
+    property AnchorSideLeft stored False;
+    property AnchorSideTop stored False;
+    property AnchorSideRight stored False;
+    property AnchorSideBottom stored False;
+    property Left stored False;
+    property Top stored False;
     property Caption;
     property Color;
     property DragCursor;
     property DragMode;
     property Height;
-    property Left;
     property ParentColor;
     property ParentFont;
     property ParentShowHint;
@@ -943,6 +989,7 @@ type
     property CharCase;
     property Color;
     property Constraints;
+    property DoubleBuffered;
     property DragCursor;
     property DragMode;
     property EchoMode;
@@ -954,6 +1001,7 @@ type
     property MaxLength;
     property ParentBidiMode;
     property ParentColor;
+    property ParentDoubleBuffered;
     property ParentFont;
     property ParentShowHint;
     property PasswordChar;
@@ -964,8 +1012,6 @@ type
     property TabStop;
     property Text;
     property TextHint;
-    property TextHintFontColor;
-    property TextHintFontStyle;
     property Visible;
     property OnChange;
     property OnClick;
@@ -999,14 +1045,19 @@ type
 
   TCustomPanel = class(TCustomControl)
   private
+    FBevelColor : TColor;
     FBevelInner, FBevelOuter : TPanelBevel;
     FBevelWidth : TBevelWidth;
     FAlignment : TAlignment;
     FFullRepaint: Boolean;
+    FWordWrap: Boolean;
+    procedure PaintBevel(var ARect: TRect; ABevel: TPanelBevel);
     procedure SetAlignment(const Value : TAlignment);
+    procedure SetBevelColor(AValue: TColor);
     procedure SetBevelInner(const Value: TPanelBevel);
     procedure SetBevelOuter(const Value: TPanelBevel);
     procedure SetBevelWidth(const Value: TBevelWidth);
+    procedure SetWordwrap(const Value: Boolean);
   protected
     class procedure WSRegisterClass; override;
     procedure AdjustClientRect(var aRect: TRect); override;
@@ -1016,16 +1067,20 @@ type
     procedure Loaded; override;
     procedure RealSetText(const Value: TCaption); override;
     procedure Paint; override;
+    procedure SetParentBackground(const AParentBackground: Boolean); override;
     procedure UpdateParentColorChange;
+    property WordWrap: Boolean read FWordwrap write SetWordwrap default false;
   public
     constructor Create(TheOwner: TComponent); override;
     property Align default alNone;
     property Alignment: TAlignment read FAlignment write SetAlignment default taCenter;
+    property BevelColor: TColor read FBevelColor write SetBevelColor default clDefault;
     property BevelInner: TPanelBevel read FBevelInner write SetBevelInner default bvNone;
     property BevelOuter: TPanelBevel read FBevelOuter write SetBevelOuter default bvRaised;
     property BevelWidth: TBevelWidth read FBevelWidth write SetBevelWidth default 1;
     property Color default {$ifdef UseCLDefault}clDefault{$else}clBtnFace{$endif};
     property FullRepaint: Boolean read FFullRepaint write FFullRepaint default True; // exists only for Delphi compatibility, has no effect in LCL
+    property ParentBackground default true;
     property ParentColor default true;
     property TabStop default False;
   end;
@@ -1040,6 +1095,7 @@ type
     property Anchors;
     property AutoSize;
     property BorderSpacing;
+    property BevelColor;
     property BevelInner;
     property BevelOuter;
     property BevelWidth;
@@ -1053,14 +1109,17 @@ type
     property Color;
     property Constraints;
     property DockSite;
+    property DoubleBuffered;
     property DragCursor;
     property DragKind;
     property DragMode;
     property Enabled;
     property Font;
     property FullRepaint;
+    property ParentBackground;
     property ParentBidiMode;
     property ParentColor;
+    property ParentDoubleBuffered;
     property ParentFont;
     property ParentShowHint;
     property PopupMenu;
@@ -1069,6 +1128,7 @@ type
     property TabStop;
     property UseDockManager default True;
     property Visible;
+    property Wordwrap;
     property OnClick;
     property OnContextPopup;
     property OnDockDrop;
@@ -1153,8 +1213,10 @@ type
     FControlList: TFlowPanelControlList;
     FAutoWrap: Boolean;
     FFlowStyle: TFlowStyle;
+    FFlowLayout: TTextLayout;
     procedure SetAutoWrap(const AAutoWrap: Boolean);
     procedure SetControlList(const AControlList: TFlowPanelControlList);
+    procedure SetFlowLayout(const aFlowLayout: TTextLayout);
     procedure SetFlowStyle(const AFlowStyle: TFlowStyle);
   protected
     procedure CMControlChange(var Message: TCMControlChange); message CM_CONTROLCHANGE;
@@ -1173,6 +1235,7 @@ type
     property AutoWrap: Boolean read FAutoWrap write SetAutoWrap;
     property ControlList: TFlowPanelControlList read FControlList write SetControlList;
     property FlowStyle: TFlowStyle read FFlowStyle write SetFlowStyle;
+    property FlowLayout: TTextLayout read FFlowLayout write SetFlowLayout;
   end;
 
   TFlowPanel = class(TCustomFlowPanel)
@@ -1187,6 +1250,7 @@ type
     property BevelWidth;
     property BiDiMode;
     property BorderWidth;
+    property BorderSpacing;
     property BorderStyle;
     property Caption;
     property Color;
@@ -1199,11 +1263,13 @@ type
     property DragKind;
     property DragMode;
     property Enabled;
+    property FlowLayout;
     property FlowStyle;
     property FullRepaint;
     property Font;
     property ParentBiDiMode;
     property ParentColor;
+    property ParentDoubleBuffered;
     property ParentFont;
     property ParentShowHint;
     property PopupMenu;
@@ -1341,7 +1407,7 @@ type
   TBandInfoEvent = procedure (Sender: TObject; Control: TControl;
     var Insets: TRect; var PreferredSize, RowCount: Integer) of object;
   TBandMoveEvent = procedure (Sender: TObject; Control: TControl; var ARect: TRect) of object;
-  TBandPaintEvent = procedure (Sender: TObject; Control: TControl; Canvas: TCanvas;
+  TBandPaintEvent = procedure (Sender: TObject; Control: TControl; ACanvas: TCanvas;
     var ARect: TRect; var Options: TBandPaintOptions) of object;
 
   TRowSize = 1..MaxInt;
@@ -1397,7 +1463,7 @@ type
 
   { TCtrlBands }
 
-  TCtrlBands = class (specialize TFPGObjectList<TCtrlBand>)
+  TCtrlBands = class ({$IFDEF FPDoc}TFPGObjectList{$ELSE}specialize TFPGObjectList<TCtrlBand>{$ENDIF})
   public
     function GetIndex(AControl: TControl): Integer;
   end;
@@ -1532,6 +1598,7 @@ type
     property Color;
     property Constraints;
     property DockSite;
+    property DoubleBuffered;
     property DragCursor;
     property DragKind;
     property DragMode;
@@ -1541,6 +1608,7 @@ type
     property GradientEndColor;
     property GradientStartColor;
     property ParentColor;
+    property ParentDoubleBuffered;
     property ParentFont;
     property ParentShowHint;
     property Picture;

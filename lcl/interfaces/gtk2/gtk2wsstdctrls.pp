@@ -24,8 +24,10 @@ uses
   // RTL
   glib2,  gdk2, gtk2,
   Classes, SysUtils, Math,
+  // LazUtils
+  LazLoggerBase, LazTracer,
   // LCL
-  Controls, Graphics, StdCtrls, LMessages, LCLType, LCLProc, LazUtf8Classes,
+  Controls, Graphics, StdCtrls, LMessages, LCLType, LazUtf8Classes, LazUTF8,
   // Widgetset
   WSControls, WSProc, WSStdCtrls, Gtk2Int, Gtk2Def,
   Gtk2CellRenderer, Gtk2Globals, Gtk2Proc, InterfaceBase,
@@ -126,7 +128,6 @@ type
     class procedure SetItemIndex(const ACustomComboBox: TCustomComboBox; NewIndex: integer); override;
     class procedure SetMaxLength(const ACustomComboBox: TCustomComboBox; NewLength: integer); override;
     class procedure SetStyle(const ACustomComboBox: TCustomComboBox; NewStyle: TComboBoxStyle); override;
-    class procedure SetReadOnly(const ACustomComboBox: TCustomComboBox; NewReadOnly: boolean); override;
 
     class function  GetItems(const ACustomComboBox: TCustomComboBox): TStrings; override;
     class procedure Sort(const ACustomComboBox: TCustomComboBox; {%H-}AList: TStrings; IsSorted: boolean); override;
@@ -203,6 +204,7 @@ type
     class procedure SetSelStart(const ACustomEdit: TCustomEdit; NewStart: integer); override;
     class procedure SetSelLength(const ACustomEdit: TCustomEdit; NewLength: integer); override;
     class procedure SetText(const AWinControl: TWinControl; const AText: string); override;
+    class procedure SetSelText(const ACustomEdit: TCustomEdit; const NewSelText: string); override;
 
     class procedure GetPreferredSize(const AWinControl: TWinControl;
                         var PreferredWidth, PreferredHeight: integer;
@@ -242,6 +244,7 @@ type
     class procedure SetCharCase(const {%H-}ACustomEdit: TCustomEdit; {%H-}NewCase: TEditCharCase); override;
     class procedure SetMaxLength(const ACustomEdit: TCustomEdit; NewLength: integer); override;
     class procedure SetReadOnly(const ACustomEdit: TCustomEdit; NewReadOnly: boolean); override;
+    class procedure SetSelText(const ACustomEdit: TCustomEdit; const NewSelText: string); override;
     class procedure SetText(const AWinControl: TWinControl; const AText: string); override;
     class procedure SetScrollbars(const ACustomMemo: TCustomMemo; const NewScrollbars: TScrollStyle); override;
 
@@ -787,6 +790,8 @@ begin
   g_object_set_data(PGObject(TVWidget), 'lclcustomlistboxstyle', {%H-}gPointer(Ord(TListBox(AWinControl).Style)));
 
   // Sets the callbacks
+  if not AWinControl.HandleObjectShouldBeVisible and not (csDesigning in AWinControl.ComponentState) then
+    gtk_widget_hide(p);
   SetCallbacks(p, WidgetInfo);
 end;
 
@@ -1035,11 +1040,14 @@ end;
 class procedure TGtk2WSCustomCheckBox.ShowHide(const AWinControl: TWinControl);
 begin
   // gtk2 doesn't set font properly
-  // so we are doing it one more time before showing.issue
+  // so we are doing it one more time before showing. Issues #21172, #23152
   if AWinControl.HandleObjectShouldBeVisible then
-      SetFont(AWinControl, AWinControl.Font);
-  Gtk2WidgetSet.SetVisible(AWinControl, AWinControl.HandleObjectShouldBeVisible);
-  InvalidateLastWFPResult(AWinControl, AWinControl.BoundsRect);
+  begin
+    SetFont(AWinControl, AWinControl.Font);
+    AWinControl.InvalidatePreferredSize();
+    AWinControl.AdjustSize();
+  end;
+  TGtk2WSWinControl.ShowHide(AWinControl);
 end;
 
 {$I gtk2wscustommemo.inc}
@@ -1105,6 +1113,7 @@ begin
   finally
     LockOnChange(PgtkObject(Widget), -1);
   end;
+  SetSelStart(TCustomEdit(AWinControl), 0);
   {$IFDEF VerboseTWinControlRealText}
   DebugLn(['TGtkWSCustomEdit.SetText SEND TEXTCHANGED message ',DbgSName(AWinControl),' New="',gtk_entry_get_text(PGtkEntry(AWinControl.Handle)),'"']);
   {$ENDIF}
@@ -1115,6 +1124,42 @@ begin
   {$IFDEF VerboseTWinControlRealText}
   DebugLn(['TGtkWSCustomEdit.SetText END ',DbgSName(AWinControl),' New="',gtk_entry_get_text(PGtkEntry(AWinControl.Handle)),'"']);
   {$ENDIF}
+end;
+
+class procedure TGtk2WSCustomEdit.SetSelText(const ACustomEdit: TCustomEdit;
+  const NewSelText: string);
+var
+  Widget: PGtkWidget;
+  Entry: PGtkEntry;
+  Text: string;
+  SelStart: Integer;
+  Mess : TLMessage;
+begin
+  if not WSCheckHandleAllocated(ACustomEdit, 'SetSelText') then
+    Exit;
+  Widget:={%H-}PGtkWidget(ACustomEdit.Handle);
+  if GTK_IS_SPIN_BUTTON(Widget) then
+    Entry := @PGtkSpinButton(Widget)^.entry
+  else
+    Entry := PGtkEntry(Widget);
+  Text := gtk_entry_get_text(Entry);
+  SelStart := GetSelStart(ACustomEdit);
+  Text := UTF8Copy(Text, 1, SelStart) + NewSelText +
+    UTF8Copy(Text, SelStart + GetSelLength(ACustomEdit) + 1, MaxInt);
+  SelStart := SelStart + UTF8Length(NewSelText);
+  // some gtk2 versions fire the change event twice
+  // lock the event and send the message afterwards
+  // see bug http://bugs.freepascal.org/view.php?id=14615
+  LockOnChange(PgtkObject(Widget), +1);
+  try
+    gtk_entry_set_text(Entry, PChar(Text));
+  finally
+    LockOnChange(PgtkObject(Widget), -1);
+  end;
+  SetSelStart(ACustomEdit, SelStart);
+  FillByte(Mess{%H-},SizeOf(Mess),0);
+  Mess.Msg := CM_TEXTCHANGED;
+  DeliverMessage(ACustomEdit, Mess);
 end;
 
 class procedure TGtk2WSCustomEdit.SetCharCase(const ACustomEdit: TCustomEdit;
@@ -1181,15 +1226,21 @@ end;
 class function TGtk2WSCustomEdit.GetCaretPos(const ACustomEdit: TCustomEdit
   ): TPoint;
 var
-  Widget: PGtkWidget;
+  Entry: PGtkEntry;
+  AInfo: PWidgetInfo;
 begin
   Result := Point(0,0);
   if not WSCheckHandleAllocated(ACustomEdit, 'GetCaretPos') then
     Exit;
-  Widget := {%H-}PGtkWidget(ACustomEdit.Handle);
-  Result.X := gtk_editable_get_position(PGtkEditable(Widget));
+  Entry := {%H-}PGtkEntry(ACustomEdit.Handle);
+  if gtk_widget_has_focus(PGtkWidget(Entry)) then
+    Result.X := Max(Entry^.current_pos, Entry^.selection_bound)
+  else begin
+    AInfo := GetWidgetInfo(PGtkWidget(Entry));
+    if AInfo <> nil then
+      Result.X := AInfo^.CursorPos + AInfo^.SelLength;
+  end;
 end;
-
 
 class function TGtk2WSCustomEdit.GetSelStart(const ACustomEdit: TCustomEdit
   ): integer;
@@ -1254,22 +1305,29 @@ end;
 class procedure TGtk2WSCustomEdit.SetCaretPos(const ACustomEdit: TCustomEdit;
   const NewPos: TPoint);
 var
+  NewStart: Integer;
   Entry: PGtkEntry;
   WidgetInfo: PWidgetInfo;
 begin
   if not WSCheckHandleAllocated(ACustomEdit, 'SetCaretPos') then
     Exit;
+  SetSelLength(ACustomEdit, 0);
   Entry := {%H-}PGtkEntry(ACustomEdit.Handle);
-  if GetCaretPos(ACustomEdit).X = NewPos.X then exit;
+  // make gtk2 consistent with others. issue #11802
+  // if GetCaretPos(ACustomEdit).X = NewPos.X then exit;
 
+  if Entry^.text_max_length > 0 then
+    NewStart := Min(NewPos.X, Entry^.text_max_length)
+  else
+    NewStart := Min(NewPos.X, Entry^.text_length);
+  WidgetInfo := GetWidgetInfo(Entry);
+  WidgetInfo^.CursorPos := NewStart;
   if LockOnChange(PgtkObject(Entry),0) > 0 then
   begin
-    WidgetInfo := GetWidgetInfo(Entry);
-    WidgetInfo^.CursorPos := NewPos.X;
     // postpone
     g_idle_add(@gtk2WSDelayedSelStart, WidgetInfo);
   end else
-    gtk_editable_set_position(PGtkEditable(Entry), NewPos.X);
+    gtk_editable_set_position(PGtkEditable(Entry), NewStart);
 end;
 
 class procedure TGtk2WSCustomEdit.SetEchoMode(const ACustomEdit: TCustomEdit;
@@ -1326,6 +1384,7 @@ var
 begin
   if not WSCheckHandleAllocated(ACustomEdit, 'SetSelStart') then
     Exit;
+  SetSelLength(ACustomEdit, 0);
   Entry := {%H-}PGtkEntry(ACustomEdit.Handle);
   // make gtk2 consistent with others. issue #11802
   // if GetSelStart(ACustomEdit) = NewStart then exit;
@@ -1464,7 +1523,6 @@ var
   ComboWidget: PGtkWidget;
   Model: PGtkTreeModel;
   Index: Integer;
-  Text: String;
   Box: PGtkWidget;
   ItemList: TGtkListStoreStringList;
   LCLIndex: PLongint;
@@ -1487,19 +1545,7 @@ begin
     AWidgetInfo^.DataOwner := True;
   end;
   
-  // this should work but may not in all circumstances
-  Index := -1;
-  if AWithEntry = False then
-  begin // the current widget HAS an entry
-    Text:='';
-    GetText(ACustomComboBox, Text);
-    if Text = '' then
-      Index := -1
-    else
-      Index := ACustomComboBox.Items.IndexOf(Text);
-  end;
-  if Index = -1 then
-    Index := GetItemIndex(ACustomComboBox);
+  Index := GetItemIndex(ACustomComboBox);
 
   if PGtkComboBoxPrivate(PGtkComboBox(ComboWidget)^.priv)^.button <> nil then
     FreeWidgetInfo(PGtkComboBoxPrivate(PGtkComboBox(ComboWidget)^.priv)^.button);
@@ -1529,7 +1575,6 @@ begin
   
   if AWithEntry then begin
     SetMaxLength(ACustomComboBox, TComboBox(ACustomComboBox).MaxLength);
-    SetReadOnly(ACustomComboBox, ACustomComboBox.ReadOnly);
   end;
 
   SetRenderer(ACustomComboBox, ComboWidget, AWidgetInfo);
@@ -1555,7 +1600,7 @@ begin
   g_object_set_data(G_OBJECT(renderer), 'widgetinfo', AWidgetInfo);
   gtk_cell_layout_clear(PGtkCellLayout(AWidget));
   gtk_cell_layout_pack_start(PGtkCellLayout(AWidget), renderer, True);
-  if not (ACustomComboBox.Style in [csOwnerDrawFixed, csOwnerDrawVariable]) then
+  if not (ACustomComboBox.Style in [csOwnerDrawFixed, csOwnerDrawVariable, csOwnerDrawEditableFixed, csOwnerDrawEditableVariable]) then
     gtk_cell_layout_set_attributes(PGtkCellLayout(AWidget), renderer, ['text', 0, nil]);
   gtk_cell_layout_set_cell_data_func(PGtkCellLayout(AWidget), renderer,
     @LCLIntfCellRenderer_CellDataFunc, AWidgetInfo, nil);
@@ -1683,6 +1728,13 @@ begin
   else
     InputObject := AGtkObject;
 
+  if TCustomComboBox(AWinControl).Style in [csDropDownList, csOwnerDrawFixed, csOwnerDrawVariable] then
+  begin
+    // Just a combobox without a edit should handle its own keys. Issue #32458
+    Gtk2WidgetSet.SetCallbackDirect(LM_KEYDOWN, InputObject, AWinControl);
+    Gtk2WidgetSet.SetCallbackDirect(LM_KEYUP, InputObject, AWinControl);
+    Gtk2WidgetSet.SetCallbackDirect(LM_CHAR, InputObject, AWinControl);
+  end;
   Gtk2WidgetSet.SetCallbackDirect(LM_MOUSEMOVE, InputObject, AWinControl);
   Gtk2WidgetSet.SetCallbackDirect(LM_LBUTTONDOWN, InputObject, AWinControl);
   Gtk2WidgetSet.SetCallbackDirect(LM_LBUTTONUP, InputObject, AWinControl);
@@ -1694,11 +1746,19 @@ begin
   Gtk2WidgetSet.SetCallbackDirect(LM_MBUTTONDOWN, InputObject, AWinControl);
   Gtk2WidgetSet.SetCallbackDirect(LM_MBUTTONUP, InputObject, AWinControl);
   Gtk2WidgetSet.SetCallbackDirect(LM_MOUSEWHEEL, InputObject, AWinControl);
+  Gtk2WidgetSet.SetCallbackDirect(LM_MOUSEHWHEEL, InputObject, AWinControl);
   Gtk2WidgetSet.SetCallbackDirect(LM_PAINT, InputObject, AWinControl);
   Gtk2WidgetSet.SetCallbackDirect(LM_FOCUS, InputObject, AWinControl);
 
   // And now the same for the Button in the combo
   if AButton<>nil then begin
+    if TCustomComboBox(AWinControl).Style in [csDropDownList, csOwnerDrawFixed, csOwnerDrawVariable] then
+    begin
+      // Just a combobox without a edit should handle its own keys. Issue #32458
+      Gtk2WidgetSet.SetCallbackDirect(LM_KEYDOWN, AButton, AWinControl);
+      Gtk2WidgetSet.SetCallbackDirect(LM_KEYUP, AButton, AWinControl);
+      Gtk2WidgetSet.SetCallbackDirect(LM_CHAR, AButton, AWinControl);
+    end;
     if not GtkWidgetIsA(PGtkWidget(AButton),GTK_TYPE_CELL_VIEW) then begin
       Gtk2WidgetSet.SetCallbackDirect(LM_MOUSEENTER, AButton, AWinControl);
       Gtk2WidgetSet.SetCallbackDirect(LM_MOUSELEAVE, AButton, AWinControl);
@@ -1712,6 +1772,7 @@ begin
     Gtk2WidgetSet.SetCallbackDirect(LM_MBUTTONDOWN, AButton, AWinControl);
     Gtk2WidgetSet.SetCallbackDirect(LM_MBUTTONUP, AButton, AWinControl);
     Gtk2WidgetSet.SetCallbackDirect(LM_MOUSEWHEEL, AButton, AWinControl);
+    Gtk2WidgetSet.SetCallbackDirect(LM_MOUSEHWHEEL, AButton, AWinControl);
     Gtk2WidgetSet.SetCallbackDirect(LM_PAINT, AButton, AWinControl);
     Gtk2WidgetSet.SetCallbackDirect(LM_FOCUS, AButton, AWinControl);
   end;
@@ -1991,7 +2052,9 @@ begin
   p := WidgetInfo^.CoreWidget;
   case NewStyle of
     csDropDown,
-    csSimple:
+    csSimple,
+    csOwnerDrawEditableFixed,
+    csOwnerDrawEditableVariable:
       NeedEntry := True;
     csDropDownList,
     csOwnerDrawFixed,
@@ -2000,33 +2063,6 @@ begin
   end;
   if gtk_is_combo_box_entry(p) = NeedEntry then Exit;
   ReCreateCombo(ACustomComboBox, NeedEntry, WidgetInfo);
-end;
-
-class procedure TGtk2WSCustomComboBox.SetReadOnly(
-  const ACustomComboBox: TCustomComboBox; NewReadOnly: boolean);
-var
-  WidgetInfo: PWidgetInfo;
-  Entry: PGtkWidget;
-begin
-  WidgetInfo := GetWidgetInfo({%H-}Pointer(ACustomComboBox.Handle));
-  if gtk_is_combo_box_entry(WidgetInfo^.CoreWidget) then
-  begin
-    Entry := GTK_BIN(WidgetInfo^.CoreWidget)^.child;
-    if ACustomComboBox.Style in [csDropDown, csSimple] then
-      gtk_entry_set_editable(PGtkEntry(Entry), not NewReadOnly)
-    else
-    if ACustomComboBox.Style in [csOwnerDrawFixed, csOwnerDrawVariable] then
-      ReCreateCombo(ACustomCombobox, False, WidgetInfo)
-    else
-    if (PGtkEntry(Entry)^.flag0 and $1) = Ord(NewReadOnly) then
-      ReCreateCombo(ACustomCombobox, not NewReadOnly, WidgetInfo);
-  end else
-  begin
-    if ACustomComboBox.Style in [csOwnerDrawFixed, csOwnerDrawVariable] then
-      ReCreateCombo(ACustomCombobox, False, WidgetInfo)
-    else
-      ReCreateCombo(ACustomCombobox, not NewReadOnly, WidgetInfo);
-  end;
 end;
 
 class function TGtk2WSCustomComboBox.GetItems(
@@ -2115,11 +2151,6 @@ end;
 
 class procedure TGtk2WSCustomComboBox.ShowHide(const AWinControl: TWinControl);
 begin
-  // gtk2 doesn't set font on readonly combobox properly
-  // so we are doing it one more time before showing.
-  if AWinControl.HandleObjectShouldBeVisible and
-    TCustomComboBox(AWinControl).ReadOnly then
-      SetFont(AWinControl, AWinControl.Font);
   Gtk2WidgetSet.SetVisible(AWinControl, AWinControl.HandleObjectShouldBeVisible);
   InvalidateLastWFPResult(AWinControl, AWinControl.BoundsRect);
 end;
@@ -2136,7 +2167,7 @@ begin
     Entry := GTK_BIN(WidgetInfo^.CoreWidget)^.child;
     Result:=GTK_WIDGET_CAN_FOCUS(Entry);
   end else begin
-    Result:=GTK_WIDGET_CAN_FOCUS(WidgetInfo^.CoreWidget);
+    Result:=inherited CanFocus(AWinControl);
   end;
   //DebugLn(['TGtk2WSCustomComboBox.CanFocus ',dbgsName(AWinControl),' ',gtk_is_combo_box_entry(WidgetInfo^.CoreWidget),' Result=',Result]);
 end;
@@ -2166,7 +2197,9 @@ begin
 
   case ACustomComboBox.Style of
     csDropDown,
-    csSimple:
+    csSimple,
+    csOwnerDrawEditableFixed,
+    csOwnerDrawEditableVariable:
       NeedEntry := True;
     csDropDownList,
     csOwnerDrawFixed,
@@ -2318,7 +2351,7 @@ begin
   g_object_set_data(PGObject(FrameBox), 'widgetinfo', WidgetInfo);
   gtk_widget_show(TempWidget);
   gtk_widget_show(P);
-  if AWinControl.Visible then
+  if AWinControl.HandleObjectShouldBeVisible then
     gtk_widget_show(FrameBox);
 
   Result := TLCLIntfHandle({%H-}PtrUInt(FrameBox));
@@ -2905,8 +2938,6 @@ class procedure TGtk2WSCustomStaticText.SetText(const AWinControl: TWinControl;
 var
   FrameWidget: PGtkFrame;
   LblWidget: PGtkLabel;
-  DC: HDC;
-  ALabel: PChar;
 begin
   if not WSCheckHandleAllocated(AWincontrol, 'SetText')
   then Exit;
@@ -2915,14 +2946,8 @@ begin
   LblWidget := GetLabelWidget(FrameWidget);
 
   if TStaticText(AWinControl).ShowAccelChar and (AText <> '') then
-  begin
-    DC := Widgetset.GetDC(HWND({%H-}PtrUInt(LblWidget)));
-    ALabel := TGtk2WidgetSet(WidgetSet).ForceLineBreaks(
-                          DC, PChar(AText), TStaticText(AWinControl).Width, false);
-    Widgetset.DeleteDC(DC);
-    Gtk2WidgetSet.SetLabelCaption(LblWidget, ALabel);
-    StrDispose(ALabel);
-  end else
+    Gtk2WidgetSet.SetLabelCaption(LblWidget, AText)
+  else
   begin
     gtk_label_set_text(LblWidget, PChar(AText));
     gtk_label_set_pattern(LblWidget, nil);

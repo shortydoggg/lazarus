@@ -1,5 +1,5 @@
 {%MainUnit ../stdctrls.pp}
-{ $Id: buttons.inc 44451 2014-03-16 22:45:52Z juha $}
+{ $Id: buttons.inc 58099 2018-06-03 20:36:08Z ondrej $}
 
 {******************************************************************************
                                    TCustomButton
@@ -242,7 +242,6 @@ class procedure TCustomButton.WSRegisterClass;
 begin
   inherited WSRegisterClass;
   RegisterCustomButton;
-  RegisterPropertyToSkip(TCustomButton, 'DoubleBuffered',     'VCL compatibility property', '');
   RegisterPropertyToSkip(TCustomButton, 'ElevationRequired',  'VCL compatibility property', '');
   RegisterPropertyToSkip(TCustomButton, 'ImageAlignment',     'VCL compatibility property', '');
   RegisterPropertyToSkip(TCustomButton, 'ImageMargins',       'VCL compatibility property', '');

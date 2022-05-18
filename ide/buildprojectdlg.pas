@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -28,16 +28,18 @@ unit BuildProjectDlg;
 interface
 
 uses
-  Classes, SysUtils, Math, AVL_Tree, Forms, Controls,
-  Dialogs, ButtonPanel, StdCtrls, ComCtrls, Masks, LCLIntf,
-  FileProcs, LazFileUtils, LazFileCache, LazUtilities,
+  Classes, SysUtils, Math, Laz_AVL_Tree,
+  // LCL
+  Forms, Controls, Dialogs, ButtonPanel, StdCtrls, ComCtrls, Masks, LCLIntf,
+  // LazUtils
+  LazFileUtils, LazFileCache, LazStringUtils, AvgLvlTree,
   // codetools
-  CodeToolManager, DirectoryCacher, CodeToolsStructs,
+  FileProcs, CodeToolManager, DirectoryCacher,
   // IDEIntf
   IDEDialogs, IDEImagesIntf, PackageIntf,
   // IDE
   PackageDefs, PackageSystem, InputHistory, LazarusIDEStrConsts, Project,
-  IDEProcs;
+  EnvironmentOpts, IDEProcs;
 
 type
   TBuildProjectDialogItem = class
@@ -137,8 +139,8 @@ begin
   DeleteButton.Caption:=lisDelete;
 
   FilesTreeView.Images:=IDEImages.Images_16;
-  ImageIndexDirectory := IDEImages.LoadImage(16, 'pkg_files');
-  ImageIndexFile := IDEImages.LoadImage(16, 'laz_delete');
+  ImageIndexDirectory := IDEImages.LoadImage('pkg_files');
+  ImageIndexFile := IDEImages.LoadImage('laz_delete');
 
   ButtonPanel1.OKButton.ModalResult:=mrNone;
 end;
@@ -160,6 +162,11 @@ procedure TCleanBuildProjectDialog.FormClose(Sender: TObject;
   end;
 
 begin
+  EnvironmentOptions.CleanBuildProjOut:=ProjOutCheckBox.Checked;
+  EnvironmentOptions.CleanBuildProjSrc:=ProjSrcCheckBox.Checked;
+  EnvironmentOptions.CleanBuildPkgOut :=PkgOutCheckBox.Checked;
+  EnvironmentOptions.CleanBuildPkgSrc :=PkgSrcCheckBox.Checked;
+
   FProject.CleanOutputFileMask:=ProjOutMaskComboBox.Text;
   FProject.CleanSourcesFileMask:=ProjSrcMaskComboBox.Text;
   InputHistories.CleanOutputFileMask:=PkgOutMaskComboBox.Text;
@@ -428,7 +435,7 @@ begin
     p:=System.Pos('/',aTVPath);
     if p>0 then begin
       NodeText:=copy(aTVPath,1,p-1);
-      aTVPath:=Copy(aTVPath,p+1,length(aTVPath));
+      Delete(aTVPath,1,p);
     end else begin
       NodeText:=aTVPath;
     end;
@@ -513,7 +520,7 @@ function TCleanBuildProjectDialog.DeleteFiles: TModalResult;
 var
   Files: TFilenameToStringTree;
   Node: TAVLTreeNode;
-  Item: PStringToStringTreeItem;
+  Item: PStringToStringItem;
   MaskList: TMaskList;
   Filename: String;
   SourceFiles: TStringList;
@@ -526,7 +533,7 @@ begin
     // warn before deleting sources
     Node:=Files.Tree.FindLowest;
     while Node<>nil do begin
-      Item:=PStringToStringTreeItem(Node.Data);
+      Item:=PStringToStringItem(Node.Data);
       Filename:=Item^.Name;
       if MaskList.Matches(ExtractFilename(Filename)) then
         SourceFiles.Add(Filename);
@@ -544,7 +551,7 @@ begin
     Node:=Files.Tree.FindLowest;
     Quiet:=false;
     while Node<>nil do begin
-      Item:=PStringToStringTreeItem(Node.Data);
+      Item:=PStringToStringItem(Node.Data);
       Node:=Files.Tree.FindSuccessor(Node);
       Filename:=Item^.Name;
       //debugln(['TBuildProjectDialog.DeleteFiles ',Filename,' ',FileExistsUTF8(Filename)]);
@@ -552,8 +559,11 @@ begin
         if FileExistsUTF8(Filename) and (not DeleteFileUTF8(Filename))
         and (not Quiet) then begin
           Result:=IDEQuestionDialog(lisDeleteFileFailed,
-            Format(lisPkgMangUnableToDeleteFile, [Filename]),
-            mtError, [mrRetry, mrCancel, mrNo, lisCCOSkip, mrNoToAll, lisSkipErrors]);
+              Format(lisPkgMangUnableToDeleteFile, [Filename]),
+              mtError, [mrRetry,
+                        mrCancel,
+                        mrNo, lisCCOSkip,
+                        mrNoToAll, lisSkipErrors]);
           if Result=mrNoToAll then begin
             Quiet:=true;
             break;
@@ -587,6 +597,11 @@ begin
   PkgOutMaskComboBox.Text:=InputHistories.CleanOutputFileMask;
   PkgSrcMaskComboBox.Items.Assign(List);
   PkgSrcMaskComboBox.Text:=InputHistories.CleanSourcesFileMask;
+
+  ProjOutCheckBox.Checked:=EnvironmentOptions.CleanBuildProjOut;
+  ProjSrcCheckBox.Checked:=EnvironmentOptions.CleanBuildProjSrc;
+  PkgOutCheckBox.Checked :=EnvironmentOptions.CleanBuildPkgOut;
+  PkgSrcCheckBox.Checked :=EnvironmentOptions.CleanBuildPkgSrc;
 
   if AProject.CompilerOptions.UnitOutputDirectory='' then begin
     ProjOutCheckBox.Enabled:=false;

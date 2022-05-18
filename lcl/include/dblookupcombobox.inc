@@ -1,4 +1,4 @@
-{%MainUnit ../dbctrls.pas}
+{%MainUnit ../dbctrls.pp}
 
 {******************************************************************************
                                      TDBLookupComboBox
@@ -35,7 +35,29 @@ begin
   if i <> -1 then
     FLookup.UpdateData(i, FScrollListDataset)
   else
-    Text := '';
+  if FDatalink.EditingSource then
+    FDatalink.Dataset.Cancel
+  else
+    UpdateLookup;
+end;
+
+function TDBLookupComboBox.DoEdit: boolean;
+begin
+  if IsUnbound then begin
+    if DetectedEvents and DBCBEVENT_SELECT <>0 then begin
+      UpdateData(self);
+      DoOnSelect;
+    end;
+    if DetectedEvents and DBCBEVENT_CLOSEUP <>0 then
+      DoOnCloseUp;
+  end
+  else
+    Result := inherited DoEdit;
+end;
+
+function TDBLookupComboBox.IsUnbound: boolean;
+begin
+  result := (FDataLink.DataSource=nil) or (DataField='');
 end;
 
 procedure TDBLookupComboBox.ActiveChange(Sender: TObject);
@@ -45,22 +67,22 @@ begin
 end;
 
 procedure TDBLookupComboBox.DataChange(Sender: TObject);
-var
-  i: Integer;
 begin
-  if FDatalink.Active then
-    i := FLookup.GetKeyIndex
-  else
-    i := -1;
-  ItemIndex := i;
-  if i = -1 then
-    Text := '';
+  UpdateItemIndex;
 end;
 
-procedure TDBLookupComboBox.Select;
+procedure TDBLookupComboBox.DoOnSelect;
 begin
-  FDataLink.Modified;
-  inherited Select;
+  if Style=csDropDownList then
+    UpdateRecord;
+  inherited DoOnSelect;
+end;
+
+procedure TDBLookupComboBox.DestroyWnd;
+begin
+  inherited;
+  //after handle destroy Items address changes
+  FLookup.ControlItems := Items;
 end;
 
 procedure TDBLookupComboBox.KeyDown(var Key: Word; Shift: TShiftState);
@@ -72,6 +94,13 @@ begin
     //Text := '';
   end;
   inherited KeyDown(Key, Shift);
+end;
+
+procedure TDBLookupComboBox.UTF8KeyPress(var UTF8Key: TUTF8Char);
+begin
+  if (not IsUnbound) and (not FDataLink.CanModify) then
+    UTF8Key := '';
+  inherited UTF8KeyPress(UTF8Key);
 end;
 
 procedure TDBLookupComboBox.Loaded;
@@ -163,23 +192,21 @@ begin
 end;
 
 procedure TDBLookupComboBox.UpdateLookup;
-var
-  i: Integer;
 begin
   if ([csLoading, csDestroying] * ComponentState) = [] then
   begin
     FLookup.Initialize(FDataLink, Items);
-    i := FLookup.GetKeyIndex;
-    ItemIndex := i;
-    if i = -1 then
-      Text := '';
+    UpdateItemIndex;
   end;
 end;
 
-procedure TDBLookupComboBox.CloseUp;
+procedure TDBLookupComboBox.UpdateItemIndex;
+var
+  i: Integer;
 begin
-  if Style = csDropDownList then
-    FDataLink.UpdateRecord;
-  inherited CloseUp;
+  i := FLookup.GetKeyIndex;
+  ItemIndex := i;
+  if i = -1 then
+    Text := '';
 end;
 

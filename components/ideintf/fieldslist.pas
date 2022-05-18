@@ -15,7 +15,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -25,15 +25,18 @@
 
 }
 
-unit fieldslist;
+unit FieldsList;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs,
-  Buttons, DB, StdCtrls, ObjInspStrConsts, ComponentEditors, PropEdits;
+  Classes, SysUtils, DB,
+  // LCL
+  Forms, Dialogs, Buttons, StdCtrls,
+  // IdeIntf
+  ObjInspStrConsts, ComponentEditors, IDEWindowIntf;
 
 type
 
@@ -44,13 +47,16 @@ type
     BitBtnCancel: TBitBtn;
     ListBox1: TListBox;
     procedure BitBtnOkClick(Sender: TObject);
+    procedure FormClose(Sender: TObject; var {%H-}CloseAction: TCloseAction);
+    procedure FormCreate(Sender: TObject);
   private
-    { private declarations }
     FDesigner: TComponentEditorDesigner;
     LinkDataset: TDataset;
-    procedure RefreshFieldsList;
+  protected
+    procedure RefreshFieldsList; virtual;
+    procedure SelectAll; virtual;
+    procedure DoShow; override;
   public
-    { public declarations }
     constructor Create(AOwner: TComponent; ADataset: TDataset;
       ADesigner: TComponentEditorDesigner); reintroduce;
   end;
@@ -63,6 +69,16 @@ implementation
 {$R *.lfm}
 
 { TFieldsListFrm }
+
+procedure TFieldsListFrm.FormCreate(Sender: TObject);
+begin
+  IDEDialogLayoutList.ApplyLayout(Self);
+end;
+
+procedure TFieldsListFrm.FormClose(Sender: TObject; var CloseAction: TCloseAction);
+begin
+  IDEDialogLayoutList.SaveLayout(Self);
+end;
 
 procedure TFieldsListFrm.BitBtnOkClick(Sender: TObject);
 var
@@ -186,6 +202,21 @@ begin
     if PreActive then
       LinkDataset.Active:=True;
   end;    
+end;
+
+procedure TFieldsListFrm.SelectAll;
+begin
+  if BitBtnOk.Enabled then
+  begin
+    ListBox1.SelectAll;
+    ListBox1.MakeCurrentVisible;
+  end;
+end;
+
+procedure TFieldsListFrm.DoShow;
+begin
+  inherited DoShow;
+  SelectAll;
 end;
 
 constructor TFieldsListFrm.Create(AOwner: TComponent; ADataset: TDataset;

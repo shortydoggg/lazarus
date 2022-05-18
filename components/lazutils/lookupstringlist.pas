@@ -1,6 +1,6 @@
 {
  *****************************************************************************
-  This file is part of the Lazarus Component Library (LCL)
+  This file is part of LazUtils.
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
@@ -52,9 +52,6 @@ type
     function Find(const S: string; out Index: Integer): Boolean; override;
     function IndexOf(const S: string): Integer; override;
   end;
-
-  TDictionaryStringList = class(TLookupStringList)
-  end deprecated 'The class was renamed to TLookupStringList.';
 
 function Deduplicate(AStrings: TStrings): Boolean;
 

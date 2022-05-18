@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -37,11 +37,12 @@ unit FindOverloadsDlg;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LazFileUtils, Forms, Controls, Graphics,
-  Dialogs, ExtCtrls, StdCtrls, Buttons, ButtonPanel, ComCtrls, AvgLvlTree,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  LCLProc, LazFileUtils, Forms, Controls, StdCtrls, ButtonPanel, ComCtrls,
   // codetools
-  FindDeclarationTool, PascalParserTool, CodeTree, CodeCache,
-  CodeToolManager, FindOverloads,
+  FindDeclarationTool, PascalParserTool, CodeTree, CodeCache, CodeToolManager,
+  FindOverloads,
   // IDE
   LazIDEIntf, ProjectIntf, SrcEditorIntf, IDEProcs;
 
@@ -82,8 +83,8 @@ type
 
   TFindOverloadsWorker = class
   private
-    FFiles: TAvgLvlTree;
-    FScanFiles: TAvgLvlTree;
+    FFiles: TAvlTree;
+    FScanFiles: TAvlTree;
     FStagePosition: integer;
     FStagePosMax: integer;
     FStageTitle: string;
@@ -107,8 +108,8 @@ type
     function AddFileToScan(const Filename: string;
                            CheckExtension: boolean = true): TFOWFile;
     function FindFile(const Filename: string): TFOWFile;
-    property Files: TAvgLvlTree read FFiles; // tree of TFindOverloadsWorkerFile
-    property ScanFiles: TAvgLvlTree read FScanFiles;// tree of TFindOverloadsWorkerFile
+    property Files: TAvlTree read FFiles; // tree of TFindOverloadsWorkerFile
+    property ScanFiles: TAvlTree read FScanFiles;// tree of TFindOverloadsWorkerFile
     property StageTitle: string read FStageTitle write FStageTitle;
     property StagePosition: integer read FStagePosition write FStagePosition;
     property StagePosMax: integer read FStagePosMax write FStagePosMax;
@@ -481,7 +482,7 @@ end;
 
 function TFindOverloadsWorker.FindFile(const Filename: string): TFOWFile;
 var
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
 begin
   AVLNode:=FFiles.FindKey(Pointer(Filename),@CompareFilenameWithFOWFile);
   if AVLNode<>nil then
@@ -493,8 +494,8 @@ end;
 constructor TFindOverloadsWorker.Create;
 begin
   Scopes:=[fosProject,fosPackages];
-  FFiles:=TAvgLvlTree.Create(TListSortCompare(@CompareFOWFiles));
-  FScanFiles:=TAvgLvlTree.Create(TListSortCompare(@CompareFOWFiles));
+  FFiles:=TAvlTree.Create(TListSortCompare(@CompareFOWFiles));
+  FScanFiles:=TAvlTree.Create(TListSortCompare(@CompareFOWFiles));
   FStagePosMax:=100;
 end;
 

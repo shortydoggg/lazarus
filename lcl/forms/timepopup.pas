@@ -20,7 +20,7 @@ interface
 
 uses
   Classes, SysUtils, DateUtils, FileUtil, LCLType, Forms, Controls,
-  Graphics, Dialogs, Grids, ExtCtrls, Buttons, StdCtrls, ActnList;
+  Graphics, Dialogs, Grids, ExtCtrls, Buttons, StdCtrls, ActnList, WSForms;
 
 type
   TReturnTimeEvent = procedure (Sender: TObject; const ATime: TDateTime) of object;
@@ -35,12 +35,15 @@ type
     MoreLessBtn: TBitBtn;
     procedure GridsDblClick(Sender: TObject);
     procedure GridsKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure GridPrepareCanvas(sender: TObject; aCol, aRow: Integer;
+      aState: TGridDrawState);
     procedure MoreLessBtnClick(Sender: TObject);
   private
     FClosed: Boolean;
     FOnReturnTime: TReturnTimeEvent;
     FSimpleLayout: Boolean;
     FPopupOrigin: TPoint;
+    FCaller: TControl;
     procedure ActivateDoubleBuffered;
     procedure CalcGridHeights;
     function GetTime: TDateTime;
@@ -56,18 +59,22 @@ type
   end;
 
 procedure ShowTimePopup(const Position: TPoint; ATime: TDateTime; const DoubleBufferedForm: Boolean;
-                        const OnReturnTime: TReturnTimeEvent; const OnShowHide: TNotifyEvent = nil; SimpleLayout: Boolean = True);
+                        const OnReturnTime: TReturnTimeEvent; const OnShowHide: TNotifyEvent = nil;
+                        SimpleLayout: Boolean = True; ACaller: TControl = nil);
 
 implementation
 
 {$R *.lfm}
 
-procedure ShowTimePopup(const Position: TPoint; ATime: TDateTime; const DoubleBufferedForm: Boolean; const OnReturnTime: TReturnTimeEvent;
-                        const OnShowHide: TNotifyEvent; SimpleLayout: Boolean);
+procedure ShowTimePopup(const Position: TPoint; ATime: TDateTime; const DoubleBufferedForm: Boolean;
+                        const OnReturnTime: TReturnTimeEvent; const OnShowHide: TNotifyEvent;
+                        SimpleLayout: Boolean; ACaller: TControl);
 var
   NewForm: TTimePopupForm;
+  P: TPoint;
 begin
   NewForm := TTimePopupForm.Create(nil);
+  NewForm.FCaller := ACaller;
   NewForm.Initialize(Position, ATime);
   NewForm.FOnReturnTime := OnReturnTime;
   NewForm.OnShow := OnShowHide;
@@ -78,7 +85,11 @@ begin
   if not SimpleLayout then
     NewForm.SetTime(ATime); //update the row and col in the grid;
   NewForm.Show;
-  NewForm.KeepInView(Position);
+  if Assigned(ACaller) then
+    P := ACaller.ControlToScreen(Point(0, ACaller.Height))
+  else
+    P := Position;
+  NewForm.KeepInView(P);
 end;
 
 procedure TTimePopupForm.SetTime(ATime: TDateTime);
@@ -89,6 +100,7 @@ begin
   Minute := MinuteOf(ATime);
   HoursGrid.Col := Hour mod 12;
   HoursGrid.Row := Hour div 12;
+  HoursGrid.TopRow := 0;  // Avoid morning hours scrolling out of view if time is > 12:00
   if FSimpleLayout then
   begin
     Minute := Minute - (Minute mod 5);
@@ -146,6 +158,17 @@ begin
     if Handled then
       Key := 0;
   end;
+end;
+
+procedure TTimePopupForm.GridPrepareCanvas(sender: TObject;
+  aCol, aRow: Integer; aState: TGridDrawState);
+var
+  ts: TTextStyle;
+begin
+  ts := (Sender as TStringGrid).Canvas.TextStyle;
+  ts.Layout := tlCenter;
+  ts.Alignment := taCenter;
+  (Sender as TStringGrid).Canvas.TextStyle := ts;
 end;
 
 procedure TTimePopupForm.MoreLessBtnClick(Sender: TObject);
@@ -216,9 +239,7 @@ end;
 
 procedure TTimePopupForm.ActivateDoubleBuffered;
 begin
-  Self.DoubleBuffered := True;
-  HoursGrid.DoubleBuffered := True;
-  MinutesGrid.DoubleBuffered := True;
+  DoubleBuffered := TWSCustomFormClass(WidgetSetClass).GetDefaultDoubleBuffered;
 end;
 
 procedure TTimePopupForm.CalcGridHeights;
@@ -255,21 +276,36 @@ begin
   SetTime(ATime);
 end;
 
+{
+ Try to put the form on a "nice" place on the screen and make sure the entire form is visible.
+ Caller typically wil be a TTimeEdit
+ - first try to place it right under Caller, if that does not fit
+ - try to fit it just above Caller, if that also does not fit (Top < 0) then
+ - simply set Top to zero (in which case it will partially cover Caller
+}
 procedure TTimePopupForm.KeepInView(const PopupOrigin: TPoint);
 var
   ABounds: TRect;
 begin
-  ABounds := Screen.MonitorFromPoint(PopupOrigin).BoundsRect;
+  ABounds := Screen.MonitorFromPoint(PopupOrigin).WorkAreaRect; // take care of taskbar
   if PopupOrigin.X + Width > ABounds.Right then
     Left := ABounds.Right - Width
+  else if PopupOrigin.X < ABounds.Left then
+    Left := ABounds.Left
   else
     Left := PopupOrigin.X;
   if PopupOrigin.Y + Height > ABounds.Bottom then
-    Top := ABounds.Bottom - Height
+  begin
+    if Assigned(FCaller) then
+      Top := PopupOrigin.Y - FCaller.Height - Height
+    else
+      Top := ABounds.Bottom - Height;
+  end else if PopupOrigin.Y < ABounds.Top then
+    Top := ABounds.Top
   else
     Top := PopupOrigin.Y;
-  //store the fitting point, so the form won't move if it layout is changed back to simple
-  FPopupOrigin := Point(Left, Top);
+  if Left < ABounds.Left then Left := 0;
+  if Top < ABounds.Top then Top := 0;
 end;
 
 procedure TTimePopupForm.ReturnTime;

@@ -17,15 +17,9 @@ unit SpartaAPI;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls;
+  Classes, Controls;
 
 type
-  IResizer = interface
-  ['{C3D1A2C0-8AED-493B-9809-1F5C3A54A8A8}']
-    procedure TryBoundSizerToDesignedForm(Sender: TObject);
-  end;
-
-
   ISTADesignTimeUtil = interface
   ['{E135BF89-AFA9-402A-9663-4F1536C7717A}']
     function GetRoot: TPersistent;
@@ -86,9 +80,9 @@ type
     function GetEDTUCount: Integer; virtual;
     function GetEDTU(Index: Integer): TEDTUClass; virtual; abstract;
   public
-    function CreateMainDTU(AParent, AAddons: TWinControl): ISTAMainDesignTimeUtil; virtual;
-    procedure RegisterEDTU(AEDTUClass: TEDTUClass); virtual;
-    procedure UnregisterEDTU(AEDTUClass: TEDTUClass); virtual;
+    function CreateMainDTU({%H-}AParent, {%H-}AAddons: TWinControl): ISTAMainDesignTimeUtil; virtual;
+    procedure RegisterEDTU({%H-}AEDTUClass: TEDTUClass); virtual;
+    procedure UnregisterEDTU({%H-}AEDTUClass: TEDTUClass); virtual;
     property EDTUCount: Integer read GetEDTUCount;
     property EDTU[Index: Integer]: TEDTUClass read GetEDTU;
   end;

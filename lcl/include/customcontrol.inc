@@ -25,20 +25,6 @@ begin
 
   FCanvas := TControlCanvas.Create;
   TControlCanvas(FCanvas).Control := Self;
-  // ----PREVIOUS COMMENT-----
-  // custom controls are painted by the LCL, not the interface, so enable
-  // double buffering. It's up to the interface to do the actual
-  // doublebuffering.
-  // ----Micha's comment----
-  // If double buffering has to be enabled before LCL can draw anything,
-  // something is wrong. In the overridden Paint method you should always be
-  // able to draw, independent of DoubleBuffered setting.
-  //
-  // Disable the switch by default: 
-  //  1) it greatly improves resizing speed (it doesn't feel like java then ;) )
-  //  2) VCL compatible
-  //  3) users of LCL should enable switch per control if they so desire
-  DoubleBuffered:=false;
 end;
 
 {------------------------------------------------------------------------------
@@ -75,7 +61,13 @@ end;
 
 procedure TCustomControl.FontChanged(Sender: TObject);
 begin
-  Canvas.Font := Font;
+  Canvas.Font.BeginUpdate;
+  try
+    Canvas.Font.PixelsPerInch := Font.PixelsPerInch;
+    Canvas.Font := Font;
+  finally
+    Canvas.Font.EndUpdate;
+  end;
   inherited FontChanged(Sender);
 end;
 

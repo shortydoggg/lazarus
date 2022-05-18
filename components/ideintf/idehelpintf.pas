@@ -17,7 +17,10 @@ unit IDEHelpIntf;
 interface
 
 uses
-  Classes, SysUtils, types, LCLProc, Forms, Controls, HelpIntfs, LazHelpIntf,
+  Classes, Types, SysUtils,
+  // LCL
+  LMessages, LCLType, LCLIntf, Forms, Controls, Graphics, HelpIntfs, LazHelpIntf,
+  // IdeIntf
   TextTools;
 
 type
@@ -65,9 +68,6 @@ type
     procedure ShowHelpForMessage; virtual; abstract;
     procedure ShowHelpForObjectInspector(Sender: TObject); virtual; abstract;
     procedure ShowHelpForIDEControl(Sender: TControl); virtual; abstract;
-    function CreateHint(aHintWindow: THintWindow; ScreenPos: TPoint;
-      const BaseURL: string; var TheHint: string; out HintWinRect: TRect): boolean;
-      virtual; abstract; deprecated 'Use THintWindowManager class instead';
     function GetHintForSourcePosition(const ExpandedFilename: string;
       const CodePos: TPoint; out BaseURL, HTMLHint: string;
       Flags: TIDEHelpManagerCreateHintFlags = []): TShowHelpResult; virtual; abstract;
@@ -148,6 +148,16 @@ type
     function(Owner: TComponent): TAbstractIDEHTMLProvider;
 
 
+  { TSolidHintWindowRendered }
+
+  TSolidHintWindowRendered = class(THintWindowRendered)
+  protected
+    procedure WMNCHitTest(var Message: TLMessage); message LM_NCHITTEST;
+    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+  public
+    constructor Create(AOwner: TComponent); override;
+  end;
+
   { THintWindowManager }
 
   THintWindowManager = class
@@ -179,7 +189,8 @@ type
     constructor Create; overload;
     destructor Destroy; override;
     function HintIsVisible: boolean;
-    function ShowHint(ScreenPos: TPoint; TheHint: string): boolean;
+    function ShowHint(ScreenPos: TPoint; TheHint: string; const MouseOffset: Boolean = True;
+      HintFont: TFont = nil): boolean;
     procedure HideHint;
     procedure HideIfVisible;
   public
@@ -202,6 +213,29 @@ var
   IDEDirectiveHelpPrefix: string = 'IDEDirective_';
 
 implementation
+
+{ TSolidHintWindowRendered }
+
+procedure TSolidHintWindowRendered.WMNCHitTest(var Message: TLMessage);
+begin
+  Message.Result := HTCLIENT;
+end;
+
+procedure TSolidHintWindowRendered.KeyDown(var Key: Word; Shift: TShiftState);
+Var
+  AOldKey : Word;
+begin
+  AOldKey := Key;
+  inherited KeyDown(Key, Shift);
+  if AOldKey=VK_ESCAPE then
+    Hide;
+end;
+
+constructor TSolidHintWindowRendered.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  KeyPreview := True;
+end;
 
 { THelpDBIRegExprMessage }
 
@@ -297,7 +331,7 @@ function THintWindowManager.HintRenderWindow: THintWindowRendered;
 begin
   if FHintRenderW = nil then
   begin
-    FHintRenderW := THintWindowRendered.Create(Nil);
+    FHintRenderW := TSolidHintWindowRendered.Create(Nil);
     FHintRenderW.AutoHide := FAutoHide;
     FHintRenderW.HideInterval := FHideInterval;
     FHintRenderW.OnMouseDown := FOnMouseDown;
@@ -327,40 +361,64 @@ begin
   Result := FHtmlHelpProvider;
 end;
 
-function THintWindowManager.ShowHint(ScreenPos: TPoint; TheHint: string): boolean;
-var
-  ms: TMemoryStream;
-  NewWidth, NewHeight: integer;
+function THintWindowManager.ShowHint(ScreenPos: TPoint; TheHint: string;
+  const MouseOffset: Boolean; HintFont: TFont): boolean;
 
   procedure DoText;
   var
     HintWinRect: TRect;
   begin
+    if HintFont<>nil then
+      HintTextWindow.Font := HintFont;
     HintWinRect := HintTextWindow.CalcHintRect(Screen.Width, TheHint, Nil);
     HintTextWindow.HintRect := HintWinRect;      // Adds borders.
-    HintTextWindow.OffsetHintRect(ScreenPos);
+    if MouseOffset then
+      HintTextWindow.OffsetHintRect(ScreenPos)
+    else                   // shrink height only for fixed (no MouseOffset) hints
+      HintTextWindow.OffsetHintRect(ScreenPos, 0, True, False);
     HintTextWindow.ActivateHint(TheHint);
   end;
 
   procedure DoHtml;
+  var
+    ms: TMemoryStream;
+    NewWidth, NewHeight: integer;
+    R1, R2: TRect;
   begin
+    if HintFont<>nil then
+      HintRenderWindow.Font := HintFont;
     HtmlHelpProvider.BaseURL:=FBaseURL;
     ms:=TMemoryStream.Create;
-    try
-      if TheHint<>'' then
-        ms.Write(TheHint[1],length(TheHint));
+    try                               // TheHint<>'' is checked earlier.
+      Assert(TheHint<>'', 'THintWindowManager.ShowHint: TheHint is empty');
+      ms.Write(TheHint[1],length(TheHint));
       ms.Position:=0;
       HtmlHelpProvider.ControlIntf.SetHTMLContent(ms,'');
     finally
       ms.Free;
     end;
     HtmlHelpProvider.ControlIntf.GetPreferredControlSize(NewWidth,NewHeight);
+
     if NewWidth <= 0 then
       NewWidth := 500;
     if NewHeight <= 0 then
       NewHeight := 200;
+
     HintRenderWindow.HintRectAdjust := Rect(0, 0, NewWidth, NewHeight);
-    HintRenderWindow.OffsetHintRect(ScreenPos);
+    if MouseOffset then
+      HintRenderWindow.OffsetHintRect(ScreenPos)
+    else
+    begin
+      R1 := HintRenderWindow.HintRect;
+      HintRenderWindow.OffsetHintRect(ScreenPos, 0, True, False); // shrink height only for fixed (no MouseOffset) hints
+      R2 := HintRenderWindow.HintRect;
+      if R1.Bottom-R1.Top>R2.Bottom-R2.Top then // the height was decreased -> scrollbar will be shown, increase width
+      begin
+        Inc(R2.Right, GetSystemMetrics(SM_CXVSCROLL));
+        HintRenderWindow.HintRect := R2;
+        HintRenderWindow.OffsetHintRect(Point(0, 0), 0);
+      end;
+    end;
     HintRenderWindow.ActivateRendered;
   end;
 

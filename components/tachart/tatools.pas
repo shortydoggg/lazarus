@@ -16,7 +16,11 @@ interface
 {$H+}
 
 uses
-  Classes, Controls, CustomTimer, Forms, FPCanvas, Types,
+  Classes, SysUtils, Types, Math, FPCanvas,
+  // LCL
+  Controls, CustomTimer, GraphMath, Forms, LCLPlatformDef, InterfaceBase,
+  LCLType, LCLIntf,
+  // TAChart
   TAChartUtils, TADrawUtils, TAGraph, TATypes;
 
 type
@@ -222,10 +226,8 @@ type
     FSelectionRect: TRect;
     function CalculateNewExtent: TDoubleRect;
     function CalculateDrawRect: TRect;
-    function GetProportional: Boolean;
     procedure SetBrush(AValue: TZoomDragBrush);
     procedure SetFrame(AValue: TChartPen);
-    procedure SetProportional(AValue: Boolean);
     procedure SetSelectionRect(AValue: TRect);
   strict protected
     procedure Cancel; override;
@@ -245,9 +247,6 @@ type
     property DrawingMode;
     property EscapeCancels;
     property Frame: TChartPen read FFrame write SetFrame;
-    property Proportional: Boolean
-      read GetProportional write SetProportional stored false default false;
-      deprecated;
     property RatioLimit: TZoomRatioLimit
       read FRatioLimit write FRatioLimit default zrlNone;
     property RestoreExtentOn: TRestoreExtentOnSet
@@ -317,7 +316,9 @@ type
     FOrigin: TPoint;
     FPrev: TPoint;
   strict protected
+    procedure Activate; override;
     procedure Cancel; override;
+    procedure Deactivate; override;
   public
     constructor Create(AOwner: TComponent); override;
     procedure MouseDown(APoint: TPoint); override;
@@ -385,7 +386,6 @@ type
       FGraphPos: TDoublePoint;
       FIndex: Integer;
       FSeries: TBasicChartSeries;
-
       procedure SetGraphPos(const ANewPos: TDoublePoint);
     public
       procedure Assign(ASource: TPointRef);
@@ -400,6 +400,7 @@ type
     FDistanceMode: TChartDistanceMode;
     FGrabRadius: Integer;
     FMouseInsideOnly: Boolean;
+    FTargets: TNearestPointTargets;
     function GetAffectedSeries: String; inline;
     function GetIsSeriesAffected(AIndex: Integer): Boolean; inline;
     procedure SetAffectedSeries(AValue: String); inline;
@@ -407,10 +408,14 @@ type
   strict protected
     FNearestGraphPoint: TDoublePoint;
     FPointIndex: Integer;
+    FXIndex: Integer;
+    FYIndex: Integer;
     FSeries: TBasicChartSeries;
     procedure FindNearestPoint(APoint: TPoint);
     property MouseInsideOnly: Boolean
       read FMouseInsideOnly write FMouseInsideOnly default false;
+    property Targets: TNearestPointTargets
+      read FTargets write FTargets default [nptPoint, nptXList, nptYList, nptCustom];
   public
     constructor Create(AOwner: TComponent); override;
   public
@@ -419,6 +424,8 @@ type
     property NearestGraphPoint: TDoublePoint read FNearestGraphPoint;
     property PointIndex: Integer read FPointIndex;
     property Series: TBasicChartSeries read FSeries;
+    property XIndex: Integer read FXIndex;
+    property YIndex: Integer read FYIndex;
   published
     property AffectedSeries: String
       read GetAffectedSeries write SetAffectedSeries;
@@ -438,6 +445,8 @@ type
     FOnDrag: TDataPointDragEvent;
     FOnDragStart: TDataPointDragEvent;
     FOrigin: TDoublePoint;
+    FKeepDistance: Boolean;
+    FDistance: TDoublePoint;
   strict protected
     procedure Cancel; override;
   public
@@ -449,6 +458,8 @@ type
   published
     property ActiveCursor default crSizeAll;
     property EscapeCancels default true;
+    property KeepDistance: Boolean read FKeepDistance write FKeepDistance default false;
+    property Targets;
     property OnDrag: TDataPointDragEvent read FOnDrag write FOnDrag;
     property OnDragStart: TDataPointDragEvent
       read FOnDragStart write FOnDragStart;
@@ -465,6 +476,7 @@ type
     procedure MouseUp(APoint: TPoint); override;
   published
     property ActiveCursor;
+    property Targets;
     property OnPointClick: TChartToolEvent
       read FOnPointClick write FOnPointClick;
   end;
@@ -490,6 +502,7 @@ type
     FOnHintLocation: TChartToolHintLocationEvent;
     FPrevPointIndex: Integer;
     FPrevSeries: TBasicChartSeries;
+    FPrevYIndex: Integer;
     FUseApplicationHint: Boolean;
     FUseDefaultHintText: Boolean;
     procedure HideHint;
@@ -504,6 +517,7 @@ type
     procedure MouseUp(APoint: TPoint); override;
   published
     property ActiveCursor;
+    property Targets;
     property OnHint: TChartToolHintEvent read FOnHint write FOnHint;
     property OnHintLocation: TChartToolHintLocationEvent
       read FOnHintLocation write FOnHintLocation;
@@ -566,6 +580,7 @@ type
     property Shape: TChartCrosshairShape
       read FShape write FShape default ccsCross;
     property Size: Integer read FSize write FSize default -1;
+    property Targets;
   end;
 
   TReticuleTool = class(TChartTool)
@@ -586,7 +601,7 @@ var
 implementation
 
 uses
-  GraphMath, InterfaceBase, LCLType, LCLIntf, Math, SysUtils,
+  LResources,
   TAChartStrConsts, TACustomSeries, TAEnumerators, TAGeometry, TAMath;
 
 function InitBuiltinTools(AChart: TChart): TBasicChartToolset;
@@ -856,6 +871,9 @@ procedure TChartTool.PrepareDrawingModePen(
 begin
   ADrawer.SetXor(EffectiveDrawingMode = tdmXor);
   ADrawer.Pen := APen;
+  if (APen is TChartPen) then
+    if not TChartPen(APen).EffVisible then
+      ADrawer.SetPenParams(psClear, TChartPen(APen).Color);
 end;
 
 procedure TChartTool.ReadState(Reader: TReader);
@@ -1200,11 +1218,6 @@ begin
   ADrawer.SetTransparency(0);
 end;
 
-function TZoomDragTool.GetProportional: Boolean;
-begin
-  Result := RatioLimit = zrlProportional;
-end;
-
 procedure TZoomDragTool.MouseDown(APoint: TPoint);
 begin
   if not FChart.AllowZoom then exit;
@@ -1271,14 +1284,6 @@ end;
 procedure TZoomDragTool.SetFrame(AValue: TChartPen);
 begin
   FFrame.Assign(AValue);
-end;
-
-procedure TZoomDragTool.SetProportional(AValue: Boolean);
-begin
-  if AValue then
-    RatioLimit := zrlProportional
-  else
-    RatioLimit := zrlNone;
 end;
 
 procedure TZoomDragTool.SetSelectionRect(AValue: TRect);
@@ -1429,6 +1434,12 @@ end;
 
 { TPanDragTool }
 
+procedure TPanDragTool.Activate;
+begin
+  inherited;
+  FChart.LockClipRect;
+end;
+
 procedure TPanDragTool.Cancel;
 begin
   if not IsActive then exit;
@@ -1440,6 +1451,12 @@ constructor TPanDragTool.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   FDirections := PAN_DIRECTIONS_ALL;
+end;
+
+procedure TPanDragtool.Deactivate;
+begin
+  inherited;
+  FChart.UnlockClipRect;
 end;
 
 procedure TPanDragTool.MouseDown(APoint: TPoint);
@@ -1597,6 +1614,8 @@ begin
   FAffectedSeries.Init;
   SetPropDefaults(Self, ['GrabRadius']);
   FPointIndex := -1;
+  FYIndex := 0;
+  FTargets := [nptPoint, nptXList, nptYList, nptCustom];  // check all targets
 end;
 
 procedure TDataPointTool.FindNearestPoint(APoint: TPoint);
@@ -1607,9 +1626,13 @@ procedure TDataPointTool.FindNearestPoint(APoint: TPoint);
     p: TDoublePoint;
     ext: TDoubleRect;
   begin
+    if ASeries.SpecialPointPos then
+      exit(true);
+
     r := ASeries.GetGraphBounds;
     ext := FChart.CurrentExtent;
-    if not RectIntersectsRect(r, ext) then exit(false);
+    if not RectIntersectsRect(r, ext) then
+      exit(false);
 
     if FMouseInsideOnly then begin
       p := FChart.ImageToGraph(APoint);
@@ -1646,6 +1669,7 @@ begin
   p.FPoint := APoint;
   p.FRadius := GrabRadius;
   p.FOptimizeX := DistanceMode <> cdmOnlyY;
+  p.FTargets := Targets;
   best.FDist := MaxInt;
   for s in CustomSeries(FChart, FAffectedSeries.AsBooleans(FChart.SeriesCount)) do
     if
@@ -1658,6 +1682,8 @@ begin
   if best.FDist = MaxInt then exit;
   FSeries := bestS;
   FPointIndex := best.FIndex;
+  FXIndex := best.FXIndex;
+  FYIndex := best.FYIndex;
   FNearestGraphPoint := FChart.ImageToGraph(best.FImg);
 end;
 
@@ -1706,8 +1732,10 @@ begin
   FindNearestPoint(APoint);
   if FSeries = nil then exit;
   FOrigin := NearestGraphPoint;
+  FSeries.DragOrigin := APoint;
+  p := FChart.ImageToGraph(APoint);
+  FDistance := p - FOrigin;
   if Assigned(OnDragStart) then begin
-    p := FChart.ImageToGraph(APoint);
     OnDragStart(Self, p);
     if Toolset.FIsHandled then exit;
   end;
@@ -1725,7 +1753,9 @@ begin
     OnDrag(Self, p);
     if Toolset.FIsHandled then exit;
   end;
-  FSeries.MovePoint(FPointIndex, p);
+  if FKeepDistance then p := p - FDistance;
+//  FSeries.MovePoint(FPointIndex, p);
+  FSeries.MovePointEx(FPointIndex, FXIndex, FYIndex, p);
   Handled;
 end;
 
@@ -1752,7 +1782,7 @@ procedure TDataPointClickTool.MouseUp(APoint: TPoint);
 begin
   if
     Assigned(OnPointClick) and (FSeries <> nil) and
-    (PointDist(APoint, FMouseDownPoint) <= Sqr(GrabRadius))
+    (FSeries.SpecialPointPos or (PointDist(APoint, FMouseDownPoint) <= Sqr(GrabRadius)))
   then
     OnPointClick(Self, FMouseDownPoint);
   FSeries := nil;
@@ -1806,7 +1836,7 @@ procedure TDataPointHintTool.MouseMove(APoint: TPoint);
 
   function GetHintText: String;
   begin
-    if UseDefaultHintText then begin
+    if UseDefaultHintText and (PointIndex > -1) then begin
       if Series is TChartSeries then
         Result := (Series as TChartSeries).FormattedMark(PointIndex)
       else
@@ -1828,12 +1858,15 @@ begin
     HideHint;
     exit;
   end;
-  if (FPrevSeries = Series) and (FPrevPointIndex = PointIndex) then
+  if (FPrevSeries = Series) and (FPrevPointIndex = PointIndex) and
+     (FPrevYIndex = YIndex)
+  then
     exit;
   if FPrevSeries = nil then
     SetCursor;
   FPrevSeries := Series;
   FPrevPointIndex := PointIndex;
+  FPrevYIndex := YIndex;
   h := GetHintText;
   APoint := FChart.ClientToScreen(APoint);
   if Assigned(OnHintPosition) then
@@ -1937,8 +1970,11 @@ end;
 procedure TDataPointCrosshairTool.DoDraw;
 var
   p: TPoint;
+  ps: TFPPenStyle;
 begin
-  FChart.Drawer.Pen := CrosshairPen;
+  if not CrosshairPen.Visible then
+    ps := CrosshairPen.Style;
+  PrepareDrawingModePen(FChart.Drawer, CrosshairPen);
   p := FChart.GraphToImage(Position);
   if Shape in [ccsVertical, ccsCross] then
     if Size < 0 then
@@ -1950,6 +1986,8 @@ begin
       FChart.DrawLineHoriz(FChart.Drawer, p.Y)
     else
       FChart.Drawer.Line(p - Point(Size, 0), p + Point(Size, 0));
+  if not CrosshairPen.Visible then
+    FChart.Drawer.SetPenParams(ps, CrosshairPen.Color);
   inherited;
 end;
 
@@ -1985,9 +2023,17 @@ begin
   if EffectiveDrawingMode = tdmXor then begin
     FChart.Drawer.SetXor(true);
     DoDraw;
-    FChart.Drawer.SetXor(false);
+    if Assigned(FChart) then FChart.Drawer.SetXor(false);
   end;
 end;
+
+procedure SkipObsoleteProperties;
+const
+  PROPORTIONAL_NOTE = 'Obsolete, use TZoomDragTool.RatioLimit=zlrProportional instead';
+begin
+  RegisterPropertyToSkip(TZoomDragTool, 'Proportional', PROPORTIONAL_NOTE, '');
+end;
+
 
 initialization
 
@@ -2005,6 +2051,8 @@ initialization
   RegisterChartToolClass(TDataPointHintTool, @rsDataPointHint);
   RegisterChartToolClass(TDataPointCrosshairTool, @rsDataPointCrosshair);
   RegisterChartToolClass(TUserDefinedTool, @rsUserDefinedTool);
+
+  SkipObsoleteProperties;
 
 finalization
 

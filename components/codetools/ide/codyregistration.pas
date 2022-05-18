@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,10 +30,16 @@ unit CodyRegistration;
 interface
 
 uses
-  Classes, SysUtils, LazUTF8, LResources, LCLProc, Controls, Forms,
-  MenuIntf, IDEWindowIntf, SrcEditorIntf, IDEOptionsIntf, ProjectIntf,
-  IDECommands, NewIDEWndDlg,
-  CodeToolManager,
+  Classes, SysUtils,
+  // LazUtils
+  LazUTF8,
+  // LCL
+  LResources, LCLProc, Controls, Forms,
+  // IdeIntf
+  MenuIntf, IDEWindowIntf, SrcEditorIntf, IDEOptionsIntf, IDEOptEditorIntf,
+  ProjectIntf, IDECommands,
+  // CodeTools
+  NewIDEWndDlg, CodeToolManager,
   CodyStrConsts, CodyUtils, CodyCtrls, CodyOpts,
   PPUListDlg, AddAssignMethodDlg, AddWithBlockDlg, CodyFindOverloads,
   {$IFDEF EnableCodyExperiments}
@@ -130,6 +136,10 @@ begin
   // add call inherited
   CreateSourceCommand(CmdCatCodeTools,'InsertCallInherited',
     crsInsertCallInherited,nil,@InsertCallInherited);
+
+  // insert int64 ID
+  CreateSourceCommand(CmdCatCodeTools,'InsertInt64ID',
+    crsInsertInt64IdYYYYDDMMhhnnss, nil, @InsertInt64ID);
 
   // Show unit / identifier dictionary
   InitUnitDictionary;

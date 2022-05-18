@@ -1,4 +1,4 @@
-{ $Id: win32wsextdlgs.pp 50522 2015-11-28 23:18:25Z bart $}
+{ $Id: win32wsextdlgs.pp 51799 2016-03-02 06:41:52Z ondrej $}
 {
  *****************************************************************************
  *                             Win32WSExtDlgs.pp                             * 
@@ -143,16 +143,8 @@ begin
      not (ofOldStyleDialog in TPreviewFileDialog(ACommonDialog).Options) then
     with OFN^ do
     begin
-      if UnicodeEnabledOS then
-      begin
-        lpTemplateName := AllocMem(Length(ResName) * 2 + 2);
-        Move(PChar(ResName)^, lpTemplateName^, Length(ResName) * 2);
-      end
-      else
-      begin
-        lpTemplateName := AllocMem(Length(ResName) + 1);
-        Move(PChar(AnsiString(ResName))^, lpTemplateName^, Length(ResName));
-      end;
+      lpTemplateName := AllocMem(Length(ResName) * 2 + 2);
+      Move(PChar(ResName)^, lpTemplateName^, Length(ResName) * 2);
       Flags := Flags or OFN_ENABLETEMPLATE;
       lpfnHook := LPOFNHOOKPROC(@OpenPictureDialogCallBack);
     end;
@@ -166,7 +158,6 @@ var
   fos: FILEOPENDIALOGOPTIONS;
 begin
   Result := inherited CreateHandle(ACommonDialog);
-  //if (WindowsVersion >= wvVista) and ThemeServices.ThemesEnabled then
   if CanUseVistaDialogs(TOpenDialog(ACommonDialog)) then
   begin
     Dialog := IFileOpenDialog(Result);
@@ -209,7 +200,6 @@ var
   fos: FILEOPENDIALOGOPTIONS;
 begin
   Result := inherited CreateHandle(ACommonDialog);
-  //if (WindowsVersion >= wvVista) and ThemeServices.ThemesEnabled then
   if CanUseVistaDialogs(TOpenDialog(ACommonDialog)) then
   begin
     Dialog := IFileSaveDialog(Result);

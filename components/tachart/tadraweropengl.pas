@@ -4,21 +4,31 @@
   for details about the license.
  *****************************************************************************
 
-  Authors: Alexander Klenin
+  Authors: Alexander Klenin, Werner Pamler
 
+  Notes:
+  - This unit is not "used" by the TAChart package. In order to find it the
+    unit should be copied to the project folder or specified with its path
+    in the uses clause (see demo project).
+
+  - If define CHARTGL_USE_LAZFREETYPE is activated in the package options then
+    the LazFreeType library is used for rendering text. If not, the GLUT library
+    is used instead. Note that GLUT is not available on every system.
 }
+
 unit TADrawerOpenGL;
 
 {$H+}
 
 interface
 
+{$DEFINE CHARTGL_USE_LAZFREETYPE}
+
 uses
-  Classes, FPCanvas, FPImage,
+  Classes, SysUtils, FPImage, FPCanvas,
   TAChartUtils, TADrawUtils;
 
 type
-
   { TOpenGLDrawer }
 
   TOpenGLDrawer = class(TBasicDrawer, IChartDrawer)
@@ -28,6 +38,10 @@ type
     FPenColor: TFPColor;
     FPenStyle: TFPPenStyle;
     FPenWidth: Integer;
+    FFontName: String;
+    FFontSize: Integer;
+    FFontStyle: TChartFontStyles;
+    FFontAngle: Double;  // in degrees
     FPos: TPoint;
     procedure ChartGLColor(AColor: TFPColor);
     procedure ChartGLPenStyle(APenStyle: TFPPenStyle);
@@ -37,10 +51,10 @@ type
     procedure SetFont(AFont: TFPCustomFont);
     procedure SetPen(APen: TFPCustomPen);
   strict protected
-    function GetFontAngle: Double; override;
     function SimpleTextExtent(const AText: String): TPoint; override;
     procedure SimpleTextOut(AX, AY: Integer; const AText: String); override;
   public
+    constructor Create;
     procedure AddToFontOrientation(ADelta: Integer);
     procedure ClippingStart;
     procedure ClippingStart(const AClipRect: TRect);
@@ -48,6 +62,11 @@ type
     procedure Ellipse(AX1, AY1, AX2, AY2: Integer);
     procedure FillRect(AX1, AY1, AX2, AY2: Integer);
     function GetBrushColor: TChartColor;
+    function GetFontAngle: Double; override;
+    function GetFontColor: TFPColor; override;
+    function GetFontName: String; override;
+    function GetFontSize: Integer; override;
+    function GetFontStyle: TChartFontStyles; override;
     procedure Line(AX1, AY1, AX2, AY2: Integer);
     procedure Line(const AP1, AP2: TPoint);
     procedure LineTo(AX, AY: Integer); override;
@@ -71,17 +90,47 @@ type
     procedure SetTransparency(ATransparency: TChartTransparency);
   end;
 
+
 implementation
 
 uses
-  GL, GLu, Glut,
+  GL, GLu, FileUtil,
+  Math,
+ {$IFDEF CHARTGL_USE_LAZFREETYPE}
+  EasyLazFreeType, TAOpenGL, TAFonts,
+ {$ELSE}
+  Glut,
+ {$ENDIF}
   TAGeometry;
+
 
 { TOpenGLDrawer }
 
+constructor TOpenGLDrawer.Create;
+{$IFDEF CHARTGL_USE_LAZFREETYPE}
+begin
+  inherited;
+  InitFonts;
+  if GLFreeTypeHelper = nil then
+    GLFreeTypeHelper := TGLFreeTypeHelper.Create;
+end;
+{$ELSE}
+var
+  CmdCount : Integer;
+  Cmd : Array of Pchar;
+  I: Integer;
+begin
+  CmdCount := Paramcount+1;
+  SetLength(Cmd,CmdCount);
+  for I := 0 to CmdCount - 1 do
+     Cmd[I] := PChar(ParamStr(I));
+  glutInit (@CmdCount,@Cmd);
+end;
+{$ENDIF}
+
 procedure TOpenGLDrawer.AddToFontOrientation(ADelta: Integer);
 begin
-  Unused(ADelta);
+  FFontAngle := FFontAngle + ADelta / ORIENTATION_UNITS_PER_DEG;
 end;
 
 procedure TOpenGLDrawer.ChartGLColor(AColor: TFPColor);
@@ -170,7 +219,31 @@ end;
 
 function TOpenGLDrawer.GetFontAngle: Double;
 begin
+  {$IFDEF CHARTGL_USE_LAZFREETYPE}
+  Result := DegToRad(FFontAngle);
+  {$ELSE}
   Result := 0.0;
+  {$ENDIF}
+end;
+
+function TOpenGLDrawer.GetFontColor: TFPColor;
+begin
+  Result := FFontColor;
+end;
+
+function TOpenGLDrawer.GetFontName: String;
+begin
+  Result := FFontName;
+end;
+
+function TOpenGLDrawer.GetFontSize: Integer;
+begin
+  Result := IFThen(FFontSize = 0, DEFAULT_FONT_SIZE, FFontSize);
+end;
+
+function TOpenGLDrawer.GetFontStyle: TChartFontStyles;
+begin
+  Result := FFontStyle;
 end;
 
 procedure TOpenGLDrawer.InternalPolyline(
@@ -313,7 +386,21 @@ end;
 
 procedure TOpenGLDrawer.SetFont(AFont: TFPCustomFont);
 begin
+  FFontName := AFont.Name;
+  if SameText(FFontName, 'default') then FFontName := 'Arial';
+  FFontSize := IfThen(AFont.Size = 0, DEFAULT_FONT_SIZE, AFont.Size);
+  FFontStyle := [];
+  if AFont.Bold then Include(FFontStyle, cfsBold);
+  if AFont.Italic then Include(FFontStyle, cfsItalic);
+  if AFont.Underline then Include(FFontStyle, cfsUnderline);
+  if AFont.Strikethrough then Include(FFontStyle, cfsStrikeout);
   FFontColor := AFont.FPColor;
+
+ {$IFDEF CHARTGL_USE_LAZFREETYPE}
+  FFontAngle := FGetFontOrientationFunc(AFont) / ORIENTATION_UNITS_PER_DEG;
+  GLFreeTypeHelper.SetFont(FFontName, FFontSize,
+    AFont.Bold, AFont.Italic, AFont.Underline, AFont.Strikethrough);
+ {$ENDIF}
 end;
 
 procedure TOpenGLDrawer.SetPen(APen: TFPCustomPen);
@@ -343,6 +430,29 @@ begin
     glDisable(GL_BLEND);
 end;
 
+{$IFDEF CHARTGL_USE_LAZFREETYPE}
+
+function TOpenGLDrawer.SimpleTextExtent(const AText: String): TPoint;
+begin
+  GLFreeTypeHelper.TextExtent(AText, Result.X, Result.Y);
+end;
+
+procedure TOpenGLDrawer.SimpleTextOut(AX, AY: Integer; const AText: String);
+begin
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+  ChartGLColor(FFontColor);
+  glMatrixMode(GL_MODELVIEW);
+  glPushMatrix;
+  glTranslatef(AX, AY, 0);
+  glRotatef(-FFontAngle, 0, 0, 1);
+  GLFreeTypeHelper.RenderText(AText, [ftaLeft, ftaTop]);
+  glPopMatrix;
+end;
+
+{$ELSE}
+
 function TOpenGLDrawer.SimpleTextExtent(const AText: String): TPoint;
 const
   F_WIDTH = 8;
@@ -363,6 +473,14 @@ begin
   for i := 1 to Length(AText) do
     glutBitmapCharacter(GLUT_BITMAP_8_BY_13, Ord(AText[i]));
 end;
+{$ENDIF}
+
+initialization
+
+finalization
+ {$IFDEF CHARTGL_USE_LAZFREETYPE}
+  FreeAndNil(GLFreeTypeHelper);
+ {$ENDIF}
 
 end.
 

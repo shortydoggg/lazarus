@@ -18,8 +18,11 @@ unit TreeViewPropEdit;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Buttons,
-  PropEdits, Componenteditors, StdCtrls, ComCtrls, ObjInspStrConsts, ExtCtrls;
+  Classes, SysUtils,
+  // LCL
+  Forms, Dialogs, Buttons, Controls, StdCtrls, ComCtrls,
+  // IdeIntf
+  PropEdits, Componenteditors, ObjInspStrConsts, IDEImagesIntf, IDEWindowIntf;
 
 type
 
@@ -52,6 +55,7 @@ type
     TreeView1: TTreeView;
     procedure BtnNewItemClick(Sender: TObject);
     procedure Edit1Change(Sender: TObject);
+    procedure FormClose(Sender: TObject; var {%H-}CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
     procedure MoveUpBtnClick(Sender: TObject);
     procedure MoveDownBtnClick(Sender: TObject);
@@ -62,9 +66,9 @@ type
     procedure btnSaveClick(Sender: TObject);
     procedure edtIndexStateEditingDone(Sender: TObject);
   private
-    FTreeView: TTreeView;
+    FTreeView: TCustomTreeView;
     FModified: Boolean;
-    procedure LoadFromTree(ATreeView: TTreeView);
+    procedure LoadFromTree(ATreeView: TCustomTreeView);
     procedure SaveToTree;
     procedure UpdateEnabledStates;
   public
@@ -91,7 +95,7 @@ implementation
 
 {$R *.lfm}
 
-function EditTreeView(ATreeView: TTreeView):boolean;
+function EditTreeView(ATreeView: TCustomTreeView):boolean;
 var
   TreeViewItemsEditorForm: TTreeViewItemsEditorForm;
 begin
@@ -107,6 +111,39 @@ begin
 end;
 
 { TTreeViewItemsEditorForm }
+
+procedure TTreeViewItemsEditorForm.FormCreate(Sender: TObject);
+begin
+  Caption := sccsTrEdtCaption;
+
+  GroupBox1.Caption := sccsTrEdtGrpLCaption;
+  BtnNewItem.Caption := sccsTrEdtNewItem;
+  BtnNewSubItem.Caption := sccsTrEdtNewSubItem;
+  BtnDelete.Caption := sccsTrEdtDelete;
+  BtnLoad.Caption := sccsTrEdtLoad;
+  BtnSave.Caption := sccsTrEdtSave;
+  BtnApply.Caption := sccsTrEdtApply;
+  IDEImages.AssignImage(MoveUpBtn, 'arrow_up');
+  IDEImages.AssignImage(MoveDownBtn, 'arrow_down');
+  MoveUpBtn.Hint:=rscdMoveUp;
+  MoveDownBtn.Hint:=rscdMoveDown;
+
+  GroupBox2.Caption := sccsTrEdtGrpRCaption;
+  LabelText.Caption := sccsTrEdtLabelText;
+  LabelImageIndex.Caption := sccsTrEdtLabelImageIndex;
+  LabelSelectedIndex.Caption := sccsTrEdtLabelSelIndex;
+  LabelStateIndex.Caption := sccsTrEdtLabelStateIndex;
+
+  OpenDialog1.Title := sccsTrEdtOpenDialog;
+  SaveDialog1.Title := sccsTrEdtSaveDialog;
+  IDEDialogLayoutList.ApplyLayout(Self);
+end;
+
+procedure TTreeViewItemsEditorForm.FormClose(Sender: TObject;
+  var CloseAction: TCloseAction);
+begin
+  IDEDialogLayoutList.SaveLayout(Self);
+end;
 
 procedure TTreeViewItemsEditorForm.BtnNewItemClick(Sender: TObject);
 var
@@ -128,32 +165,6 @@ procedure TTreeViewItemsEditorForm.Edit1Change(Sender: TObject);
 begin
   if Assigned(TreeView1.Selected) then
     TreeView1.Selected.Text := edtText.Text;
-end;
-
-procedure TTreeViewItemsEditorForm.FormCreate(Sender: TObject);
-begin
-  Caption := sccsTrEdtCaption;
-
-  GroupBox1.Caption := sccsTrEdtGrpLCaption;
-  BtnNewItem.Caption := sccsTrEdtNewItem;
-  BtnNewSubItem.Caption := sccsTrEdtNewSubItem;
-  BtnDelete.Caption := sccsTrEdtDelete;
-  BtnLoad.Caption := sccsTrEdtLoad;
-  BtnSave.Caption := sccsTrEdtSave;
-  BtnApply.Caption := sccsTrEdtApply;
-  MoveUpBtn.LoadGlyphFromResourceName(HInstance, 'arrow_up');
-  MoveDownBtn.LoadGlyphFromResourceName(HInstance, 'arrow_down');
-  MoveUpBtn.Hint:=rscdMoveUp;
-  MoveDownBtn.Hint:=rscdMoveDown;
-
-  GroupBox2.Caption := sccsTrEdtGrpRCaption;
-  LabelText.Caption := sccsTrEdtLabelText;
-  LabelImageIndex.Caption := sccsTrEdtLabelImageIndex;
-  LabelSelectedIndex.Caption := sccsTrEdtLabelSelIndex;
-  LabelStateIndex.Caption := sccsTrEdtLabelStateIndex;
-  
-  OpenDialog1.Title := sccsTrEdtOpenDialog;
-  SaveDialog1.Title := sccsTrEdtSaveDialog;
 end;
 
 procedure TTreeViewItemsEditorForm.MoveUpBtnClick(Sender: TObject);
@@ -241,7 +252,7 @@ begin
   end;
 end;
 
-procedure TTreeViewItemsEditorForm.LoadFromTree(ATreeView: TTreeView);
+procedure TTreeViewItemsEditorForm.LoadFromTree(ATreeView: TCustomTreeView);
 begin
   FTreeView := ATreeView;
   if Assigned(ATreeView) then
@@ -277,7 +288,7 @@ end;
 
 procedure TTreeViewItemsProperty.Edit;
 begin
-  if EditTreeView(GetComponent(0) as TTreeView) then
+  if EditTreeView(GetComponent(0) as TCustomTreeView) then
     Modified;
 end;
 
@@ -294,7 +305,7 @@ begin
   If Index = 0 then
   begin
     GetHook(Hook);
-    if EditTreeView(GetComponent as TTreeView) then
+    if EditTreeView(GetComponent as TCustomTreeView) then
       if Assigned(Hook) then
         Hook.Modified(Self);
   end;

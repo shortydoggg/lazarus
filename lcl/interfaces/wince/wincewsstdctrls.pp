@@ -27,11 +27,11 @@ uses
   // Compatibility
   {$ifdef Win32}win32compat,{$endif}
   // RTL, FCL, LCL
-  SysUtils, LCLType, Classes, StdCtrls, Controls, Graphics, Forms, WinCEProc,
+  SysUtils, LCLType, Classes, StdCtrls, Controls, Graphics, Forms, LCLProc,
   InterfaceBase, LMessages, LCLMessageGlue, LazUTF8, LazUtf8Classes,
   // Widgetset
   WSControls, WSStdCtrls, WSLCLClasses, WinCEInt, WinCEWSControls, WinCEExtra,
-  WSProc;
+  WSProc, WinCEProc;
 
 type
 
@@ -83,7 +83,6 @@ type
     class procedure SetSelLength(const ACustomComboBox: TCustomComboBox; NewLength: integer); override;
     class procedure SetItemIndex(const ACustomComboBox: TCustomComboBox; NewIndex: integer); override;
     class procedure SetMaxLength(const ACustomComboBox: TCustomComboBox; NewLength: integer); override;
-    class procedure SetReadOnly(const ACustomComboBox: TCustomComboBox; NewReadOnly: boolean); override;
     class procedure SetStyle(const ACustomComboBox: TCustomComboBox; NewStyle: TComboBoxStyle); override;
     class procedure SetText(const AWinControl: TWinControl; const AText: string); override;
     
@@ -330,7 +329,7 @@ const
 
 
 function ScrollBarWindowProc(Window: HWnd; Msg: UInt; WParam: Windows.WParam;
-    LParam: Windows.LParam): LResult; {$ifdef Win32}stdcall;{$else}cdecl;{$endif}
+    LParam: Windows.LParam): LResult; {$ifdef win32}stdcall;{$else}cdecl;{$endif}
 begin
   case Msg of
     WM_PAINT,
@@ -413,11 +412,11 @@ begin
   // customization of Params
   with Params do
   begin
+    SubClassWndProc := @GroupBoxPanelWindowProc;
     pClassName := @ButtonClsName;
     WindowTitle := StrCaption;
   end;
   // create window
-  Params.SubClassWndProc := @GroupBoxPanelWindowProc;
   FinishCreateWindow(AWinControl, Params, false);
   Result := Params.Window;
 end;
@@ -640,15 +639,13 @@ const
     CBS_DROPDOWN,
     0 {CBS_SIMPLE},
     CBS_DROPDOWNLIST,
-    0 {CBS_OWNERDRAWFIXED},
-    0 {CBS_OWNERDRAWVARIABLE}
+    0 or CBS_DROPDOWNLIST {CBS_OWNERDRAWFIXED},
+    0 or CBS_DROPDOWNLIST {CBS_OWNERDRAWVARIABLE},
+    0 or CBS_DROPDOWN {CBS_OWNERDRAWFIXED},
+    0 or CBS_DROPDOWN {CBS_OWNERDRAWVARIABLE}
     );
-  ComboBoxReadOnlyStyles: array[boolean] of dword = (
-    CBS_DROPDOWN, CBS_DROPDOWNLIST);
 begin
   Result := ComboBoxStyles[AComboBox.Style];
-  if AComboBox.Style in [csOwnerDrawFixed, csOwnerDrawVariable] then
-    Result := Result or ComboBoxReadOnlyStyles[AComboBox.ReadOnly];
 end;
 
 class function TWinCEWSCustomComboBox.CreateHandle(const AWinControl: TWinControl;
@@ -802,12 +799,6 @@ begin
   GetWindowInfo(winhandle)^.MaxLength := NewLength;
 end;
 
-class procedure TWinCEWSCustomComboBox.SetReadOnly(const ACustomComboBox: TCustomComboBox;
-  NewReadOnly: boolean);
-begin
-  RecreateWnd(ACustomComboBox);
-end;
-
 class procedure TWinCEWSCustomComboBox.SetText(const AWinControl: TWinControl; const AText: string);
 var
   Handle: HWND;
@@ -817,10 +808,7 @@ begin
   Handle := AWinControl.Handle;
   pwAText := UTF8Decode(AText);
 
-  if TCustomComboBox(AWinControl).ReadOnly then
-    Windows.SendMessageW(Handle, CB_SELECTSTRING, WPARAM(-1), LPARAM(PWideChar(pwAText)))
-  else
-    Windows.SendMessageW(Handle, WM_SETTEXT, 0, LPARAM(PWideChar(pwAText)));
+  Windows.SendMessageW(Handle, WM_SETTEXT, 0, LPARAM(PWideChar(pwAText)));
 end;
 
 class function  TWinCEWSCustomComboBox.GetItems(const ACustomComboBox: TCustomComboBox): TStrings;
@@ -1034,11 +1022,13 @@ class procedure TWinCEWSCustomEdit.GetPreferredSize(
   const AWinControl: TWinControl; var PreferredWidth, PreferredHeight: integer;
   WithThemeSpace: Boolean);
 begin
-  if MeasureText(AWinControl, AWinControl.Caption, PreferredWidth, PreferredHeight) then
+  if MeasureText(AWinControl, 'Fj', PreferredWidth, PreferredHeight) then
   begin
-    Inc(PreferredWidth, 5);
-    Inc(PreferredHeight, 5);
+    PreferredWidth := 0;
+    if TCustomEdit(AWinControl).BorderStyle <> bsNone then
+      Inc(PreferredHeight, 5);
   end;
+  {$ifdef VerboseSizeMsg}DebugLn(Format('[TWinCEWSCustomEdit.GetPreferredSize] %s: CX %d CY %d',[AWinControl.Name, PreferredWidth, PreferredHeight]));{$endif}
 end;
 
 { TWinCEWSCustomMemo }

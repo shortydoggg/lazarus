@@ -33,8 +33,11 @@ uses
   {$IFDEF Windows}
   Windows,
   {$ENDIF}
-  Classes, SysUtils, Types, RtlConsts, FPCAdds, TypInfo, FileUtil, DynQueue,
-  LCLProc, LCLStrConsts, LazConfigStorage, LazUTF8, LazUTF8Classes;
+  Classes, SysUtils, Types, RtlConsts, TypInfo, variants,
+  // LCL
+  LCLProc, LCLStrConsts,
+  // LazUtils
+  LazConfigStorage, FPCAdds, DynQueue, LazUTF8, LazUTF8Classes, LazLoggerBase;
 
 {$DEFINE UseLRS}
 {$DEFINE UseRES}
@@ -295,6 +298,7 @@ type
     procedure WriteString(const Value: String); override;
     procedure WriteWideString(const Value: WideString); override;
     procedure WriteUnicodeString(const Value: UnicodeString); override;
+    procedure WriteVariant(const Value: Variant); override;
 
     property WriteEmptyInheritedChilds: boolean read FWriteEmptyInheritedChilds write FWriteEmptyInheritedChilds;
     property Writer: TWriter read FWriter write FWriter;
@@ -370,8 +374,8 @@ type
     procedure HandleAlphaNum;
     procedure HandleNumber;
     procedure HandleHexNumber;
-    function HandleQuotedString : string;
-    function HandleDecimalString(var IsWideString: Boolean): string;
+    function HandleQuotedString: string;
+    function HandleDecimalString: string;
     procedure HandleString;
     procedure HandleMinus;
     procedure HandleUnknown;
@@ -1356,7 +1360,7 @@ begin
   if Length(Result) > 0 then
     LFMStream.Read(Result[1],length(Result));
   LFMStream.Position:=0;
-  if (Result='') or (not IsValidIdent(Result)) then
+  if not IsValidIdent(Result) then
     Result:='';
 end;
 
@@ -2496,15 +2500,15 @@ procedure LRSObjectBinaryToText(Input, Output: TStream);
           end;
         vaSingle: begin
             ASingle:=ReadLRSSingle(Input);
-            OutLn(FloatToStr(ASingle));
+            OutLn(FloatToStr(ASingle) + 's');
           end;
         vaDate: begin
             ADate:=TDateTime(ReadLRSDouble(Input));
-            OutLn(FloatToStr(ADate));
+            OutLn(FloatToStr(ADate) + 'd');
           end;
         vaCurrency: begin
             ACurrency:=ReadLRSCurrency(Input);
-            OutLn(FloatToStr(ACurrency));
+            OutLn(FloatToStr(ACurrency * 10000) + 'c');
           end;
         vaWString,vaUString: begin
             AWideString:=ReadLRSWideString(Input);
@@ -2804,9 +2808,26 @@ var
         end;
       toFloat:
         begin
-          Output.WriteByte(Ord(vaExtended));
           flt := Parser.TokenFloat;
-          WriteLRSExtended(Output,flt);
+          case parser.FloatType of
+            's': begin
+              Output.WriteByte(Ord(vaSingle));
+              WriteLRSSingle(Output,flt);
+            end;
+            'd': begin
+              Output.WriteByte(Ord(vaDate));
+              WriteLRSDouble(Output,flt);
+            end;
+            'c': begin
+              Output.WriteByte(Ord(vaCurrency));
+              WriteLRSCurrency(Output,flt/10000);
+            end;
+            else
+            begin
+              Output.WriteByte(Ord(vaExtended));
+              WriteLRSExtended(Output,flt);
+            end;
+          end;
           ParserNextToken;
         end;
       toString:
@@ -4977,6 +4998,30 @@ begin
   WriteWideStringContent(Value);
 end;
 
+procedure TLRSObjectWriter.WriteVariant(const Value: Variant);
+begin
+  case VarType(Value) of
+    varnull:
+      WriteValue(vaNull);
+    varsmallint, varinteger, varshortint, varint64, varbyte, varword, varlongword, varqword:
+      WriteInteger(Value);
+    varsingle:
+      WriteSingle(Value);
+    vardouble:
+      WriteFloat(Value);
+    vardate:
+      WriteDate(Value);
+    varcurrency:
+      WriteCurrency(Value);
+    varolestr, varstring:
+      WriteString(Value);
+    varboolean:
+      WriteBoolean(Value);
+    else
+      WriteValue(vaNil);
+  end;
+end;
+
 { TLRPositionLinks }
 
 function TLRPositionLinks.GetLFM(Index: integer): Int64;
@@ -5583,8 +5628,9 @@ begin
   end;
 end;
 
-function TUTF8Parser.HandleDecimalString(var IsWideString: Boolean): string;
-var i : integer;
+function TUTF8Parser.HandleDecimalString: string;
+var
+  i: integer;
 begin
   Result:='';
   inc(fPos);
@@ -5597,13 +5643,7 @@ begin
   end;
   if not TryStrToInt(Result,i) then
     i:=0;
-  if i > 255 then begin
-    Result:=UnicodeToUTF8(i); // widestring
-    IsWideString:=true;
-  end else if i > 127 then
-    Result:=SysToUTF8(chr(i)) // windows codepage
-  else
-    Result:=chr(i); // ascii, does not happen
+  Result:=UnicodeToUTF8(i); // widestring
 end;
 
 procedure TUTF8Parser.HandleString;
@@ -5615,12 +5655,15 @@ begin
   while true do begin
     case fBuf[fPos] of
       '''' : fLastTokenStr:=fLastTokenStr+HandleQuotedString;
-      '#'  : fLastTokenStr:=fLastTokenStr+HandleDecimalString(IsWideString);
+      '#'  : begin
+               fLastTokenStr:=fLastTokenStr+HandleDecimalString;
+               IsWideString:=true;
+             end;
       else break;
     end;
   end;
   if IsWideString then
-    fToken:=toWString
+    fToken:=Classes.toWString
   else
     fToken:=Classes.toString;
 end;

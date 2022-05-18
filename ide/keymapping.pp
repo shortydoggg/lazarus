@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -32,9 +32,17 @@ unit KeyMapping;
 interface
 
 uses
-  Classes, SysUtils, contnrs, Forms, LCLType, LCLProc, AvgLvlTree, Laz2_XMLCfg,
+  Classes, SysUtils, contnrs, Laz_AVL_Tree,
+  // LCL
+  Forms, LCLType, LCLProc,
+  // LazUtils
+  Laz2_XMLCfg,
+  // SynEdit
   SynEditKeyCmds, SynPluginTemplateEdit, SynPluginSyncroEdit, SynPluginMultiCaret,
-  IDECommands, LazarusIDEStrConsts, Debugger;
+  // IdeIntf
+  IDECommands,
+  // IDE
+  LazarusIDEStrConsts, Debugger;
 
 type
   TKeyMapScheme = (
@@ -42,6 +50,7 @@ type
     kmsClassic,
     kmsMacOSXApple,
     kmsMacOSXLaz,
+    kmsDefaultToMac,
     kmsCustom
     );
 
@@ -51,6 +60,7 @@ const
     'Classic',
     'MacOSXApple',
     'MacOSXLaz',
+    'WindowsToMacOSX',
     'Custom'
     );
 
@@ -94,7 +104,7 @@ type
                        NewKey1B: word; NewShift1B: TShiftState);
     procedure MapShortcut(AScheme: TKeyMapScheme);
     procedure GetDefaultKeyForCommand;
-    procedure GetDefaultKeyForWindowsScheme;
+    procedure GetDefaultKeyForWindowsScheme(AUseMetaKey: boolean=false);
     procedure GetDefaultKeyForClassicScheme;
     procedure GetDefaultKeyForMacOSXScheme;
     procedure GetDefaultKeyForMacOSXLazScheme;
@@ -153,8 +163,8 @@ type
     fRelations: TFPList;    // list of TKeyCommandRelation
     fCategories: TFPList;   // list of TKeyCommandCategory
     fExtToolCount: integer;
-    fLoadedKeyCommands: TAvgLvlTree; // tree of TLoadedKeyCommand sorted for name
-    fCmdRelCache: TAvgLvlTree; // cache for TKeyCommandRelation sorted for command
+    fLoadedKeyCommands: TAvlTree; // tree of TLoadedKeyCommand sorted for name
+    fCmdRelCache: TAvlTree; // cache for TKeyCommandRelation sorted for command
     function AddRelation(CmdRel: TKeyCommandRelation): Integer;
     function GetRelation(Index: integer): TKeyCommandRelation;
     function GetRelationCount: integer;
@@ -180,6 +190,8 @@ type
     function FindCommandByName(const CommandName: string): TIDECommand; override;
     function FindCommandsByShortCut(const ShortCutMask: TIDEShortCut;
       IDEWindowClass: TCustomFormClass = nil): TFPList; override;
+    function RemoveShortCut(ShortCutMask: TIDEShortCut;
+      IDEWindowClass: TCustomFormClass = nil): Integer; override;
     function TranslateKey(Key: word; Shift: TShiftState;
       IDEWindowClass: TCustomFormClass; UseLastKey: boolean = true): word;
     function IndexOf(ARelation: TKeyCommandRelation): integer;
@@ -327,6 +339,8 @@ begin
     ecWordEndRight            : Result:= srkmecWordEndRight;
     ecHalfWordLeft            : Result:= srkmecHalfWordLeft;
     ecHalfWordRight           : Result:= srkmecHalfWordRight;
+    ecSmartWordLeft           : Result:= srkmecSmartWordLeft;
+    ecSmartWordRight          : Result:= srkmecSmartWordRight;
     ecLineStart               : Result:= srkmecLineStart;
     ecLineEnd                 : Result:= srkmecLineEnd;
     ecPageUp                  : Result:= srkmecPageUp;
@@ -349,10 +363,12 @@ begin
     ecSelDown                 : Result:= srkmecSelDown;
     ecSelWordLeft             : Result:= srkmecSelWordLeft;
     ecSelWordRight            : Result:= srkmecSelWordRight;
-    ecSelWordEndLeft          : Result:= srkmecWordEndLeft;
-    ecSelWordEndRight         : Result:= srkmecWordEndRight;
-    ecSelHalfWordLeft         : Result:= srkmecHalfWordLeft;
-    ecSelHalfWordRight        : Result:= srkmecHalfWordRight;
+    ecSelWordEndLeft          : Result:= srkmecSelWordEndLeft;
+    ecSelWordEndRight         : Result:= srkmecSelWordEndRight;
+    ecSelHalfWordLeft         : Result:= srkmecSelHalfWordLeft;
+    ecSelHalfWordRight        : Result:= srkmecSelHalfWordRight;
+    ecSelSmartWordLeft        : Result:= srkmecSelSmartWordLeft;
+    ecSelSmartWordRight       : Result:= srkmecSelSmartWordRight;
     ecSelLineStart            : Result:= srkmecSelLineStart;
     ecSelLineEnd              : Result:= srkmecSelLineEnd;
     ecSelPageUp               : Result:= srkmecSelPageUp;
@@ -398,6 +414,7 @@ begin
     ecCut                     : Result:= srkmecCut;
     ecCopy                    : Result:= srkmecCopy;
     ecPaste                   : Result:= srkmecPaste;
+    ecMultiPaste              : Result:= srkmecMultiPaste;
     ecScrollUp                : Result:= srkmecScrollUp;
     ecScrollDown              : Result:= srkmecScrollDown;
     ecScrollLeft              : Result:= srkmecScrollLeft;
@@ -425,7 +442,8 @@ begin
     ecSetMarker9              : Result:= Format(srkmecSetMarker,[cmd-ecSetMarker0]);
     ecToggleMarker0 ..
     ecToggleMarker9           : Result:= Format(srkmecToggleMarker,[cmd-ecToggleMarker0]);
-
+    ecGotoBookmarks           : Result:= uemGotoBookmarks;
+    ecToggleBookmarks         : Result:= uemToggleBookmarks;
     ecBlockSetBegin   : Result := srkmecBlockSetBegin;
     ecBlockSetEnd     : Result := srkmecBlockSetEnd;
     ecBlockToggleHide : Result := srkmecBlockToggleHide;
@@ -490,6 +508,7 @@ begin
     ecNewUnit                 : Result:= lisMenuNewUnit;
     ecNewForm                 : Result:= lisMenuNewForm;
     ecOpen                    : Result:= lisMenuOpen;
+    ecOpenUnit                : Result:= lisMenuOpenUnit;
     ecRevert                  : Result:= lisMenuRevert;
     ecSave                    : Result:= lisSave;
     ecSaveAs                  : Result:= lisMenuSaveAs;
@@ -600,7 +619,8 @@ begin
 
     // codetools
     ecWordCompletion          : Result:= srkmecWordCompletion;
-    ecCompleteCode            : Result:= srkmecCompleteCode;
+    ecCompleteCode            : Result:= lisMenuCompleteCode;
+    ecCompleteCodeInteractive : Result:= lisMenuCompleteCodeInteractive;
     ecIdentCompletion         : Result:= dlgedidcomlet;
     ecShowCodeContext         : Result:= srkmecShowCodeContext;
     ecExtractProc             : Result:= srkmecExtractProc;
@@ -633,6 +653,7 @@ begin
     ecCloseProject            : Result:= lisMenuCloseProject;
     ecSaveProject             : Result:= lisMenuSaveProject;
     ecSaveProjectAs           : Result:= lisMenuSaveProjectAs;
+    ecProjectResaveFormsWithI18n: Result:= lisMenuResaveFormsWithI18n;
     ecPublishProject          : Result:= lisMenuPublishProject;
     ecProjectInspector        : Result:= lisMenuProjectInspector;
     ecAddCurUnitToProj        : Result:= lisMenuAddToProject;
@@ -650,6 +671,7 @@ begin
     ecCleanUpAndBuild         : Result:= srkmecCleanUpAndBuild;
     ecBuildManyModes          : Result:= srkmecBuildManyModes;
     ecAbortBuild              : Result:= srkmecAbortBuild;
+    ecRunWithoutDebugging     : Result:= srkmecRunWithoutDebugging;
     ecRun                     : Result:= srkmecRun;
     ecPause                   : Result:= srkmecPause;
     ecShowExecutionPoint      : Result:= srkmecShowExecutionPoint;
@@ -864,6 +886,7 @@ begin
     0: Result := KeyStroke1;
     1: Result := KeyStroke2;
     2: Result := KeyStroke3;
+    else Result := Nil;
   end;
 end;
 
@@ -914,6 +937,7 @@ begin
     kmsClassic: GetDefaultKeyForClassicScheme;
     kmsMacOSXApple: GetDefaultKeyForMacOSXScheme;
     kmsMacOSXLaz: GetDefaultKeyForMacOSXLazScheme;
+    kmsDefaultToMac: GetDefaultKeyForWindowsScheme(true);
     kmsCustom: ;
   end;
 end;
@@ -930,35 +954,42 @@ end;
 
 procedure TKeyCommandRelation.GetDefaultKeyForCommand;
 begin
-  {$IFDEF LCLCarbon}
+  {$IFDEF Darwin}
   GetDefaultKeyForMacOSXScheme;
   {$ELSE}
   GetDefaultKeyForWindowsScheme;
   {$ENDIF}
 end;
 
-procedure TKeyCommandRelation.GetDefaultKeyForWindowsScheme;
+procedure TKeyCommandRelation.GetDefaultKeyForWindowsScheme(AUseMetaKey: boolean=false);
+var
+  XCtrl: TShiftStateEnum;
 begin
+  if AUseMetaKey then
+    XCtrl:=ssMeta
+  else
+    XCtrl:=ssCtrl;
+
   case Command of
   // moving
   ecLeft:                SetSingle(VK_LEFT,[]);
   ecRight:               SetSingle(VK_RIGHT,[]);
   ecUp:                  SetSingle(VK_UP,[]);
   ecDown:                SetSingle(VK_DOWN,[]);
-  ecWordLeft:            SetSingle(VK_LEFT,[ssCtrl]);
-  ecWordRight:           SetSingle(VK_RIGHT,[ssCtrl]); // WS c
+  ecWordLeft:            SetSingle(VK_LEFT,[XCtrl]);
+  ecWordRight:           SetSingle(VK_RIGHT,[XCtrl]); // WS c
   ecLineStart:           SetSingle(VK_HOME,[]);
   ecLineEnd:             SetSingle(VK_END,[]);
-  ecPageUp:              SetSingle(VK_PRIOR,[]); // ,VK_R,[SSCtrl],VK_UNKNOWN,[]);
-  ecPageDown:            SetSingle(VK_NEXT,[]); // ,VK_W,[SSCtrl],VK_UNKNOWN,[]);
+  ecPageUp:              SetSingle(VK_PRIOR,[]); // ,VK_R,[XCtrl],VK_UNKNOWN,[]);
+  ecPageDown:            SetSingle(VK_NEXT,[]); // ,VK_W,[XCtrl],VK_UNKNOWN,[]);
   ecPageLeft:            SetSingle(VK_UNKNOWN,[]);
   ecPageRight:           SetSingle(VK_UNKNOWN,[]);
-  ecPageTop:             SetSingle(VK_PRIOR,[ssCtrl]);
-  ecPageBottom:          SetSingle(VK_NEXT,[ssCtrl]);
-  ecEditorTop:           SetSingle(VK_HOME,[ssCtrl]);
-  ecEditorBottom:        SetSingle(VK_END,[ssCtrl]);
-  ecScrollUp:            SetSingle(VK_UP,[ssCtrl]);
-  ecScrollDown:          SetSingle(VK_DOWN,[ssCtrl]);
+  ecPageTop:             SetSingle(VK_PRIOR,[XCtrl]);
+  ecPageBottom:          SetSingle(VK_NEXT,[XCtrl]);
+  ecEditorTop:           SetSingle(VK_HOME,[XCtrl]);
+  ecEditorBottom:        SetSingle(VK_END,[XCtrl]);
+  ecScrollUp:            SetSingle(VK_UP,[XCtrl]);
+  ecScrollDown:          SetSingle(VK_DOWN,[XCtrl]);
   ecScrollLeft:          SetSingle(VK_UNKNOWN,[]);
   ecScrollRight:         SetSingle(VK_UNKNOWN,[]);
 
@@ -967,52 +998,53 @@ begin
   ecSelRight:            SetSingle(VK_RIGHT,[ssShift]);
   ecSelUp:               SetSingle(VK_UP,[ssShift]);
   ecSelDown:             SetSingle(VK_DOWN,[ssShift]);
-  ecCopy:                SetSingle(VK_C,[ssCtrl],         VK_Insert,[ssCtrl]);
-  ecCut:                 SetSingle(VK_X,[ssCtrl],         VK_Delete,[ssShift]);
-  ecPaste:               SetSingle(VK_V,[ssCtrl],         VK_Insert,[ssShift]);
+  ecCopy:                SetSingle(VK_C,[XCtrl],         VK_Insert,[XCtrl]);
+  ecCut:                 SetSingle(VK_X,[XCtrl],         VK_Delete,[ssShift]);
+  ecPaste:               SetSingle(VK_V,[XCtrl],         VK_Insert,[ssShift]);
+  ecMultiPaste:          SetSingle(VK_UNKNOWN,[]);
   ecNormalSelect:        SetSingle(VK_UNKNOWN,[]);
   ecColumnSelect:        SetSingle(VK_UNKNOWN,[]);
   ecLineSelect:          SetSingle(VK_UNKNOWN,[]);
-  ecSelWordLeft:         SetSingle(VK_LEFT,[ssCtrl,ssShift]);
-  ecSelWordRight:        SetSingle(VK_RIGHT,[ssCtrl,ssShift]);
+  ecSelWordLeft:         SetSingle(VK_LEFT,[XCtrl,ssShift]);
+  ecSelWordRight:        SetSingle(VK_RIGHT,[XCtrl,ssShift]);
   ecSelLineStart:        SetSingle(VK_HOME,[ssShift]);
   ecSelLineEnd:          SetSingle(VK_END,[ssShift]);
-  ecSelPageTop:          SetSingle(VK_PRIOR,[ssShift,ssCtrl]);
-  ecSelPageBottom:       SetSingle(VK_NEXT,[ssShift,ssCtrl]);
-  ecSelEditorTop:        SetSingle(VK_HOME,[ssShift,ssCtrl]);
-  ecSelEditorBottom:     SetSingle(VK_END,[ssShift,ssCtrl]);
-  ecSelectAll:           SetSingle(VK_A,[ssCtrl]);
+  ecSelPageTop:          SetSingle(VK_PRIOR,[ssShift,XCtrl]);
+  ecSelPageBottom:       SetSingle(VK_NEXT,[ssShift,XCtrl]);
+  ecSelEditorTop:        SetSingle(VK_HOME,[ssShift,XCtrl]);
+  ecSelEditorBottom:     SetSingle(VK_END,[ssShift,XCtrl]);
+  ecSelectAll:           SetSingle(VK_A,[XCtrl]);
   ecSelectToBrace:       SetSingle(VK_UNKNOWN,[]);
   ecSelectCodeBlock:     SetSingle(VK_UNKNOWN,[]);
-  ecSelectWord:          SetCombo(VK_K,[SSCtrl],VK_T,[]);
-  ecSelectLine:          SetCombo(VK_K,[SSCtrl],VK_L,[]);
+  ecSelectWord:          SetCombo(VK_K,[XCtrl],VK_T,[]);
+  ecSelectLine:          SetCombo(VK_K,[XCtrl],VK_L,[]);
   ecSelectParagraph:     SetSingle(VK_UNKNOWN,[]);
-  ecSelectionUpperCase:  SetCombo(VK_K,[SSCtrl],VK_N,[]);
-  ecSelectionLowerCase:  SetCombo(VK_K,[SSCtrl],VK_O,[]);
-  ecSelectionSwapCase:   SetCombo(VK_K,[SSCtrl],VK_P,[]);
+  ecSelectionUpperCase:  SetCombo(VK_K,[XCtrl],VK_N,[]);
+  ecSelectionLowerCase:  SetCombo(VK_K,[XCtrl],VK_O,[]);
+  ecSelectionSwapCase:   SetCombo(VK_K,[XCtrl],VK_P,[]);
   ecSelectionTabs2Spaces:SetSingle(VK_UNKNOWN,[]);
-  ecSelectionEnclose:    SetSingle(VK_N,[ssShift,ssCtrl]);
-  ecSelectionComment:    SetSingle(VK_V,[ssShift,ssCtrl]);
-  ecSelectionUncomment:  SetSingle(VK_U,[ssShift,ssCtrl]);
-  ecToggleComment:       SetSingle(VK_OEM_2,[ssCtrl]);
-  ecSelectionEncloseIFDEF:SetSingle(VK_D,[ssShift,ssCtrl]);
+  ecSelectionEnclose:    SetSingle(VK_N,[ssShift,XCtrl]);
+  ecSelectionComment:    SetSingle(VK_V,[ssShift,XCtrl]);
+  ecSelectionUncomment:  SetSingle(VK_U,[ssShift,XCtrl]);
+  ecToggleComment:       SetSingle(VK_OEM_2,[XCtrl]);
+  ecSelectionEncloseIFDEF:SetSingle(VK_D,[ssShift,XCtrl]);
   ecSelectionSort:       SetSingle(VK_UNKNOWN,[]);
   ecSelectionBreakLines: SetSingle(VK_UNKNOWN,[]);
 
-  ecStickySelection:     SetCombo(VK_K,[ssCtrl],VK_S,[]);
-  ecStickySelectionCol:  SetCombo(VK_K,[ssCtrl],VK_S,[ssAlt]);
-  ecStickySelectionStop: SetCombo(VK_K,[ssCtrl],VK_E,[]);
+  ecStickySelection:     SetCombo(VK_K,[XCtrl],VK_S,[]);
+  ecStickySelectionCol:  SetCombo(VK_K,[XCtrl],VK_S,[ssAlt]);
+  ecStickySelectionStop: SetCombo(VK_K,[XCtrl],VK_E,[]);
 
-  ecBlockSetBegin:       SetCombo(VK_K,[ssCtrl],VK_B,[]);
-  ecBlockSetEnd:         SetCombo(VK_K,[ssCtrl],VK_K,[]);
-  ecBlockToggleHide:     SetCombo(VK_K,[ssCtrl],VK_H,[]);
+  ecBlockSetBegin:       SetCombo(VK_K,[XCtrl],VK_B,[]);
+  ecBlockSetEnd:         SetCombo(VK_K,[XCtrl],VK_K,[]);
+  ecBlockToggleHide:     SetCombo(VK_K,[XCtrl],VK_H,[]);
   ecBlockHide:           SetCombo(VK_UNKNOWN,[],VK_UNKNOWN,[]);
   ecBlockShow:           SetCombo(VK_UNKNOWN,[],VK_UNKNOWN,[]);
-  ecBlockMove:           SetCombo(VK_K,[ssCtrl],VK_V,[]);
-  ecBlockCopy:           SetCombo(VK_K,[ssCtrl],VK_C,[]);
-  ecBlockDelete:         SetCombo(VK_K,[ssCtrl],VK_Y,[]);
-  ecBlockGotoBegin:      SetCombo(VK_Q,[ssCtrl],VK_B,[]);
-  ecBlockGotoEnd:        SetCombo(VK_Q,[ssCtrl],VK_K,[]);
+  ecBlockMove:           SetCombo(VK_K,[XCtrl],VK_V,[]);
+  ecBlockCopy:           SetCombo(VK_K,[XCtrl],VK_C,[]);
+  ecBlockDelete:         SetCombo(VK_K,[XCtrl],VK_Y,[]);
+  ecBlockGotoBegin:      SetCombo(VK_Q,[XCtrl],VK_B,[]);
+  ecBlockGotoEnd:        SetCombo(VK_Q,[XCtrl],VK_K,[]);
 
   // column mode selection
   ecColSelUp:            SetSingle(VK_UP,[ssAlt,ssShift]);
@@ -1020,37 +1052,37 @@ begin
   ecColSelLeft:          SetSingle(VK_LEFT,[ssAlt,ssShift]);
   ecColSelRight:         SetSingle(VK_RIGHT,[ssAlt,ssShift]);
   ecColSelPageDown:      SetSingle(VK_NEXT,[ssAlt,ssShift]);
-  ecColSelPageBottom:    SetSingle(VK_NEXT,[ssAlt,ssShift,ssCtrl]);
+  ecColSelPageBottom:    SetSingle(VK_NEXT,[ssAlt,ssShift,XCtrl]);
   ecColSelPageUp:        SetSingle(VK_PRIOR,[ssAlt,ssShift]);
-  ecColSelPageTop:       SetSingle(VK_PRIOR,[ssAlt,ssShift,ssCtrl]);
+  ecColSelPageTop:       SetSingle(VK_PRIOR,[ssAlt,ssShift,XCtrl]);
   ecColSelLineStart:     SetSingle(VK_HOME,[ssAlt,ssShift]);
   ecColSelLineEnd:       SetSingle(VK_END,[ssAlt,ssShift]);
-  ecColSelEditorTop:     SetSingle(VK_HOME,[ssAlt,ssShift,ssCtrl]);
-  ecColSelEditorBottom:  SetSingle(VK_END,[ssAlt,ssShift,ssCtrl]);
+  ecColSelEditorTop:     SetSingle(VK_HOME,[ssAlt,ssShift,XCtrl]);
+  ecColSelEditorBottom:  SetSingle(VK_END,[ssAlt,ssShift,XCtrl]);
 
   // multi caret
-  ecPluginMultiCaretSetCaret:    SetSingle(VK_INSERT,[ssShift, ssCtrl]);
-  ecPluginMultiCaretUnsetCaret:  SetSingle(VK_DELETE,[ssShift, ssCtrl]);
-  //ecPluginMultiCaretToggleCaret: SetSingle(VK_INSERT,[ssShift, ssCtrl]);
-  ecPluginMultiCaretClearAll:    SetSingle(VK_ESCAPE,[ssShift, ssCtrl]);
+  ecPluginMultiCaretSetCaret:    SetSingle(VK_INSERT,[ssShift, XCtrl]);
+  ecPluginMultiCaretUnsetCaret:  SetSingle(VK_DELETE,[ssShift, XCtrl]);
+  //ecPluginMultiCaretToggleCaret: SetSingle(VK_INSERT,[ssShift, XCtrl]);
+  ecPluginMultiCaretClearAll:    SetSingle(VK_ESCAPE,[ssShift, ssCtrl], VK_ESCAPE,[]);
 
-  ecPluginMultiCaretModeCancelOnMove:  SetCombo(VK_Q,[ssShift, ssCtrl], VK_X,[ssShift, ssCtrl]);
-  ecPluginMultiCaretModeMoveAll:       SetCombo(VK_Q,[ssShift, ssCtrl], VK_M,[ssShift, ssCtrl]);
+  ecPluginMultiCaretModeCancelOnMove:  SetCombo(VK_Q,[ssShift, XCtrl], VK_X,[ssShift, XCtrl]);
+  ecPluginMultiCaretModeMoveAll:       SetCombo(VK_Q,[ssShift, XCtrl], VK_M,[ssShift, XCtrl]);
 
   // editing
-  ecBlockIndent:         SetCombo(VK_I,[ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_I,[]);
-  ecBlockUnindent:       SetCombo(VK_U,[ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_U,[]);
+  ecBlockIndent:         SetCombo(VK_I,[XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_I,[]);
+  ecBlockUnindent:       SetCombo(VK_U,[XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_U,[]);
   ecDeleteLastChar:      SetSingle(VK_BACK,[], VK_BACK,[ssShift]); // ctrl H used for scroll window.
   ecDeleteChar:          SetSingle(VK_DELETE,[]); // ctrl G conflicts with GO
-  ecDeleteWord:          SetSingle(VK_T,[ssCtrl], VK_DELETE,[ssCtrl]);
-  ecDeleteLastWord:      SetSingle(VK_BACK,[ssCtrl]);
+  ecDeleteWord:          SetSingle(VK_T,[XCtrl], VK_DELETE,[XCtrl]);
+  ecDeleteLastWord:      SetSingle(VK_BACK,[XCtrl]);
   ecDeleteBOL:           SetSingle(VK_UNKNOWN,[]);
-  ecDeleteEOL:           SetCombo(VK_Y,[ssCtrl,ssShift],VK_UNKNOWN,[], VK_Q,[ssCtrl],VK_Y,[]);
-  ecDeleteLine:          SetSingle(VK_Y,[ssCtrl]);
+  ecDeleteEOL:           SetCombo(VK_Y,[XCtrl,ssShift],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_Y,[]);
+  ecDeleteLine:          SetSingle(VK_Y,[XCtrl]);
   ecClearAll:            SetSingle(VK_UNKNOWN,[]);
   ecLineBreak:           SetSingle(VK_RETURN,[]);
-  ecInsertLine:          SetSingle(VK_N,[ssCtrl]);
-  ecInsertCharacter:     SetSingle(VK_M,[ssShift,ssCtrl]);
+  ecInsertLine:          SetSingle(VK_N,[XCtrl]);
+  ecInsertCharacter:     SetSingle(VK_M,[ssShift,XCtrl]);
   ecInsertGPLNotice:     SetSingle(VK_UNKNOWN,[]);
   ecInsertLGPLNotice:    SetSingle(VK_UNKNOWN,[]);
   ecInsertModifiedLGPLNotice:SetSingle(VK_UNKNOWN,[]);
@@ -1066,30 +1098,30 @@ begin
   ecInsertCVSName:       SetSingle(VK_UNKNOWN,[]);
   ecInsertCVSRevision:   SetSingle(VK_UNKNOWN,[]);
   ecInsertCVSSource:     SetSingle(VK_UNKNOWN,[]);
-  ecInsertGUID:          SetSingle(VK_G,[ssCtrl,ssShift]);
+  ecInsertGUID:          SetSingle(VK_G,[XCtrl,ssShift]);
   ecInsertFilename:      SetSingle(VK_UNKNOWN,[]);
 
   // command commands
-  ecUndo:                SetSingle(VK_Z,[ssCtrl]);
-  ecRedo:                SetSingle(VK_Z,[ssCtrl,ssShift]);
+  ecUndo:                SetSingle(VK_Z,[XCtrl]);
+  ecRedo:                SetSingle(VK_Z,[XCtrl,ssShift]);
 
   // search & replace
   ecMatchBracket:        SetSingle(VK_UNKNOWN,[]);
-  ecFind:                SetCombo(VK_F,[SSCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_F,[]);
-  ecFindNext:            SetSingle(VK_F3,[],                   VK_L,[SSCtrl]);
+  ecFind:                SetCombo(VK_F,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_F,[]);
+  ecFindNext:            SetSingle(VK_F3,[],                   VK_L,[XCtrl]);
   ecFindPrevious:        SetSingle(VK_F3,[ssShift]);
-  ecFindInFiles:         SetSingle(VK_F,[ssCtrl,ssShift]);
-  ecReplace:             SetCombo(VK_R,[SSCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_A,[]);
-  ecIncrementalFind:     SetSingle(VK_E,[SSCtrl]);
-  ecGotoLineNumber:      SetCombo(VK_G,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_G,[]);
+  ecFindInFiles:         SetSingle(VK_F,[XCtrl,ssShift]);
+  ecReplace:             SetCombo(VK_R,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_A,[]);
+  ecIncrementalFind:     SetSingle(VK_E,[XCtrl]);
+  ecGotoLineNumber:      SetCombo(VK_G,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_G,[]);
   ecFindNextWordOccurrence:SetSingle(VK_UNKNOWN,[]);
   ecFindPrevWordOccurrence:SetSingle(VK_UNKNOWN,[]);
-  ecJumpBack:            SetSingle(VK_H,[ssCtrl],VK_LEFT,[ssAlt]);
-  ecJumpForward:         SetSingle(VK_H,[ssCtrl,ssShift],VK_RIGHT,[ssAlt]);
+  ecJumpBack:            SetSingle(VK_H,[XCtrl],VK_LEFT,[ssAlt]);
+  ecJumpForward:         SetSingle(VK_H,[XCtrl,ssShift],VK_RIGHT,[ssAlt]);
   ecAddJumpPoint:        SetSingle(VK_UNKNOWN,[]);
-  ecJumpToPrevError:     SetSingle(VK_F8,[ssCtrl, ssShift]);
-  ecJumpToNextError:     SetSingle(VK_F8,[ssCtrl]);
-  ecOpenFileAtCursor:    SetSingle(VK_RETURN,[ssCtrl]);
+  ecJumpToPrevError:     SetSingle(VK_F8,[XCtrl, ssShift]);
+  ecJumpToNextError:     SetSingle(VK_F8,[XCtrl]);
+  ecOpenFileAtCursor:    SetSingle(VK_RETURN,[XCtrl]);
   ecProcedureList:       SetSingle(VK_G,[ssAlt]);
 
   // marker
@@ -1098,26 +1130,26 @@ begin
   ecClearAllBookmark:    SetSingle(VK_UNKNOWN,[]);
   ecPrevBookmark:        SetSingle(VK_UNKNOWN,[]);
   ecNextBookmark:        SetSingle(VK_UNKNOWN,[]);
-  ecGotoMarker0:         SetCombo(VK_0,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_0,[]);
-  ecGotoMarker1:         SetCombo(VK_1,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_1,[]);
-  ecGotoMarker2:         SetCombo(VK_2,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_2,[]);
-  ecGotoMarker3:         SetCombo(VK_3,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_3,[]);
-  ecGotoMarker4:         SetCombo(VK_4,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_4,[]);
-  ecGotoMarker5:         SetCombo(VK_5,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_5,[]);
-  ecGotoMarker6:         SetCombo(VK_6,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_6,[]);
-  ecGotoMarker7:         SetCombo(VK_7,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_7,[]);
-  ecGotoMarker8:         SetCombo(VK_8,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_8,[]);
-  ecGotoMarker9:         SetCombo(VK_9,[ssCtrl],VK_UNKNOWN,[], VK_Q,[SSCtrl],VK_9,[]);
-  ecToggleMarker0:       SetCombo(VK_0,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_0,[]);
-  ecToggleMarker1:       SetCombo(VK_1,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_1,[]);
-  ecToggleMarker2:       SetCombo(VK_2,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_2,[]);
-  ecToggleMarker3:       SetCombo(VK_3,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_3,[]);
-  ecToggleMarker4:       SetCombo(VK_4,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_4,[]);
-  ecToggleMarker5:       SetCombo(VK_5,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_5,[]);
-  ecToggleMarker6:       SetCombo(VK_6,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_6,[]);
-  ecToggleMarker7:       SetCombo(VK_7,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_7,[]);
-  ecToggleMarker8:       SetCombo(VK_8,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_8,[]);
-  ecToggleMarker9:       SetCombo(VK_9,[ssShift,ssCtrl],VK_UNKNOWN,[], VK_K,[SSCtrl],VK_9,[]);
+  ecGotoMarker0:         SetCombo(VK_0,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_0,[]);
+  ecGotoMarker1:         SetCombo(VK_1,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_1,[]);
+  ecGotoMarker2:         SetCombo(VK_2,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_2,[]);
+  ecGotoMarker3:         SetCombo(VK_3,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_3,[]);
+  ecGotoMarker4:         SetCombo(VK_4,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_4,[]);
+  ecGotoMarker5:         SetCombo(VK_5,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_5,[]);
+  ecGotoMarker6:         SetCombo(VK_6,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_6,[]);
+  ecGotoMarker7:         SetCombo(VK_7,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_7,[]);
+  ecGotoMarker8:         SetCombo(VK_8,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_8,[]);
+  ecGotoMarker9:         SetCombo(VK_9,[XCtrl],VK_UNKNOWN,[], VK_Q,[XCtrl],VK_9,[]);
+  ecToggleMarker0:       SetCombo(VK_0,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_0,[]);
+  ecToggleMarker1:       SetCombo(VK_1,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_1,[]);
+  ecToggleMarker2:       SetCombo(VK_2,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_2,[]);
+  ecToggleMarker3:       SetCombo(VK_3,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_3,[]);
+  ecToggleMarker4:       SetCombo(VK_4,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_4,[]);
+  ecToggleMarker5:       SetCombo(VK_5,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_5,[]);
+  ecToggleMarker6:       SetCombo(VK_6,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_6,[]);
+  ecToggleMarker7:       SetCombo(VK_7,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_7,[]);
+  ecToggleMarker8:       SetCombo(VK_8,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_8,[]);
+  ecToggleMarker9:       SetCombo(VK_9,[ssShift,XCtrl],VK_UNKNOWN,[], VK_K,[XCtrl],VK_9,[]);
   ecSetMarker0:          SetSingle(VK_UNKNOWN,[]);
   ecSetMarker1:          SetSingle(VK_UNKNOWN,[]);
   ecSetMarker2:          SetSingle(VK_UNKNOWN,[]);
@@ -1128,17 +1160,20 @@ begin
   ecSetMarker7:          SetSingle(VK_UNKNOWN,[]);
   ecSetMarker8:          SetSingle(VK_UNKNOWN,[]);
   ecSetMarker9:          SetSingle(VK_UNKNOWN,[]);
+  ecGotoBookmarks:       SetSingle(VK_B,[ssCtrl]);
+  ecToggleBookmarks:     SetSingle(VK_B,[ssCtrl,ssShift]);
 
   // codetools
-  ecAutoCompletion:      SetSingle(VK_J,[ssCtrl]);
-  ecWordCompletion:      SetSingle(VK_W,[ssCtrl]);
-  ecCompleteCode:        SetSingle(VK_C,[ssCtrl,ssShift]);
-  ecIdentCompletion:     SetSingle(VK_SPACE,[ssCtrl]);
-  ecShowCodeContext:     SetSingle(VK_SPACE,[ssCtrl,ssShift]);
+  ecAutoCompletion:      SetSingle(VK_J,[XCtrl]);
+  ecWordCompletion:      SetSingle(VK_W,[XCtrl]);
+  ecCompleteCode:        SetSingle(VK_C,[XCtrl,ssShift]);
+  ecCompleteCodeInteractive: SetSingle(VK_X,[XCtrl,ssShift]);
+  ecIdentCompletion:     SetSingle(VK_SPACE,[XCtrl]);
+  ecShowCodeContext:     SetSingle(VK_SPACE,[XCtrl,ssShift]);
   ecExtractProc:         SetSingle(VK_UNKNOWN,[]);
-  ecFindIdentifierRefs:  SetSingle(VK_I,[ssCtrl,ssShift]);
+  ecFindIdentifierRefs:  SetSingle(VK_I,[XCtrl,ssShift]);
   ecFindUsedUnitRefs:    SetSingle(VK_UNKNOWN,[]);
-  ecRenameIdentifier:    SetSingle(VK_F2,[],        VK_E,[ssShift,ssCtrl]);
+  ecRenameIdentifier:    SetSingle(VK_F2,[],        VK_E,[ssShift,XCtrl]);
   ecInvertAssignment:    SetSingle(VK_UNKNOWN,[]);
   ecSyntaxCheck:         SetSingle(VK_UNKNOWN,[]);
   ecGuessUnclosedBlock:  SetSingle(VK_UNKNOWN,[]);
@@ -1149,11 +1184,11 @@ begin
   ecConvertDelphiProject:SetSingle(VK_UNKNOWN,[]);
   ecConvertDelphiPackage:SetSingle(VK_UNKNOWN,[]);
   ecConvertEncoding:     SetSingle(VK_UNKNOWN,[]);
-  ecFindProcedureDefinition:SetSingle(VK_UP,[ssShift,SSCtrl]);
-  ecFindProcedureMethod: SetSingle(VK_DOWN,[ssShift,SSCtrl]);
+  ecFindProcedureDefinition:SetSingle(VK_UP,[ssShift,XCtrl]);
+  ecFindProcedureMethod: SetSingle(VK_DOWN,[ssShift,XCtrl]);
   ecFindDeclaration:     SetSingle(VK_UP,[ssAlt]);
-  ecFindBlockOtherEnd:   SetCombo(VK_Q,[ssCtrl],VK_O,[]);
-  ecFindBlockStart:      SetCombo(VK_Q,[ssCtrl],VK_M,[]);
+  ecFindBlockOtherEnd:   SetCombo(VK_Q,[XCtrl],VK_O,[]);
+  ecFindBlockStart:      SetCombo(VK_Q,[XCtrl],VK_M,[]);
   ecGotoIncludeDirective:SetSingle(VK_UNKNOWN,[]);
   ecShowAbstractMethods: SetSingle(VK_UNKNOWN,[]);
   ecRemoveEmptyMethods:  SetSingle(VK_UNKNOWN,[]);
@@ -1162,10 +1197,10 @@ begin
   ecFindOverloads:       SetSingle(VK_UNKNOWN,[]);
 
   // source notebook
-  ecNextEditor:          SetSingle(VK_TAB,[ssCtrl]);
-  ecPrevEditor:          SetSingle(VK_TAB,[ssShift,ssCtrl]);
-  ecPrevEditorInHistory: SetSingle(VK_OEM_3,[ssCtrl]);//~
-  ecNextEditorInHistory: SetSingle(VK_OEM_3,[ssShift,ssCtrl]);//~
+  ecNextEditor:          SetSingle(VK_TAB,[XCtrl]);
+  ecPrevEditor:          SetSingle(VK_TAB,[ssShift,XCtrl]);
+  ecPrevEditorInHistory: SetSingle(VK_OEM_3,[XCtrl]);//~
+  ecNextEditorInHistory: SetSingle(VK_OEM_3,[ssShift,XCtrl]);//~
   ecResetDebugger:       SetSingle(VK_UNKNOWN,[]);
   ecToggleBreakPoint:    SetSingle(VK_F5,[]);
   ecMoveEditorLeft:      SetSingle(VK_UNKNOWN,[]);
@@ -1215,12 +1250,13 @@ begin
   ecNew:                 SetSingle(VK_UNKNOWN,[]);
   ecNewUnit:             SetSingle(VK_UNKNOWN,[]);
   ecNewForm:             SetSingle(VK_UNKNOWN,[]);
-  ecOpen:                SetSingle(VK_O,[ssCtrl]);
+  ecOpen:                SetSingle(VK_O,[XCtrl]);
+  ecOpenUnit:            SetSingle(VK_F12,[ssAlt]);
   ecRevert:              SetSingle(VK_UNKNOWN,[]);
-  ecSave:                SetSingle(VK_S,[ssCtrl]);
+  ecSave:                SetSingle(VK_S,[XCtrl]);
   ecSaveAs:              SetSingle(VK_UNKNOWN,[]);
-  ecSaveAll:             SetSingle(VK_S,[ssCtrl,ssShift]);
-  ecClose:               SetSingle(VK_F4,[ssCtrl]);
+  ecSaveAll:             SetSingle(VK_S,[XCtrl,ssShift]);
+  ecClose:               SetSingle(VK_F4,[XCtrl]);
   ecCloseAll:            SetSingle(VK_UNKNOWN,[]);
   ecCleanDirectory:      SetSingle(VK_UNKNOWN,[]);
   ecRestart:             SetSingle(VK_UNKNOWN,[]);
@@ -1232,20 +1268,20 @@ begin
   ecToggleCodeExpl:      SetSingle(VK_UNKNOWN,[]);
   ecToggleFPDocEditor:   SetSingle(VK_UNKNOWN,[]);
   ecToggleMessages:      SetSingle(VK_UNKNOWN,[]);
-  ecViewComponents:      SetSingle(VK_P,[ssCtrl,ssAlt]);
-  ecViewJumpHistory:     SetSingle(VK_J,[ssCtrl,ssAlt]);
-  ecToggleSearchResults: SetSingle(VK_F,[ssCtrl,ssAlt]);
-  ecToggleWatches:       SetSingle(VK_W,[ssCtrl,ssAlt]);
-  ecToggleBreakPoints:   SetSingle(VK_B,[ssCtrl,ssAlt]);
-  ecToggleLocals:        SetSingle(VK_L,[ssCtrl,ssAlt],     VK_L,[ssCtrl,ssShift]);
-  ecViewPseudoTerminal: if HasConsoleSupport then SetSingle(VK_O,[ssCtrl,ssAlt]);
-  ecViewThreads:         SetSingle(VK_T,[ssCtrl,ssAlt]);
-  ecToggleCallStack:     SetSingle(VK_S,[ssCtrl,ssAlt]);
-  ecToggleRegisters:     SetSingle(VK_R,[ssCtrl,ssAlt]);
-  ecToggleAssembler:     SetSingle(VK_D,[ssCtrl,ssAlt]);
-  ecToggleDebugEvents:   SetSingle(VK_V,[ssCtrl,ssAlt]);
+  ecViewComponents:      SetSingle(VK_P,[XCtrl,ssAlt]);
+  ecViewJumpHistory:     SetSingle(VK_J,[XCtrl,ssAlt]);
+  ecToggleSearchResults: SetSingle(VK_F,[XCtrl,ssAlt]);
+  ecToggleWatches:       SetSingle(VK_W,[XCtrl,ssAlt]);
+  ecToggleBreakPoints:   SetSingle(VK_B,[XCtrl,ssAlt]);
+  ecToggleLocals:        SetSingle(VK_L,[XCtrl,ssAlt],     VK_L,[XCtrl,ssShift]);
+  ecViewPseudoTerminal: if HasConsoleSupport then SetSingle(VK_O,[XCtrl,ssAlt]);
+  ecViewThreads:         SetSingle(VK_T,[XCtrl,ssAlt]);
+  ecToggleCallStack:     SetSingle(VK_S,[XCtrl,ssAlt]);
+  ecToggleRegisters:     SetSingle(VK_R,[XCtrl,ssAlt]);
+  ecToggleAssembler:     SetSingle(VK_D,[XCtrl,ssAlt]);
+  ecToggleDebugEvents:   SetSingle(VK_V,[XCtrl,ssAlt]);
   ecToggleDebuggerOut:   SetSingle(VK_UNKNOWN,[]);
-  ecViewHistory:         SetSingle(VK_H,[ssCtrl,ssAlt]);
+  ecViewHistory:         SetSingle(VK_H,[XCtrl,ssAlt]);
   ecViewUnitDependencies:SetSingle(VK_UNKNOWN,[]);
   ecViewUnitInfo:        SetSingle(VK_UNKNOWN,[]);
   ecToggleFormUnit:      SetSingle(VK_F12,[]);
@@ -1258,27 +1294,29 @@ begin
   // project menu
   ecNewProject:          SetSingle(VK_UNKNOWN,[]);
   ecNewProjectFromFile:  SetSingle(VK_UNKNOWN,[]);
-  ecOpenProject:         SetSingle(VK_F11,[ssCtrl]);
+  ecOpenProject:         SetSingle(VK_F11,[XCtrl]);
   ecCloseProject:        SetSingle(VK_UNKNOWN,[]);
   ecSaveProject:         SetSingle(VK_UNKNOWN,[]);
   ecSaveProjectAs:       SetSingle(VK_UNKNOWN,[]);
+  ecProjectResaveFormsWithI18n: SetSingle(VK_UNKNOWN,[]);
   ecPublishProject:      SetSingle(VK_UNKNOWN,[]);
   ecProjectInspector:    SetSingle(VK_UNKNOWN,[]);
   ecAddCurUnitToProj:    SetSingle(VK_F11,[ssShift]);
   ecRemoveFromProj:      SetSingle(VK_UNKNOWN,[]);
-  ecViewProjectUnits:    SetSingle(VK_F12,[ssCtrl]);
+  ecViewProjectUnits:    SetSingle(VK_F12,[XCtrl]);
   ecViewProjectForms:    SetSingle(VK_F12,[ssShift]);
   ecViewProjectSource:   SetSingle(VK_UNKNOWN,[]);
-  ecProjectOptions:      SetSingle(VK_F11,[ssShift,ssCtrl]);
+  ecProjectOptions:      SetSingle(VK_F11,[ssShift,XCtrl]);
   ecProjectChangeBuildMode:SetSingle(VK_UNKNOWN,[]);
 
   // run menu
-  ecCompile:             SetSingle(VK_F9,[ssCtrl]);
+  ecCompile:             SetSingle(VK_F9,[XCtrl]);
   ecBuild:               SetSingle(VK_F9,[ssShift]);
   ecQuickCompile:        SetSingle(VK_UNKNOWN,[]);
   ecCleanUpAndBuild:     SetSingle(VK_UNKNOWN,[]);
   ecBuildManyModes:      SetSingle(VK_UNKNOWN,[]);
   ecAbortBuild:          SetSingle(VK_UNKNOWN,[]);
+  ecRunWithoutDebugging: SetSingle(VK_F9, [XCtrl, ssShift]);
   ecRun:                 SetSingle(VK_F9,[]);
   ecPause:               SetSingle(VK_UNKNOWN,[]);
   ecShowExecutionPoint:  SetSingle(VK_UNKNOWN,[]);
@@ -1288,15 +1326,15 @@ begin
   ecStepOverInstr:       SetSingle(VK_F8,[ssAlt]);
   ecStepOut:             SetSingle(VK_F8,[ssShift]);
   ecRunToCursor:         SetSingle(VK_F4,[]);
-  ecStopProgram:         SetSingle(VK_F2,[SSCtrl]);
+  ecStopProgram:         SetSingle(VK_F2,[XCtrl]);
   ecRemoveBreakPoint:    SetSingle(VK_UNKNOWN,[]);
   ecRunParameters:       SetSingle(VK_UNKNOWN,[]);
   ecBuildFile:           SetSingle(VK_UNKNOWN,[]);
   ecRunFile:             SetSingle(VK_UNKNOWN,[]);
   ecConfigBuildFile:     SetSingle(VK_UNKNOWN,[]);
   ecInspect:             SetSingle(VK_F5,[ssAlt]);
-  ecEvaluate:            SetSingle(VK_F7,[ssCtrl]);
-  ecAddWatch:            SetSingle(VK_F5,[ssCtrl]);
+  ecEvaluate:            SetSingle(VK_F7,[XCtrl]);
+  ecAddWatch:            SetSingle(VK_F5,[XCtrl]);
   ecAddBpSource:         SetSingle(VK_UNKNOWN,[]);
   ecAddBpAddress:        SetSingle(VK_UNKNOWN,[]);
   ecAddBpDataWatch:      SetSingle(VK_F5,[ssShift]);
@@ -1314,7 +1352,7 @@ begin
   ecConfigCustomComps:   SetSingle(VK_UNKNOWN,[]);
 
   // tools menu
-  ecEnvironmentOptions:  SetSingle(VK_O,[ssShift,ssCtrl]);
+  ecEnvironmentOptions:  SetSingle(VK_O,[ssShift,XCtrl]);
   ecRescanFPCSrcDir:     SetSingle(VK_UNKNOWN,[]);
   ecEditCodeTemplates:   SetSingle(VK_UNKNOWN,[]);
   ecCodeToolsDefinesEd:  SetSingle(VK_UNKNOWN,[]);
@@ -1327,47 +1365,48 @@ begin
   ecDiff:                SetSingle(VK_UNKNOWN,[]);
 
   // window menu
-  ecManageSourceEditors:       SetSingle(VK_W,[ssShift,ssCtrl]);
+  ecManageSourceEditors:       SetSingle(VK_W,[ssShift,XCtrl]);
 
   // help menu
   ecAboutLazarus:        SetSingle(VK_UNKNOWN,[]);
   ecOnlineHelp:          SetSingle(VK_UNKNOWN,[]);
   ecContextHelp:         SetSingle(VK_F1,[]);
-  ecEditContextHelp:     SetSingle(VK_F1,[ssShift,ssCtrl]);
+  ecEditContextHelp:     SetSingle(VK_F1,[ssShift,XCtrl]);
   ecReportingBug:        SetSingle(VK_UNKNOWN,[]);
   ecFocusHint:           SetSingle(VK_UNKNOWN,[]);
 
   // designer
-  ecDesignerCopy:        SetSingle(VK_C,[ssCtrl],   VK_Insert,[ssCtrl]);
-  ecDesignerCut:         SetSingle(VK_X,[ssCtrl],   VK_Delete,[ssShift]);
-  ecDesignerPaste:       SetSingle(VK_V,[ssCtrl],   VK_Insert,[ssShift]);
+  ecDesignerCopy:        SetSingle(VK_C,[XCtrl],   VK_Insert,[XCtrl]);
+  ecDesignerCut:         SetSingle(VK_X,[XCtrl],   VK_Delete,[ssShift]);
+  ecDesignerPaste:       SetSingle(VK_V,[XCtrl],   VK_Insert,[ssShift]);
   ecDesignerSelectParent:SetSingle(VK_ESCAPE,[]);
   ecDesignerMoveToFront: SetSingle(VK_PRIOR,[ssShift]);
   ecDesignerMoveToBack:  SetSingle(VK_NEXT,[ssShift]);
-  ecDesignerForwardOne:  SetSingle(VK_PRIOR,[ssCtrl]);
-  ecDesignerBackOne:     SetSingle(VK_NEXT,[ssCtrl]);
+  ecDesignerForwardOne:  SetSingle(VK_PRIOR,[XCtrl]);
+  ecDesignerBackOne:     SetSingle(VK_NEXT,[XCtrl]);
+  ecDesignerToggleNonVisComps: SetSingle(VK_UNKNOWN,[]);
 
   // macro
-  ecSynMacroRecord:      SetSingle(VK_R,[ssShift, ssCtrl]);
-  ecSynMacroPlay:        SetSingle(VK_P,[ssShift, ssCtrl]);
+  ecSynMacroRecord:      SetSingle(VK_R,[ssShift, XCtrl]);
+  ecSynMacroPlay:        SetSingle(VK_P,[ssShift, XCtrl]);
 
-  ecIdePTmplEdNextCell:         SetSingle(VK_RIGHT,[ssCtrl]);
+  ecIdePTmplEdNextCell:         SetSingle(VK_RIGHT,[XCtrl]);
   ecIdePTmplEdNextCellSel:      SetSingle(VK_TAB,[]);
   ecIdePTmplEdNextCellRotate:   SetSingle(VK_UNKNOWN,[]);
   ecIdePTmplEdNextCellSelRotate:SetSingle(VK_UNKNOWN,[]);
-  ecIdePTmplEdPrevCell:         SetSingle(VK_LEFT,[ssCtrl]);
+  ecIdePTmplEdPrevCell:         SetSingle(VK_LEFT,[XCtrl]);
   ecIdePTmplEdPrevCellSel:      SetSingle(VK_TAB,[ssShift]);
   ecIdePTmplEdCellHome:         SetSingle(VK_HOME,[]);
   ecIdePTmplEdCellEnd:          SetSingle(VK_END,[]);
-  ecIdePTmplEdCellSelect:       SetSingle(VK_A,[ssCtrl]);
+  ecIdePTmplEdCellSelect:       SetSingle(VK_A,[XCtrl]);
   ecIdePTmplEdFinish:           SetSingle(VK_RETURN,[]);
   ecIdePTmplEdEscape:           SetSingle(VK_ESCAPE,[]);
   // Edit template
-  ecIdePTmplEdOutNextCell:         SetSingle(VK_RIGHT,[ssCtrl]);
+  ecIdePTmplEdOutNextCell:         SetSingle(VK_RIGHT,[XCtrl]);
   ecIdePTmplEdOutNextCellSel:      SetSingle(VK_TAB,[]);
   ecIdePTmplEdOutNextCellRotate:   SetSingle(VK_UNKNOWN,[]);
   ecIdePTmplEdOutNextCellSelRotate:SetSingle(VK_UNKNOWN,[]);
-  ecIdePTmplEdOutPrevCell:         SetSingle(VK_LEFT,[ssCtrl]);
+  ecIdePTmplEdOutPrevCell:         SetSingle(VK_LEFT,[XCtrl]);
   ecIdePTmplEdOutPrevCellSel:      SetSingle(VK_TAB,[ssShift]);
   ecIdePTmplEdOutCellHome:         SetSingle(VK_UNKNOWN,[]);
   ecIdePTmplEdOutCellEnd:          SetSingle(VK_UNKNOWN,[]);
@@ -1375,25 +1414,25 @@ begin
   ecIdePTmplEdOutFinish:           SetSingle(VK_RETURN,[]);
   ecIdePTmplEdOutEscape:           SetSingle(VK_ESCAPE,[]);
   // SyncroEdit
-  ecIdePSyncroEdNextCell:       SetSingle(VK_RIGHT,[ssCtrl]);
+  ecIdePSyncroEdNextCell:       SetSingle(VK_RIGHT,[XCtrl]);
   ecIdePSyncroEdNextCellSel:    SetSingle(VK_TAB,[]);
-  ecIdePSyncroEdPrevCell:       SetSingle(VK_LEFT,[ssCtrl]);
+  ecIdePSyncroEdPrevCell:       SetSingle(VK_LEFT,[XCtrl]);
   ecIdePSyncroEdPrevCellSel:    SetSingle(VK_TAB,[ssShift]);
   ecIdePSyncroEdCellHome:       SetSingle(VK_HOME,[]);
   ecIdePSyncroEdCellEnd:        SetSingle(VK_END,[]);
-  ecIdePSyncroEdCellSelect:     SetSingle(VK_A,[ssCtrl]);
+  ecIdePSyncroEdCellSelect:     SetSingle(VK_A,[XCtrl]);
   ecIdePSyncroEdEscape:         SetSingle(VK_ESCAPE,[]);
   // SyncroEdit
-  ecIdePSyncroEdOutNextCell:       SetSingle(VK_RIGHT,[ssCtrl]);
+  ecIdePSyncroEdOutNextCell:       SetSingle(VK_RIGHT,[XCtrl]);
   ecIdePSyncroEdOutNextCellSel:    SetSingle(VK_TAB,[]);
-  ecIdePSyncroEdOutPrevCell:       SetSingle(VK_LEFT,[ssCtrl]);
+  ecIdePSyncroEdOutPrevCell:       SetSingle(VK_LEFT,[XCtrl]);
   ecIdePSyncroEdOutPrevCellSel:    SetSingle(VK_TAB,[ssShift]);
   ecIdePSyncroEdOutCellHome:       SetSingle(VK_UNKNOWN,[]);
   ecIdePSyncroEdOutCellEnd:        SetSingle(VK_UNKNOWN,[]);
   ecIdePSyncroEdOutCellSelect:     SetSingle(VK_UNKNOWN,[]);
   ecIdePSyncroEdOutEscape:         SetSingle(VK_ESCAPE,[]);
   // SyncroEdit, during selection
-  ecIdePSyncroEdSelStart:          SetSingle(VK_J,[ssCtrl]);
+  ecIdePSyncroEdSelStart:          SetSingle(VK_J,[XCtrl]);
 
   else
     begin
@@ -1439,6 +1478,7 @@ begin
   ecCopy:                SetSingle(VK_Insert,[ssCtrl]);
   ecCut:                 SetSingle(VK_Delete,[ssShift]);
   ecPaste:               SetSingle(VK_Insert,[ssShift]);
+  ecMultiPaste:          SetSingle(VK_UNKNOWN,[]);
   ecNormalSelect:        SetCombo(VK_O,[ssCtrl],VK_K,[]);
   ecColumnSelect:        SetCombo(VK_O,[ssCtrl],VK_C,[]);
   ecLineSelect:          SetCombo(VK_K,[ssCtrl],VK_L,[]);
@@ -1497,7 +1537,7 @@ begin
   ecPluginMultiCaretSetCaret:    SetSingle(VK_INSERT,[ssShift, ssCtrl]);
   ecPluginMultiCaretUnsetCaret:  SetSingle(VK_DELETE,[ssShift, ssCtrl]);
   //ecPluginMultiCaretToggleCaret: SetSingle(VK_INSERT,[ssShift, ssCtrl]);
-  ecPluginMultiCaretClearAll:    SetSingle(VK_ESCAPE,[ssShift, ssCtrl], VK_ESCAPE,[ssShift]);
+  ecPluginMultiCaretClearAll:    SetSingle(VK_ESCAPE,[ssShift, ssCtrl], VK_ESCAPE,[]);
 
   ecPluginMultiCaretModeCancelOnMove:  SetCombo(VK_Q,[ssShift, ssCtrl], VK_X,[ssShift, ssCtrl]);
   ecPluginMultiCaretModeMoveAll:       SetCombo(VK_Q,[ssShift, ssCtrl], VK_M,[ssShift, ssCtrl]);
@@ -1573,6 +1613,7 @@ begin
   ecAutoCompletion:      SetSingle(VK_J,[ssCtrl]);
   ecWordCompletion:      SetSingle(VK_W,[ssShift,ssCtrl]);
   ecCompleteCode:        SetSingle(VK_C,[ssShift,ssCtrl]);
+  ecCompleteCodeInteractive: SetSingle(VK_X,[ssCtrl,ssShift]);
   ecIdentCompletion:     SetSingle(VK_UNKNOWN,[]);
   ecShowCodeContext:     SetSingle(VK_SPACE,[ssShift,ssCtrl]);
   ecExtractProc:         SetSingle(VK_UNKNOWN,[]);
@@ -1647,12 +1688,15 @@ begin
   EcFoldCurrent:         SetSingle(VK_OEM_PLUS,[ssAlt,ssShift]);
   EcUnFoldCurrent:       SetSingle(VK_OEM_MINUS,[ssAlt,ssShift]);
   EcToggleMarkupWord:    SetSingle(VK_M,[ssAlt]);
+  ecGotoBookmarks:       SetSingle(VK_B,[ssCtrl]);
+  ecToggleBookmarks:     SetSingle(VK_B,[ssCtrl,ssShift]);
 
   // file menu
   ecNew:                 SetSingle(VK_UNKNOWN,[]);
   ecNewUnit:             SetSingle(VK_UNKNOWN,[]);
   ecNewForm:             SetSingle(VK_UNKNOWN,[]);
   ecOpen:                SetSingle(VK_F3,[]);
+  ecOpenUnit:            SetSingle(VK_F12,[ssAlt]);
   ecRevert:              SetSingle(VK_UNKNOWN,[]);
   ecSave:                SetSingle(VK_F2,[]);
   ecSaveAs:              SetSingle(VK_UNKNOWN,[]);
@@ -1696,6 +1740,7 @@ begin
   ecCloseProject:        SetSingle(VK_UNKNOWN,[]);
   ecSaveProject:         SetSingle(VK_UNKNOWN,[]);
   ecSaveProjectAs:       SetSingle(VK_UNKNOWN,[]);
+  ecProjectResaveFormsWithI18n: SetSingle(VK_UNKNOWN,[]);
   ecPublishProject:      SetSingle(VK_UNKNOWN,[]);
   ecProjectInspector:    SetSingle(VK_UNKNOWN,[]);
   ecAddCurUnitToProj:    SetSingle(VK_F11,[ssShift]);
@@ -1713,6 +1758,7 @@ begin
   ecCleanUpAndBuild:     SetSingle(VK_UNKNOWN,[]);
   ecBuildManyModes:      SetSingle(VK_UNKNOWN,[]);
   ecAbortBuild:          SetSingle(VK_UNKNOWN,[]);
+  ecRunWithoutDebugging: SetSingle(VK_F9,[ssCtrl, ssShift]);
   ecRun:                 SetSingle(VK_F9,[]);
   ecPause:               SetSingle(VK_UNKNOWN,[]);
   ecShowExecutionPoint:  SetSingle(VK_UNKNOWN,[]);
@@ -1722,7 +1768,7 @@ begin
   ecStepOverInstr:       SetSingle(VK_F8,[ssAlt]);
   ecStepOut:             SetSingle(VK_F8,[ssShift]);
   ecRunToCursor:         SetSingle(VK_F4,[]);
-  ecStopProgram:         SetSingle(VK_UNKNOWN,[]);
+  ecStopProgram:         SetSingle(VK_F2,[ssCtrl]);
   ecRemoveBreakPoint:    SetSingle(VK_UNKNOWN,[]);
   ecRunParameters:       SetSingle(VK_UNKNOWN,[]);
   ecBuildFile:           SetSingle(VK_UNKNOWN,[]);
@@ -1780,6 +1826,7 @@ begin
   ecDesignerMoveToBack:  SetSingle(VK_NEXT,[ssShift]);
   ecDesignerForwardOne:  SetSingle(VK_PRIOR,[ssCtrl]);
   ecDesignerBackOne:     SetSingle(VK_NEXT,[ssCtrl]);
+  ecDesignerToggleNonVisComps: SetSingle(VK_UNKNOWN,[]);
 
   // macro
   ecSynMacroRecord:      SetSingle(VK_R,[ssShift, ssCtrl]);
@@ -2053,6 +2100,7 @@ begin
   ecCopy:                SetSingle(VK_C,[ssMeta],    VK_Insert,[ssCtrl]);
   ecCut:                 SetSingle(VK_X,[ssMeta],    VK_Delete,[ssShift]);
   ecPaste:               SetSingle(VK_V,[ssMeta],    VK_Insert,[ssShift]);
+  ecMultiPaste:          SetSingle(VK_UNKNOWN,[]);
   ecNormalSelect:        SetSingle(VK_UNKNOWN,[]);
   ecColumnSelect:        SetSingle(VK_UNKNOWN,[]);
   ecLineSelect:          SetSingle(VK_UNKNOWN,[]);
@@ -2115,7 +2163,7 @@ begin
   ecPluginMultiCaretSetCaret:    SetSingle(VK_INSERT,[ssShift, ssCtrl]);
   ecPluginMultiCaretUnsetCaret:  SetSingle(VK_DELETE,[ssShift, ssCtrl]);
   //ecPluginMultiCaretToggleCaret: SetSingle(VK_INSERT,[ssShift, ssCtrl]);
-  ecPluginMultiCaretClearAll:    SetSingle(VK_ESCAPE,[ssShift, ssCtrl], VK_ESCAPE,[ssShift]);
+  ecPluginMultiCaretClearAll:    SetSingle(VK_ESCAPE,[ssShift, ssCtrl], VK_ESCAPE,[]);
 
   ecPluginMultiCaretModeCancelOnMove:  SetCombo(VK_Q,[ssShift, ssCtrl], VK_X,[ssShift, ssCtrl]);
   ecPluginMultiCaretModeMoveAll:       SetCombo(VK_Q,[ssShift, ssCtrl], VK_M,[ssShift, ssCtrl]);
@@ -2192,6 +2240,7 @@ begin
   ecAutoCompletion:      SetSingle(VK_J,[ssMeta]);
   ecWordCompletion:      SetSingle(VK_SPACE,[ssCtrl,ssAlt]);
   ecCompleteCode:        SetSingle(VK_C,[ssCtrl,ssShift]);
+  ecCompleteCodeInteractive: SetSingle(VK_X,[ssCtrl,ssShift]);
   ecIdentCompletion:     SetSingle(VK_SPACE,[ssCtrl]);
   ecShowCodeContext:     SetSingle(VK_SPACE,[ssCtrl,ssShift]);
   ecExtractProc:         SetSingle(VK_UNKNOWN,[]);
@@ -2267,11 +2316,15 @@ begin
   EcToggleMarkupWord:    SetSingle(VK_M,[ssMeta]);
   *)
 
+  ecGotoBookmarks:       SetSingle(VK_UNKNOWN,[]);
+  ecToggleBookmarks:     SetSingle(VK_UNKNOWN,[]);
+
   // file menu
   ecNew:                 SetSingle(VK_N,[ssMeta]);
   ecNewUnit:             SetSingle(VK_UNKNOWN,[]);
   ecNewForm:             SetSingle(VK_UNKNOWN,[]);
   ecOpen:                SetSingle(VK_O,[ssMeta]);
+  ecOpenUnit:            SetSingle(VK_F12,[ssAlt]);
   ecRevert:              SetSingle(VK_UNKNOWN,[]);
   ecSave:                SetSingle(VK_S,[ssMeta]);
   ecSaveAs:              SetSingle(VK_S,[ssMeta,ssShift]);
@@ -2318,6 +2371,7 @@ begin
   ecCloseProject:        SetSingle(VK_UNKNOWN,[]);
   ecSaveProject:         SetSingle(VK_UNKNOWN,[]);
   ecSaveProjectAs:       SetSingle(VK_UNKNOWN,[]);
+  ecProjectResaveFormsWithI18n: SetSingle(VK_UNKNOWN,[]);
   ecPublishProject:      SetSingle(VK_UNKNOWN,[]);
   ecProjectInspector:    SetSingle(VK_UNKNOWN,[]);
   ecAddCurUnitToProj:    SetSingle(VK_A,[ssAlt,ssMeta]);
@@ -2335,6 +2389,7 @@ begin
   ecCleanUpAndBuild:     SetSingle(VK_UNKNOWN,[]);
   ecBuildManyModes:      SetSingle(VK_UNKNOWN,[]);
   ecAbortBuild:          SetSingle(VK_UNKNOWN,[]);
+  ecRunWithoutDebugging: SetSingle(VK_R,[ssMeta, ssCtrl]);
   ecRun:                 SetSingle(VK_R,[ssMeta]);
   ecPause:               SetSingle(VK_UNKNOWN,[]);
   ecShowExecutionPoint:  SetSingle(VK_UNKNOWN,[]);
@@ -2401,6 +2456,7 @@ begin
   ecDesignerMoveToBack:  SetSingle(VK_NEXT,[ssShift]);
   ecDesignerForwardOne:  SetSingle(VK_PRIOR,[ssMeta]);
   ecDesignerBackOne:     SetSingle(VK_NEXT,[ssMeta]);
+  ecDesignerToggleNonVisComps: SetSingle(VK_UNKNOWN,[]);
 
   // macro
   ecSynMacroRecord:      SetSingle(VK_R,[ssShift, ssCtrl]);
@@ -2531,8 +2587,8 @@ begin
   FRelations:=TFPList.Create;
   fCategories:=TFPList.Create;
   fExtToolCount:=0;
-  fLoadedKeyCommands:=TAvgLvlTree.Create(@CompareLoadedKeyCommands);
-  fCmdRelCache:=TAvgLvlTree.Create(@CompareCmdRels);
+  fLoadedKeyCommands:=TAvlTree.Create(@CompareLoadedKeyCommands);
+  fCmdRelCache:=TAvlTree.Create(@CompareCmdRels);
 end;
 
 destructor TKeyCommandRelationList.Destroy;
@@ -2569,6 +2625,8 @@ begin
   AddDefault(C, 'Move cursor word end right', srkmecWordEndRight, ecWordEndRight);
   AddDefault(C, 'Move cursor half word left', srkmecHalfWordLeft, ecHalfWordLeft);
   AddDefault(C, 'Move cursor half word right', srkmecHalfWordRight, ecHalfWordRight);
+  AddDefault(C, 'Smart move cursor word left', srkmecSmartWordLeft, ecSmartWordLeft);
+  AddDefault(C, 'Smart move cursor word right', srkmecSmartWordRight, ecSmartWordRight);
   AddDefault(C, 'Move cursor to line start', srkmecLineStart, ecLineStart);
   AddDefault(C, 'Move cursor to text start in line', srkmecLineTextStart, ecLineTextStart);
   AddDefault(C, 'Move cursor to line end', srkmecLineEnd, ecLineEnd);
@@ -2595,6 +2653,7 @@ begin
   AddDefault(C, 'Copy selection to clipboard', srkmecCopy, ecCopy);
   AddDefault(C, 'Cut selection to clipboard', srkmecCut, ecCut);
   AddDefault(C, 'Paste clipboard to current position', srkmecPaste, ecPaste);
+  AddDefault(C, 'Multi paste clipboard to current position', srkmecMultiPaste, ecMultiPaste);
   AddDefault(C, 'Normal selection mode', srkmecNormalSelect, ecNormalSelect);
   AddDefault(C, 'Column selection mode', srkmecColumnSelect, ecColumnSelect);
   AddDefault(C, 'Line selection mode', srkmecLineSelect, ecLineSelect);
@@ -2617,6 +2676,8 @@ begin
   AddDefault(C, 'Select word end right', srkmecSelWordEndRight, ecSelWordEndRight);
   AddDefault(C, 'Select half word left', srkmecSelHalfWordLeft, ecSelHalfWordLeft);
   AddDefault(C, 'Select half word right', srkmecSelHalfWordRight, ecSelHalfWordRight);
+  AddDefault(C, 'Smart select word left', srkmecSelSmartWordLeft, ecSelSmartWordLeft);
+  AddDefault(C, 'Smart select word right', srkmecSelSmartWordRight, ecSelSmartWordRight);
   AddDefault(C, 'Select line start', lisKMSelectLineStart, ecSelLineStart);
   AddDefault(C, 'Select to text start in line', srkmecSelLineTextStart, ecSelLineTextStart);
   AddDefault(C, 'Select line end', lisKMSelectLineEnd, ecSelLineEnd);
@@ -2667,13 +2728,14 @@ begin
   AddDefault(C, 'Column Select to absolute end', srkmecColSelEditorBottom, ecColSelEditorBottom);
 
   // multi caret
-  C:=Categories[AddCategory('MultiCaret', srkmCatMultiCaret, nil)];
+  C:=Categories[AddCategory('MultiCaret', srkmCatMultiCaret, IDECmdScopeSrcEditOnly)];
   AddDefault(C, 'Add extra caret', srkmecPluginMultiCaretSetCaret, ecPluginMultiCaretSetCaret);
   AddDefault(C, 'Remove extra caret', srkmecPluginMultiCaretUnsetCaret, ecPluginMultiCaretUnsetCaret);
   AddDefault(C, 'Toggle extra caret', srkmecPluginMultiCaretToggleCaret, ecPluginMultiCaretToggleCaret);
-  AddDefault(C, 'Clear all extra carets', srkmecPluginMultiCaretClearAll, ecPluginMultiCaretClearAll);
   AddDefault(C, 'Cursor keys clear all extra carets', srkmecPluginMultiCaretModeCancelOnMove, ecPluginMultiCaretModeCancelOnMove);
   AddDefault(C, 'Cursor keys move all extra carets', srkmecPluginMultiCaretModeMoveAll, ecPluginMultiCaretModeMoveAll);
+  C:=Categories[AddCategory('MultiCaret', srkmCatMultiCaret, IDECmdScopeSrcEditOnlyMultiCaret)];
+  AddDefault(C, 'Clear all extra carets', srkmecPluginMultiCaretClearAll, ecPluginMultiCaretClearAll);
 
   // editing - without menu items in the IDE bar
   C:=Categories[AddCategory(CommandCategoryTextEditingName,srkmCatEditing,
@@ -2760,6 +2822,7 @@ begin
   AddDefault(C, 'Clear all Bookmarks', srkmecClearAllBookmark, ecClearAllBookmark);
   AddDefault(C, 'Previous Bookmark', srkmecPrevBookmark, ecPrevBookmark);
   AddDefault(C, 'Next Bookmark', srkmecNextBookmark, ecNextBookmark);
+  AddDefault(C, 'Go to Bookmark...', uemGotoBookmarks, ecGotoBookmarks);
   AddDefault(C, 'Go to marker 0', lisKMGoToMarker0, ecGotoMarker0);
   AddDefault(C, 'Go to marker 1', lisKMGoToMarker1, ecGotoMarker1);
   AddDefault(C, 'Go to marker 2', lisKMGoToMarker2, ecGotoMarker2);
@@ -2780,6 +2843,7 @@ begin
   AddDefault(C, 'Set marker 7', lisKMSetMarker7, ecSetMarker7);
   AddDefault(C, 'Set marker 8', lisKMSetMarker8, ecSetMarker8);
   AddDefault(C, 'Set marker 9', lisKMSetMarker9, ecSetMarker9);
+  AddDefault(C, 'Toggle Bookmark...', uemToggleBookmarks, ecToggleBookmarks);
   AddDefault(C, 'Toggle marker 0', lisKMToggleMarker0, ecToggleMarker0);
   AddDefault(C, 'Toggle marker 1', lisKMToggleMarker1, ecToggleMarker1);
   AddDefault(C, 'Toggle marker 2', lisKMToggleMarker2, ecToggleMarker2);
@@ -2795,7 +2859,8 @@ begin
   C:=Categories[AddCategory(CommandCategoryCodeTools,srkmCatCodeTools,IDECmdScopeSrcEditOnly)];
   AddDefault(C, 'Code template completion', srkmecAutoCompletion, ecAutoCompletion);
   AddDefault(C, 'Word completion', srkmecWordCompletion, ecWordCompletion);
-  AddDefault(C, 'Complete code', srkmecCompletecode, ecCompleteCode);
+  AddDefault(C, 'Complete code', lisMenuCompleteCode, ecCompleteCode);
+  AddDefault(C, 'Complete code (with dialog)', lisMenuCompleteCodeInteractive, ecCompleteCodeInteractive);
   AddDefault(C, 'Identifier completion', dlgEdIdComlet, ecIdentCompletion);
   AddDefault(C, 'Rename identifier', srkmecRenameIdentifier, ecRenameIdentifier);
   AddDefault(C, 'Find identifier references', srkmecFindIdentifierRefs, ecFindIdentifierRefs);
@@ -2908,7 +2973,7 @@ begin
   AddDefault(C, 'Edit Syncro (sel) Start', srkmecSynPSyncroEdStart, ecIdePSyncroEdSelStart);
 
   // source notebook - without menu items in the IDE bar
-  C:=Categories[AddCategory('SourceNotebook',srkmCatSrcNoteBook,IDECmdScopeSrcEdit)];
+  C:=Categories[AddCategory('SourceNotebook',srkmCatSrcNoteBook,IDECmdScopeSrcEditOnly)];
   AddDefault(C, 'Go to next editor', srkmecNextEditor, ecNextEditor);
   AddDefault(C, 'Go to prior editor', srkmecPrevEditor, ecPrevEditor);
   AddDefault(C, 'Go to previous editor in history', srkmecPrevEditorInHistory, ecPrevEditorInHistory);
@@ -2953,6 +3018,7 @@ begin
   AddDefault(C, 'NewUnit', lisKMNewUnit, ecNewUnit);
   AddDefault(C, 'NewForm', lisMenuNewForm, ecNewForm);
   AddDefault(C, 'Open', lisOpen, ecOpen);
+  AddDefault(C, 'OpenUnit', lisOpenUnit, ecOpenUnit);
   AddDefault(C, 'Revert', lisMenuRevert, ecRevert);
   AddDefault(C, 'Save', lisSave, ecSave);
   AddDefault(C, 'SaveAs', lisKMSaveAs, ecSaveAs);
@@ -3001,6 +3067,8 @@ begin
   AddDefault(C, 'Close project', lisKMCloseProject, ecCloseProject);
   AddDefault(C, 'Save project', lisKMSaveProject, ecSaveProject);
   AddDefault(C, 'Save project as', lisKMSaveProjectAs, ecSaveProjectAs);
+  AddDefault(C, 'Resave forms with i18n', lisMenuResaveFormsWithI18n,
+    ecProjectResaveFormsWithI18n);
   AddDefault(C, 'Publish project', lisKMPublishProject, ecPublishProject);
   AddDefault(C, 'Project Inspector', lisMenuProjectInspector, ecProjectInspector);
   AddDefault(C, 'Add editor file to Project', lisMenuAddToProject, ecAddCurUnitToProj);
@@ -3019,6 +3087,7 @@ begin
   AddDefault(C, 'Clean up and build', lisKMCleanUpAndBuild, ecCleanUpAndBuild);
   AddDefault(C, 'Build many modes', lisKMBuildManyModes, ecBuildManyModes);
   AddDefault(C, 'Abort building', lisKMAbortBuilding, ecAbortBuild);
+  AddDefault(C, 'Run without debugging', lisMenuRunWithoutDebugging, ecRunWithoutDebugging);
   AddDefault(C, 'Run program', lisKMRunProgram, ecRun);
   AddDefault(C, 'Pause program', lisKMPauseProgram, ecPause);
   AddDefault(C, 'Show execution point', n(lisMenuShowExecutionPoint), ecShowExecutionPoint);
@@ -3107,6 +3176,8 @@ begin
   AddDefault(C, 'Move component to back', lisDsgOrderMoveToBack, ecDesignerMoveToBack);
   AddDefault(C, 'Move component one forward', lisDsgOrderForwardOne, ecDesignerForwardOne);
   AddDefault(C, 'Move component one back', lisDsgOrderBackOne, ecDesignerBackOne);
+  AddDefault(C, 'Toggle showing non visual components',
+    lisDsgToggleShowingNonVisualComponents, ecDesignerToggleNonVisComps);
 
   // object inspector - without menu items in the IDE bar (at least no direct)
   C:=Categories[AddCategory('Object Inspector',lisKeyCatObjInspector,IDECmdScopeObjectInspectorOnly)];
@@ -3154,7 +3225,7 @@ end;
 function TKeyCommandRelationList.SetKeyCommandToLoadedValues(Cmd: TKeyCommandRelation
   ): TLoadedKeyCommand;
 var
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
 begin
   AVLNode:=fLoadedKeyCommands.FindKey(Pointer(Cmd.Name),@CompareNameWithLoadedKeyCommand);
   if AVLNode=nil then begin
@@ -3303,7 +3374,7 @@ var
   Shift1, Shift2: TShiftState;
   Cnt: LongInt;
   SubPath: String;
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
   LoadedKey: TLoadedKeyCommand;
 begin
   //debugln('TKeyCommandRelationList.LoadFromXMLConfig A ');
@@ -3434,7 +3505,7 @@ function TKeyCommandRelationList.SaveToXMLConfig(
 
 var a: integer;
   Name: String;
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
   LoadedKey: TLoadedKeyCommand;
   Cnt: Integer;
   SubPath: String;
@@ -3487,17 +3558,23 @@ var
   i:integer;
 begin
   Result:=nil;
-  //debugln(['TKeyCommandRelationList.Find START ',DbgSName(IDEWindowClass)]);
+  //debugln(['TKeyCommandRelationList.Find START, IDEWindowClass=',DbgSName(IDEWindowClass),
+  //         ', Key1=', Key.Key1, ', Key2=', Key.Key2]);
   //if IDEWindowClass=nil then RaiseGDBException('');
   if Key.Key1=VK_UNKNOWN then exit;
   for i:=0 to FRelations.Count-1 do
     with Relations[i] do begin
       //if Command=ecDesignerSelectParent then
-      //  debugln('TKeyCommandRelationList.Find A ',Category.Scope.Name,' ',dbgsName(IDEWindowClass),' ',dbgs(IDECmdScopeDesignerOnly.IDEWindowClassCount),' ',dbgsName(IDECmdScopeDesignerOnly.IDEWindowClasses[0]));
-      //debugln(['TKeyCommandRelationList.Find ',Name,' HasScope=',Category.Scope<>nil,' ',KeyAndShiftStateToEditorKeyString(ShortcutA),' ',KeyAndShiftStateToEditorKeyString(Key),' ',(Category.Scope<>nil)      and (not Category.Scope.HasIDEWindowClass(IDEWindowClass))]);
+      //  debugln('TKeyCommandRelationList.Find A ',Category.Scope.Name,' ',dbgsName(IDEWindowClass),
+      //          ' ',dbgs(IDECmdScopeDesignerOnly.IDEWindowClassCount),
+      //          ' ',dbgsName(IDECmdScopeDesignerOnly.IDEWindowClasses[0]));
+      //debugln(['TKeyCommandRelationList.Find ',Name,' HasScope=',Category.Scope<>nil,
+      //         ' ',KeyAndShiftStateToEditorKeyString(ShortcutA),
+      //         ' ',KeyAndShiftStateToEditorKeyString(Key),
+      //         ' ',(Category.Scope<>nil) and (not Category.Scope.HasIDEWindowClass(IDEWindowClass))]);
       //if (Category.Scope<>nil) and (Category.Scope.IDEWindowClassCount>0) then
-      //  debugln(['TKeyCommandRelationList.Find ',DbgSName(Category.Scope.IDEWindowClasses[0]),' ',DbgSName(IDEWindowClass)]);
-
+      //  debugln(['TKeyCommandRelationList.Find ',DbgSName(Category.Scope.IDEWindowClasses[0]),
+      //           ' ',DbgSName(IDEWindowClass)]);
       if (Category.Scope<>nil)
       and (not Category.Scope.HasIDEWindowClass(IDEWindowClass)) then continue;
       if ((ShortcutA.Key1=Key.Key1) and (ShortcutA.Shift1=Key.Shift1) and
@@ -3518,7 +3595,7 @@ end;
 
 function TKeyCommandRelationList.FindByCommand(ACommand: word): TKeyCommandRelation;
 var
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
 begin
   AVLNode:=fCmdRelCache.FindKey({%H-}Pointer(PtrUInt(ACommand)), @CompareCmdWithCmdRel);
   if Assigned(AVLNode) then
@@ -3557,7 +3634,7 @@ end;
 procedure TKeyCommandRelationList.AssignTo(ASynEditKeyStrokes: TSynEditKeyStrokes;
   IDEWindowClass: TCustomFormClass; ACommandOffsetOffset: Integer = 0);
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   ccid: Word;
   CategoryMatches: Boolean;
   ToBeFreedKeys: TObjectList;
@@ -3639,7 +3716,7 @@ var
 var
   i, j: integer;
   Key: TSynEditKeyStroke;
-  KeyStrokesByCmds: TAvgLvlTree;
+  KeyStrokesByCmds: TAvlTree;
   KeyList: TKeyStrokeList;
   CurRelation: TKeyCommandRelation;
   POUsed: Boolean;
@@ -3653,7 +3730,7 @@ begin
      But the IDE requires unique values.
      The unique values in the plugin (+ KeyOffset) can not be used, as they are not at fixed numbers
   *)
-  KeyStrokesByCmds:=TAvgLvlTree.Create(@CompareCmd);
+  KeyStrokesByCmds:=TAvlTree.Create(@CompareCmd);
   ToBeFreedKeys:=TObjectList.Create;
   POUsed:=ASynEditKeyStrokes.UsePluginOffset;
   SequentialWithCtrl:=TFPList.Create;
@@ -3903,6 +3980,42 @@ begin
       if KeyFits(ShortcutA) or KeyFits(ShortcutB) then
         Result.Add(Relations[i]);
     end;
+end;
+
+function TKeyCommandRelationList.RemoveShortCut(ShortCutMask: TIDEShortCut;
+  IDEWindowClass: TCustomFormClass): Integer;
+// Removes the given shortcut from every command. Returns the number deleted.
+// An IDE extension package may want to use a reserved shortcut and remove it.
+
+  procedure CheckAndRemove(pShortCut: PIDEShortCut);
+  begin
+    if ((pShortCut^.Key1=ShortCutMask.Key1) and (pShortCut^.Shift1=ShortCutMask.Shift1))
+      and ((pShortCut^.Key2=VK_UNKNOWN)
+        or (ShortCutMask.Key2=VK_UNKNOWN)
+        or ((pShortCut^.Key2=ShortCutMask.Key2) and (pShortCut^.Shift2=ShortCutMask.Shift2))) then
+    begin
+      pShortCut^.Key1:=VK_UNKNOWN;
+      pShortCut^.Shift1:=[];
+      pShortCut^.Key2:=VK_UNKNOWN;
+      pShortCut^.Shift2:=[];
+      Inc(Result);
+    end;
+  end;
+
+var
+  i: Integer;
+begin
+  Result:=0;
+  if ShortCutMask.Key1=VK_UNKNOWN then
+    Exit;
+  for i:=0 to FRelations.Count-1 do
+    with Relations[i] do
+      if (IDEWindowClass=nil) or (Category.Scope=nil)
+      or Category.Scope.HasIDEWindowClass(IDEWindowClass) then
+      begin
+        CheckAndRemove(@ShortcutA);
+        CheckAndRemove(@ShortcutB);
+      end;
 end;
 
 function TKeyCommandRelationList.TranslateKey(Key: word; Shift: TShiftState;

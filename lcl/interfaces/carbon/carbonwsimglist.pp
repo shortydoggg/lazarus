@@ -1,4 +1,4 @@
-{ $Id: carbonwsimglist.pp 41387 2013-05-24 18:30:06Z juha $}
+{ $Id: carbonwsimglist.pp 57164 2018-01-27 18:12:35Z ondrej $}
 {
  *****************************************************************************
  *                              CarbonWSImgList.pp                           * 
@@ -33,9 +33,9 @@ uses
 
 type
 
-  { TCarbonWSCustomImageList }
+  { TCarbonWSCustomImageListResolution }
 
-  TCarbonWSCustomImageList = class(TWSCustomImageList)
+  TCarbonWSCustomImageListResolution = class(TWSCustomImageListResolution)
   published
   end;
 
@@ -50,6 +50,6 @@ initialization
 // To improve speed, register only classes
 // which actually implement something
 ////////////////////////////////////////////////////
-//  RegisterWSComponent(TCustomImageList, TCarbonWSCustomImageList);
+//  RegisterWSComponent(TCustomImageListResolution, TCarbonWSCustomImageListResolution);
 ////////////////////////////////////////////////////
 end.

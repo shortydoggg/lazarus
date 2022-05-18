@@ -1,4 +1,4 @@
-{ $Id: qtwsextctrls.pp 51517 2016-02-06 14:18:07Z maxim $}
+{ $Id: qtwsextctrls.pp 58122 2018-06-04 12:17:30Z zeljko $}
 {
  *****************************************************************************
  *                              QtWSExtCtrls.pp                              * 
@@ -210,7 +210,7 @@ begin
   QtGroupBox := TQtGroupBox.Create(AWinControl, AParams);
   QtGroupBox.GroupBoxType := tgbtRadioGroup;
 
-  Str := GetUtf8String(AWinControl.Caption);
+  Str := AWinControl{%H-}.Caption;
   QGroupBox_setTitle(QGroupBoxH(QtGroupBox.Widget), @Str);
 
   QtGroupBox.AttachEvents;
@@ -236,7 +236,7 @@ begin
   QtGroupBox := TQtGroupBox.Create(AWinControl, AParams);
   QtGroupBox.GroupBoxType := tgbtCheckGroup;
 
-  Str := GetUtf8String(AWinControl.Caption);
+  Str := AWinControl{%H-}.Caption;
   QGroupBox_setTitle(QGroupBoxH(QtGroupBox.Widget), @Str);
 
   QtGroupBox.AttachEvents;
@@ -281,7 +281,7 @@ begin
 
   ATrayIcon.Handle := HWND(SystemTrayIcon);
 
-  Text := UTF8ToUTF16(ATrayIcon.Hint);
+  Text := ATrayIcon{%H-}.Hint;
   SystemTrayIcon.setToolTip(Text);
 
   if Assigned(ATrayIcon.PopUpMenu) then
@@ -315,7 +315,7 @@ begin
       SystemTrayIcon.setIcon(TQtImage(ATrayIcon.Icon.BitmapHandle).AsIcon)
     else
     // normal
-    if (ATrayIcon.Icon.HandleAllocated) then
+    if (ATrayIcon.Icon.Handle <> 0) then
       SystemTrayIcon.setIcon(TQtIcon(ATrayIcon.Icon.Handle).Handle)
     else
     begin
@@ -330,13 +330,12 @@ begin
     QIcon_destroy(AIcon);
   end;
 
-
   { PopUpMenu }
   if Assigned(ATrayIcon.PopUpMenu) then
     if TQtMenu(ATrayIcon.PopUpMenu.Handle).Widget <> nil then
       SystemTrayIcon.setContextMenu(QMenuH(TQtMenu(ATrayIcon.PopUpMenu.Handle).Widget));
 
-  AHint := UTF8ToUTF16(ATrayIcon.Hint);
+  AHint := ATrayIcon{%H-}.Hint;
   SystemTrayIcon.setToolTip(AHint);
 
   SystemTrayIcon.UpdateSystemTrayWidget;

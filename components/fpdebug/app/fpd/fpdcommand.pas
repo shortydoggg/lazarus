@@ -1,4 +1,4 @@
-{ $Id: fpdcommand.pas 47519 2015-01-25 17:37:34Z joost $ }
+{ $Id: fpdcommand.pas 54031 2017-01-29 21:04:32Z joost $ }
 {
  ---------------------------------------------------------------------------
  fpdcommand.pas  -  FP standalone debugger - Command interpreter
@@ -9,7 +9,7 @@
  ---------------------------------------------------------------------------
 
  @created(Mon Apr 10th WET 2006)
- @lastmod($Date: 2015-01-25 18:37:34 +0100 (So, 25 Jan 2015) $)
+ @lastmod($Date: 2017-01-29 22:04:32 +0100 (So, 29 Jan 2017) $)
  @author(Marc Weustink <marc@@dommelstein.nl>)
 
  ***************************************************************************
@@ -27,7 +27,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,21 +25,26 @@ unit ProjPackIntf;
 interface
 
 uses
-  Classes, SysUtils, IDEOptionsIntf, CompOptsIntf;
+  Classes, SysUtils,
+  // IdeIntf
+  IDEOptionsIntf, CompOptsIntf;
 
 type
 
   {$M+}
   TIDEOwnedFile = class
   protected
+    FUnitName: string;
     function GetFilename: string; virtual; abstract;
     procedure SetFilename(const AValue: string); virtual; abstract;
+    procedure SetUnitName(const AValue: string); virtual; abstract;
   public
     function GetFullFilename: string; virtual; abstract; // if no path, the file was not saved yet
     function GetShortFilename(UseUp: boolean): string; virtual; abstract;
     function GetFileOwner: TObject; virtual; abstract;
     function GetFileOwnerName: string; virtual; abstract;
     property Filename: string read GetFilename write SetFilename;
+    property Unit_Name: string read FUnitName write SetUnitName;
   end;
   {$M-}
 
@@ -50,8 +55,12 @@ type
   protected
     FIDEOptions: TAbstractIDEOptions; //actually TProjectIDEOptions or TPackageIDEOptions;
     FLazCompilerOptions: TLazCompilerOptions;
+    function GetDirectory: string; virtual; abstract;
+    //procedure SetDirectory(AValue: string); virtual; abstract;
+    function HasDirectory: boolean; virtual;
     function GetLazCompilerOptions: TLazCompilerOptions;
   public
+    property Directory: string read GetDirectory;// write SetDirectory; // directory of .lpi or .lpk file
     property LazCompilerOptions: TLazCompilerOptions read GetLazCompilerOptions;
   end;
 
@@ -59,6 +68,11 @@ type
 implementation
 
 { TIDEProjPackBase }
+
+function TIDEProjPackBase.HasDirectory: boolean;
+begin
+  Result := True;
+end;
 
 function TIDEProjPackBase.GetLazCompilerOptions: TLazCompilerOptions;
 begin

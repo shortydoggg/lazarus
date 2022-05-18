@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -46,15 +46,17 @@ unit ExtractProcTool;
 {$mode objfpc}{$H+}
 
 { $define CTDEBUG}
+{off $Define VerboseAddWithBlock}
 
 interface
 
 uses
-  Classes, SysUtils, math, FileProcs, CodeToolsStrConsts, CodeTree, CodeAtom,
+  Classes, SysUtils, math, Laz_AVL_Tree,
+  // Codetools
+  FileProcs, CodeToolsStrConsts, CodeTree, CodeAtom,
   CodeCache, CustomCodeTool, PascalReaderTool,
   PascalParserTool, CodeCompletionTool, KeywordFuncLists, BasicCodeTools,
-  LinkScanner, AVL_Tree, SourceChanger,
-  FindDeclarationTool;
+  LinkScanner, SourceChanger, FindDeclarationTool;
   
 type
   TExtractedProcVariableType = (
@@ -77,7 +79,7 @@ type
     function UsedInSelection: boolean;
   end;
 
-  { TExtractProcTool }
+  { TExtractCodeTool }
   
   TExtractProcType = (
     eptProcedure,
@@ -90,7 +92,7 @@ type
     eptPublishedMethod
     );
 
-  TExtractProcTool = class(TCodeCompletionCodeTool)
+  TExtractCodeTool = class(TCodeCompletionCodeTool)
   protected
     function ScanNodesForVariables(const StartPos, EndPos: TCodeXYPosition;
         out BlockStartPos, BlockEndPos: integer; // the selection
@@ -112,7 +114,7 @@ type
     function ExtractProc(const StartPos, EndPos: TCodeXYPosition;
       ProcType: TExtractProcType; const ProcName: string;
       IgnoreIdentifiers: TAVLTree; // tree of PCodeXYPosition
-      out NewPos: TCodeXYPosition; out NewTopLine: integer;
+      out NewPos: TCodeXYPosition; out NewTopLine, BlockTopLine, BlockBottomLine: integer;
       SourceChangeCache: TSourceChangeCache;
       FunctionResultVariableStartPos: integer = 0): boolean;
 
@@ -189,9 +191,9 @@ begin
   Result:=ReadInSelection or WriteInSelection;
 end;
 
-{ TExtractProcTool }
+{ TExtractCodeTool }
 
-function TExtractProcTool.InitExtractProc(const StartPos,
+function TExtractCodeTool.InitExtractProc(const StartPos,
   EndPos: TCodeXYPosition; out MethodPossible, SubProcPossible,
   SubProcSameLvlPossible: boolean): boolean;
 var
@@ -236,7 +238,7 @@ begin
   Result:=true;
 end;
 
-function TExtractProcTool.CheckExtractProc(const StartPos,
+function TExtractCodeTool.CheckExtractProc(const StartPos,
   EndPos: TCodeXYPosition; out MethodPossible, SubProcPossible,
   SubProcSameLvlPossible: boolean; out MissingIdentifiers: TAVLTree;
   VarTree: TAVLTree): boolean;
@@ -261,12 +263,12 @@ begin
   Result:=true;
 end;
 
-function TExtractProcTool.ExtractProc(const StartPos, EndPos: TCodeXYPosition;
+function TExtractCodeTool.ExtractProc(const StartPos, EndPos: TCodeXYPosition;
   ProcType: TExtractProcType; const ProcName: string;
-  IgnoreIdentifiers: TAVLTree; // tree of PCodeXYPosition
-  out NewPos: TCodeXYPosition; out NewTopLine: integer;
-  SourceChangeCache: TSourceChangeCache;
-  FunctionResultVariableStartPos: integer): boolean;
+  IgnoreIdentifiers: TAVLTree; out NewPos: TCodeXYPosition; out NewTopLine,
+  BlockTopLine, BlockBottomLine: integer;
+  SourceChangeCache: TSourceChangeCache; FunctionResultVariableStartPos: integer
+  ): boolean;
 const
   ShortProcFormat = [phpWithoutClassKeyword];
 var
@@ -855,7 +857,7 @@ var
                                    ShortProcFormat+[phpIgnoreForwards]);
     Result:=ConflictProcNode<>nil;
     if Result then begin
-      RaiseException('New procedure "'+ProcName+'" exists already');
+      RaiseException(20170421201925,'New procedure "'+ProcName+'" exists already');
     end;
     {$IFDEF CTDebug}
     DebugLn('NewProcAlreadExists END ProcHead="',ProcHead,'" Found=',dbgs(Result));
@@ -924,7 +926,7 @@ var
         AddClassInsertion(CleanMethodDefinition, MethodDefinition,
                           ProcName, NewClassPart, nil, ProcCode);
         if not InsertAllNewClassParts then
-          RaiseException(ctsErrorDuringInsertingNewClassParts);
+          RaiseException(20170421201927,ctsErrorDuringInsertingNewClassParts);
       end;
 
     end;
@@ -961,7 +963,7 @@ var
       eptPublicMethod] then
     begin
       if not CreateMissingClassProcBodies(false) then
-        RaiseException(ctsErrorDuringCreationOfNewProcBodies);
+        RaiseException(20170421201930,ctsErrorDuringCreationOfNewProcBodies);
     end else begin
       TabWidth:=Beauty.TabWidth;
       IndentText(ProcCode,Indent,TabWidth,IndentedProcCode);
@@ -1014,7 +1016,7 @@ var
     DebugLn('FindJumpPointToNewProc A found=',dbgs(NewProcNode<>nil));
     {$ENDIF}
     if NewProcNode=nil then exit;
-    Result:=FindJumpPointInProcNode(NewProcNode,NewPos,NewTopLine);
+    Result:=FindJumpPointInProcNode(NewProcNode,NewPos,NewTopLine,BlockTopLine,BlockBottomLine);
     {$IFDEF CTDebug}
     DebugLn('FindJumpPointToNewProc END ',NewProcNode.DescAsString,' ',dbgs(Result),' ',dbgs(NewPos.X),',',dbgs(NewPos.Y),' ',dbgs(NewTopLine));
     {$ENDIF}
@@ -1082,7 +1084,7 @@ begin
   Result:=true;
 end;
 
-function TExtractProcTool.RemoveWithBlock(const CursorPos: TCodeXYPosition;
+function TExtractCodeTool.RemoveWithBlock(const CursorPos: TCodeXYPosition;
   SourceChangeCache: TSourceChangeCache): boolean;
 type
   TWithVarCache = record
@@ -1159,7 +1161,7 @@ var
                    in (AllClasses+[ctnEnumerationType])))
           then begin
             MoveCursorToCleanPos(Cache^.WithVarNode.StartPos);
-            RaiseException(ctsExprTypeMustBeClassOrRecord);
+            RaiseException(20170421201932,ctsExprTypeMustBeClassOrRecord);
           end;
           {$IFDEF CTDEBUG}
           debugln(['IdentifierDefinedByWith WithVarExpr=',ExprTypeToString(Cache^.WithVarExpr)]);
@@ -1518,7 +1520,7 @@ begin
   end;
 end;
 
-function TExtractProcTool.AddWithBlock(const StartPos, EndPos: TCodeXYPosition;
+function TExtractCodeTool.AddWithBlock(const StartPos, EndPos: TCodeXYPosition;
   const WithExpr: string; Candidates: TStrings;
   SourceChangeCache: TSourceChangeCache): boolean;
 var
@@ -1544,12 +1546,14 @@ var
       end;
     end else begin
       if Candidates=nil then exit;
+      {$IFDEF VerboseAddWithBlock}
+      debugln(['TExtractProcTool.AddWithBlock.Add Candidate="',Identifier,'"']);
+      {$ENDIF}
       i:=Candidates.IndexOf(Identifier);
       if i<0 then
         Candidates.AddObject(Identifier,TObject(Pointer(1)))
       else
         Candidates.Objects[i]:=TObject(PtrUInt(Candidates.Objects[i])+1);
-      //debugln(['TExtractProcTool.AddWithBlock.Add ',Identifier]);
     end;
   end;
 
@@ -1560,13 +1564,16 @@ var
     StartFlag: TCommonAtomFlag;
     IdentifierStart, aStartPos: Integer;
   begin
+    {$IFDEF VerboseAddWithBlock}
+    debugln(['TExtractProcTool.AddWithBlock.ReadBlock START Atom=',GetAtom]);
+    {$ENDIF}
     Result:=false;
     StartFlag:=CurPos.Flag;
     aStartPos:=CurPos.StartPos;
     while true do begin
-      //debugln(['TExtractProcTool.AddWithBlock Atom=',GetAtom]);
-      if Code<>nil then
-        Code^:=Code^+GetAtom;
+      {$IFDEF VerboseAddWithBlock}
+      debugln(['  ReadBlock Atom="',GetAtom,'"']);
+      {$ENDIF}
       if (CurPos.EndPos>CleanEndPos) or (CurPos.StartPos>SrcLen)
       or (CurPos.StartPos>StartNode.EndPos) then
         break;
@@ -1576,52 +1583,64 @@ var
           // nested brackets
           if not ReadBlock(Code) then exit;
         end;
-      cafRoundBracketClose,cafEdgedBracketClose:
-        if (StartFlag=cafRoundBracketOpen) then begin
-          if (CurPos.Flag=cafRoundBracketClose) then
-            break
-          else
-            RaiseCharExpectedButAtomFound(')');
-        end else if (StartFlag=cafEdgedBracketOpen) then begin
-          if (CurPos.Flag=cafEdgedBracketClose) then
-            break
-          else
-            RaiseCharExpectedButAtomFound(']');
-        end;
+      cafRoundBracketClose:
+        if (StartFlag=cafRoundBracketOpen) then
+          break
+        else if StartFlag=cafEdgedBracketOpen then
+          RaiseCharExpectedButAtomFound(20170421201936,']')
+        else
+          RaiseStringExpectedButAtomFound(20170421201938,'end');
+      cafEdgedBracketClose:
+        if (StartFlag=cafEdgedBracketOpen) then
+          break
+        else if StartFlag=cafRoundBracketOpen then
+          RaiseCharExpectedButAtomFound(20170421201942,')')
+        else
+          RaiseStringExpectedButAtomFound(20170421201946,'end');
       end;
       if AtomIsIdentifier then begin
-        LastPos:=LastAtoms.GetValueAt(0);
+        LastPos:=LastAtoms.GetPriorAtom;
         if not ((LastPos.Flag in [cafPoint]) or LastAtomIs(0,'^')
           or LastUpAtomIs(0,'INHERITED'))
         then begin
           // start of identifier
-          //debugln(['TExtractProcTool.AddWithBlock identifier start ',GetAtom]);
+          {$IFDEF VerboseAddWithBlock}
+          debugln(['  ReadBlock identifier START Atom="',GetAtom,'"']);
+          {$ENDIF}
           Identifier:=GetAtom;
           IdentifierStart:=CurPos.StartPos;
           repeat
             ReadNextAtom;
-            //debugln(['TExtractProcTool.AddWithBlock identifier next ',GetAtom]);
+            {$IFDEF VerboseAddWithBlock}
+            debugln(['  ReadBlock identifier NEXT Atom="',GetAtom,'" Identifier="',Identifier,'"']);
+            {$ENDIF}
             if CurPos.Flag in [cafRoundBracketOpen,cafEdgedBracketOpen] then
             begin
               if not ReadBlock(@Identifier) then exit;
             end else if (CurPos.Flag=cafPoint) then begin
               if not Add(IdentifierStart,CurPos.EndPos,Identifier) then exit;
-              Identifier:=Identifier+GetAtom;
             end else if AtomIsChar('^') then begin
-              Identifier:=Identifier+GetAtom;
-            end else if AtomIsIdentifier and (LastAtomIs(0,'.')) then
-            begin
-              Identifier:=Identifier+GetAtom;
+            end else if AtomIsIdentifier and (LastAtomIs(0,'.')) then begin
             end else begin
-              if Code<>nil then
-                Code^:=Code^+Identifier;
               break;
             end;
+            Identifier:=Identifier+GetAtom;
           until false;
+          {$IFDEF VerboseAddWithBlock}
+          debugln(['  ReadBlock identifier END Atom="',GetAtom,'" Identifier="',Identifier,'"']);
+          {$ENDIF}
+          if Code<>nil then
+            Code^:=Code^+Identifier;
+          continue;
         end;
       end;
+      if Code<>nil then
+        Code^:=Code^+GetAtom;
       ReadNextAtom;
     end;
+    {$IFDEF VerboseAddWithBlock}
+    debugln(['ReadBlock END Atom="',GetAtom,'"']);
+    {$ENDIF}
     Result:=true;
   end;
 
@@ -1632,8 +1651,10 @@ begin
   Result:=false;
   if not CheckIfRangeOnSameLevel(StartPos,EndPos,CleanStartPos,CleanEndPos,
                                  StartNode) then exit;
-  //debugln(['TExtractProcTool.AddWithBlock ',SrcLen,' ',CleanStartPos,' ',CleanEndPos]);
-  //debugln(['TExtractProcTool.AddWithBlock Src="',copy(Src,CleanStartPos,CleanEndPos-CleanStartPos),'"']);
+  {$IFDEF VerboseAddWithBlock}
+  debugln(['TExtractProcTool.AddWithBlock ',SrcLen,' ',CleanStartPos,' ',CleanEndPos]);
+  debugln(['TExtractProcTool.AddWithBlock Src="',copy(Src,CleanStartPos,CleanEndPos-CleanStartPos),'"']);
+  {$ENDIF}
   MoveCursorToNodeStart(StartNode);
   if WithExpr<>'' then
     SourceChangeCache.MainScanner:=Scanner;
@@ -1648,31 +1669,39 @@ begin
     Indent:=Beauty.GetLineIndent(Src,CleanStartPos);
     Code:='with '+WithExpr+' do begin';
     Code:=Beauty.BeautifyStatement(Code,Indent);
-    //debugln(['TExtractProcTool.AddWithBlock Header=',Code]);
+    {$IFDEF VerboseAddWithBlock}
+    debugln(['TExtractProcTool.AddWithBlock Header=',Code]);
+    {$ENDIF}
     if not SourceChangeCache.Replace(gtNewLine,gtNewLine,
       CleanStartPos,CleanStartPos,Code) then exit;
     // add 'end;'
     Code:='end;';
     Code:=Beauty.BeautifyStatement(Code,Indent);
-    //debugln(['TExtractProcTool.AddWithBlock Footer=',Code]);
+    {$IFDEF VerboseAddWithBlock}
+    debugln(['TExtractProcTool.AddWithBlock Footer=',Code]);
+    {$ENDIF}
     if not SourceChangeCache.Replace(gtNewLine,gtNewLine,
       CleanEndPos,CleanEndPos,Code) then exit;
     // indent all between
-    //debugln(['TExtractProcTool.AddWithBlock Indent...']);
+    {$IFDEF VerboseAddWithBlock}
+    debugln(['TExtractProcTool.AddWithBlock Indent...']);
+    {$ENDIF}
     if not SourceChangeCache.IndentBlock(CleanStartPos,CleanEndPos,
       Beauty.Indent) then exit;
-    //debugln(['TExtractProcTool.AddWithBlock Apply']);
+    {$IFDEF VerboseAddWithBlock}
+    debugln(['TExtractProcTool.AddWithBlock Apply']);
+    {$ENDIF}
     if not SourceChangeCache.Apply then exit;
   end;
   Result:=true;
 end;
 
-procedure TExtractProcTool.CalcMemSize(Stats: TCTMemStats);
+procedure TExtractCodeTool.CalcMemSize(Stats: TCTMemStats);
 begin
   inherited CalcMemSize(Stats);
 end;
 
-function TExtractProcTool.ScanNodesForVariables(const StartPos,
+function TExtractCodeTool.ScanNodesForVariables(const StartPos,
   EndPos: TCodeXYPosition; out BlockStartPos, BlockEndPos: integer;
   out BlockNode: TCodeTreeNode;
   VarTree: TAVLTree;  // tree of TExtractedProcVariable
@@ -1944,7 +1973,7 @@ begin
   Result:=true;
 end;
 
-function TExtractProcTool.CheckIfRangeOnSameLevel(const StartPos,
+function TExtractCodeTool.CheckIfRangeOnSameLevel(const StartPos,
   EndPos: TCodeXYPosition; out CleanStartPos, CleanEndPos: integer; out
   StartNode: TCodeTreeNode): boolean;
 var

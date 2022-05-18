@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -35,11 +35,15 @@ unit EditDefineTree;
 interface
 
 uses
-  Classes, SysUtils, FileProcs, FileUtil, IDEProcs, CodeToolManager,
-  DefineTemplates, LinkScanner,
+  Classes, SysUtils,
+  // LazUtils
+  FileUtil, LazTracer,
+  // CodeTools
+  FileProcs, CodeToolManager, DefineTemplates, LinkScanner,
+  // IdeIntf
   CompOptsIntf,
-  CompilerOptions, TransferMacros,
-  LazarusIDEStrConsts;
+  // IDE
+  IDEProcs, CompilerOptions, LazarusIDEStrConsts;
 
 
 // global
@@ -249,7 +253,7 @@ var
 begin
   Result:=false; // no change
   if ParentTemplate=nil then
-    RaiseException('UpdateCompilerOptionsTemplates internal error');
+    RaiseGDBException('UpdateCompilerOptionsTemplates internal error');
   
   { ToDo:
 

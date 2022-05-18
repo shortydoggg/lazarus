@@ -1,4 +1,4 @@
-{ $Id: wsstdctrls.pp 46963 2014-11-22 14:38:26Z bart $}
+{ $Id: wsstdctrls.pp 58099 2018-06-03 20:36:08Z ondrej $}
 {
  *****************************************************************************
  *                               WSStdCtrls.pp                               * 
@@ -42,7 +42,7 @@ uses
 ////////////////////////////////////////////////////
   Graphics, Controls, StdCtrls,
 ////////////////////////////////////////////////////
-  Clipbrd, WSLCLClasses, WSControls, WSFactory;
+  Clipbrd, LazUTF8, WSLCLClasses, WSControls, WSFactory;
 
 type
   { TWSScrollBar }
@@ -86,7 +86,6 @@ type
     class procedure SetItemIndex(const ACustomComboBox: TCustomComboBox; NewIndex: integer); virtual;
     class procedure SetMaxLength(const ACustomComboBox: TCustomComboBox; NewLength: integer); virtual;
     class procedure SetStyle(const ACustomComboBox: TCustomComboBox; NewStyle: TComboBoxStyle); virtual;
-    class procedure SetReadOnly(const ACustomComboBox: TCustomComboBox; NewReadOnly: boolean); virtual;
 
     class function  GetItems(const ACustomComboBox: TCustomComboBox): TStrings; virtual;
     class procedure FreeItems(var AItems: TStrings); virtual;
@@ -159,6 +158,9 @@ type
     class procedure SetReadOnly(const ACustomEdit: TCustomEdit; NewReadOnly: boolean); virtual;
     class procedure SetSelStart(const ACustomEdit: TCustomEdit; NewStart: integer); virtual;
     class procedure SetSelLength(const ACustomEdit: TCustomEdit; NewLength: integer); virtual;
+    class procedure SetSelText(const ACustomEdit: TCustomEdit; const NewSelText: string); virtual;
+    class procedure SetTextHint(const ACustomEdit: TCustomEdit; const ATextHint: string); virtual;
+    class function CreateEmulatedTextHintFont(const ACustomEdit: TCustomEdit): TFont; virtual;
 
     class procedure Cut(const ACustomEdit: TCustomEdit); virtual;
     class procedure Copy(const ACustomEdit: TCustomEdit); virtual;
@@ -178,6 +180,7 @@ type
     class procedure SetWantTabs(const ACustomMemo: TCustomMemo; const NewWantTabs: boolean); virtual;
     class procedure SetWantReturns(const ACustomMemo: TCustomMemo; const NewWantReturns: boolean); virtual;
     class procedure SetWordWrap(const ACustomMemo: TCustomMemo; const NewWordWrap: boolean); virtual;
+    class procedure SetSelText(const ACustomEdit: TCustomEdit; const NewSelText: string); override;
   end;
   TWSCustomMemoClass = class of TWSCustomMemo;
 
@@ -467,11 +470,6 @@ class procedure TWSCustomComboBox.SetStyle(const ACustomComboBox: TCustomComboBo
 begin
 end;
 
-class procedure TWSCustomComboBox.SetReadOnly(const ACustomComboBox: TCustomComboBox;
-  NewReadOnly: boolean);
-begin
-end;
-
 class function  TWSCustomComboBox.GetItems(const ACustomComboBox: TCustomComboBox
   ): TStrings;
 begin
@@ -564,8 +562,28 @@ class procedure TWSCustomEdit.SetSelStart(const ACustomEdit: TCustomEdit; NewSta
 begin
 end;
 
+class procedure TWSCustomEdit.SetTextHint(const ACustomEdit: TCustomEdit;
+  const ATextHint: string);
+begin
+end;
+
 class procedure TWSCustomEdit.SetSelLength(const ACustomEdit: TCustomEdit; NewLength: integer);
 begin
+end;
+
+class procedure TWSCustomEdit.SetSelText(const ACustomEdit: TCustomEdit;
+  const NewSelText: string);
+var
+  OldText, NewText: string;
+  OldPos: Integer;
+begin
+  OldPos := ACustomEdit.SelStart;
+  OldText := ACustomEdit.Text;
+  NewText := UTF8Copy(OldText, 1, OldPos) +
+             NewSelText +
+             UTF8Copy(OldText, OldPos + ACustomEdit.SelLength + 1, MaxInt);
+  ACustomEdit.Text := NewText;
+  ACustomEdit.SelStart := OldPos + UTF8Length(NewSelText);
 end;
 
 class procedure TWSCustomEdit.Cut(const ACustomEdit: TCustomEdit);
@@ -578,6 +596,20 @@ class procedure TWSCustomEdit.Copy(const ACustomEdit: TCustomEdit);
 begin
   if (ACustomEdit.EchoMode = emNormal) and (ACustomEdit.SelLength > 0) then
     Clipboard.AsText := ACustomEdit.SelText;
+end;
+
+class function TWSCustomEdit.CreateEmulatedTextHintFont(
+  const ACustomEdit: TCustomEdit): TFont;
+begin
+  Result := TFont.Create;
+  try
+    Result.Assign(ACustomEdit.Font);
+    Result.Color := clGrayText;
+  except
+    Result.Free;
+    Result := nil;
+    raise;
+  end;
 end;
 
 class procedure TWSCustomEdit.Paste(const ACustomEdit: TCustomEdit);
@@ -610,6 +642,17 @@ end;
 
 class procedure TWSCustomMemo.SetScrollbars(const ACustomMemo: TCustomMemo; const NewScrollbars: TScrollStyle);
 begin
+end;
+
+class procedure TWSCustomMemo.SetSelText(const ACustomEdit: TCustomEdit;
+  const NewSelText: string);
+begin
+  TCustomMemo(ACustomEdit).Lines.BeginUpdate;
+  try
+    TWSCustomEdit.SetSelText(ACustomEdit, NewSelText);
+  finally
+    TCustomMemo(ACustomEdit).Lines.EndUpdate;
+  end;
 end;
 
 class procedure TWSCustomMemo.SetWantTabs(const ACustomMemo: TCustomMemo; const NewWantTabs: boolean);
@@ -742,7 +785,6 @@ begin
   RegisterPropertyToSkip(TCustomMemo, 'BevelOuter', 'VCL compatibility property', '');
   RegisterPropertyToSkip(TCustomMemo, 'BevelEdges', 'VCL compatibility property', '');
   RegisterPropertyToSkip(TCustomMemo, 'Margins',    'VCL compatibility property', '');
-  RegisterPropertyToSkip(TCustomMemo, 'DoubleBuffered', 'VCL compatibility property', '');
 //  if not WSRegisterCustomMemo then
 //    RegisterWSComponent(TCustomMemo, TWSCustomMemo);
   Done := True;

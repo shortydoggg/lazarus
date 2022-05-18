@@ -1,10 +1,10 @@
-{ $Id: gdbtypeinfo.pp 48148 2015-03-05 22:55:58Z martin $ }
+{ $Id: gdbtypeinfo.pp 61084 2019-04-30 11:39:43Z martin $ }
 {                        ----------------------------------------------
                             GDBTypeInfo.pp  -  Debugger helper class 
                          ----------------------------------------------
 
  @created(Wed Mar 29th WET 2003)
- @lastmod($Date: 2015-03-05 23:55:58 +0100 (Do, 05 Mär 2015) $)
+ @lastmod($Date: 2019-04-30 13:39:43 +0200 (Di, 30 Apr 2019) $)
  @author(Marc Weustink <marc@@dommelstein.net>)
 
  This unit contains a helper class for decoding PType output.
@@ -25,7 +25,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -34,8 +34,15 @@ unit GDBTypeInfo;
 interface
 
 uses
-  Classes, SysUtils, LclProc, math, LazLoggerBase, DebugUtils,
-  DbgIntfBaseTypes, DbgIntfDebuggerBase, GDBMIMiscClasses;
+  Classes, SysUtils, math,
+  // LCL
+  LclProc,
+  // LazUtils
+  LazLoggerBase, LazStringUtils,
+  // DebuggerIntf
+  DbgIntfBaseTypes, DbgIntfDebuggerBase,
+  // LazDebuggerGdbmi
+  DebugUtils, GDBMIMiscClasses;
 
 (*
   ptype = {
@@ -1282,13 +1289,6 @@ begin
 end;
 
 function TGDBExpressionPartArray.NeedValidation(var AReqPtr: PGDBPTypeRequest): Boolean;
-  function IsNumber(s: String): Boolean;
-  var i: Integer;
-  begin
-    i := Length(s);
-    while (i >= 1) and (s[i] in ['0'..'9']) do dec(i);
-    Result := i = 0;
-  end;
 var
   i, j: Integer;
   IdxPart, IdxPart2: TGDBExpressionPartArrayIdx;

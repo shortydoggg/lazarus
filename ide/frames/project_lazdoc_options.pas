@@ -5,9 +5,15 @@ unit project_lazdoc_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, StdCtrls,
-  Buttons, EditBtn, Project, IDEOptionsIntf, LazarusIDEStrConsts, IDEProcs,
-  CodeHelp;
+  SysUtils,
+  // LCL
+  Forms, Dialogs, StdCtrls, Buttons, EditBtn,
+  // LazUtils
+  LazStringUtils,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf,
+  // IDE
+  Project, LazarusIDEStrConsts, CodeHelp;
 
 type
 
@@ -48,13 +54,13 @@ end;
 
 procedure TProjectFPDocOptionsFrame.Setup(ADialog: TAbstractOptionsEditorDialog);
 begin
-  FPDocPackageNameEdit.Hint:=lisFPDocPackageNameDefaultIsProjectFileName;
-  FPDocPackageNameLabel.Caption:=lisFPDocPackageName;
-  SearchPathsGroupBox.Caption:=lisSearchPaths2;
+  FPDocPackageNameEdit.Hint := lisFPDocPackageNameDefaultIsProjectFileName;
+  FPDocPackageNameLabel.Caption := lisFPDocPackageName;
+  SearchPathsGroupBox.Caption := lisSearchPaths2;
   AddPathButton.Caption := lisCodeHelpAddPathButton;
   DeletePathButton.Caption := lisCodeHelpDeletePathButton;
-  DeletePathButton.LoadGlyphFromResourceName(HInstance, 'laz_delete');
-  AddPathButton.LoadGlyphFromResourceName(HInstance, 'laz_add');
+  IDEImages.AssignImage(DeletePathButton, 'laz_delete');
+  IDEImages.AssignImage(AddPathButton, 'laz_add');
 
   PathEdit.Clear;
 end;

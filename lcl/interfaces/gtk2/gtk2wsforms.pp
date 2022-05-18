@@ -27,9 +27,11 @@ uses
   {$ENDIF}
   Math, types, Classes,
   // LCL
-  LazLogger, LCLType, Controls, LMessages, InterfaceBase,
-  Graphics, Forms, WSForms, WSProc,
-  Gtk2Int, Gtk2Proc, Gtk2Def, Gtk2Extra, Gtk2Globals, Gtk2WSControls;
+  LCLType, Controls, LMessages, InterfaceBase, Graphics, Forms,
+  Gtk2Int, Gtk2Proc, Gtk2Def, Gtk2Extra, Gtk2Globals, Gtk2WSControls,
+  WSForms, WSProc,
+  // LazUtils
+  LazLoggerBase;
 
 type
 
@@ -353,6 +355,7 @@ var
   WindowType: TGtkWindowType;
   ACustomForm: TCustomForm;
   AResizable: gint;
+  Allocation: TGtkAllocation;
 begin
   // Start of old CreateForm method
   ACustomForm := TCustomForm(AWinControl);
@@ -442,6 +445,12 @@ begin
 
   if not (csDesigning in AWinControl.ComponentState) then
     WidgetInfo^.UserData := Pointer(1);
+
+  Allocation.X := AParams.X;
+  Allocation.Y := AParams.Y;
+  Allocation.Width := AParams.Width;
+  Allocation.Height := AParams.Height;
+  gtk_widget_size_allocate(P, @Allocation);
 
   {$IFDEF DebugLCLComponents}
   DebugGtkWidgets.MarkCreated(P, dbgsName(AWinControl));
@@ -715,8 +724,10 @@ begin
   begin
     if AForm.HandleObjectShouldBeVisible and
       GTK_IS_WINDOW({%H-}PGtkWindow(AForm.Handle)) then
+      begin
         gtk_window_set_keep_above({%H-}PGtkWindow(AForm.Handle),
           GBoolean(AForm.FormStyle in fsAllStayOnTop))
+      end
     else
     if (AForm.FormStyle in fsAllStayOnTop) and
       not (csDestroying in AWinControl.ComponentState) then
@@ -726,8 +737,16 @@ begin
   GtkWindow := {%H-}PGtkWindow(AForm.Handle);
   if (fsModal in AForm.FormState) and AForm.HandleObjectShouldBeVisible then
   begin
+    LastMouse.Button := 0;
+    LastMouse.ClickCount := 0;
+    LastMouse.Down := False;
+    LastMouse.MousePos := Point(0, 0);
+    LastMouse.Time := 0;
+    LastMouse.WinControl := nil;
     gtk_window_set_default_size(GtkWindow, Max(1,AForm.Width), Max(1,AForm.Height));
     gtk_widget_set_uposition(PGtkWidget(GtkWindow), AForm.Left, AForm.Top);
+    gtk_window_set_type_hint({%H-}PGtkWindow(AForm.Handle),
+       GtkWindowTypeHints[AForm.BorderStyle]);
     GtkWindowShowModal(AForm, GtkWindow);
   end else
   begin
@@ -1028,10 +1047,16 @@ begin
 end;
 
 class procedure TGtk2WSHintWindow.ShowHide(const AWinControl: TWinControl);
+var
+  bVisible: boolean;
 begin
   if not WSCheckHandleAllocated(AWinControl, 'SetColor') then
     exit;
-  Gtk2WidgetSet.SetVisible(AWinControl, AWinControl.HandleObjectShouldBeVisible);
+
+  bVisible := AWinControl.HandleObjectShouldBeVisible;
+  if bVisible then
+    gtk_window_set_type_hint({%H-}PGtkWindow(AWinControl.Handle), GDK_WINDOW_TYPE_HINT_TOOLTIP);
+  Gtk2WidgetSet.SetVisible(AWinControl, bVisible);
   InvalidateLastWFPResult(AWinControl, AWinControl.BoundsRect);
 end;
 

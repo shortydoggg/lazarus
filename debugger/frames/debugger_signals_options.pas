@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,9 +25,13 @@ unit debugger_signals_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, StdCtrls, Menus,
-  ComCtrls, Buttons,
-  LazarusIDEStrConsts, IDEOptionsIntf, Debugger, BaseDebugManager;
+  Classes, SysUtils,
+  // LCL
+  Forms, StdCtrls, Menus, ComCtrls, Buttons,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf,
+  // IDE
+  LazarusIDEStrConsts, Debugger, BaseDebugManager;
 type
 
   { TDebuggerSignalsOptions }
@@ -89,8 +93,8 @@ begin
   lvSignals.Column[3].Caption := lisDebugOptionsFrmResume;
   cmdSignalAdd.Caption := lisAdd;
   cmdSignalRemove.Caption := lisRemove;
-  cmdSignalAdd.LoadGlyphFromResourceName(HInstance, 'laz_add');
-  cmdSignalRemove.LoadGlyphFromResourceName(HInstance, 'laz_delete');
+  IDEImages.AssignImage(cmdSignalAdd, 'laz_add');
+  IDEImages.AssignImage(cmdSignalRemove, 'laz_delete');
 
   mnuHandledByProgram.Caption := lisDebugOptionsFrmHandledByProgram;
   mnuiHandledByDebugger.Caption := lisDebugOptionsFrmHandledByDebugger;
@@ -120,6 +124,6 @@ begin
 end;
 
 initialization
-  RegisterIDEOptionsEditor(GroupDebugger, TDebuggerSignalsOptions, DbgOptionsSignals);
+  //RegisterIDEOptionsEditor(GroupDebugger, TDebuggerSignalsOptions, DbgOptionsSignals);
 end.
 

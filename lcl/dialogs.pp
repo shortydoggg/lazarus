@@ -21,24 +21,43 @@ unit Dialogs;
 interface
 
 uses
-  // RTL + FCL + LCL
-  Types, typinfo, Classes, SysUtils, LMessages,
-  LResources, LCLIntf, InterfaceBase, LCLStrConsts, LCLType, LCLProc, Forms,
-  Controls, Themes, GraphType, Graphics, Buttons, ButtonPanel, StdCtrls,
-  ExtCtrls, LCLClasses, ClipBrd,
+  // RTL + FCL
+  Types, typinfo, Classes, SysUtils,
+  // LCL
+  LMessages, LResources, LCLIntf, InterfaceBase, LCLStrConsts, LCLType,
+  Forms, Controls, Themes, GraphType, Graphics, Buttons, ButtonPanel, StdCtrls,
+  ExtCtrls, LCLClasses, ClipBrd, Menus, LCLTaskDialog,
   // LazUtils
-  FileUtil, LazFileUtils;
-
+  UITypes, FileUtil, LazFileUtils, LazStringUtils, LazLoggerBase;
 
 type
-  TMsgDlgType    = (mtWarning, mtError, mtInformation, mtConfirmation,
-                    mtCustom);
-  TMsgDlgBtn     = (mbYes, mbNo, mbOK, mbCancel, mbAbort, mbRetry, mbIgnore,
-                    mbAll, mbNoToAll, mbYesToAll, mbHelp, mbClose);
-  TMsgDlgButtons = set of TMsgDlgBtn;
+  // Aliases for types in UITypes.
+  TMsgDlgType    = UITypes.TMsgDlgType;
+  TMsgDlgBtn     = UITypes.TMsgDlgBtn;
+  TMsgDlgButtons = UITypes.TMsgDlgButtons;
 
-   
 const
+  // Aliases for enum values in UITypes.
+  mtWarning      = UITypes.TMsgDlgType.mtWarning;
+  mtError        = UITypes.TMsgDlgType.mtError;
+  mtInformation  = UITypes.TMsgDlgType.mtInformation;
+  mtConfirmation = UITypes.TMsgDlgType.mtConfirmation;
+  mtCustom       = UITypes.TMsgDlgType.mtCustom;
+
+  mbYes      = UITypes.TMsgDlgBtn.mbYes;
+  mbNo       = UITypes.TMsgDlgBtn.mbNo;
+  mbOK       = UITypes.TMsgDlgBtn.mbOK;
+  mbCancel   = UITypes.TMsgDlgBtn.mbCancel;
+  mbAbort    = UITypes.TMsgDlgBtn.mbAbort;
+  mbRetry    = UITypes.TMsgDlgBtn.mbRetry;
+  mbIgnore   = UITypes.TMsgDlgBtn.mbIgnore;
+  mbAll      = UITypes.TMsgDlgBtn.mbAll;
+  mbNoToAll  = UITypes.TMsgDlgBtn.mbNoToAll;
+  mbYesToAll = UITypes.TMsgDlgBtn.mbYesToAll;
+  mbHelp     = UITypes.TMsgDlgBtn.mbHelp;
+  mbClose    = UITypes.TMsgDlgBtn.mbClose;
+
+  // Combinations of buttons.
   mbYesNoCancel = [mbYes, mbNo, mbCancel];
   mbYesNo = [mbYes, mbNo];
   mbOKCancel = [mbOK, mbCancel];
@@ -58,18 +77,29 @@ type
 
   { TCommonDialog }
 
+  TCDWSEventCapability = (cdecWSPerformsDoShow, cdecWSPerformsDoCanClose, cdecWSPerformsDoClose,
+                          cdecWSNOCanCloseSupport);
+  TCDWSEventCapabilities = set of TCDWSEventCapability;
+
+  TDialogResultEvent = procedure(sender: TObject; Success: boolean) of object;
+
   TCommonDialog = class(TLCLComponent)
   private
+    FAttachTo: TCustomForm;
     FHandle : THandle;
     FHeight: integer;
+    FOnDialogResult: TDialogResultEvent;
     FWidth: integer;
     FOnCanClose: TCloseQueryEvent;
     FOnShow, FOnClose : TNotifyEvent;
     FTitle : string;
     FUserChoice: integer;
     FHelpContext: THelpContext;
-    FCanCloseCalled: Boolean;
+    FDoCanCloseCalled: Boolean;
+    FDoShowCalled: Boolean;
+    FDoCloseCalled: Boolean;
     FClosing: boolean;
+    FWSEventCapabilities :TCDWSEventCapabilities;
     procedure SetHandle(const AValue: THandle);
     function IsTitleStored: boolean;
   protected
@@ -80,6 +110,9 @@ type
     function GetWidth: Integer; virtual;
     procedure SetHeight(const AValue: integer); virtual;
     procedure SetWidth(const AValue: integer); virtual;
+    procedure ResetShowCloseFlags;
+    property AttachTo: TCustomForm read FAttachTo write FAttachTo; platform;
+    property OnDialogResult:TDialogResultEvent read FOnDialogResult write FOnDialogResult; platform;
   public
     FCompStyle : LongInt;
     constructor Create(TheOwner: TComponent); override;
@@ -91,13 +124,13 @@ type
     procedure DoCanClose(var CanClose: Boolean); virtual;
     procedure DoClose; virtual;
     function HandleAllocated: boolean;
+    property Width: integer read GetWidth write SetWidth;
+    property Height: integer read GetHeight write SetHeight;
   published
     property OnClose: TNotifyEvent read FOnClose write FOnClose;
     property OnCanClose: TCloseQueryEvent read FOnCanClose write FOnCanClose;
     property OnShow: TNotifyEvent read FOnShow write FOnShow;
     property HelpContext: THelpContext read FHelpContext write FHelpContext default 0;
-    property Width: integer read GetWidth write SetWidth default 0;
-    property Height: integer read GetHeight write SetHeight default 0;
     property Title: TTranslateString read FTitle write FTitle stored IsTitleStored;
   end;
 
@@ -127,6 +160,7 @@ type
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
+    procedure DoCanClose(var CanClose: Boolean); override;
     procedure DoTypeChange; virtual;
     property Files: TStrings read FFiles;
     property HistoryList: TStrings read FHistoryList write SetHistoryList;
@@ -167,7 +201,8 @@ type
     ofNoNetworkButton,
     ofNoLongNames,
     ofOldStyleDialog,
-    ofNoDereferenceLinks,// do not expand filenames
+    ofNoDereferenceLinks,// do not resolve links while dialog is shown (only on Windows, see OFN_NODEREFERENCELINKS)
+    ofNoResolveLinks,  // do not resolve links after Execute
     ofEnableIncludeNotify,
     ofEnableSizing,    // dialog can be resized, e.g. via the mouse
     ofDontAddToRecent, // do not add the path to the history list
@@ -190,7 +225,8 @@ type
     FLastSelectionChangeFilename: string;
   protected
     class procedure WSRegisterClass; override;
-    procedure DereferenceLinks; virtual;
+    procedure ResolveLinks; virtual;
+    procedure DereferenceLinks; virtual; deprecated 'override ResolveLinks instead' {Laz 1.9};
     function CheckFile(var AFilename: string): boolean; virtual;
     function CheckFileMustExist(const AFileName: string): boolean; virtual;
     function CheckAllFiles: boolean; virtual;
@@ -198,6 +234,7 @@ type
     function DefaultTitle: string; override;
   public
     constructor Create(TheOwner: TComponent); override;
+    procedure DoCanClose(var CanClose: Boolean); override;
     procedure DoFolderChange; virtual;
     procedure DoSelectionChange; virtual;
     procedure IntfSetOption(const AOption: TOpenOption; const AValue: Boolean);
@@ -408,6 +445,7 @@ type
     function GetHeight: Integer; override;
     function GetWidth: Integer; override;
     procedure DoCloseForm(Sender: TObject; var CloseAction: TCloseAction);virtual;
+    procedure DoShowForm(Sender: TObject);virtual;
     procedure Find; virtual;
     procedure Help; virtual;
     procedure Replace; virtual;
@@ -462,7 +500,7 @@ type
 
   TPrintRange = (prAllPages, prSelection, prPageNums, prCurrentPage);
   TPrintDialogOption = (poPrintToFile, poPageNums, poSelection, poWarning,
-    poHelp, poDisablePrintToFile);
+    poHelp, poDisablePrintToFile, poBeforeBeginDoc);
   TPrintDialogOptions = set of TPrintDialogOption;
 
   TCustomPrintDialog = class(TCommonDialog)
@@ -490,6 +528,160 @@ type
     property ToPage: Integer read FToPage write FToPage default 0;
   end;
 
+{ TTaskDialog }
+
+type
+  TCustomTaskDialog = class;
+
+  TTaskDialogFlag = (tfEnableHyperlinks, tfUseHiconMain,
+    tfUseHiconFooter, tfAllowDialogCancellation,
+    tfUseCommandLinks, tfUseCommandLinksNoIcon,
+    tfExpandFooterArea, tfExpandedByDefault,
+    tfVerificationFlagChecked, tfShowProgressBar,
+    tfShowMarqueeProgressBar, tfCallbackTimer,
+    tfPositionRelativeToWindow, tfRtlLayout,
+    tfNoDefaultRadioButton, tfCanBeMinimized);
+  TTaskDialogFlags = set of TTaskDialogFlag;
+
+  TTaskDialogCommonButton = (tcbOk, tcbYes, tcbNo, tcbCancel, tcbRetry, tcbClose);
+  TTaskDialogCommonButtons = set of TTaskDialogCommonButton;
+
+  TTaskDlgClickEvent = procedure(Sender: TObject; AModalResult: TModalResult; var ACanClose: Boolean) of object;
+
+  TTaskDialogIcon = (tdiNone, tdiWarning, tdiError, tdiInformation, tdiShield, tdiQuestion);
+
+  TTaskDialogButtons = class;
+
+  TTaskDialogBaseButtonItem = class(TCollectionItem)
+  private
+    FCaption: TTranslateString;
+    FClient: TCustomTaskDialog;
+    FModalResult: TModalResult;
+    function GetDefault: Boolean;
+    procedure SetCaption(const ACaption: TTranslateString);
+    procedure SetDefault(const Value: Boolean);
+  protected
+    property Client: TCustomTaskDialog read FClient;
+    function GetDisplayName: TTranslateString; override;
+    function TaskButtonCollection: TTaskDialogButtons;
+  public
+    constructor Create(ACollection: TCollection); override;
+    property ModalResult: TModalResult read FModalResult write FModalResult;
+  published
+    property Caption: TTranslateString read FCaption write SetCaption;
+    property Default: Boolean read GetDefault write SetDefault default False;
+  end;
+
+  TTaskDialogButtonItem = class(TTaskDialogBaseButtonItem)
+  public
+    constructor Create(ACollection: TCollection); override;
+  published
+    property ModalResult;
+  end;
+
+  TTaskDialogRadioButtonItem = class(TTaskDialogBaseButtonItem)
+  public
+    constructor Create(ACollection: TCollection); override;
+  end;
+
+  TTaskDialogButtonsEnumerator = class
+  private
+    FIndex: Integer;
+    FCollection: TTaskDialogButtons;
+  public
+    constructor Create(ACollection: TTaskDialogButtons);
+    function GetCurrent: TTaskDialogBaseButtonItem;
+    function MoveNext: Boolean;
+    property Current: TTaskDialogBaseButtonItem read GetCurrent;
+  end;
+
+  TTaskDialogButtons = class(TOwnedCollection)
+  private
+    FDefaultButton: TTaskDialogBaseButtonItem;
+    function GetItem(Index: Integer): TTaskDialogBaseButtonItem;
+    procedure SetDefaultButton(const Value: TTaskDialogBaseButtonItem);
+    procedure SetItem(Index: Integer; const Value: TTaskDialogBaseButtonItem);
+  public
+    function Add: TTaskDialogBaseButtonItem;
+    function FindButton(AModalResult: TModalResult): TTaskDialogBaseButtonItem;
+    function GetEnumerator: TTaskDialogButtonsEnumerator;
+    property DefaultButton: TTaskDialogBaseButtonItem read FDefaultButton write SetDefaultButton;
+    property Items[Index: Integer]: TTaskDialogBaseButtonItem read GetItem write SetItem; default;
+  end;
+
+  TCustomTaskDialog = class(TComponent)
+  private
+    FButton: TTaskDialogButtonItem;
+    FButtons: TTaskDialogButtons;
+    FCaption: TTranslateString;
+    FCommonButtons: TTaskDialogCommonButtons;
+    FDefaultButton: TTaskDialogCommonButton;
+    FExpandButtonCaption: TTranslateString;
+    FExpandedText: TTranslateString;
+    FFlags: TTaskDialogFlags;
+    FFooterIcon: TTaskDialogIcon;
+    FFooterText: TTranslateString;
+    FMainIcon: TTaskDialogIcon;
+    FModalResult: TModalResult;
+    FRadioButton: TTaskDialogRadioButtonItem;
+    FRadioButtons: TTaskDialogButtons;
+    FText: TTranslateString;
+    FTitle: TTranslateString;
+    FVerificationText: TTranslateString;
+    FOnButtonClicked: TTaskDlgClickEvent;
+    procedure DoOnButtonClickedHandler(Sender: PTaskDialog; AButtonID: integer;
+      var ACanClose: Boolean);
+    procedure SetButtons(const Value: TTaskDialogButtons);
+    procedure SetRadioButtons(const Value: TTaskDialogButtons);
+    function ButtonIDToModalResult(const AButtonID: Integer): TModalResult;
+  protected
+    function DoExecute(ParentWnd: HWND): Boolean; dynamic;
+    procedure DoOnButtonClicked(AModalResult: Integer; var ACanClose: Boolean); dynamic;
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    function Execute: Boolean; overload; dynamic;
+    function Execute(ParentWnd: HWND): Boolean; overload; dynamic;
+    property Button: TTaskDialogButtonItem read FButton write FButton;
+    property Buttons: TTaskDialogButtons read FButtons write SetButtons;
+    property Caption: TTranslateString read FCaption write FCaption;
+    property CommonButtons: TTaskDialogCommonButtons read FCommonButtons write FCommonButtons default [tcbOk, tcbCancel];
+    property DefaultButton: TTaskDialogCommonButton read FDefaultButton write FDefaultButton default tcbOk;
+    property ExpandButtonCaption: TTranslateString read FExpandButtonCaption write FExpandButtonCaption;
+    property ExpandedText: TTranslateString read FExpandedText write FExpandedText;
+    property Flags: TTaskDialogFlags read FFlags write FFlags default [tfAllowDialogCancellation];
+    property FooterIcon: TTaskDialogIcon read FFooterIcon write FFooterIcon default tdiNone;
+    property FooterText: TTranslateString read FFooterText write FFooterText;
+    property MainIcon: TTaskDialogIcon read FMainIcon write FMainIcon default tdiInformation;
+    property ModalResult: TModalResult read FModalResult write FModalResult;
+    property RadioButton: TTaskDialogRadioButtonItem read FRadioButton;
+    property RadioButtons: TTaskDialogButtons read FRadioButtons write SetRadioButtons;
+    property Text: TTranslateString read FText write FText;
+    property Title: TTranslateString read FTitle write FTitle;
+    property VerificationText: TTranslateString read FVerificationText write FVerificationText;
+    property OnButtonClicked: TTaskDlgClickEvent read FOnButtonClicked write FOnButtonClicked;
+  end;
+
+  TTaskDialog = class(TCustomTaskDialog)
+  published
+    property Buttons;
+    property Caption;
+    property CommonButtons;
+    property DefaultButton;
+    property ExpandButtonCaption;
+    property ExpandedText;
+    property Flags;
+    property FooterIcon;
+    property FooterText;
+    property MainIcon;
+    property RadioButtons;
+    property Text;
+    property Title;
+    property VerificationText;
+    property OnButtonClicked;
+  end;
+
+
 var
   MinimumDialogButtonWidth: integer = 75;
   MinimumDialogButtonHeight: integer = 25;
@@ -511,7 +703,9 @@ function MessageDlgPos(const aMsg: string; DlgType: TMsgDlgType;
 function MessageDlgPosHelp(const aMsg: string; DlgType: TMsgDlgType;
             Buttons: TMsgDlgButtons; HelpCtx: Longint; X, Y: Integer;
             const HelpFileName: string): TModalResult; overload;
-function CreateMessageDialog(const Msg: string; DlgType: TMsgDlgType;
+function CreateMessageDialog(const aMsg: string; DlgType: TMsgDlgType;
+            Buttons: TMsgDlgButtons): TForm; overload;
+function CreateMessageDialog(const aCaption, aMsg: string; DlgType: TMsgDlgType;
             Buttons: TMsgDlgButtons): TForm; overload;
 function DefaultPromptDialog(const DialogCaption,
   DialogMessage: String;
@@ -534,6 +728,17 @@ function DefaultMessageBox(Text, Caption: PChar; Flags: Longint) : Integer;// wi
 
 function InputBox(const ACaption, APrompt, ADefault : String) : String;
 function PasswordBox(const ACaption, APrompt : String) : String;
+
+type
+  TCustomCopyToClipboardDialog = class(TForm)
+  protected
+    procedure DoCreate; override;
+  public
+    function GetMessageText: string; virtual; abstract;
+  end;
+
+procedure RegisterDialogForCopyToClipboard(const ADlg: TCustomForm);
+procedure DialogCopyToClipboard(Self, Sender: TObject; var Key: Word; Shift: TShiftState);
 
 const
   cInputQueryEditSizePixels: integer = 260; // Edit size in pixels
@@ -559,6 +764,11 @@ function InputQuery(const ACaption: string; const APrompts: array of string;
   var AValues: array of string; ACloseEvent: TInputCloseQueryEvent = nil): boolean;
 function DefaultInputDialog(const InputCaption, InputPrompt : String;
   MaskInput : Boolean; var Value : String) : Boolean;// widgetset independent implementation, see InputDialogFunction
+
+function InputCombo(const ACaption, APrompt: string; const AList: TStrings): Integer;
+function InputCombo(const ACaption, APrompt: string; const AList : Array of String): Integer;
+function InputComboEx(const ACaption, APrompt: string; const AList: TStrings; AllowCustomText: Boolean = False): String;
+function InputComboEx(const ACaption, APrompt: string; const AList : Array of String; AllowCustomText: Boolean = False): String;
 
 function ExtractColorIndexAndColor(const AColorList: TStrings; const AIndex: Integer;
   out ColorIndex: Integer; out ColorValue: TColor): Boolean;
@@ -631,7 +841,7 @@ procedure Register;
 begin
   RegisterComponents('Dialogs',[TOpenDialog,TSaveDialog,TSelectDirectoryDialog,
                                 TColorDialog,TFontDialog,
-                                TFindDialog,TReplaceDialog]);
+                                TFindDialog,TReplaceDialog, TTaskDialog]);
   RegisterComponents('Misc',[TColorButton]);
 end;
 
@@ -657,12 +867,11 @@ begin
   else
   if (Flags and MB_OKCANCEL) = MB_OKCANCEL then
     Buttons := [mbOK,mbCancel]
+  //else
+  //if (Flags and MB_OK) = MB_OK then  <-- MB_OK = 0, the test would always be true.
+  //  Buttons := [mbOK]
   else
-  if (Flags and MB_OK) = MB_OK then
-    Buttons := [mbOK]
-  else
-    {%H-}Buttons := [mbOK];
-
+    Buttons := [mbOK];
 
   if (Flags and MB_ICONINFORMATION) = MB_ICONINFORMATION then
     DlgTYpe := mtInformation
@@ -743,6 +952,7 @@ end;
 {$I messagedialogs.inc}
 {$I promptdialog.inc}
 {$I colorbutton.inc}
+{$I taskdialog.inc}
 
 { TCustomPrintDialog }
 
@@ -753,12 +963,23 @@ begin
   FCopies:=1;
 end;
 
+{ TCustomCopyToClipboardDialog }
+
+procedure TCustomCopyToClipboardDialog.DoCreate;
+begin
+  inherited DoCreate;
+
+  RegisterDialogForCopyToClipboard(Self);
+end;
 
 initialization
   Forms.MessageBoxFunction := @DefaultMessageBox;
   InterfaceBase.InputDialogFunction := @DefaultInputDialog;
   InterfaceBase.PromptDialogFunction := @DefaultPromptDialog;
   InterfaceBase.QuestionDialogFunction := @DefaultQuestionDialog;
+
+  RegisterPropertyToSkip(TCommonDialog, 'Width', 'Property streamed in older Lazarus revision','');
+  RegisterPropertyToSkip(TCommonDialog, 'Height', 'Property streamed in older Lazarus revision','');
 
 finalization
   InterfaceBase.InputDialogFunction := nil;

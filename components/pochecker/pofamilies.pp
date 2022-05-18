@@ -7,16 +7,21 @@ unit PoFamilies;
 interface
 
 uses
-  Classes, SysUtils, ContNrs, Math, LCLProc, FileUtil, LazFileUtils,
-  Masks, Translations, PoCheckerConsts;
+  Classes, SysUtils, ContNrs, Math,
+  // LCL
+  LCLProc, Masks,
+  // LazUtils
+  FileUtil, LazFileUtils, Translations, StringHashList,
+  // PoChecker
+  PoCheckerConsts;
 
 Type
 
   TPoTestType = (pttCheckNrOfItems, pttCheckFormatArgs, pttCheckMissingIdentifiers,
-                 pttCheckMismatchedOriginals, pttCheckDuplicateOriginals, pttCheckStatistics);
+                 pttCheckMismatchedOriginals);
   TPoTestTypes = Set of TPoTestType;
 
-  TPoTestOption = (ptoFindAllChildren, ptoIgnoreFuzzyStrings);
+  TPoTestOption = (ptoFindAllChildren);
   TPoTestOptions = set of TPoTestOption;
 
 const
@@ -26,9 +31,7 @@ const
       sCheckNumberOfItems,
       sCheckForIncompatibleFormatArguments,
       sCheckMissingIdentifiers,
-      sCheckForMismatchesInUntranslatedStrings,
-      sCheckForDuplicateUntranslatedValues,
-      sCheckStatistics
+      sCheckForMismatchesInUntranslatedStrings
     );
 
 Type
@@ -65,14 +68,15 @@ Type
 
   protected
     procedure CheckNrOfItems(out ErrorCount: Integer; ErrorLog: TStrings);
-    procedure CheckFormatArgs(out ErrorCount: Integer; ErrorLog: TStrings; IgnoreFuzzyStrings: Boolean);
+    procedure CheckFormatArgs(out ErrorCount, NonFuzzyErrorCount: Integer; ErrorLog: TStrings);
     procedure CheckMissingIdentifiers(out ErrorCount: Integer; ErrorLog: TStrings);
     procedure CheckMismatchedOriginals(out ErrorCount: Integer; ErrorLog: TStrings);
     procedure CheckDuplicateOriginals(out WarningCount: Integer; ErrorLog: TStrings);
     procedure CheckStatistics(ErrorCnt: Integer);
 
   public
-    procedure RunTests(out ErrorCount, WarningCount: Integer; ErrorLog: TStrings);
+    procedure RunTests(out ErrorCount, NonFuzzyErrorCount, WarningCount,
+      TranslatedCount, UntranslatedCount, FuzzyCount: Integer; ErrorLog, StatLog, DupLog: TStringList);
 
     property Master: TPOFile read FMaster;
     property Child: TPOFile read FChild;
@@ -136,7 +140,6 @@ Type
 function IsMasterPoName(const Fn: String): Boolean;
 function ExtractMasterNameFromChildName(const AChildName: String): String;
 function ExtractLanguageFromChildName(const AChildName: string): TLangID;
-function FindAllTranslatedPoFiles(const Filename: string): TStringList;
 procedure LocalizePoTestTypeNames;
 
 const
@@ -167,7 +170,6 @@ const
   sShortCheckNrOfItems =  'CheckNrOfItems';
   sShortCheckMissingIdentifiers = 'CheckMissingIdentifiers';
   sShortCheckMismatchedOriginals = 'CheckMismatchedOriginals';
-  sShortCheckDuplicateOriginals = 'CheckDuplicateOriginals';
 
 //Helper functions
 
@@ -230,87 +232,13 @@ begin
   Result := LangAbbrToLangId(Abbr);
 end;
 
-function FindAllTranslatedPoFiles(const Filename: string): TStringList;
-var
-  Path: String;
-  Name: String;
-  NameOnly: String;
-  Ext: String;
-  FileInfo: TSearchRec;
-  CurExt: String;
-begin
-  Result := TStringList.Create;
-  Path := ExtractFilePath(Filename);
-  Name := ExtractFilename(Filename);
-  Ext := ExtractFileExt(Filename);
-  NameOnly := LeftStr(Name,length(Name)-length(Ext));
-  if FindFirstUTF8(Path+GetAllFilesMask,faAnyFile,FileInfo)=0 then
-  begin
-    repeat
-      if (FileInfo.Name = '.') or (FileInfo.Name = '..') or (FileInfo.Name = '')
-      or (CompareFilenames(FileInfo.Name,Name) = 0) then continue;
-      CurExt:=ExtractFileExt(FileInfo.Name);
-      if (CompareFilenames(CurExt,'.po') <> 0)
-      or (CompareFilenames(LeftStr(FileInfo.Name,length(NameOnly)),NameOnly) <> 0)
-      then
-        continue;
-      Result.Add(Path+FileInfo.Name);
-    until FindNextUTF8(FileInfo)<>0;
-  end;
-  FindCloseUTF8(FileInfo);
-end;
-
 procedure LocalizePoTestTypeNames;
 begin
   PoTestTypeNames[pttCheckNrOfItems] := sCheckNumberOfItems;
   PoTestTypeNames[pttCheckFormatArgs] := sCheckForIncompatibleFormatArguments;
   PoTestTypeNames[pttCheckMissingIdentifiers] := sCheckMissingIdentifiers;
   PoTestTypeNames[pttCheckMismatchedOriginals] := sCheckForMismatchesInUntranslatedStrings;
-  PoTestTypeNames[pttCheckDuplicateOriginals] := sCheckForDuplicateUntranslatedValues;
-  PoTestTypeNames[pttCheckStatistics] := sCheckStatistics;
 end;
-
-
-
-{function CompareFormatArgs(S1, S2: String): Boolean;
-var
-  Extr1, Extr2: String;
-  ArgErr1, ArgErr2: Integer;
-begin
-  Result := true;
-  //do not check arguments if strings are equal to save time and avoid some
-  //false positives, e.g. for '{%Region}' string in lazarusidestrconsts
-  if S1 <> S2 then
-  begin
-    Extr1 := ExtractFormatArgs(S1, ArgErr1);
-    Extr2 := ExtractFormatArgs(S2, ArgErr2);
-    //writeln('Extr1 = ',Extr1,' ArgErr1 = ',ArgErr1);
-    //writeln('Extr2 = ',Extr1,' ArgErr2 = ',ArgErr2);
-    if (ArgErr1 = 0) then
-    begin
-      if (ArgErr2 = 0) then
-      begin
-        Result := Utf8CompareText(Extr1, Extr2) = 0;
-      end
-      else
-      begin
-        //Extr2 can have dangling %'s
-        //e.g. Extr1 = "%s %d" Extr2 = "%s %d {%H}", it does not make sense, but it's not illegal
-        if (ArgErr2 = Utf8Length(Extr1)+1) and not (ArgErr2 > Utf8Length(Extr2)) then Extr2 := Utf8Copy(Extr2,1,ArgErr2-1);
-        Result := Utf8CompareText(Extr1, Extr2) = 0;
-      end;
-    end
-    else
-    begin  //ArgErr1 <> 0
-      //Assume Extr1 is always legal, otherwise the IDE would crash in it's default language...
-      //Only compare until the last valid argument in Extr1
-      if (ArgErr1 = Utf8Length(Extr1)) then Utf8Delete(Extr1, ArgErr1, 1);
-      if Utf8Length(Extr2) > Utf8Length(Extr1) then Extr2 := Utf8Copy(Extr2, 1, Utf8Length(Extr1));
-      Result := Utf8CompareText(Extr1, Extr2) = 0;
-    end;
-    //writeln('CompareFormatArgs: Result = ',Result);
-  end;
-end;}
 
 { TStat }
 
@@ -424,9 +352,6 @@ var
   end;
 begin
   if (FList.Count = 0) then Exit;
-  ALog.Add(Divider);
-  ALog.Add(sTranslationStatistics);
-  ALog.Add('');
   for i := 0 to FList.Count - 1 do
   begin
     Stat := TStat(FList.Items[i]);
@@ -437,7 +362,6 @@ begin
     ALog.Add('');
     ALog.Add('');
   end;
-  ALog.Add(Divider);
 end;
 
 { TPoFamily }
@@ -542,7 +466,8 @@ begin
   //debugln('TPoFamily.CheckNrOfItemsMismatch: ',Dbgs(ErrorCount),' Errors');
 end;
 
-procedure TPoFamily.CheckFormatArgs(out ErrorCount: Integer; ErrorLog: TStrings; IgnoreFuzzyStrings: Boolean);
+procedure TPoFamily.CheckFormatArgs(out ErrorCount, NonFuzzyErrorCount: Integer
+  ; ErrorLog: TStrings);
 var
   i: Integer;
   CPoItem: TPOFileItem;
@@ -552,7 +477,7 @@ begin
   //debugln('TPoFamily.CheckFormatArgs');
   DoTestStart(PoTestTypeNames[pttCheckFormatArgs], ShortChildName);
   ErrorCount := NoError;
-  //for i := 0 to FMaster.Count - 1 do
+  NonFuzzyErrorCount := NoError;
   for i := 0 to FChild.Count - 1 do
   begin
     //debugln('  i = ',DbgS(i));
@@ -561,10 +486,10 @@ begin
     //CPoItem := FChild.FindPoItem(MPoItem.IdentifierLow);
     if Assigned(CPoItem) then
     begin
-      IsFuzzy := (Pos('fuzzy', CPoItem.Flags) > 0);
-      IsBadFormat := (Pos('badformat', CPoItem.Flags) > 0);
+      IsFuzzy := (Pos(sFuzzyFlag, CPoItem.Flags) > 0);
+      IsBadFormat := (Pos(sBadFormatFlag, CPoItem.Flags) > 0);
       //if (IgnoreFuzzyStrings and IsFuzzy) then debugln('Skipping fuzzy translation: ',CPoItem.Translation);
-      if (Length(CPoItem.Translation) > 0) and (not (IgnoreFuzzyStrings and IsFuzzy)) and IsBadFormat then
+      if (Length(CPoItem.Translation) > 0) and IsBadFormat then
       begin
         if (ErrorCount = 0) then
         begin
@@ -575,6 +500,8 @@ begin
           ErrorLog.Add('');
         end;
         Inc(ErrorCount);
+        if not IsFuzzy then
+          Inc(NonFuzzyErrorCount);
         ErrorLog.Add(Format(sIncompatibleFormatArgs,[CPoItem.LineNr]));
         ErrorLog.Add(Format(sFormatArgsID,[sCommentIdentifier, CPoItem.IdentifierLow]));
         ErrorLog.Add(Format(sFormatArgsValues,[sMsgID,CPoItem.Original,sOriginal]));
@@ -716,42 +643,43 @@ procedure TPoFamily.CheckDuplicateOriginals(out WarningCount: Integer;
 var
   i: Integer;
   PoItem: TPOFileItem;
+  DupItemsList: TStringHashList;
   LastHash, CurHash: Cardinal;
 begin
   //debugln('TPoFamily.CheckMismatchedOriginals');
-  DoTestStart(PoTestTypeNames[pttCheckDuplicateOriginals], ShortMasterName);
   WarningCount := 0;
 
+  DupItemsList := TStringHashList.Create(true);
+  for i := 0 to FMaster.Items.Count - 1 do begin
+    PoItem := TPOFileItem(FMaster.Items[i]);
+    if PoItem.Duplicate = true then
+      DupItemsList.Add(PoItem.Original, PoItem);
+  end;
+
   //debugln('TPoFamily.CehckDuplicateOriginals');
-  //debugln('FMaster.OriginalList.Count = ',DbgS(FMaster.OriginalList.Count));
+  //debugln('DupItemsList.Count = ',DbgS(DupItemsList.Count));
   LastHash := 0;
-  for i := 0 to FMaster.OriginalList.Count - 1 do
+  for i := DupItemsList.Count - 1 downto 0 do
   begin
-    PoItem := TPoFileItem(FMaster.OriginalList.List[i]^.Data);
+    PoItem := TPoFileItem(DupItemsList.List[i]^.Data);
     if Assigned(PoItem) then
     begin
-      CurHash := FMaster.OriginalList.List[i]^.HashValue ;
-      if ((PoItem.Tag and tgHasDup) = tgHasDup) then
+      CurHash := DupItemsList.List[i]^.HashValue;
+      if (WarningCount = 0) then
       begin
-        if (WarningCount = 0) then
-        begin
-          ErrorLog.Add(Divider);
-          ErrorLog.Add(Format(sErrorsByTest,[sShortCheckDuplicateOriginals]));
-          ErrorLog.Add(ShortMasterName);
-          ErrorLog.Add(Divider);
-          ErrorLog.Add('');
-        end;
-        if (CurHash <> LastHash) then
-        begin//new value for PoItem.Original
-          LastHash := CurHash;
-          Inc(WarningCount);
-          if (WarningCount > 1) then ErrorLog.Add('');
-          ErrorLog.Add(Format(sDuplicateOriginals,[PoItem.Original]));
-          //debugln(format('The (untranslated) value "%s" is used for more than 1 entry:',[PoItem.Original]));
-        end;
-        ErrorLog.Add(format(sDuplicateLineNrWithValue,[PoItem.LineNr,PoItem.IdentifierLow]));
-        //debugln(format(sDuplicateLineNrWithValue,[PoItem.LineNr,PoItem.IdentifierLow]));
+        ErrorLog.Add(Format(sFile, [ShortMasterName]));
+        ErrorLog.Add('');
       end;
+      if (CurHash <> LastHash) then
+      begin//new value for PoItem.Original
+        LastHash := CurHash;
+        Inc(WarningCount);
+        if (WarningCount > 1) then ErrorLog.Add('');
+        ErrorLog.Add(Format(sDuplicateOriginals,[PoItem.Original]));
+        //debugln(format('The (untranslated) value "%s" is used for more than 1 entry:',[PoItem.Original]));
+      end;
+      ErrorLog.Add(format(sDuplicateLineNrWithValue,[PoItem.LineNr,PoItem.IdentifierLow]));
+      //debugln(format(sDuplicateLineNrWithValue,[PoItem.LineNr,PoItem.IdentifierLow]));
     end;
   end;
 
@@ -761,10 +689,10 @@ begin
     ErrorLog.Add(Format(sNrWarningsFound,[WarningCount]));
     ErrorLog.Add(Divider);
     ErrorLog.Add('');
-    ErrorLog.Add('');
   end;
 
-  DoTestEnd(PoTestTypeNames[pttCheckDuplicateOriginals], WarningCount);
+  DupItemsList.Free;
+
   //debugln('TPoFamily.CheckDuplicateOriginals: ',Dbgs(WarningCount),' Errors');
 end;
 
@@ -773,16 +701,14 @@ var
   NrTranslated, NrUntranslated, NrFuzzy, NrTotal: Integer;
 begin
   //debugln('TPoFamily.CheckStatistics');
-  DoTestStart(sCheckStatistics, ShortChildName);
-  NrTranslated := FChild.NrTranslated;
-  NrUntranslated := FChild.NrUntranslated;
-  NrFuzzy := FChild.NrFuzzy;
+  NrTranslated := FChild.Statistics.Translated;
+  NrUntranslated := FChild.Statistics.Untranslated;
+  NrFuzzy := FChild.Statistics.Fuzzy;
   NrTotal := NrTranslated + NrUntranslated + NrFuzzy;
   if (NrTotal > 0) then
   begin
     FPoFamilyStats.Add(ChildName, NrTotal, NrTranslated, NrUntranslated, NrFuzzy, ErrorCnt);
   end;
-  DoTestEnd(PoTestTypeNames[pttCheckFormatArgs], 0);
   //debugln('TPoFamily.CheckIncompatibleFormatArgs: ',Dbgs(ErrorCount),' Errors');
 end;
 
@@ -792,10 +718,12 @@ Pre conditions:
   * Master and a matching Child must be assigned at start ot testing
   * If a Child is assigned it must be child of Master
 }
-procedure TPoFamily.RunTests(out ErrorCount, WarningCount: Integer; ErrorLog: TStrings);
+procedure TPoFamily.RunTests(out ErrorCount, NonFuzzyErrorCount, WarningCount,
+  TranslatedCount, UntranslatedCount, FuzzyCount: Integer; ErrorLog, StatLog,
+  DupLog: TStringList);
 var
   SL: TStringList;
-  CurrErrCnt, CurrWarnCnt, ThisErrCnt: Integer;
+  CurrErrCnt, CurrNonFuzzyErrCnt, CurrWarnCnt, ThisErrCnt: Integer;
   i: Integer;
   CurrChildName: String;
   S: String;
@@ -803,7 +731,11 @@ begin
   SL := nil;
   FPoFamilyStats.Clear;
   ErrorCount := NoError;
+  NonFuzzyErrorCount := NoError;
   WarningCount := NoError;
+  TranslatedCount := 0;
+  UntranslatedCount := 0;
+  FuzzyCount := 0;
   if (not Assigned(FMaster)) and (not Assigned(FChild)) then
   begin
     {$ifdef DebugSimplePoFiles}
@@ -825,13 +757,6 @@ begin
       {$endif}
       Exit;
     end
-  end;
-  if not Assigned(FChild) and not ((pttCheckDuplicateOriginals in FTesttypes) or (ptoFindAllChildren in FTestOptions)) then
-  begin
-    {$ifdef DebugSimplePoFiles}
-    Debugln('TPoFamily.RunTests: no child assigned for ',ShortMasterName);
-    {$endif}
-    Exit;
   end;
 
   if (ptoFindAllChildren in FTestOptions) then
@@ -861,22 +786,18 @@ begin
   try
 
     //First run checks that are Master-only
-    if (pttCheckDuplicateOriginals in FTestTypes) then
-    begin
-      CheckDuplicateOriginals(CurrWarnCnt, ErrorLog);
-      WarningCount := CurrWarnCnt + WarningCount;
-    end;
+    CheckDuplicateOriginals(CurrWarnCnt, DupLog);
+    WarningCount := CurrWarnCnt + WarningCount;
 
     {$ifdef DebugSimplePoFiles}
     Debugln('TPoFamily.RunTests: number of childs for testing = ',DbgS(Sl.Count));
     {$endif}
 
-    if (FTestTypes - [pttCheckDuplicateOriginals] <> []) and (Sl.Count = 0) then
+    if (FTestTypes <> []) and (Sl.Count = 0) then
     begin
       {$ifdef DebugSimplePoFiles}
       Debugln('TPoFamily.RunTests: Warning: No child selected or found for selected tests');
       {$endif}
-      Inc(WarningCount);
       ErrorLog.Add(Divider);
       ErrorLog.Add('Warning: No child selected (or found) for selected tests.');
       ErrorLog.Add(Divider);
@@ -899,9 +820,10 @@ begin
 
       if (pttCheckFormatArgs in FTestTypes) then
       begin
-        CheckFormatArgs(CurrErrCnt, ErrorLog, (ptoIgnoreFuzzyStrings in FTestOptions));
+        CheckFormatArgs(CurrErrCnt, CurrNonFuzzyErrCnt, ErrorLog);
         ErrorCount := CurrErrCnt + ErrorCount;
         ThisErrCnt := ThisErrCnt + CurrErrCnt;
+        NonFuzzyErrorCount := CurrNonFuzzyErrCnt + NonFuzzyErrorCount;
       end;
 
 
@@ -919,12 +841,11 @@ begin
         ThisErrCnt := ThisErrCnt + CurrErrCnt;
       end;
 
-
       //Always run this as the last test please
-      if (pttCheckStatistics in FTestTypes) then
-      begin
-        CheckStatistics(ThisErrCnt);
-      end;
+      TranslatedCount := FChild.Statistics.Translated;
+      UntranslatedCount := FChild.Statistics.Untranslated;
+      FuzzyCount := FChild.Statistics.Fuzzy;
+      CheckStatistics(ThisErrCnt);
        {
         if (ptt in FTestTypes) then
         begin
@@ -933,11 +854,9 @@ begin
         end;
         }
     end;
-    //Add statistics at the end of the log
-    if (pttCheckStatistics in FTestTypes) and (FPoFamilyStats.Count > 0) then
-    begin
-      FPoFamilyStats.AddStatisticsToLog(ErrorLog);
-    end;
+    //Generate statistics
+    if FPoFamilyStats.Count > 0 then
+      FPoFamilyStats.AddStatisticsToLog(StatLog);
   finally
     SL.Free;
   end;

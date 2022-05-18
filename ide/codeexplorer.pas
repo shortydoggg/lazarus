@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -38,18 +38,20 @@ interface
 {$I ide.inc}
 
 uses
-  // FCL+LCL
-  Classes, SysUtils, types, LCLProc, LCLType, Forms, Controls, Graphics,
-  Dialogs, Buttons, ComCtrls, Menus, AvgLvlTree, StdCtrls, ExtCtrls,
+  // RTL+FCL
+  Classes, SysUtils, types, Laz_AVL_Tree,
+  // LazUtils
+  LazLoggerBase,
+  // LCL
+  LCLProc, LCLType, Forms, Controls, Dialogs, Buttons, ComCtrls, Menus, StdCtrls, ExtCtrls,
   // CodeTools
   FileProcs, BasicCodeTools, CustomCodeTool, CodeToolManager, CodeAtom,
   CodeCache, CodeTree, KeywordFuncLists, FindDeclarationTool, DirectivesTree,
   PascalParserTool,
-  // IDE Intf
-  LazIDEIntf, IDECommands, MenuIntf, SrcEditorIntf, IDEDialogs,
+  // IDEIntf
+  LazIDEIntf, IDECommands, MenuIntf, SrcEditorIntf, IDEDialogs, IDEImagesIntf,
   // IDE
-  KeyMapping, LazarusIDEStrConsts, EnvironmentOpts, IDEOptionDefs, InputHistory,
-  IDEProcs, CodeExplOpts;
+  LazarusIDEStrConsts, IDEOptionDefs, CodeExplOpts;
 
 type
   TCodeExplorerView = class;
@@ -182,6 +184,7 @@ type
     ImgIDClass: Integer;
     ImgIDClassInterface: Integer;
     ImgIDRecord: Integer;
+    ImgIDEnum: Integer;
     ImgIDHelper: Integer;
     ImgIDConst: Integer;
     ImgIDSection: Integer;
@@ -192,6 +195,8 @@ type
     ImgIDInterface: Integer;
     ImgIDProcedure: Integer;
     ImgIDFunction: Integer;
+    ImgIDConstructor: Integer;
+    ImgIDDestructor: Integer;
     ImgIDProgram: Integer;
     ImgIDProperty: Integer;
     ImgIDPropertyReadOnly: Integer;
@@ -199,6 +204,8 @@ type
     ImgIDUnit: Integer;
     ImgIDVariable: Integer;
     ImgIDHint: Integer;
+    ImgIDLabel: Integer;
+    procedure AssignAllImages;
     procedure ClearCodeTreeView;
     procedure ClearDirectivesTreeView;
     function GetCodeFilter: string;
@@ -234,10 +241,12 @@ type
     procedure SetDirectivesFilter(const AValue: string);
     procedure SetMode(AMode: TCodeExplorerMode);
     procedure UpdateMode;
+    procedure UpdateCaption;
+    function OnExpandedStateGetNodeText(Node: TTreeNode): string;
   protected
     fLastCodeTool: TCodeTool;
-    fCodeSortedForStartPos: TAvgLvlTree;// tree of TTreeNode sorted for TViewNodeData(Node.Data).StartPos, secondary EndPos
-    fNodesWithPath: TAvgLvlTree; // tree of TViewNodeData sorted for Path and Params
+    fCodeSortedForStartPos: TAvlTree;// tree of TTreeNode sorted for TViewNodeData(Node.Data).StartPos, secondary EndPos
+    fNodesWithPath: TAvlTree; // tree of TViewNodeData sorted for Path and Params
     procedure ApplyCodeFilter;
     procedure ApplyDirectivesFilter;
     function CompareCodeNodes(Node1, Node2: TTreeNode): integer;
@@ -464,7 +473,7 @@ begin
   UpdateMode;
 
   Name:=NonModalIDEWindowNames[nmiwCodeExplorerName];
-  Caption := lisMenuViewCodeExplorer;
+  UpdateCaption;
 
   case CodeExplorerOptions.Page of
   cepDirectives: MainNotebook.ActivePage:=DirectivesPage;
@@ -482,33 +491,7 @@ begin
   CodeFilterEdit.TextHint:=lisCEFilter;
   DirectivesFilterEdit.TextHint:=lisCEFilter;
 
-  CodeRefreshSpeedButton.LoadGlyphFromResourceName(HInstance, 'laz_refresh');
-  CodeOptionsSpeedButton.LoadGlyphFromResourceName(HInstance, 'menu_environment_options');
-  DirRefreshSpeedButton.LoadGlyphFromResourceName(HInstance, 'laz_refresh');
-  DirOptionsSpeedButton.LoadGlyphFromResourceName(HInstance, 'menu_environment_options');
-
-  ImgIDDefault := Imagelist1.AddResourceName(HInstance, 'ce_default');
-  ImgIDProgram := Imagelist1.AddResourceName(HInstance, 'ce_program');
-  ImgIDUnit := Imagelist1.AddResourceName(HInstance, 'ce_unit');
-  ImgIDInterface := Imagelist1.AddResourceName(HInstance, 'ce_interface');
-  ImgIDImplementation := Imagelist1.AddResourceName(HInstance, 'ce_implementation');
-  ImgIDInitialization := Imagelist1.AddResourceName(HInstance, 'ce_initialization');
-  ImgIDFinalization := Imagelist1.AddResourceName(HInstance, 'ce_finalization');
-  ImgIDType := Imagelist1.AddResourceName(HInstance, 'ce_type');
-  ImgIDVariable := Imagelist1.AddResourceName(HInstance, 'ce_variable');
-  ImgIDConst := Imagelist1.AddResourceName(HInstance, 'ce_const');
-  ImgIDClass := Imagelist1.AddResourceName(HInstance, 'ce_class');
-  ImgIDClassInterface := Imagelist1.AddResourceName(HInstance, 'ce_classinterface');
-  ImgIDHelper := Imagelist1.AddResourceName(HInstance, 'ce_helper');
-  ImgIDRecord := Imagelist1.AddResourceName(HInstance, 'ce_record');
-  ImgIDProcedure := Imagelist1.AddResourceName(HInstance, 'ce_procedure');
-  ImgIDFunction := Imagelist1.AddResourceName(HInstance, 'ce_function');
-  ImgIDProperty := Imagelist1.AddResourceName(HInstance, 'ce_property');
-  ImgIDPropertyReadOnly := Imagelist1.AddResourceName(HInstance, 'ce_property_readonly');
-  // sections
-  ImgIDSection := Imagelist1.AddResourceName(HInstance, 'ce_section');
-  ImgIDHint := Imagelist1.AddResourceName(HInstance, 'state_hint');
-
+  AssignAllImages;
   // assign the root TMenuItem to the registered menu root.
   // This will automatically create all registered items
   CodeExplorerMenuRoot.MenuItem:=TreePopupMenu.Items;
@@ -520,7 +503,7 @@ begin
   CERefreshIDEMenuCommand.OnClick:=@RefreshMenuItemClick;
   CERenameIDEMenuCommand.OnClick:=@RenameMenuItemClick;
 
-  fNodesWithPath:=TAvgLvlTree.Create(@CompareViewNodePathsAndParams);
+  fNodesWithPath:=TAvlTree.Create(@CompareViewNodePathsAndParams);
 
   Application.AddOnUserInputHandler(@OnUserInput);
   LazarusIDE.AddHandlerOnIDEClose(@OnCloseIDE);
@@ -736,6 +719,41 @@ begin
     CheckOnIdle;
 end;
 
+procedure TCodeExplorerView.AssignAllImages;
+begin
+  IDEImages.AssignImage(CodeRefreshSpeedButton, 'laz_refresh');
+  IDEImages.AssignImage(CodeOptionsSpeedButton, 'menu_environment_options');
+  IDEImages.AssignImage(DirRefreshSpeedButton, 'laz_refresh');
+  IDEImages.AssignImage(DirOptionsSpeedButton, 'menu_environment_options');
+
+  CodeTreeview.Images := IDEImages.Images_16;
+  ImgIDDefault := IDEImages.GetImageIndex('ce_default');
+  ImgIDProgram := IDEImages.GetImageIndex('ce_program');
+  ImgIDUnit := IDEImages.GetImageIndex('cc_unit');
+  ImgIDInterface := IDEImages.GetImageIndex('ce_interface');
+  ImgIDImplementation := IDEImages.GetImageIndex('ce_implementation');
+  ImgIDInitialization := IDEImages.GetImageIndex('ce_initialization');
+  ImgIDFinalization := IDEImages.GetImageIndex('ce_finalization');
+  ImgIDType := IDEImages.GetImageIndex('cc_type');
+  ImgIDVariable := IDEImages.GetImageIndex('cc_variable');
+  ImgIDConst := IDEImages.GetImageIndex('cc_constant');
+  ImgIDClass := IDEImages.GetImageIndex('cc_class');
+  ImgIDClassInterface := IDEImages.GetImageIndex('ce_classinterface');
+  ImgIDHelper := IDEImages.GetImageIndex('ce_helper');
+  ImgIDRecord := IDEImages.GetImageIndex('cc_record');
+  ImgIDEnum := IDEImages.GetImageIndex('cc_enum');
+  ImgIDProcedure := IDEImages.GetImageIndex('cc_procedure');
+  ImgIDFunction := IDEImages.GetImageIndex('cc_function');
+  ImgIDConstructor := IDEImages.GetImageIndex('cc_constructor');
+  ImgIDDestructor := IDEImages.GetImageIndex('cc_destructor');
+  ImgIDLabel := IDEImages.GetImageIndex('cc_label');
+  ImgIDProperty := IDEImages.GetImageIndex('cc_property');
+  ImgIDPropertyReadOnly := IDEImages.GetImageIndex('cc_property_ro');
+  // sections
+  ImgIDSection := IDEImages.GetImageIndex('ce_section');
+  ImgIDHint := IDEImages.GetImageIndex('state_hint');
+end;
+
 function TCodeExplorerView.GetCodeNodeDescription(ACodeTool: TCodeTool;
   CodeNode: TCodeTreeNode): string;
 var
@@ -764,8 +782,14 @@ begin
     ctnResStrSection:
       Result:='Resourcestring';
 
-    ctnVarDefinition,ctnConstDefinition,ctnUseUnit:
+    ctnVarDefinition,
+    ctnConstDefinition,
+    ctnEnumIdentifier,
+    ctnLabel:
       Result:=ACodeTool.ExtractIdentifier(CodeNode.StartPos);
+
+    ctnUseUnit:
+      Result:=ACodeTool.ExtractDottedIdentifier(CodeNode.StartPos);
 
     ctnTypeDefinition:
       begin
@@ -791,9 +815,6 @@ begin
     ctnClass,ctnObject,ctnObjCClass,ctnObjCCategory,ctnObjCProtocol,
     ctnClassInterface,ctnCPPClass:
       Result:='('+ACodeTool.ExtractClassInheritance(CodeNode,[])+')';
-
-    ctnEnumIdentifier, ctnLabel:
-      Result:=ACodeTool.ExtractIdentifier(CodeNode.StartPos);
 
     ctnProcedure:
       Result:=ACodeTool.ExtractProcHead(CodeNode,
@@ -892,6 +913,8 @@ begin
               Result := ImgIDClass;
             ctnObject,ctnRecordType:
               Result := ImgIDRecord;
+            ctnEnumerationType,ctnEnumIdentifier:
+              Result:=ImgIDEnum;
             ctnClassHelper,ctnRecordHelper,ctnTypeHelper:
               Result := ImgIDHelper;
           else
@@ -910,15 +933,26 @@ begin
     ctnObjCClass,ctnObjCCategory,ctnCPPClass:
                                       Result:=ImgIDClass;
     ctnRecordType:                    Result:=ImgIDRecord;
+    ctnEnumerationType,ctnEnumIdentifier:
+                                      Result:=ImgIDEnum;
     ctnClassHelper,ctnRecordHelper,ctnTypeHelper:
                                       Result:=ImgIDHelper;
-    ctnProcedure:                     if Tool.NodeIsFunction(CodeNode) then
+    ctnProcedure:
+                                      if Tool.NodeIsConstructor(CodeNode) then
+                                        Result:=ImgIDConstructor
+                                      else
+                                      if Tool.NodeIsDestructor(CodeNode) then
+                                        Result:=ImgIDDestructor
+                                      else
+                                      if Tool.NodeIsFunction(CodeNode) then
                                         Result:=ImgIDFunction
                                       else
                                         Result:=ImgIDProcedure;
     ctnProperty:                      Result:=ImgIDProperty;
     ctnUsesSection:                   Result:=ImgIDSection;
     ctnUseUnit:                       Result:=ImgIDUnit;
+    ctnLabelSection:                  Result:=ImgIDSection;
+    ctnLabel:                         Result:=ImgIDLabel;
   else
     Result:=ImgIDDefault;
   end;
@@ -960,7 +994,8 @@ begin
     CurParentViewNode:=ParentViewNode;
 
     // don't show statements
-    if (CodeNode.Desc in AllPascalStatements+[ctnParameterList]) then begin
+    if (CodeNode.Desc in AllPascalStatements+[ctnParameterList]-
+        [ctnInitialization,ctnFinalization]) then begin
       ShowNode:=false;
       ShowChilds:=false;
     end;
@@ -1078,11 +1113,9 @@ begin
       //if NodeText='TCodeExplorerView' then
       //  debugln(['TCodeExplorerView.CreateIdentifierNodes CodeNode=',CodeNode.DescAsString,' NodeText="',NodeText,'" Category=',dbgs(Category),' InFrontViewNode=',InFrontViewNode<>nil,' CurParentViewNode=',CurParentViewNode<>nil]);
       if InFrontViewNode<>nil then
-        ViewNode:=CodeTreeview.Items.InsertObjectBehind(
-                                              InFrontViewNode,NodeText,NodeData)
+        ViewNode:=CodeTreeview.Items.InsertObjectBehind(InFrontViewNode,NodeText,NodeData)
       else if CurParentViewNode<>nil then
-        ViewNode:=CodeTreeview.Items.AddChildObject(
-                                               CurParentViewNode,NodeText,NodeData)
+        ViewNode:=CodeTreeview.Items.AddChildObject(CurParentViewNode,NodeText,NodeData)
       else
         ViewNode:=CodeTreeview.Items.AddObject(nil,NodeText,NodeData);
       ViewNode.ImageIndex:=NodeImageIndex;
@@ -1244,6 +1277,7 @@ var
   ObserverCats: TCEObserverCategories;
   ProcNode: TCodeTreeNode;
   ObsState: TCodeObserverStatementState;
+  TVNode: TTreeNode;
 begin
   CodeNode:=Tool.Tree.Root;
   ObserverCats:=CodeExplorerOptions.ObserverCategories;
@@ -1267,7 +1301,9 @@ begin
             if LineCnt>=CodeExplorerOptions.LongProcLineCount then
             begin
               ProcNode:=CodeNode.Parent;
-              AddCodeNode(cefcLongProcs,ProcNode);
+              TVNode:=AddCodeNode(cefcLongProcs,ProcNode);
+              if Assigned(TVNode) then
+                TVNode.Text:=TVNode.Text+' ['+IntToStr(LineCnt)+']';
             end;
           end;
           if (cefcEmptyProcs in ObserverCats)
@@ -1551,7 +1587,9 @@ begin
     '''','#','0'..'9','$','%':
       begin
         // a constant
-        if (ObserverState.IgnoreConstLevel>=0)
+        if not FindUnnamedConstants then begin
+          // ignore
+        end else if (ObserverState.IgnoreConstLevel>=0)
         and (ObserverState.IgnoreConstLevel>=ObserverState.StackPtr)
         then begin
           // ignore range
@@ -1610,7 +1648,7 @@ begin
         if (Last1Atom=cafWord)
         and (ObserverState.IgnoreConstLevel<0) then
         begin
-          Atom:=Tool.LastAtoms.GetValueAt(0);
+          Atom:=Tool.LastAtoms.GetPriorAtom;
           FuncName:=copy(Tool.Src,Atom.StartPos,Atom.EndPos-Atom.StartPos);
           if Last2Atom=cafPoint then
             FuncName:='.'+FuncName;
@@ -1923,14 +1961,43 @@ procedure TCodeExplorerView.UpdateMode;
 begin
   if FMode=cemCategory
   then begin
-    CodeModeSpeedButton.LoadGlyphFromResourceName(HInstance, 'show_category');
+    IDEImages.AssignImage(CodeModeSpeedButton, 'show_category');
     CodeModeSpeedButton.Hint:=lisCEModeShowSourceNodes;
   end
   else begin
-    CodeModeSpeedButton.LoadGlyphFromResourceName(HInstance, 'show_source');
+    IDEImages.AssignImage(CodeModeSpeedButton, 'show_source');
     CodeModeSpeedButton.Hint:=lisCEModeShowCategories;
   end;
   Refresh(true);
+end;
+
+procedure TCodeExplorerView.UpdateCaption;
+var
+  s: String;
+begin
+  s:=lisMenuViewCodeExplorer;
+  if (CodeExplorerOptions.Refresh=cerManual) and (FCodeFilename<>'') then
+    s+=' - ' + ExtractFileName(FCodeFilename);
+  Caption:=s;
+end;
+
+function TCodeExplorerView.OnExpandedStateGetNodeText(Node: TTreeNode): string;
+var
+  p: Integer;
+begin
+  Result:=Node.Text;
+  if Result='' then exit;
+  p:=length(Result);
+  if Result[p]=')' then begin
+    dec(p);
+    while (p>1) and (Result[p] in ['+','0'..'9']) do dec(p);
+    if (p>1) and (Result[p]='(') then begin
+      repeat
+        dec(p);
+      until (p=0) or (Result[p]<>' ');
+      SetLength(Result,p);
+    end;
+  end;
 end;
 
 procedure TCodeExplorerView.KeyDown(var Key: Word; Shift: TShiftState);
@@ -1983,7 +2050,7 @@ var
   CurPage: TCodeExplorerPage;
 begin
   if FUpdateCount<=0 then
-    RaiseException('TCodeExplorerView.EndUpdate');
+    RaiseGDBException('TCodeExplorerView.EndUpdate');
   dec(FUpdateCount);
   if FUpdateCount=0 then begin
     CurPage:=CurrentPage;
@@ -2187,7 +2254,7 @@ begin
       // start updating the CodeTreeView
       CodeTreeview.BeginUpdate;
       if not CurFollowNode then
-        OldExpanded:=TTreeNodeExpandedState.Create(CodeTreeView);
+        OldExpanded:=TTreeNodeExpandedState.Create(CodeTreeView,@OnExpandedStateGetNodeText);
 
       ClearCodeTreeView;
 
@@ -2235,7 +2302,7 @@ begin
 
       CodeTreeview.EndUpdate;
     end;
-    Caption := lisMenuViewCodeExplorer + ' - ' + ExtractFileName(FCodeFilename);
+    UpdateCaption;
     if HostDockSite <> nil then
       HostDockSite.UpdateDockCaption();
   finally
@@ -2477,7 +2544,7 @@ var
   end;
 
 var
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
   Node: TTreeNode;
   NodeData: TViewNodeData;
 begin
@@ -2518,8 +2585,7 @@ begin
     if (NodeData<>nil) and (NodeData.StartPos>0)
     and (NodeData.EndPos>=NodeData.StartPos) then begin
       if fCodeSortedForStartPos=nil then
-        fCodeSortedForStartPos:=
-              TAvgLvlTree.Create(TListSortCompare(@CompareViewNodeDataStartPos));
+        fCodeSortedForStartPos:=TAvlTree.Create(TListSortCompare(@CompareViewNodeDataStartPos));
       fCodeSortedForStartPos.Add(TVNode);
     end;
     TVNode:=TVNode.GetNext;
@@ -2592,11 +2658,10 @@ var
   c: Char;
   i: Integer;
 begin
-  if TheFilter='' then begin
-    Result:=true;
-  end else if NodeText='' then begin
-    Result:=false;
-  end else begin
+  Result:=false;
+  if TheFilter='' then
+    Result:=true
+  else if NodeText<>'' then begin
     Src:=PChar(NodeText);
     PFilter:=PChar(TheFilter);
     repeat
@@ -2638,14 +2703,17 @@ begin
       CurName:='';
       case CodeNode.Desc of
 
-      ctnTypeDefinition,ctnVarDefinition,ctnConstDefinition,ctnUseUnit:
+      ctnTypeDefinition,
+      ctnVarDefinition,
+      ctnConstDefinition,
+      ctnEnumIdentifier:
         CurName:=ACodeTool.ExtractIdentifier(CodeNode.StartPos);
+
+      ctnUseUnit:
+        CurName:=ACodeTool.ExtractDottedIdentifier(CodeNode.StartPos);
 
       ctnGenericType:
         CurName:=ACodeTool.ExtractDefinitionName(CodeNode);
-
-      ctnEnumIdentifier:
-        CurName:=ACodeTool.ExtractIdentifier(CodeNode.StartPos);
 
       ctnProcedure:
         CurName:=ACodeTool.ExtractProcName(CodeNode,[]);
@@ -2670,7 +2738,7 @@ procedure TCodeExplorerView.CreateNodePath(ACodeTool: TCodeTool;
   aNodeData: TObject);
 var
   NodeData: TViewNodeData absolute aNodeData;
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
 begin
   if NodeData.CTNode.Desc=ctnProcedure then
     NodeData.Path:=GetCTNodePath(ACodeTool,NodeData.CTNode);
@@ -2692,7 +2760,7 @@ procedure TCodeExplorerView.AddImplementationNode(ACodeTool: TCodeTool;
   CodeNode: TCodeTreeNode);
 var
   NodeData: TViewNodeData;
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
   DeclData: TViewNodeData;
 begin
   if (CodeNode.Desc=ctnProcedure)

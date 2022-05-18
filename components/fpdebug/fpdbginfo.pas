@@ -152,8 +152,8 @@ type
     function GetMemberCount: Integer; virtual;
     function GetIndexType({%H-}AIndex: Integer): TFpDbgSymbol; virtual;
     function GetIndexTypeCount: Integer; virtual;
-    function GetMemberCountEx({%H-}AIndex: array of Int64): Integer; virtual;
-    function GetMemberEx({%H-}AIndex: Array of Int64): TFpDbgValue; virtual;
+    function GetMemberCountEx(const AIndex: array of Int64): Integer; virtual;
+    function GetMemberEx(const AIndex: Array of Int64): TFpDbgValue; virtual;
 
     function GetDbgSymbol: TFpDbgSymbol; virtual;
     function GetTypeInfo: TFpDbgSymbol; virtual;
@@ -239,6 +239,36 @@ type
     function GetAsInteger: Int64; override;
   public
     constructor Create(AValue: QWord; ASigned: Boolean = True);
+  end;
+
+  { TFpDbgValueConstChar }
+
+  TFpDbgValueConstChar = class(TFpDbgValue) // skChar / Not for strings
+  private
+    FValue: String;
+    FSigned: Boolean;
+  protected
+    property Value: String read FValue write FValue;
+    function GetKind: TDbgSymbolKind; override;
+    function GetFieldFlags: TFpDbgValueFieldFlags; override;
+    function GetAsString: AnsiString; override;
+  public
+    constructor Create(AValue: AnsiString);
+  end;
+
+  { TFpDbgValueConstWideChar }
+
+  TFpDbgValueConstWideChar = class(TFpDbgValue) // skChar / Not for strings
+  private
+    FValue: String;
+    FSigned: Boolean;
+  protected
+    property Value: String read FValue write FValue;
+    function GetKind: TDbgSymbolKind; override;
+    function GetFieldFlags: TFpDbgValueFieldFlags; override;
+    function GetAsString: AnsiString; override;
+  public
+    constructor Create(AValue: AnsiString);
   end;
 
   { TFpDbgValueConstFloat }
@@ -404,7 +434,7 @@ type
     property MemberByName[AIndex: String]: TFpDbgSymbol read GetMemberByName; // Includes inheritance
     //
     property Flags: TDbgSymbolFlags read GetFlags;
-    property Count: Integer read GetCount; deprecated;
+    property Count: Integer read GetCount; deprecated 'use MemberCount instead';
     property Parent: TFpDbgSymbol read GetParent; deprecated;
     // for Subranges
     property HasBounds: Boolean read GetHasBounds;
@@ -486,7 +516,7 @@ type
     function FindSymbol(const {%H-}AName: String): TFpDbgSymbol; virtual; deprecated;
     function FindSymbol({%H-}AAddress: TDbgPtr): TFpDbgSymbol; virtual; deprecated;
     property HasInfo: Boolean read FHasInfo;
-    function GetLineAddress(const {%H-}AFileName: String; {%H-}ALine: Cardinal): TDbgPtr; virtual;
+    function GetLineAddresses(const AFileName: String; ALine: Cardinal; var AResultList: TDBGPtrArray): Boolean; virtual;
     //property MemManager: TFpDbgMemReaderBase read GetMemManager write SetMemManager;
   end;
 
@@ -498,6 +528,52 @@ function dbgs(ADbgSymbolKind: TDbgSymbolKind): String;
 begin
   Result := '';
   WriteStr(Result, ADbgSymbolKind);
+end;
+
+{ TFpDbgValueConstChar }
+
+function TFpDbgValueConstChar.GetKind: TDbgSymbolKind;
+begin
+  Result := skChar;
+end;
+
+function TFpDbgValueConstChar.GetFieldFlags: TFpDbgValueFieldFlags;
+begin
+  Result := [svfString]
+end;
+
+function TFpDbgValueConstChar.GetAsString: AnsiString;
+begin
+  Result := Value;
+end;
+
+constructor TFpDbgValueConstChar.Create(AValue: AnsiString);
+begin
+  inherited Create;
+  FValue := AValue;
+end;
+
+{ TFpDbgValueConstWideChar }
+
+function TFpDbgValueConstWideChar.GetKind: TDbgSymbolKind;
+begin
+  Result := skChar;
+end;
+
+function TFpDbgValueConstWideChar.GetFieldFlags: TFpDbgValueFieldFlags;
+begin
+  Result := [svfString]
+end;
+
+function TFpDbgValueConstWideChar.GetAsString: AnsiString;
+begin
+  Result := Value;
+end;
+
+constructor TFpDbgValueConstWideChar.Create(AValue: AnsiString);
+begin
+  inherited Create;
+  FValue := AValue;
 end;
 
 { TFpDbgCircularRefCountedObject }
@@ -633,12 +709,12 @@ begin
   Result := 0;
 end;
 
-function TFpDbgValue.GetMemberEx(AIndex: array of Int64): TFpDbgValue;
+function TFpDbgValue.GetMemberEx(const AIndex: array of Int64): TFpDbgValue;
 begin
   Result := nil;
 end;
 
-function TFpDbgValue.GetMemberCountEx(AIndex: array of Int64): Integer;
+function TFpDbgValue.GetMemberCountEx(const AIndex: array of Int64): Integer;
 begin
   Result := 0;
 end;
@@ -1379,9 +1455,10 @@ begin
   Result := nil;
 end;
 
-function TDbgInfo.GetLineAddress(const AFileName: String; ALine: Cardinal): TDbgPtr;
+function TDbgInfo.GetLineAddresses(const AFileName: String; ALine: Cardinal;
+  var AResultList: TDBGPtrArray): Boolean;
 begin
-  Result := 0;
+  Result := False;
 end;
 
 procedure TDbgInfo.SetHasInfo;

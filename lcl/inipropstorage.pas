@@ -1,4 +1,4 @@
-{  $Id: inipropstorage.pas 49494 2015-07-04 23:08:00Z juha $  }
+{  $Id: inipropstorage.pas 57220 2018-02-02 11:46:07Z ondrej $  }
 {
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -14,7 +14,11 @@ unit IniPropStorage;
 interface
 
 uses
-  Classes, SysUtils, Forms, IniFiles, LazUtf8;
+  Classes, SysUtils, IniFiles,
+  // LazUtils
+  LazUtf8,
+  // LCL
+  Forms;
 
 type
   { TCustomIniPropStorage }
@@ -89,7 +93,7 @@ begin
       end;
     FReadOnly:=ReadOnly;
     if not (csDesigning in ComponentState) then
-      FInifile:=IniFileClass.Create(GetIniFileName);
+      FInifile:=IniFileClass.Create(GetIniFileName{$IF FPC_FULLVERSION>=30101}, TEncoding.UTF8{$ENDIF});
     end;
   Inc(FCount);
 end;

@@ -1,16 +1,13 @@
 {
  *****************************************************************************
-                                paswstring.pas
-
-  A widestring manager written in Pascal
-  and optimized for DefaultSystemCodePage CP_UTF8.
-
- *****************************************************************************
-  This file is part of the LazUtils package
+  This file is part of LazUtils.
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
  *****************************************************************************
+
+  A widestring manager written in Pascal
+  and optimized for DefaultSystemCodePage CP_UTF8.
 }
 unit PasWString;
 
@@ -192,7 +189,7 @@ begin
   p:=Str;
   if p=nil then exit(0);
   while p^<>#0 do begin
-    l:=UTF8CharacterLength(p);
+    l:=UTF8CodepointSize(p);
     inc(Result);
     inc(p,l);
   end;

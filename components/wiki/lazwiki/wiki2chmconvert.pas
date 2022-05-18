@@ -14,8 +14,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 
 ToDo:
@@ -33,13 +33,16 @@ unit Wiki2CHMConvert;
 interface
 
 uses
-  Classes, SysUtils, Wiki2HTMLConvert, Wiki2XHTMLConvert, LazLogger, laz2_DOM,
+  Classes, SysUtils,
   {$IFDEF EnableWikiCHMWriter}
   wikichmwriter, wikichmfilewriter, wikichmsitemap,
   {$ELSE}
   chmwriter, chmfilewriter, chmsitemap,
   {$ENDIF}
-  LazUTF8, LazFileUtils, CodeToolsStructs;
+  // LazUtils
+  LazLoggerBase, LazUTF8, LazFileUtils, AvgLvlTree,
+  // LazWiki
+  Wiki2HTMLConvert, Wiki2XHTMLConvert;
 
 const
   CHMImagesDir = '/images/';
@@ -77,12 +80,12 @@ type
     function GetImageLink(ImgFilename: string): string; override;
     function GetInternalImageLink(ImgFilename: String): String; override;
     function GetPageLink(Page: TW2XHTMLPage): string; override;
-    function GetRelativeCSSFileName: String; override;
     procedure SaveAllPages; override;
   public
     constructor Create; override;
     destructor Destroy; override;
     procedure Clear; override;
+    function GetRelativeCSSFileName: String; override;
     property CHMFile: string read FCHMFile write SetCHMFile;
     property IndexFileName: string read FIndexFileName write SetIndexFileName;
     property TOCFileName: String read FTOCFilename write SetTOCFilename;

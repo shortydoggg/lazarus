@@ -1,4 +1,4 @@
-{ $Id: fpdbgdisasx86.pp 52609 2016-07-03 20:41:10Z maxim $ }
+{ $Id: fpdbgdisasx86.pp 54031 2017-01-29 21:04:32Z joost $ }
 {
  ---------------------------------------------------------------------------
  fpdbgdisasx86.pp  -  Native Freepascal debugger - x86 Disassembler
@@ -9,7 +9,7 @@
  ---------------------------------------------------------------------------
 
  @created(Mon Apr 22th WET 2006)
- @lastmod($Date: 2016-07-03 22:41:10 +0200 (So, 03 Jul 2016) $)
+ @lastmod($Date: 2017-01-29 22:04:32 +0100 (So, 29 Jan 2017) $)
  @author(Marc Weustink <marc@@dommelstein.nl>)
 
  ***************************************************************************
@@ -27,7 +27,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }

@@ -1,4 +1,4 @@
-{ $Id: runtests.lpr 50159 2015-10-24 21:47:10Z mattias $}
+{ $Id: runtests.lpr 56183 2017-10-25 10:19:31Z mattias $}
 { Copyright (C) 2006 Vincent Snijders
 
   This source is free software; you can redistribute it and/or modify it under
@@ -13,8 +13,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 }
 program runtests;
 
@@ -24,8 +24,8 @@ uses
   Classes, consoletestrunner,
   testglobals, testunits, dom,
   {Unit needed to set the LCL version and widget set name}
-  LCLVersion, InterfaceBase, Interfaces, TestLazXML, TestAvgLvlTree,
-  TestMethodJumpTool, TestLConvEncoding;
+  LCLVersion, InterfaceBase, LCLPlatformDef, Interfaces, TestLazXML,
+  TestAvgLvlTree, TestLConvEncoding, testlazfileutils;
   
 type
 

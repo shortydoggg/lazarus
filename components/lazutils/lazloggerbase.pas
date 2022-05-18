@@ -1,4 +1,13 @@
+{
+ *****************************************************************************
+  This file is part of LazUtils.
+
+  See the file COPYING.modifiedLGPL.txt, included in this distribution,
+  for details about the license.
+ *****************************************************************************
+}
 unit LazLoggerBase;
+
 {$mode objfpc}{$H+}
 
 (*
@@ -11,7 +20,9 @@ unit LazLoggerBase;
 interface
 
 uses
-  Classes, SysUtils, types, math, LazClasses, LazUTF8;
+  Classes, SysUtils, types, math,
+  // LazUtils
+  LazClasses, LazUTF8;
 
 type
 
@@ -85,6 +96,7 @@ type
 
   TLazLogger = class(TRefCountedObject)
   private
+    FLoggerCriticalSection: TRTLCriticalSection;
     FIsInitialized: Boolean;
 
     FMaxNestPrefixLen: Integer;
@@ -224,6 +236,7 @@ type
                           const s13: string = ''; const s14: string = ''; const s15: string = '';
                           const s16: string = ''; const s17: string = ''; const s18: string = ''); overload;
 
+    procedure DumpExceptionBackTrace;
   end;
 
   { TLazLoggerWithGroupParam
@@ -259,8 +272,6 @@ type
 {$DEFINE USED_BY_LAZLOGGER_BASE}
 {$I LazLoggerIntf.inc}
 
-function ConvertLineEndings(const s: string): string;
-
 function GetParamByNameCount(const AName: String): integer;
 function GetParamByName(const AName: String; AnIndex: Integer): string;
 
@@ -275,6 +286,13 @@ procedure RecreateDebugLogger;
 
 property DebugLogger: TLazLogger read GetDebugLogger write SetDebugLogger;
 property DebugLoggerGroups: TLazLoggerLogGroupList read GetDebugLoggerGroups write SetDebugLoggerGroups;
+
+function DbgStr(const StringWithSpecialChars: string): string; overload;
+function DbgStr(const StringWithSpecialChars: string; StartPos, Len: PtrInt): string; overload;
+function DbgStr(const p: PChar; Len: PtrInt): string; overload;
+function DbgWideStr(const StringWithSpecialChars: widestring): string; overload;
+
+procedure DumpStack; inline;
 
 type
   TLazDebugLoggerCreator = function: TRefCountedObject;
@@ -325,7 +343,8 @@ procedure SetDebugLogger(ALogger: TLazLogger);
 begin
   ReleaseRefAndNil(TheLazLogger);
   TheLazLogger := ALogger;
-  TheLazLogger.AddReference;
+  if TheLazLogger <> nil then
+    TheLazLogger.AddReference;
 end;
 
 procedure RecreateDebugLogger;
@@ -367,6 +386,7 @@ function GetParamByName(const AName: String; AnIndex: Integer): string;
 var
   i, l: Integer;
 begin
+  Result := '';
   l := Length(AName);
   for i:= 1 to Paramcount do begin
     if copy(ParamStrUTF8(i),1, l) = AName then begin
@@ -377,6 +397,113 @@ begin
       end;
     end;
   end;
+end;
+
+function DbgStr(const StringWithSpecialChars: string): string;
+var
+  i: Integer;
+  s: String;
+  l: Integer;
+begin
+  Result:=StringWithSpecialChars;
+  i:=1;
+  while (i<=length(Result)) do begin
+    case Result[i] of
+    ' '..#126: inc(i);
+    else
+      s:='#'+HexStr(ord(Result[i]),2);
+      // Note: do not use copy, fpc might change broken UTF-8 characters to '?'
+      l:=length(Result)-i;
+      SetLength(Result,length(Result)-1+length(s));
+      if l>0 then
+        system.Move(Result[i+1],Result[i+length(s)],l);
+      system.Move(s[1],Result[i],length(s));
+      inc(i,length(s));
+    end;
+  end;
+end;
+
+function DbgStr(const StringWithSpecialChars: string; StartPos, Len: PtrInt
+  ): string;
+begin
+  Result:=dbgstr(copy(StringWithSpecialChars,StartPos,Len));
+end;
+
+function DbgStr(const p: PChar; Len: PtrInt): string;
+const
+  Hex: array[0..15] of char='0123456789ABCDEF';
+var
+  UsedLen: PtrInt;
+  ResultLen: PtrInt;
+  Src: PChar;
+  Dest: PChar;
+  c: Char;
+begin
+  if (p=nil) or (p^=#0) or (Len<=0) then exit('');
+  UsedLen:=0;
+  ResultLen:=0;
+  Src:=p;
+  while Src^<>#0 do begin
+    inc(UsedLen);
+    if Src^ in [' '..#126] then
+      inc(ResultLen)
+    else
+      inc(ResultLen,3);
+    if UsedLen>=Len then break;
+    inc(Src);
+  end;
+  SetLength(Result,ResultLen);
+  Src:=p;
+  Dest:=PChar(Result);
+  while UsedLen>0 do begin
+    dec(UsedLen);
+    c:=Src^;
+    if c in [' '..#126] then begin
+      Dest^:=c;
+      inc(Dest);
+    end else begin
+      Dest^:='#';
+      inc(Dest);
+      Dest^:=Hex[ord(c) shr 4];
+      inc(Dest);
+      Dest^:=Hex[ord(c) and $f];
+      inc(Dest);
+    end;
+    inc(Src);
+  end;
+end;
+
+function DbgWideStr(const StringWithSpecialChars: widestring): string;
+var
+  s: String;
+  SrcPos: Integer;
+  DestPos: Integer;
+  i: Integer;
+begin
+  SetLength(Result,length(StringWithSpecialChars));
+  SrcPos:=1;
+  DestPos:=1;
+  while SrcPos<=length(StringWithSpecialChars) do begin
+    i:=ord(StringWithSpecialChars[SrcPos]);
+    case i of
+    32..126:
+      begin
+        Result[DestPos]:=chr(i);
+        inc(SrcPos);
+        inc(DestPos);
+      end;
+    else
+      s:='#'+HexStr(i,4);
+      inc(SrcPos);
+      Result:=copy(Result,1,DestPos-1)+s+copy(Result,DestPos+1,length(Result));
+      inc(DestPos,length(s));
+    end;
+  end;
+end;
+
+procedure DumpStack;
+begin
+  DebuglnStack;
 end;
 
 { TLazLoggerLogGroupList }
@@ -545,6 +672,28 @@ begin
   //
 end;
 
+procedure TLazLogger.DumpExceptionBackTrace;
+  procedure DumpAddr(Addr: Pointer);
+  begin
+    // preventing another exception, while dumping stack trace
+    try
+      DebugLn(BackTraceStrFunc(Addr));
+    except
+      DebugLn(SysBackTraceStr(Addr));
+    end;
+  end;
+var
+  FrameCount: integer;
+  Frames: PPointer;
+  FrameNumber:Integer;
+begin
+  DumpAddr(ExceptAddr);
+  FrameCount:=ExceptFrameCount;
+  Frames:=ExceptFrames;
+  for FrameNumber := 0 to FrameCount-1 do
+    DumpAddr(Frames[FrameNumber]);
+end;
+
 procedure TLazLogger.DoFinsh;
 begin
   //
@@ -627,6 +776,7 @@ end;
 
 constructor TLazLogger.Create;
 begin
+  InitCriticalSection(FLoggerCriticalSection);
   FIsInitialized := False;
   FUseGlobalLogGroupList := False;
 
@@ -642,6 +792,7 @@ begin
   if TheLazLogger = Self then TheLazLogger := nil;
   ReleaseRefAndNil(FLogGroupList);
   inherited Destroy;
+  DoneCriticalsection(FLoggerCriticalSection);
 end;
 
 procedure TLazLogger.Assign(Src: TLazLogger);
@@ -658,9 +809,14 @@ end;
 
 procedure TLazLogger.Init;
 begin
-  if FIsInitialized then exit;
-  DoInit;
-  FIsInitialized := True;
+  EnterCriticalsection(FLoggerCriticalSection);
+  try
+    if FIsInitialized then exit;
+    DoInit;
+    FIsInitialized := True;
+  finally
+    LeaveCriticalsection(FLoggerCriticalSection);
+  end;
 end;
 
 procedure TLazLogger.Finish;
@@ -1049,7 +1205,7 @@ begin
 
   if (Src <> nil) then
     for i := 0 to Src.BlockHandlerCount - 1 do
-      AddBlockHandler(BlockHandler[i]);
+      AddBlockHandler(Src.BlockHandler[i]);
 end;
 
 function TLazLoggerWithGroupParam.RegisterLogGroup(const AConfigName: String): PLazLoggerLogGroup;
@@ -1109,33 +1265,6 @@ begin
     then
       Result^.Enabled := ADefaulEnabled;
     Result^.Flags := Result^.Flags - [lgfNoDefaultEnabledSpecified, lgfAddedByParamParser];
-  end;
-end;
-
-function ConvertLineEndings(const s: string): string;
-var
-  i: Integer;
-  EndingStart: LongInt;
-begin
-  Result:=s;
-  i:=1;
-  while (i<=length(Result)) do begin
-    if Result[i] in [#10,#13] then begin
-      EndingStart:=i;
-      inc(i);
-      if (i<=length(Result)) and (Result[i] in [#10,#13])
-      and (Result[i]<>Result[i-1]) then begin
-        inc(i);
-      end;
-      if (length(LineEnding)<>i-EndingStart)
-      or (LineEnding<>copy(Result,EndingStart,length(LineEnding))) then begin
-        // line end differs => replace with current LineEnding
-        Result:=
-          copy(Result,1,EndingStart-1)+LineEnding+copy(Result,i,length(Result));
-        i:=EndingStart+length(LineEnding);
-      end;
-    end else
-      inc(i);
   end;
 end;
 

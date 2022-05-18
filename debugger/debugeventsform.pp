@@ -1,10 +1,10 @@
-{ $Id: debugeventsform.pp 49494 2015-07-04 23:08:00Z juha $ }
+{ $Id: debugeventsform.pp 55039 2017-05-22 07:52:37Z ondrej $ }
 {                       ------------------------------------------
                         debugeventsform.pp  -  Shows target output
                         ------------------------------------------
 
  @created(Wed Mar 1st 2010)
- @lastmod($Date: 2015-07-05 01:08:00 +0200 (So, 05 Jul 2015) $)
+ @lastmod($Date: 2017-05-22 09:52:37 +0200 (Mo, 22 Mai 2017) $)
  @author Lazarus Project
 
  ***************************************************************************
@@ -22,7 +22,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -278,7 +278,7 @@ begin
   actOptions.Caption := lisEventLogOptions;
   FEvents := TStringList.Create;
   PopupMenu1.Images := IDEImages.Images_16;
-  actOptions.ImageIndex := IDEImages.LoadImage(16, 'menu_environment_options');
+  actOptions.ImageIndex := IDEImages.LoadImage('menu_environment_options');
 end;
 
 destructor TDbgEventsForm.Destroy;

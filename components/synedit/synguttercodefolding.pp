@@ -27,8 +27,9 @@ unit SynGutterCodeFolding;
 interface
 
 uses
-  SysUtils, Classes, Controls, Graphics, Menus, LCLIntf, SynGutterBase, SynEditMiscProcs,
-  SynEditFoldedView, SynEditMouseCmds, SynEditHighlighterFoldBase, LCLProc, LCLType, ImgList;
+  SysUtils, Classes, Controls, Graphics, Menus, LCLIntf, SynGutterBase,
+  SynEditMiscProcs, SynEditFoldedView, SynEditMouseCmds,
+  SynEditHighlighterFoldBase, LCLProc, LCLType, ImgList, Forms;
 
 type
 
@@ -59,17 +60,26 @@ type
 
   TDrawNodeSymbolOptions = set of (nsoSubtype, nsoLostHl, nsoBlockSel);
 
+  TSynGutterImageList = class(TImageList)
+  public
+    InitPPI: Integer;
+  end;
+
   { TSynGutterCodeFolding }
 
   TSynGutterCodeFolding = class(TSynGutterPartBase)
+  private
+    const cNodeOffset = 1;
   private
     FMouseActionsCollapsed: TSynEditMouseInternalActions;
     FMouseActionsExpanded: TSynEditMouseInternalActions;
     FPopUp: TPopupMenu;
     FMenuInf: Array of TFoldViewNodeInfo;
     FIsFoldHidePreviousLine: Boolean;
-    FPopUpImageList: TImageList;
+    FPopUpImageList: TSynGutterImageList;
     FReversePopMenuOrder: Boolean;
+    FPpiPenWidth: Integer;
+    procedure FPopUpOnPopup(Sender: TObject);
     function GetMouseActionsCollapsed: TSynEditMouseActions;
     function GetMouseActionsExpanded: TSynEditMouseActions;
     procedure SetMouseActionsCollapsed(const AValue: TSynEditMouseActions);
@@ -77,7 +87,7 @@ type
     function  FoldTypeForLine(AScreenLine: Integer): TSynEditFoldLineCapability;
     function  IsFoldHidePreviousLine(AScreenLine: Integer): Boolean;
     function  IsSingleLineHide(AScreenLine: Integer): Boolean;
-    procedure InitPopUpImageList;
+    procedure InitPopUpImageList(const APPI: Integer);
     procedure DrawNodeSymbol(Canvas: TCanvas; Rect: TRect;
                              NodeType: TSynEditFoldLineCapability;
                              SubType: TDrawNodeSymbolOptions);
@@ -86,9 +96,11 @@ type
     procedure CreatePopUpMenuEntries(var APopUp: TPopupMenu; ALine: Integer); virtual;
     procedure PopClicked(Sender: TObject);
     function CreateMouseActions: TSynEditMouseInternalActions; override;
+    procedure SetWidth(const AValue: integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+    procedure ScalePPI(const AScaleFactor: Double); override;
 
     procedure Paint(Canvas: TCanvas; AClip: TRect; FirstLine, LastLine: integer);
       override;
@@ -113,7 +125,7 @@ uses
   SynEdit;
 
 var
-  GlobalPopUpImageList: TImageList = nil;
+  GlobalPopUpImageList: TSynGutterImageList = nil;
 
 
 { TSynGutterCodeFolding }
@@ -184,6 +196,15 @@ begin
   end;
 end;
 
+procedure TSynGutterCodeFolding.FPopUpOnPopup(Sender: TObject);
+var
+  MonitorPPI: Integer;
+begin
+  MonitorPPI := Screen.MonitorFromPoint(FPopUp.PopupPoint).PixelsPerInch;
+  if (FPopUpImageList.Count=0) or (FPopUpImageList.InitPPI<>MonitorPPI) then
+    InitPopUpImageList(MonitorPPI);
+end;
+
 function TSynGutterCodeFolding.IsFoldHidePreviousLine(AScreenLine: Integer): Boolean;
 begin
   FoldTypeForLine(AScreenLine);
@@ -204,40 +225,49 @@ begin
     Result := True;
 end;
 
-procedure TSynGutterCodeFolding.InitPopUpImageList;
+procedure TSynGutterCodeFolding.InitPopUpImageList(const APPI: Integer);
 var
   img: TBitmap;
+  R: TRect;
   procedure NewImg;
   begin
     img := TBitmap.Create;
-    img.SetSize(16, 16);
+    img.SetSize(FPopUpImageList.Width, FPopUpImageList.Height);
     img.Canvas.Brush.Color := clWhite;
-    img.Canvas.FillRect(0,0,16,16);
-    img.TransparentColor := clWhite;
+    img.Canvas.FillRect(img.Canvas.ClipRect);
     img.Canvas.Pen.Color := clBlack;
     img.Canvas.Pen.Width := 1;
   end;
 begin
   FPopUpImageList.DrawingStyle := dsTransparent;
+  FPopUpImageList.Clear;
+  FPopUpImageList.Width := MulDiv(16, APPI, 96);
+  FPopUpImageList.Height := FPopUpImageList.Width;
+  FPopUpImageList.InitPPI := APPI;
+
+  R.Left := MulDiv(3, APPI, 96);
+  R.Top := R.Left;
+  R.Right := MulDiv(14, APPI, 96);
+  R.Bottom := R.Right;
 
   NewImg;
-  DrawNodeSymbol(img.Canvas, Rect(3,3,14,14), cfFoldStart, []);  // [-]
-  FPopUpImageList.Add(img, nil);
+  DrawNodeSymbol(img.Canvas, R, cfFoldStart, []);  // [-]
+  FPopUpImageList.AddMasked(img, img.TransparentColor);
   img.Free;
 
   NewImg;
-  DrawNodeSymbol(img.Canvas, Rect(3,3,14,14), cfCollapsedFold, []);  // [+]
-  FPopUpImageList.Add(img, nil);
+  DrawNodeSymbol(img.Canvas, R, cfCollapsedFold, []);  // [+]
+  FPopUpImageList.AddMasked(img, img.TransparentColor);
   img.Free;
 
   NewImg;
-  DrawNodeSymbol(img.Canvas, Rect(3,3,14,14), cfHideStart, []);  // [.]
-  FPopUpImageList.Add(img, nil);
+  DrawNodeSymbol(img.Canvas, R, cfHideStart, []);  // [.]
+  FPopUpImageList.AddMasked(img, img.TransparentColor);
   img.Free;
 
   NewImg;
-  DrawNodeSymbol(img.Canvas, Rect(3,3,14,14), cfCollapsedHide, []);  // [v]
-  FPopUpImageList.Add(img, nil);
+  DrawNodeSymbol(img.Canvas, R, cfCollapsedHide, []);  // [v]
+  FPopUpImageList.AddMasked(img, img.TransparentColor);
   img.Free;
 
 end;
@@ -267,15 +297,15 @@ begin
     if not assigned(GlobalPopUpImageList) then begin
       // Todo: Add a flag, when using global list, or make list ref-counted
       // See Destroy
-      GlobalPopUpImageList  := TImageList.Create(nil);
+      GlobalPopUpImageList  := TSynGutterImageList.Create(nil);
       FPopUpImageList := GlobalPopUpImageList;
-      InitPopUpImageList;
     end
     else
       FPopUpImageList := GlobalPopUpImageList;
 
     APopUp := TPopupMenu.Create(nil);
     APopUp.Images := FPopUpImageList;
+    APopUp.OnPopup := @FPopUpOnPopup;
   end
   else
     APopUp.Items.Clear;
@@ -329,6 +359,7 @@ end;
 
 constructor TSynGutterCodeFolding.Create(AOwner: TComponent);
 begin
+  FPpiPenWidth := 1;
   FReversePopMenuOrder := true;
   FMouseActionsExpanded := TSynEditMouseActionsGutterFoldExpanded.Create(self);
   FMouseActionsCollapsed := TSynEditMouseActionsGutterFoldCollapsed.Create(self);
@@ -353,6 +384,12 @@ begin
   inherited Destroy;
 end;
 
+procedure TSynGutterCodeFolding.ScalePPI(const AScaleFactor: Double);
+begin
+  inherited ScalePPI(AScaleFactor);
+  FPpiPenWidth := Max(1, Scale96ToFont(1));
+end;
+
 procedure TSynGutterCodeFolding.PopClicked(Sender: TObject);
 var
   inf: TFoldViewNodeInfo;
@@ -370,6 +407,14 @@ end;
 function TSynGutterCodeFolding.CreateMouseActions: TSynEditMouseInternalActions;
 begin
   Result := TSynEditMouseActionsGutterFold.Create(self);
+end;
+
+procedure TSynGutterCodeFolding.SetWidth(const AValue: integer);
+begin
+  if (Width=AValue) or (AutoSize) then exit;
+  inherited SetWidth(AValue);
+
+  FPpiPenWidth := Max(1, Scale96ToFont(1));
 end;
 
 procedure TSynGutterCodeFolding.DoOnGutterClick(X, Y : integer);
@@ -488,7 +533,7 @@ procedure TSynGutterCodeFolding.DrawNodeSymbol(Canvas: TCanvas; Rect: TRect;
   NodeType: TSynEditFoldLineCapability; SubType: TDrawNodeSymbolOptions);
 var
   Points: Array [0..3] of TPoint;
-  X, Y: Integer;
+  X, Y, LineBorder, c, LineBorderEnd: Integer;
   AliasMode: TAntialiasingMode;
   OdlCosmetic: Boolean;
 begin
@@ -503,9 +548,13 @@ begin
     Canvas.Pen.Style := psDash;
     Canvas.Pen.Cosmetic := False;
   end;
+  Canvas.Pen.JoinStyle := pjsMiter;
   Canvas.Rectangle(Rect);
   Canvas.Pen.Style := psSolid;
   Canvas.Pen.Cosmetic := OdlCosmetic;
+  c := Canvas.Pen.Width div 2;
+  LineBorder := Round((Rect.Right-Rect.Left) / 5) + c;
+  LineBorderEnd := LineBorder + c;
   X := (Rect.Left - 1 + Rect.Right) div 2;
   Y := (Rect.Top - 1 + Rect.Bottom) div 2;
 
@@ -513,8 +562,8 @@ begin
     cfFoldStart:
       begin
         // [-]
-        Canvas.MoveTo(X - 2, Y);
-        Canvas.LineTo(X + 3, Y);
+        Canvas.MoveTo(Rect.Left + LineBorder, Y);
+        Canvas.LineTo(Rect.Right - LineBorderEnd, Y);
       end;
     cfHideStart:
       begin
@@ -525,10 +574,10 @@ begin
     cfCollapsedFold:
       begin
         // [+]
-        Canvas.MoveTo(X - 2, Y);
-        Canvas.LineTo(X + 3, Y);
-        Canvas.MoveTo(X, Y - 2);
-        Canvas.LineTo(X, Y + 3);
+        Canvas.MoveTo(Rect.Left + LineBorder, Y);
+        Canvas.LineTo(Rect.Right - LineBorderEnd, Y);
+        Canvas.MoveTo(X, Rect.Top + LineBorder);
+        Canvas.LineTo(X, Rect.Bottom - LineBorderEnd);
       end;
     cfCollapsedHide:
       begin
@@ -536,24 +585,22 @@ begin
           false: begin
               // [v]
               Points[0].X := X;
-              Points[0].y := Y + 2;
-              Points[1].X := X - 2;
+              Points[0].y := Rect.Bottom - LineBorder - 1;
+              Points[1].X := Rect.Left + LineBorder;
               Points[1].y := Y;
-              Points[2].X := X + 2;
+              Points[2].X := Rect.Right - LineBorder - 1;
               Points[2].y := Y;
-              Points[3].X := X;
-              Points[3].y := Y + 2;
+              Points[3] := Points[0];
           end;
           true: begin
               // [v]
               Points[0].X := X;
-              Points[0].y := Y - 2;
-              Points[1].X := X - 2;
+              Points[0].y := Rect.Top + LineBorder;
+              Points[1].X := Rect.Left + LineBorder;
               Points[1].y := Y;
-              Points[2].X := X + 2;
+              Points[2].X := Rect.Right - LineBorder - 1;
               Points[2].y := Y;
-              Points[3].X := X;
-              Points[3].y := Y - 2;
+              Points[3] := Points[0];
           end;
         end;
         Canvas.Polygon(Points);
@@ -563,18 +610,19 @@ begin
 end;
 
 function TSynGutterCodeFolding.PreferedWidth: Integer;
+const PrefFullWidth = 10;
 begin
-  Result := 10;
+  Result :=
+    Max(PrefFullWidth div 2, Min(PrefFullWidth, TCustomSynEdit(SynEdit).LineHeight - cNodeOffset));
 end;
 
 procedure TSynGutterCodeFolding.Paint(Canvas : TCanvas; AClip : TRect; FirstLine, LastLine : integer);
-const cNodeOffset = 1;
 var
   iLine: integer;
   rcLine: TRect;
   rcCodeFold: TRect;
   tmp: TSynEditFoldLineCapability;
-  LineHeight, LineOffset, BoxSize: Integer;
+  LineHeight, TextHeight, LineOffset, HalfBoxSize: Integer;
 
   procedure DrawNodeBox(rcCodeFold: TRect; NodeType: TSynEditFoldLineCapability);
   var
@@ -582,7 +630,9 @@ var
     ptCenter : TPoint;
     isPrevLine: Boolean;
     DrawOpts: TDrawNodeSymbolOptions;
+    c: Integer;
   begin
+
     isPrevLine := IsFoldHidePreviousLine(iLine);
     LineOffset := 0;
     DrawOpts := [];
@@ -594,17 +644,19 @@ var
 
     //center of the draw area
     ptCenter.X := (rcCodeFold.Left + rcCodeFold.Right) div 2;
-    ptCenter.Y := (rcCodeFold.Top + rcCodeFold.Bottom) div 2;
+    ptCenter.Y := Max(HalfBoxSize,
+                      (rcCodeFold.Top + Min(rcCodeFold.Top+TextHeight, rcCodeFold.Bottom)) div 2);
 
     // If belongs to line above, draw at very top
     if isPrevLine then
-      ptCenter.Y := rcCodeFold.Top + (BoxSize div 2) - 1;
+      ptCenter.Y := rcCodeFold.Top + (HalfBoxSize) - 1;
+    c := Canvas.Pen.Width div 2;
 
     //area of drawbox
-    rcNode.Left   := ptCenter.X - (BoxSize div 2) + 1;
-    rcNode.Right  := ptCenter.X + (BoxSize div 2);
-    rcNode.Top    := ptCenter.Y - (BoxSize div 2) + 1;
-    rcNode.Bottom := ptCenter.Y + (BoxSize div 2);
+    rcNode.Left   := ptCenter.X - (HalfBoxSize) + 1 + c;
+    rcNode.Right  := ptCenter.X + (HalfBoxSize) - c;
+    rcNode.Top    := ptCenter.Y - (HalfBoxSize) + 1 + c;
+    rcNode.Bottom := ptCenter.Y + (HalfBoxSize) - c;
 
     Canvas.Brush.Style := bsClear;
 
@@ -667,11 +719,12 @@ var
 begin
   if not Visible then exit;
   LineHeight := TCustomSynEdit(SynEdit).LineHeight;
+  TextHeight := LineHeight - Max(0, TCustomSynEdit(SynEdit).ExtraLineSpacing);
   LineOffset := 0;
   if (FirstLine > 0) and
      (FoldView.FoldType[FirstLine-1] - [cfFoldBody] = [cfFoldEnd]) then
     LineOffset := 2;
-  BoxSize := Min(Width, LineHeight - cNodeOffset*2);
+  HalfBoxSize := Min(Width, LineHeight - cNodeOffset*2) div 2;
 
   if MarkupInfo.Background <> clNone then
   begin
@@ -683,7 +736,8 @@ begin
   with Canvas do
   begin
     Pen.Color := MarkupInfo.Foreground;
-    Pen.Width := 1;
+    Pen.EndCap := pecSquare;
+    Pen.Width := Min(Max(1, Min(Width, HalfBoxSize*2 - cNodeOffset*2) div 5), FPpiPenWidth);
 
     rcLine.Bottom := AClip.Top;
     for iLine := FirstLine to LastLine do

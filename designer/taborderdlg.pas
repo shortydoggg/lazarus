@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -32,8 +32,13 @@ unit TabOrderDlg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Dialogs, Buttons, ComCtrls, IDEOptionDefs,
-  LCLType, LCLProc, PropEdits, IDEDialogs, LazarusIDEStrConsts, AvgLvlTree;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  Forms, Controls, Dialogs, Buttons, ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLProc,
+  // IdeIntf
+  PropEdits, IDEDialogs, IDEImagesIntf,
+  //IDE
+  IDEOptionDefs, LazarusIDEStrConsts;
 
 type
 
@@ -42,11 +47,13 @@ type
   TTabOrderDialog = class(TForm)
     ArrowDown: TSpeedButton;
     ArrowUp: TSpeedButton;
+    CheckBoxSortRecursivly: TCheckBox;
+    PanelSortByPosition: TPanel;
     ItemTreeview: TTreeView;
     SortByPositionButton: TBitBtn;
+    procedure ItemTreeviewSelectionChanged(Sender: TObject);
     procedure SortByPositionButtonClick(Sender: TObject);
     procedure FormShow(Sender: TObject);
-    procedure ItemTreeviewClick(Sender: TObject);
     procedure TabOrderDialogCreate(Sender: TObject);
     procedure UpSpeedbuttonClick(Sender: TObject);
     procedure DownSpeedbuttonClick(Sender: TObject);
@@ -55,9 +62,9 @@ type
     FUpdating: Boolean;
     procedure SwapNodes(ANode1, ANode2, NewSelected: TTreeNode);
     procedure CheckButtonsEnabled;
-    procedure CreateCandidates(OwnerComponent: TComponent; Candidates: TAvgLvlTree);
+    procedure CreateCandidates(OwnerComponent: TComponent; Candidates: TAvlTree);
     procedure CreateNodes(ParentControl: TWinControl; ParentNode: TTreeNode;
-      Candidates: TAvgLvlTree);
+      Candidates: TAvlTree);
     procedure RefreshTree;
     procedure OnSomethingChanged;
     procedure OnPersistentAdded({%H-}APersistent: TPersistent; {%H-}Select: boolean);
@@ -132,13 +139,15 @@ begin
   GlobalDesignHook.AddHandlerDeletePersistent(@OnDeletePersistent);
   GlobalDesignHook.AddHandlerSetSelection(@OnSetSelection);
 
-  ArrowDown.LoadGlyphFromResourceName(HInstance, 'arrow_down');
-  ArrowUp.LoadGlyphFromResourceName(HInstance, 'arrow_up');
-  SortByPositionButton.LoadGlyphFromResourceName(HInstance, 'menu_edit_sort');
+  IDEImages.AssignImage(ArrowDown, 'arrow_down');
+  IDEImages.AssignImage(ArrowUp, 'arrow_up');
+  IDEImages.AssignImage(SortByPositionButton, 'menu_edit_sort');
 
   ArrowDown.Hint:=lisTabOrderDownHint;
   ArrowUp.Hint:=lisTabOrderUpHint;
   SortByPositionButton.Hint:=lisTabOrderSortHint;
+  CheckBoxSortRecursivly.Caption := lisTabOrderRecursively;
+  CheckBoxSortRecursivly.Hint := lisTabOrderRecursionHint;
 end;
 
 procedure TTabOrderDialog.FormShow(Sender: TObject);
@@ -157,15 +166,48 @@ begin
 end;
 
 procedure TTabOrderDialog.SortByPositionButtonClick(Sender: TObject);
+
+  procedure SortControls(FirstItem: TTreeNode);
+  var
+    SortedNodes: TFPList;
+    I: Integer;
+    CurrItem: TTreeNode;
+  begin
+    if Assigned(FirstItem) then begin
+      SortedNodes := TFPList.Create;
+      try
+        CurrItem := FirstItem;
+        repeat
+          if CheckBoxSortRecursivly.Checked then
+            SortControls(CurrItem.GetFirstChild);
+
+          SortedNodes.Add(CurrItem);
+          CurrItem := CurrItem.GetNextSibling;
+        until CurrItem = nil;
+
+        SortedNodes.Sort(@SortNodeByControlPos);
+
+        for I := SortedNodes.Count - 1 downto 0 do
+        begin
+          CurrItem := TTreeNode(SortedNodes[I]);
+          CurrItem.MoveTo(FirstItem, naAddFirst);
+          TWinControl(CurrItem.Data).TabOrder := I;
+          CurrItem.Text := TWinControl(CurrItem.Data).Name + '   (' + IntToStr(I) + ')';
+        end;
+      finally
+        SortedNodes.Free;
+      end;
+    end;
+  end;
+
 var
-  FirstItem, CurrItem: TTreeNode;
-  SortedNodes: TFPList;
-  i: Integer;
+  FirstItem: TTreeNode;
 begin
   if (ItemTreeview.Selected <> nil) and (ItemTreeview.Selected.Parent <> nil) then
     FirstItem := ItemTreeview.Selected.Parent.GetFirstChild
   else
     FirstItem := ItemTreeview.Items.GetFirstNode;
+
   if IDEMessageDialog('', Format(lisTabOrderConfirmSort, [TControl(FirstItem.Data).Parent.Name]),
     mtConfirmation, mbOKCancel) <> mrOK then
   begin
@@ -173,25 +215,9 @@ begin
   end;
 
   ItemTreeview.BeginUpdate;
-  SortedNodes := TFPList.Create;
   try
-    CurrItem := FirstItem;
-    repeat
-      SortedNodes.Add(CurrItem);
-      CurrItem := CurrItem.GetNextSibling;
-    until CurrItem = nil;
-
-    SortedNodes.Sort(@SortNodeByControlPos);
-
-    for i := SortedNodes.Count - 1 downto 0 do
-    begin
-      CurrItem := TTreeNode(SortedNodes[i]);
-      CurrItem.MoveTo(FirstItem, naAddFirst);
-      TWinControl(CurrItem.Data).TabOrder := i;
-      CurrItem.Text := TWinControl(CurrItem.Data).Name + '   (' + IntToStr(i) + ')';
-    end;
+    SortControls(FirstItem);
   finally
-    SortedNodes.Free;
     ItemTreeview.EndUpdate;
   end;
   GlobalDesignHook.Modified(Self);
@@ -199,9 +225,18 @@ begin
   CheckButtonsEnabled;
 end;
 
-procedure TTabOrderDialog.ItemTreeviewClick(Sender: TObject);
+procedure TTabOrderDialog.ItemTreeviewSelectionChanged(Sender: TObject);
+var
+  Node: TTreeNode;
 begin
-  CheckButtonsEnabled;
+  if FUpdating then Exit;
+  Node := ItemTreeview.Selected;
+  if Assigned(Node) then begin
+    FUpdating := True;
+    GlobalDesignHook.SelectOnlyThis(TPersistent(Node.Data));
+    FUpdating := False;
+    CheckButtonsEnabled;
+  end;
 end;
 
 procedure TTabOrderDialog.UpSpeedbuttonClick(Sender: TObject);
@@ -284,7 +319,7 @@ begin
 end;
 
 procedure TTabOrderDialog.CreateCandidates(OwnerComponent: TComponent;
-  Candidates: TAvgLvlTree);
+  Candidates: TAvlTree);
 var
   i: Integer;
   AComponent: TComponent;
@@ -308,7 +343,7 @@ begin
   end;
 end;
 
-procedure TTabOrderDialog.CreateNodes(ParentControl: TWinControl; ParentNode: TTreeNode; Candidates: TAvgLvlTree);
+procedure TTabOrderDialog.CreateNodes(ParentControl: TWinControl; ParentNode: TTreeNode; Candidates: TAvlTree);
 // Add all controls in Designer to ItemTreeview.
 var
   AControl: TControl;
@@ -353,37 +388,36 @@ end;
 procedure TTabOrderDialog.RefreshTree;
 var
   LookupRoot: TPersistent;
-  Candidates: TAvgLvlTree;
+  Candidates: TAvlTree;
 begin
-  if IsVisible and not FUpdating then
-  begin
-    FUpdating := true;
-    ItemTreeview.BeginUpdate;
-    try
-      ItemTreeview.Items.Clear;
-      LookupRoot := GlobalDesignHook.LookupRoot;
-      if Assigned(LookupRoot) and (LookupRoot is TWinControl) then begin
-        Candidates := TAvgLvlTree.Create;
-        try
-          CreateCandidates(TComponent(LookupRoot), Candidates);
-          CreateNodes(TWinControl(LookupRoot), nil, Candidates);
-        finally
-          Candidates.Free;
-        end;
-        Caption := Format(lisTabOrderOf, [TWinControl(LookupRoot).Name]);
-      end else
-        Caption := lisMenuViewTabOrder;
-    finally
-      ItemTreeview.EndUpdate;
-      FUpdating := false;
-    end;
+  if not IsVisible then Exit;
+  ItemTreeview.BeginUpdate;
+  try
+    ItemTreeview.Items.Clear;
+    LookupRoot := GlobalDesignHook.LookupRoot;
+    if LookupRoot is TWinControl then begin
+      Candidates := TAvlTree.Create;
+      try
+        CreateCandidates(TComponent(LookupRoot), Candidates);
+        CreateNodes(TWinControl(LookupRoot), nil, Candidates);
+      finally
+        Candidates.Free;
+      end;
+      Caption := Format(lisTabOrderOf, [TWinControl(LookupRoot).Name]);
+    end else
+      Caption := lisMenuViewTabOrder;
+  finally
+    ItemTreeview.EndUpdate;
   end;
 end;
 
 procedure TTabOrderDialog.OnSomethingChanged;
 begin
+  if FUpdating then Exit;
+  FUpdating := true;
   RefreshTree;
   CheckButtonsEnabled;
+  FUpdating := false;
 end;
 
 procedure TTabOrderDialog.OnPersistentAdded(APersistent: TPersistent; Select: boolean);
@@ -404,25 +438,37 @@ end;
 
 procedure TTabOrderDialog.OnSetSelection(const ASelection: TPersistentSelectionList);
 // Select item also in TreeView when selection in Designer changes.
+
+  function FindSelection: TTreeNode;
+  var
+    Node: TTreeNode;
+  begin
+    Node := ItemTreeview.Items.GetFirstNode;
+    while Assigned(Node) do
+    begin
+      if Assigned(Node.Data)
+      and (ASelection.IndexOf(TPersistent(Node.Data)) >= 0) then
+        Exit(Node);
+      Node := Node.GetNext;
+    end;
+    Result := Nil;
+  end;
+
 var
-  Ctrl: TPersistent;
   Node: TTreeNode;
 begin
   // ToDo: support also multiply selections.
-  ItemTreeview.BeginUpdate;
-  Node := ItemTreeview.Items.GetFirstNode;
-  while Assigned(Node) do begin
-    if Assigned(Node.Data) then begin
-      Ctrl := TPersistent(Node.Data);
-      Assert(Ctrl is TWinControl);
-      if ASelection.IndexOf(Ctrl) >= 0 then begin
-        ItemTreeview.Selected := Node;
-        Break;
-      end;
-    end;
-    Node:=Node.GetNext;
+  if FUpdating then Exit;
+  FUpdating := True;
+  Node := FindSelection;
+  if Node = Nil then
+  begin           // Changing TabSheet in a PageControl does not trigger handlers
+    RefreshTree;  //  thus selection is not found -> refresh tree and try again.
+    Node := FindSelection;
   end;
-  ItemTreeview.EndUpdate;
+  if Assigned(Node) then
+    ItemTreeview.Selected := Node;
+  FUpdating := False;
   CheckButtonsEnabled;
 end;
 

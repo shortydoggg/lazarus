@@ -18,13 +18,13 @@ interface
 {$define sbod}  // status bar owner draw
 {$define ppaint}
 uses
-  Classes, SysUtils, LazFileUtils, LazUTF8, LMessages,
+  Classes, SysUtils, Types, LazFileUtils, LazUTF8, LMessages,
   Forms, Controls, Graphics, Dialogs, ComCtrls,
   ExtCtrls, Buttons, StdCtrls, Menus,
 
   LCLType,LCLIntf,LCLProc,GraphType,Printers, ActnList,
 
-  ObjectInspector, PropEdits,
+  ObjectInspector, PropEdits, GraphPropEdits,
   
   LR_Class, LR_Color,LR_Edit;
 
@@ -43,7 +43,7 @@ type
     SaveAs: Boolean; var Saved: Boolean) of object;
 
   TfrDesignerForm = class;
-  TlrTabEditControl = class(TCustomTabControl);
+  //TlrTabEditControl = class(TCustomTabControl);
 
   { TfrDesigner }
 
@@ -248,6 +248,8 @@ type
     edtRedo: TAction;
     edtUndo: TAction;
     MenuItem2: TMenuItem;
+    IEPopupMenu: TPopupMenu;
+    IEButton: TSpeedButton;
     tlsDBFields: TAction;
     FileBeforePrintScript: TAction;
     FileOpen: TAction;
@@ -396,7 +398,6 @@ type
     Align9: TSpeedButton;
     Align10: TSpeedButton;
     frTBSeparator13: TPanel;
-//**    Tab1: TTabControl;
     frDock4: TPanel;
     HelpMenu: TMenuItem;
     N34: TMenuItem;
@@ -449,6 +450,7 @@ type
     procedure ScrollBox1DragDrop(Sender, Source: TObject; X, Y: Integer);
     procedure ScrollBox1DragOver(Sender, Source: TObject; X, Y: Integer;
       State: TDragState; var Accept: Boolean);
+    procedure IEButtonClick(Sender: TObject);
     procedure tlsDBFieldsExecute(Sender: TObject);
     procedure ZB1Click(Sender: TObject);
     procedure ZB2Click(Sender: TObject);
@@ -537,6 +539,9 @@ type
     FCurDocName, FCaption: String;
     fCurDocFileType: Integer;
     ShapeMode: TfrShapeMode;
+    FReportPopupPoint: TPoint;
+    FLastOpenDirectory: string;
+    FLastSaveDirectory: string;
     
     {$IFDEF StdOI}
     ObjInsp  : TObjectInspector;
@@ -548,6 +553,7 @@ type
     procedure DuplicateSelection;
     procedure ObjInspSelect(Obj:TObject);
     procedure ObjInspRefresh;
+    procedure DataInspectorRefresh;
 
     procedure GetFontList;
     procedure SetMenuBitmaps;
@@ -626,14 +632,17 @@ type
     procedure DuplicateView(View: TfrView; Data: PtrInt);
     procedure ResetDuplicateCount;
     function lrDesignAcceptDrag(const Source: TObject): TControl;
+    procedure InplaceEditorMenuClick(Sender: TObject);
   private
     FTabMouseDown:boolean;
-    FTabsPage:TlrTabEditControl;
+    //FTabsPage:TlrTabEditControl;
     procedure TabsEditDragOver(Sender, Source: TObject; X, Y: Integer; State: TDragState; var Accept: Boolean);
     procedure TabsEditDragDrop(Sender, Source: TObject; X, Y: Integer);
     procedure TabsEditMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
     procedure TabsEditMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     procedure TabsEditMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+    procedure ShowIEButton(AView: TfrMemoView);
+    procedure HideIEButton;
   protected
     procedure SetModified(AValue: Boolean);override;
     function IniFileName:string;
@@ -650,6 +659,7 @@ type
     procedure AfterChange; override;
     procedure ShowMemoEditor;
     procedure ShowEditor;
+    procedure ShowDialogPgEditor(APage:TfrPageDialog);
     procedure RedrawPage; override;
     procedure OnModify({%H-}sender: TObject);
     function PointsToUnits(x: Integer): Double;  override;
@@ -673,6 +683,7 @@ var
   frTemplateDir: String;
   edtScriptFontName : string = '';
   edtScriptFontSize : integer = 0;
+  edtUseIE          : boolean = false;
 
 implementation
 
@@ -684,7 +695,7 @@ uses
   LR_Pgopt, LR_GEdit, LR_Templ, LR_Newrp, LR_DsOpt, LR_Const, LR_Pars,
   LR_Prntr, LR_Hilit, LR_Flds, LR_Dopt, LR_Ev_ed, LR_BndEd, LR_VBnd,
   LR_BTyp, LR_Utils, LR_GrpEd, LR_About, LR_IFlds, LR_DBRel,LR_DBSet,
-  DB, lr_design_ins_filed, IniFiles;
+  DB, lr_design_ins_filed, IniFiles, LR_DSet, math;
 
 type
   THackView = class(TfrView)
@@ -1331,7 +1342,7 @@ var
           Rectangle(LeftMargin, TopMargin, RightMargin, BottomMargin);
         if ColCount > 1 then
         begin
-          ColWidth := (RightMargin - LeftMargin) div ColCount;
+          ColWidth := (RightMargin - LeftMargin - (ColCount-1)*ColGap) div ColCount;
           Pen.Style := psDot;
           j := LeftMargin;
           for i := 1 to ColCount do
@@ -1700,9 +1711,10 @@ begin
     end;
     
     GetMultipleSelected;
-    if not DontChange then begin
-       FDesigner.SelectionChanged;
-       FDesigner.ResetDuplicateCount;
+    if not DontChange then
+    begin
+      FDesigner.SelectionChanged;
+      FDesigner.ResetDuplicateCount;
     end;
   end
   else
@@ -2137,6 +2149,9 @@ begin
       NPDrawLayerObjects(ClipRgn, TopSelected);
       {$endif}
       FDesigner.ShowPosition;
+
+      if T is TfrMemoView then
+        FDesigner.ShowIEButton(T as TfrMemoView);
     end;
   end;
 
@@ -2302,7 +2317,10 @@ begin
     else
       Cursor := crDefault;
   end;
-  
+
+  if Down then
+    FDesigner.HideIEButton;
+
   //selecting a lot of objects
   if Down and RFlag then
   begin
@@ -2666,7 +2684,8 @@ begin
   if TfrDesignerForm(frDesigner).SelNum = 0 then
   begin
     if FDesigner.Page is TfrPageDialog then
-      FDesigner.ShowEditor
+      FDesigner.ShowDialogPgEditor(TfrPageDialog(FDesigner.Page))
+      //FDesigner.ShowEditor
     else
       FDesigner.PgB3Click(nil);
     DFlag := True;
@@ -2916,13 +2935,21 @@ begin
   Panel7.Visible := false;
   {$endif}
 
-  FTabsPage:=TlrTabEditControl((Tab1.Tabs as TTabControlNoteBookStrings).NoteBook);
+{  FTabsPage:=TlrTabEditControl((Tab1.Tabs as TTabControlNoteBookStrings).NoteBook);
   FTabsPage.DragMode:=dmManual;
   FTabsPage.OnDragOver:=@TabsEditDragOver;
   FTabsPage.OnDragDrop:=@TabsEditDragDrop;
   FTabsPage.OnMouseDown:=@TabsEditMouseDown;
   FTabsPage.OnMouseMove:=@TabsEditMouseMove;
-  FTabsPage.OnMouseUp:=@TabsEditMouseUp;
+  FTabsPage.OnMouseUp:=@TabsEditMouseUp;}
+
+  Tab1.DragMode:=dmManual;
+  Tab1.OnDragOver:=@TabsEditDragOver;
+  Tab1.OnDragDrop:=@TabsEditDragDrop;
+  Tab1.OnMouseDown:=@TabsEditMouseDown;
+  Tab1.OnMouseMove:=@TabsEditMouseMove;
+  Tab1.OnMouseUp:=@TabsEditMouseUp;
+
 end;
 
 destructor TfrDesignerForm.Destroy;
@@ -3024,6 +3051,7 @@ begin
 
   PageView.OnDragDrop:=@ScrollBox1DragDrop;
   PageView.OnDragOver:=@ScrollBox1DragOver;
+  IEPopupMenu.Parent:=PageView;
 
   ColorSelector := TColorSelector.Create(Self);
   ColorSelector.OnColorSelected := @ColorSelected;
@@ -3044,6 +3072,8 @@ begin
 
   MenuItems := TFpList.Create;
   ItemWidths := TStringlist.Create;
+
+  IEPopupMenu.Parent:=PageView;
 {
   if FirstInstance then
   begin
@@ -3146,7 +3176,7 @@ begin
   //N19.Caption :=      sFRDesignerForm_Open;
   //N20.Caption :=      sFRDesignerForm_Save;
   //N17.Caption :=      sFRDesignerForm_SaveAs;
-  FileSaveAs.Caption:=   sFRDesignerForm_Save;
+  FileSave.Caption:=   sFRDesignerForm_Save;
   FileSaveAs.Caption:=   sFRDesignerForm_SaveAs;
   FileBeforePrintScript.Caption := sFRDesignerForm_BeforePrintScript;
   N42.Caption :=      sFRDesignerForm_Var;
@@ -3219,14 +3249,14 @@ end;
 
 procedure TfrDesignerForm.FileBeforePrintScriptExecute(Sender: TObject);
 begin
-  EditorForm.View := nil;
+  //EditorForm.View := nil;
   EditorForm.M2.Lines.Assign(CurReport.Script);
   EditorForm.MemoPanel.Visible:=false;
   EditorForm.CB1.OnClick:=nil;
   EditorForm.CB1.Checked:=true;
   EditorForm.CB1.OnClick:=@EditorForm.CB1Click;
   EditorForm.ScriptPanel.Align:=alClient;
-  if EditorForm.ShowModal = mrOk then
+  if EditorForm.ShowEditor(nil) = mrOk then
   begin
     CurReport.Script.Assign(EditorForm.M2.Lines);
   end;
@@ -3255,7 +3285,15 @@ begin
     Filter := sFormFile + ' (*.frf)|*.frf|' +
               sLazFormFile + ' (*.lrf)|*.lrf' +
               '';
-    InitialDir:=ExtractFilePath(ParamStrUTF8(0));
+    if InitialDir='' then
+    begin
+      InitialDir := FLastOpenDirectory;
+      if InitialDir='' then
+        InitialDir := FLastSaveDirectory;
+      if InitialDir='' then
+        InitialDir:=ExtractFilePath(ParamStrUTF8(0));
+    end;
+
     FileName := CurDocName;
     FilterIndex := 2;
     if Execute then
@@ -3265,11 +3303,13 @@ begin
       case FilterIndex of
         1: // fastreport form format
           begin
+            FLastOpenDirectory := ExtractFilePath(CurDocName);
             CurReport.LoadFromFile(CurDocName);
             FCurDocFileType := dtFastReportForm;
           end;
         2: // lasreport form xml format
           begin
+            FLastOpenDirectory := ExtractFilePath(CurDocName);
             CurReport.LoadFromXMLFile(CurDocName);
             FCurDocFileType := dtLazReportForm;
           end;
@@ -3287,6 +3327,8 @@ procedure TfrDesignerForm.FilePreviewExecute(Sender: TObject); // preview
 var
   TestRepStream:TMemoryStream;
   Rep, SaveR:TfrReport;
+  FSaveGetPValue: TGetPValueEvent;
+  FSaveFunEvent: TFunctionEvent;
 
 procedure DoClearFormsName;
 var
@@ -3315,6 +3357,9 @@ begin
 
 //  DoClearFormsName;
   CurReport:=nil;
+
+  FSaveGetPValue:=frParser.OnGetValue;
+  FSaveFunEvent:=frParser.OnFunction;
 
   Rep:=TfrReport.Create(SaveR.Owner);
 
@@ -3352,6 +3397,8 @@ begin
   TestRepStream.Free;
   CurReport:=SaveR;
   CurPage := 0;
+  frParser.OnGetValue := FSaveGetPValue;
+  frParser.OnFunction := FSaveFunEvent;
 //  DoResoreFormsName;
 end;
 
@@ -3378,11 +3425,22 @@ begin
                   sTemplFile + ' (*.frt)|*.frt|' +
                   sLazFormFile + ' (*.lrf)|*.lrf|' +
                   sLazTemplateFile + ' (*.lrt)|*.lrt';
-      InitialDir:=ExtractFilePath(ParamStrUTF8(0));
+
+      if InitialDir='' then
+      begin
+        InitialDir := FLastSaveDirectory;
+        if InitialDir='' then
+          InitialDir := FLastOpenDirectory;
+        if InitialDir='' then
+          InitialDir:=ExtractFilePath(ParamStrUTF8(0));
+      end;
       FileName := CurDocName;
       FilterIndex := 3;
       if Execute then
+      begin
+        FLastSaveDirectory := ExtractFilePath(Filename);
         FCurDocFileType := FilterIndex;
+      end;
       case FCurDocFileType of
         dtFastReportForm:
           begin
@@ -3996,6 +4054,15 @@ var
       pStep := aValue;
   end;
 
+  procedure CheckPastePoint;
+  var
+    P: TPoint;
+  begin
+    P := PageView.ScreenToClient(Mouse.CursorPos);
+    if PtInRect(PageView.ClientRect, p) then
+      FReportPopupPoint := p;
+  end;
+
 begin
   {$IFNDEF EXTOI}
   if (ActiveControl<>nil) and (ActiveControl.Parent=ObjInsp.fPropertyGrid) then
@@ -4043,6 +4110,9 @@ begin
     GridAlign := not GridAlign;
     Key := 0;
   end;
+  if (Chr(Key) = 'V') and (ssCtrl in Shift) and PasteEnabled then
+    CheckPastePoint;
+
   if CutEnabled then
     if (Key = VK_DELETE) and (ssShift in Shift) then CutBClick(Self);
   if CopyEnabled then
@@ -4487,12 +4557,26 @@ begin
     Result:=nil;
 end;
 
+procedure TfrDesignerForm.InplaceEditorMenuClick(Sender: TObject);
+var
+  t: TfrView;
+begin
+  t := TfrView(Objects[TopSelected]);
+  if T is TfrMemoView then
+  begin
+    TfrMemoView(T).Memo.Text:='[' + (Sender as TMenuItem).Caption + ']';
+    PageView.Invalidate;
+    frDesigner.Modified:=true;
+  end;
+end;
+
 {$endif}
 
 procedure TfrDesignerForm.TabsEditDragOver(Sender, Source: TObject; X,
   Y: Integer; State: TDragState; var Accept: Boolean);
 begin
-  Accept:=(Source = FTabsPage) and (FTabsPage.IndexOfPageAt(X, Y) <> Tab1.TabIndex);
+  //Accept:=(Source = FTabsPage) and (FTabsPage.IndexOfPageAt(X, Y) <> Tab1.TabIndex);
+  Accept:=(Source = Tab1) and (Tab1.IndexOfTabAt(X, Y) <> Tab1.TabIndex);
 end;
 
 procedure TfrDesignerForm.TabsEditDragDrop(Sender, Source: TObject; X,
@@ -4500,7 +4584,8 @@ procedure TfrDesignerForm.TabsEditDragDrop(Sender, Source: TObject; X,
 var
   NewIndex: Integer;
 begin
-  NewIndex:=FTabsPage.IndexOfPageAt(X, Y);
+  //NewIndex:=FTabsPage.IndexOfPageAt(X, Y);
+  NewIndex:=Tab1.IndexOfTabAt(X, Y);
   //ShowMessageFmt('New index = %d', [NewIndex]);
   if (NewIndex>-1) and (NewIndex < CurReport.Pages.Count) then
   begin
@@ -4526,13 +4611,86 @@ procedure TfrDesignerForm.TabsEditMouseMove(Sender: TObject;
   Shift: TShiftState; X, Y: Integer);
 begin
   if FTabMouseDown then
-    FTabsPage.BeginDrag(false);
+    //FTabsPage.BeginDrag(false);
+    Tab1.BeginDrag(false);
 end;
 
 procedure TfrDesignerForm.TabsEditMouseUp(Sender: TObject;
   Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   FTabMouseDown:=false;
+end;
+
+procedure TfrDesignerForm.ShowIEButton(AView:TfrMemoView);
+var
+  lrObj: TfrObject;
+  Band: TfrBandView;
+  i, L, j: Integer;
+  C: TComponent;
+  M: TMenuItem;
+begin
+  if not edtUseIE then exit;
+  Band:=nil;
+  for i:=0 to Objects.Count-1 do
+  begin
+    lrObj:=TfrObject(Objects[i]);
+    if lrObj is TfrBandView then
+    begin
+      if (AView.y >= TfrBandView(lrObj).y) and ((AView.dy + AView.y) <= (lrObj.y+lrObj.dy)) then
+        Band:=TfrBandView(lrObj);
+    end;
+  end;
+  if not Assigned(Band) then exit;
+
+
+  C:=frFindComponent(CurReport.Owner, Band.DataSet);
+  if C is TfrDBDataSet then
+    C:=TfrDBDataSet(C).DataSet;
+
+  if  (not Assigned(C)) or (not (C is TDataSet)) then exit;
+
+  L:=TDataSet(C).Fields.Count;
+  if (L = 0) then
+  begin
+    TDataSet(C).FieldDefs.Update;
+    L:=TDataSet(C).FieldDefs.Count;
+  end;
+
+  if L > 0 then
+  begin
+    IEButton.Parent:=PageView;
+    IEButton.Visible:=true;
+    IEButton.Left:=AView.X + AView.dx;
+    IEButton.Top:=AView.y;
+    IEButton.Height:=Max(10, AView.dy);
+
+    IEPopupMenu.Items.Clear;
+    if TDataSet(C).Fields.Count>0 then
+    begin
+      for j:=0 to TDataSet(C).Fields.Count-1 do
+      begin
+        M:=TMenuItem.Create(IEPopupMenu.Owner);
+        M.Caption:=TDataSet(C).Name + '."'+TDataSet(C).Fields[j].FieldName+'"';
+        M.OnClick:=@InplaceEditorMenuClick;
+        IEPopupMenu.Items.Add(M);
+      end;
+    end
+    else
+    begin
+      for j:=0 to TDataSet(C).FieldDefs.Count-1 do
+      begin
+        M:=TMenuItem.Create(IEPopupMenu.Owner);
+        M.Caption:=TDataSet(C).Name + '."'+TDataSet(C).FieldDefs[j].Name+'"';
+        M.OnClick:=@InplaceEditorMenuClick;
+        IEPopupMenu.Items.Add(M);
+      end;
+    end;
+  end;
+end;
+
+procedure TfrDesignerForm.HideIEButton;
+begin
+  IEButton.Visible:=false;
 end;
 
 procedure TfrDesignerForm.SetModified(AValue: Boolean);
@@ -4635,6 +4793,7 @@ begin
   {$IFDEF DebugLR}
   debugLnEnter('TfrDesignerForm.SelectionChanged INIT, SelNum=%d',[SelNum]);
   {$ENDIF}
+  HideIEButton;
   Busy := True;
   ColorSelector.Hide;
   LinePanel.Hide;
@@ -4683,6 +4842,10 @@ begin
           end;
         end;
       end;
+
+
+      if T is TfrMemoView then
+        ShowIEButton(T as TfrMemoView);
     end
     else if SelNum > 1 then
     begin
@@ -4941,7 +5104,6 @@ procedure TfrDesignerForm.FillInspFields;
 var
   t: TfrView;
 begin
-  ObjInspSelect(nil);
   if SelNum = 0 then
     ObjInspSelect(Page)
   else
@@ -5151,6 +5313,12 @@ begin
   {$ENDIF}
 end;
 
+procedure TfrDesignerForm.DataInspectorRefresh;
+begin
+  if Assigned(lrFieldsList) then
+    lrFieldsList.RefreshDSList;
+end;
+
 procedure TfrDesignerForm.ClB1Click(Sender: TObject);
 var p  : TPoint;
     t  : TfrView;
@@ -5290,8 +5458,7 @@ end;
 
 procedure TfrDesignerForm.ShowMemoEditor;
 begin
-  EditorForm.View := TfrView(Objects[TopSelected]);
-  if EditorForm.ShowEditor = mrOk then
+  if EditorForm.ShowEditor(TfrView(Objects[TopSelected])) = mrOk then
   begin
     PageView.NPDrawSelection;
     PageView.NPDrawLayerObjects(EditorForm.View.GetClipRgn(rtExtended), TopSelected);
@@ -5386,6 +5553,24 @@ begin
   end;
   ShowContent;
   ShowPosition;
+  ActiveControl := nil;
+end;
+
+procedure TfrDesignerForm.ShowDialogPgEditor(APage: TfrPageDialog);
+begin
+  EditorForm.M2.Lines.Assign(APage.Script);
+  EditorForm.MemoPanel.Visible:=false;
+  EditorForm.CB1.OnClick:=nil;
+  EditorForm.CB1.Checked:=true;
+  EditorForm.CB1.OnClick:=@EditorForm.CB1Click;
+  EditorForm.ScriptPanel.Align:=alClient;
+  if EditorForm.ShowEditor(nil) = mrOk then
+  begin
+    APage.Script.Assign(EditorForm.M2.Lines);
+    frDesigner.Modified:=true;
+  end;
+  EditorForm.ScriptPanel.Align:=alBottom;
+  EditorForm.MemoPanel.Visible:=true;
   ActiveControl := nil;
 end;
 
@@ -5631,6 +5816,7 @@ begin
   PageView.NPDrawSelection;
   PageView.NPDrawLayerObjects(0, TopSelected);
   ObjInspRefresh;
+  DataInspectorRefresh;
 end;
 
 //Move selected object from front
@@ -5728,35 +5914,35 @@ end;
 
 procedure TfrDesignerForm.PstBClick(Sender: TObject); //paste
 var
-  i, minx, miny: Integer;
+  i, minx, miny, xoffset, yoffset: Integer;
   t, t1: TfrView;
-  S: String;
-  P: TObject;
 begin
   Unselect;
   SelNum := 0;
-  minx := 32767; miny := 32767;
-  with ClipBd do
-  for i := 0 to Count-1 do
+  minx := 32767;
+  miny := 32767;
+  xoffset := FReportPopupPoint.x;
+  yoffset := FReportPopupPoint.y;
+  for i := 0 to ClipBd.Count-1 do
   begin
-    t := TfrView(Items[i]);
+    t := TfrView(ClipBd[i]);
     if t.x < minx then minx := t.x;
     if t.y < miny then miny := t.y;
   end;
   for i := 0 to ClipBd.Count - 1 do
   begin
-    t := TfrView(ClipBd.Items[i]);
+    t := TfrView(ClipBd[i]);
     if t.Typ = gtBand then
       if not (TfrBandView(t).BandType in [btMasterHeader..btSubDetailFooter,
                                           btGroupHeader, btGroupFooter]) and
         frCheckBand(TfrBandView(t).BandType) then
         continue;
+    t.x := t.x - minx + xoffset;
     if PageView.Left < 0 then
-      t.x := t.x - minx + ((-PageView.Left) div GridSize * GridSize) else
-      t.x := t.x - minx;
+      t.x := t.x + ((-PageView.Left) div GridSize * GridSize);
+    t.y := t.y - miny + yoffset;
     if PageView.Top < 0 then
-      t.y := t.y - miny + ((-PageView.Top) div GridSize * GridSize) else
-      t.y := t.y - miny;
+      t.y := t.y + ((-PageView.Top) div GridSize * GridSize);
     Inc(SelNum);
     t1 := frCreateObject(t.Typ, t.ClassName, Page);
     t1.Assign(t);
@@ -5835,6 +6021,14 @@ end;
 procedure TfrDesignerForm.PgB3Click(Sender: TObject); // page setup
 var
   w, h, p: Integer;
+  function PointsToMMStr(value:Integer): string;
+  begin
+    result := IntToStr(Trunc(value*5/18+0.5));
+  end;
+  function MMStrToPoints(value:string): Integer;
+  begin
+    result := Trunc(Trunc(StrToFloatDef(value, 0.0))*18/5+0.5)
+  end;
 begin
   frPgoptForm := TfrPgoptForm.Create(nil);
   with frPgoptForm, Page do
@@ -5855,11 +6049,12 @@ begin
       E2.Text := IntToStr(Height div 10);
     end;
     
-    E3.Text := IntToStr(Margins.Left * 5 div 18);
-    E4.Text := IntToStr(Margins.Top * 5 div 18);
-    E5.Text := IntToStr(Margins.Right * 5 div 18);
-    E6.Text := IntToStr(Margins.Bottom * 5 div 18);
-    E7.Text := IntToStr(ColGap * 5 div 18);
+    E3.Text := PointsToMMStr(Margins.Left);
+    E4.Text := PointsToMMStr(Margins.Top);
+    E5.Text := PointsToMMStr(Margins.Right);
+    E6.Text := PointsToMMStr(Margins.Bottom);
+    E7.Text := PointsToMMStr(ColGap);
+
     ecolCount.Value := ColCount;
     if LayoutOrder = loColumns then
       RBColumns.Checked := true
@@ -5891,20 +6086,13 @@ begin
         except
           on exception do p := 9; // A4
         end;
-        
-      try
-        Margins.AsRect := Rect(StrToInt(E3.Text) * 18 div 5,
-                          StrToInt(E4.Text) * 18 div 5,
-                          StrToInt(E5.Text) * 18 div 5,
-                          StrToInt(E6.Text) * 18 div 5);
-        ColGap := StrToInt(E7.Text) * 18 div 5;
-      except
-        on exception do
-        begin
-          Margins.AsRect := Rect(0, 0, 0, 0);
-          ColGap := 0;
-        end;
-      end;
+
+      Margins.Left := MMStrToPoints(E3.Text);
+      Margins.Top := MMStrToPoints(E4.Text);
+      Margins.Right := MMStrToPoints(E5.Text);
+      Margins.Bottom := MMStrToPoints(E6.Text);
+      ColGap := MMStrToPoints(E7.Text);
+
       ColCount := ecolCount.Value;
       ChangePaper(p, w, h, Orientation);
       CurPage := CurPage; // for repaint and other
@@ -5988,6 +6176,7 @@ begin
 
     DesOptionsForm.ComboBox2.Text:=edtScriptFontName;
     DesOptionsForm.SpinEdit2.Value:=edtScriptFontSize;
+    DesOptionsForm.CheckBox2.Checked:=edtUseIE;
 
     if ShowModal = mrOk then
     begin
@@ -6015,6 +6204,7 @@ begin
 
       edtScriptFontName:=DesOptionsForm.ComboBox2.Text;
       edtScriptFontSize:=DesOptionsForm.SpinEdit2.Value;
+      edtUseIE:=DesOptionsForm.CheckBox2.Checked;
 
       RedrawPage;
       SaveState;
@@ -6103,6 +6293,14 @@ begin
     Accept:= (Control = lrFieldsList.lbFieldsList) or (Control = lrFieldsList.ValList);
 end;
 
+procedure TfrDesignerForm.IEButtonClick(Sender: TObject);
+var
+  P: TPoint;
+begin
+  P:=IEButton.ClientToScreen(Point(IEButton.Width, IEButton.Height));
+  IEPopupMenu.PopUp(P.X, P.Y);
+end;
+
 procedure TfrDesignerForm.tlsDBFieldsExecute(Sender: TObject);
 begin
   if Assigned(lrFieldsList) then
@@ -6153,6 +6351,7 @@ var
   t, t1: TfrView;
   fl: Boolean;
 begin
+  FReportPopupPoint := PageView.ScreenToClient(Popup1.PopupPoint);
   DeleteMenuItems(N2.Parent);
   EnableControls;
 
@@ -6338,13 +6537,16 @@ begin
   Ini.WriteBool('frEditorForm', rsButtons, GrayedButtons);
   Ini.WriteBool('frEditorForm', rsEdit, EditAfterInsert);
   Ini.WriteInteger('frEditorForm', rsSelection, Integer(ShapeMode));
+  Ini.WriteBool('frEditorForm', 'UseInplaceEditor', edtUseIE);
+  Ini.WriteString('frEditorForm', 'LastOpenDirectory', FLastOpenDirectory);
+  Ini.WriteString('frEditorForm', 'LastSaveDirectory', FLastSaveDirectory);
 
   DoSaveToolbars([Panel1, Panel2, Panel3, Panel4, Panel5, Panel6]);
 
   //  Save ObjInsp Position
   Ini.WriteInteger('ObjInsp', 'Left', ObjInsp.Left);
   Ini.WriteInteger('ObjInsp', 'Top', ObjInsp.Top);
-{  if SpeedButton1.Caption = '+' then
+{  if IEButton.Caption = '+' then
     Ini.WriteInteger('Position', 'Height', FLastHeight)
   else
     Ini.WriteInteger('Position', 'Height', Height);}
@@ -6384,10 +6586,13 @@ begin
 //    GrayedButtons := Ini.ReadBool('frEditorForm', rsButtons, False);
     EditAfterInsert := Ini.ReadBool('frEditorForm', rsEdit, True);
     ShapeMode := TfrShapeMode(Ini.ReadInteger('frEditorForm', rsSelection, 1));
+    edtUseIE:=Ini.ReadBool('frEditorForm', 'UseInplaceEditor', edtUseIE);
+    FLastOpenDirectory := Ini.ReadString('frEditorForm', 'LastOpenDirectory', '');
+    FLastSaveDirectory := Ini.ReadString('frEditorForm', 'LastSaveDirectory', '');
 
     ObjInsp.Left:=Ini.ReadInteger('ObjInsp', 'Left', ObjInsp.Left);
     ObjInsp.Top:=Ini.ReadInteger('ObjInsp', 'Top', ObjInsp.Top);
-  {  if SpeedButton1.Caption = '+' then
+  {  if IEButton.Caption = '+' then
       Ini.WriteInteger('Position', 'Height', FLastHeight)
     else
       Ini.WriteInteger('Position', 'Height', Height);}
@@ -7602,18 +7807,16 @@ begin
   if (Obj=nil) or (Obj is TPersistent) then
   begin
     FSelectedObject:=Obj;
-    if Obj=nil then
-      fPropertyGrid.Selection := nil
-    else
-    begin
-      fcboxObjList.ItemIndex := fcboxObjList.Items.IndexOfObject(Obj);
-      NewSel := TPersistentSelectionList.Create;
-      try
+    NewSel := TPersistentSelectionList.Create;
+    try
+      if Obj<>nil then
+      begin
+        fcboxObjList.ItemIndex := fcboxObjList.Items.IndexOfObject(Obj);
         NewSel.Add(TfrView(Obj));
-        fPropertyGrid.Selection := NewSel;
-      finally
-        NewSel.Free;
       end;
+      fPropertyGrid.Selection := NewSel
+    finally
+      NewSel.Free;
     end;
   end
   else
@@ -7735,7 +7938,7 @@ begin
     try
       if frFieldsForm.ShowModal = mrOk then
       begin
-        TfrHackView(GetComponent(0)).DataField:=frFieldsForm.DBField;
+        TfrHackView(GetComponent(0)).DataField:='[' + frFieldsForm.DBField + ']';
         frDesigner.Modified:=true;
       end;
     finally
@@ -7772,9 +7975,6 @@ var
   FSaveGetPValue:TGetPValueEvent;
   FSaveFunEvent:TFunctionEvent;
   FSaveReportEvent: TSaveReportEvent;
-
-  ///***DocMode: (dmDesigning, dmPrinting);             // current mode
-
 begin
   if (GetComponent(0) is TfrCustomMemoView) and Assigned(CurReport) then
   begin
@@ -7792,7 +7992,7 @@ begin
     FSaveView:=CurView;
     FSaveBand:=CurBand;
     FSavePage:=CurPage;
-  // DocMode: (dmDesigning, dmPrinting);             // current mode
+
     frDesigner:=nil;
 
     CurReport:=TfrReport.Create(nil);
@@ -7817,7 +8017,6 @@ begin
     FSaveReportEvent:=frDesignerComp.OnSaveReport;
     frDesignerComp.OnSaveReport:=@DoSaveReportEvent;
 
-    //FDetailReport:=TStringStream.Create(Trim(FEditView.DetailReport.Text));
     try
       FDetailRrep.ReportBody.Position:=0;
       if FDetailRrep.ReportBody.Size > 0 then

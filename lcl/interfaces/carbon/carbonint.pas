@@ -45,7 +45,8 @@ uses
   {$ifdef DebugBitmaps}
     CarbonDebug,
   {$endif}
-  glgrab, LMessages, LCLMessageGlue, LCLProc, LCLIntf, LCLType, IntfGraphics,
+  glgrab,
+  LCLPlatformDef, LMessages, LCLMessageGlue, LCLProc, LCLIntf, LCLType, IntfGraphics,
   GraphType, GraphMath, Graphics, Controls, Forms, Dialogs, Menus, Maps, Themes;
 
 type
@@ -144,6 +145,8 @@ const
 
 var
   CarbonWidgetSet: TCarbonWidgetSet;
+
+function Create32BitAlphaBitmap(ABitmap, AMask: TCarbonBitmap): TCarbonBitmap;
 
 implementation
 

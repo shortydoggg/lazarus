@@ -23,7 +23,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -34,9 +34,16 @@ unit ProjectIcon;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Laz2_XMLCfg, lazutf8classes, LCLProc,
-  Graphics, FileProcs, LazFileUtils, LazFileCache,
-  resource, groupiconresource, ProjectResourcesIntf;
+  // RTL + LCL
+  Classes, SysUtils, resource, groupiconresource,
+  // LCL
+  LCLProc, Graphics,
+  // LazUtils
+  FileUtil, LazFileUtils, LazFileCache, Laz2_XMLCfg, lazutf8classes,
+  // Codetools
+  FileProcs,
+  // IdeIntf
+  ProjectResourcesIntf;
    
 type
   TIconData = array of byte;
@@ -52,7 +59,6 @@ type
     function GetIsEmpry: Boolean;
     procedure SetIcoFileName(AValue: String);
     procedure SetIconData(const AValue: TIconData);
-    procedure SetFileNames(const MainFilename: string);
     procedure SetIsEmpty(const AValue: Boolean);
   public
     constructor Create; override;
@@ -63,8 +69,8 @@ type
 
     function UpdateResources(AResources: TAbstractProjectResources;
                              const MainFilename: string): Boolean; override;
-    procedure WriteToProjectFile(AConfig: {TXMLConfig}TObject; Path: String); override;
-    procedure ReadFromProjectFile(AConfig: {TXMLConfig}TObject; Path: String); override;
+    procedure WriteToProjectFile(AConfig: {TXMLConfig}TObject; const Path: String); override;
+    procedure ReadFromProjectFile(AConfig: {TXMLConfig}TObject; const Path: String); override;
 
     function SaveIconFile: Boolean;
 
@@ -128,11 +134,10 @@ var
   ItemStream: TStream;
 begin
   Result := True;
-
   if FData = nil then
     Exit;
 
-  SetFileNames(MainFilename);
+  IcoFileName := ExtractFilePath(MainFilename)+ExtractFileNameOnly(MainFileName)+'.ico';
   if FilenameIsAbsolute(FIcoFileName) then
     if not SaveIconFile then begin
       debugln(['TProjectIcon.UpdateResources CreateIconFile "'+FIcoFileName+'" failed']);
@@ -164,12 +169,12 @@ begin
   AResources.AddSystemResource(ARes);
 end;
 
-procedure TProjectIcon.WriteToProjectFile(AConfig: TObject; Path: String);
+procedure TProjectIcon.WriteToProjectFile(AConfig: TObject; const Path: String);
 begin
   TXMLConfig(AConfig).SetDeleteValue(Path+'General/Icon/Value', BoolToStr(IsEmpty), BoolToStr(true));
 end;
 
-procedure TProjectIcon.ReadFromProjectFile(AConfig: TObject; Path: String);
+procedure TProjectIcon.ReadFromProjectFile(AConfig: TObject; const Path: String);
 begin
   with TXMLConfig(AConfig) do
   begin
@@ -188,10 +193,7 @@ begin
     exit(true);
   // write ico file
   try
-    if FileExistsUTF8(FIcoFileName) then
-      fs:=TFileStreamUTF8.Create(IcoFileName,fmOpenWrite)
-    else
-      fs:=TFileStreamUTF8.Create(IcoFileName,fmCreate);
+    fs:=TFileStreamUTF8.Create(IcoFileName,fmCreate);
     try
       fs.Write(FData[0],length(FData));
       InvalidateFileStateCache(IcoFileName);
@@ -205,15 +207,6 @@ begin
     on E: Exception do
       debugln(['TProjectIcon.CreateIconFile "'+FIcoFileName+'": '+E.Message]);
   end;
-end;
-
-{-----------------------------------------------------------------------------
- TProjectIcon SetFileNames
------------------------------------------------------------------------------}
-procedure TProjectIcon.SetFileNames(const MainFilename: string);
-begin
-  IcoFileName := ExtractFilePath(MainFilename) +
-    ExtractFileNameWithoutExt(ExtractFileName(MainFileName)) + '.ico';
 end;
 
 procedure TProjectIcon.SetIsEmpty(const AValue: Boolean);

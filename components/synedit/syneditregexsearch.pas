@@ -25,7 +25,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: syneditregexsearch.pas 37782 2012-06-25 22:49:31Z martin $
+$Id: syneditregexsearch.pas 56392 2017-11-13 17:33:31Z juha $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -40,17 +40,16 @@ unit SynEditRegexSearch;
 interface
 
 uses
-  Classes,
+  Classes, RegExpr, IntegerList,
   SynEditTypes,
-  SynRegExpr,
   SynEditMiscClasses;
 
 type
   TSynEditRegexSearch = class(TSynEditSearchCustom)
   private
     fRegex : TRegExpr;
-    fPositions: TList;
-    fLengths: TList;
+    fPositions: TIntegerList;
+    fLengths: TIntegerList;
   protected
     function GetPattern: string; override;
     procedure SetPattern(const Value: string); override;
@@ -72,8 +71,8 @@ constructor TSynEditRegexSearch.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   fRegex := TRegExpr.Create;
-  fPositions := TList.Create;
-  fLengths := TList.Create;
+  fPositions := TIntegerList.Create;
+  fLengths := TIntegerList.Create;
 end;
 
 destructor TSynEditRegexSearch.Destroy;
@@ -88,8 +87,8 @@ function TSynEditRegexSearch.FindAll(const NewText: string): integer;
 
   procedure AddResult(const aPos, aLength: integer);
   begin
-    fPositions.Add( pointer(PtrInt(aPos)) );
-    fLengths.Add( pointer(PtrInt(aLength)) );
+    fPositions.Add(aPos);
+    fLengths.Add(aLength);
   end;
 
 begin
@@ -111,7 +110,7 @@ end;
 
 function TSynEditRegexSearch.GetLength(aIndex: integer): integer;
 begin
-  Result := PtrInt(PtrUInt( fLengths[ aIndex ] ));
+  Result := fLengths[aIndex];
 end;
 
 function TSynEditRegexSearch.GetPattern: string;
@@ -121,7 +120,7 @@ end;
 
 function TSynEditRegexSearch.GetResult(aIndex: integer): integer;
 begin
-  Result := PtrInt( PtrUint(fPositions[ aIndex ]) );
+  Result := fPositions[aIndex];
 end;
 
 function TSynEditRegexSearch.GetResultCount: integer;

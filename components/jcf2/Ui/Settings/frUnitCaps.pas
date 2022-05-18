@@ -30,7 +30,7 @@ interface
 
 uses
   Classes, Controls, Forms, StdCtrls,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -45,9 +45,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -77,8 +77,7 @@ end;
 
 procedure TfrUnitNameCaps.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  inherited;
-  with FormatSettings.UnitNameCaps do
+  with FormattingSettings.UnitNameCaps do
   begin
     cbEnableAnyWords.Checked := Enabled;
     mWords.Lines.Assign(Words);
@@ -88,8 +87,7 @@ end;
 
 procedure TfrUnitNameCaps.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  inherited;
-  with FormatSettings.UnitNameCaps do
+  with FormattingSettings.UnitNameCaps do
   begin
     Enabled := cbEnableAnyWords.Checked;
     Words.Assign(mWords.Lines);
@@ -99,7 +97,7 @@ end;
 
 class function TfrUnitNameCaps.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 procedure TfrUnitNameCaps.FrameResize(Sender: TObject);

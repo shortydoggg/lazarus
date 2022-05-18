@@ -21,10 +21,12 @@ const
 
 
 type
-  GtkNotebookPressEventProc = function (widget:PGtkWidget; event:PGdkEventButton):gboolean; cdecl;
-  
+  GtkNotebookButtonPressEventProc = function (widget:PGtkWidget; event:PGdkEventButton):gboolean; cdecl;
+  GtkNotebookKeyPressEventProc = function (widget:PGtkWidget; event:PGdkEventKey):gboolean; cdecl;
+
 var
-  OldNoteBookButtonPress: GtkNotebookPressEventProc = nil;
+  OldNoteBookButtonPress: GtkNotebookButtonPressEventProc = nil;
+  OldNoteBookKeyPress: GtkNotebookKeyPressEventProc = nil;
 
 // this was created as a workaround of a tnotebook eating rightclick of custom controls
 function Notebook_Button_Press(widget:PGtkWidget; event:PGdkEventButton):gboolean; cdecl;
@@ -35,14 +37,29 @@ begin
   Result := OldNoteBookButtonPress(widget, event);
 end;
 
+// Allow switching tabs per key. Issue #31986
+function Notebook_Key_Press(widget:PGtkWidget; event:PGdkEventKey):gboolean; cdecl;
+begin
+  Result := True;
+  if OldNoteBookKeyPress = nil then exit;
+  case event^.hardware_keycode of
+    113: gtk_notebook_prev_page(PGtkNotebook(widget));
+    114: gtk_notebook_next_page(PGtkNotebook(widget));
+  else
+    Result := OldNoteBookKeyPress(widget, event);
+  end;
+end;
+
 procedure HookNoteBookClass;
 var
   WidgetClass: PGtkWidgetClass;
 begin
   WidgetClass := GTK_WIDGET_CLASS(gtk_type_class(gtk_notebook_get_type));
 
-  OldNoteBookButtonPress := GtkNotebookPressEventProc(WidgetClass^.button_press_event);
+  OldNoteBookButtonPress := GtkNotebookButtonPressEventProc(WidgetClass^.button_press_event);
   WidgetClass^.button_press_event := @Notebook_Button_Press;
+  OldNoteBookKeyPress := GtkNotebookKeyPressEventProc(WidgetClass^.key_press_event);
+  WidgetClass^.key_press_event := @Notebook_Key_Press;
 end;
 
 { TGtk2WSCustomTabControl }
@@ -278,7 +295,6 @@ begin
   if OldNoteBookButtonPress = nil then
     HookNoteBookClass;
 
-
   AWidget := PGtkNoteBook(gtk_notebook_new());
   WidgetInfo := CreateWidgetInfo(AWidget, AWinControl, AParams);
   {$IFDEF DebugLCLComponents}
@@ -288,12 +304,6 @@ begin
 
   if not (nboHidePageListPopup in TCustomTabControl(AWinControl).Options) then
     gtk_notebook_popup_enable(AWidget);
-
-  {$IFDEF GTK2USEDUMMYNOTEBOOKPAGE}
-  if TCustomTabControl(AWinControl).PageCount=0 then
-    // a gtk notebook needs a page -> add dummy page
-    Gtk2WidgetSet.AddDummyNoteBookPage(AWidget);
-  {$ENDIF}
 
   gtk_notebook_set_tab_pos(AWidget, GtkPositionTypeMap[TCustomTabControl(AWinControl).TabPosition]);
   Result := HWND(TLCLIntfHandle({%H-}PtrUInt(AWidget)));
@@ -408,10 +418,6 @@ begin
   if AChild.TabVisible then
     gtk_widget_show(MenuWidget);
 
-  {$IFDEF GTK2USEDUMMYNOTEBOOKPAGE}
-  // remove the dummy page (a gtk_notebook needs at least one page)
-  RemoveDummyNoteBookPage(PGtkNotebook(NoteBookWidget));
-  {$ENDIF}
   // insert the page
   gtk_notebook_insert_page_menu(PGtkNotebook(NotebookWidget), PageWidget,
     TabWidget, MenuWidget, AIndex);
@@ -563,6 +569,9 @@ begin
   if not WSCheckHandleAllocated(ATabControl, 'SetPageIndex') then
     Exit;
   if (AIndex < 0) or (AIndex > ATabControl.PageCount - 1) then
+    exit;
+  ANewIndex:=ATabControl.PageToTabIndex(AIndex);
+  if (ANewIndex < 0) then
     exit;
   GtkNotebook := {%H-}PGtkNoteBook(ATabControl.Handle);
   if gtk_notebook_get_current_page(GtkNotebook) <> AIndex then

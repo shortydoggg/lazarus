@@ -150,6 +150,10 @@ msgstr ""
 msgid "%s, written by property %s"
 msgstr ""
 
+#: codystrconsts.crscaretoutsideofcode
+msgid "Caret outside of code"
+msgstr ""
+
 #: codystrconsts.crscheetaheditor
 msgid "Cheetah Editor"
 msgstr ""
@@ -427,6 +431,10 @@ msgstr ""
 
 #: codystrconsts.crsinsertfileatcursor
 msgid "Insert File Contents at Cursor ..."
+msgstr ""
+
+#: codystrconsts.crsinsertint64idyyyyddmmhhnnss
+msgid "Insert int64 ID YYYYDDMMhhnnss"
 msgstr ""
 
 #: codystrconsts.crsjump

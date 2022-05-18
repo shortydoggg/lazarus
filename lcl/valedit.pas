@@ -14,6 +14,7 @@ type
   TValueListStrings = class;
 
   TEditStyle = (esSimple, esEllipsis, esPickList);
+  TVleSortCol = (colKey, colValue);
 
   { TItemProp }
 
@@ -129,9 +130,7 @@ type
     FRowTextOnEnter: TKeyValuePair;
     FLastEditedRow: Integer;
     FUpdatingKeyOptions: Boolean;
-    function GetFixedRows: Integer;
     function GetItemProp(const AKeyOrIndex: Variant): TItemProp;
-    procedure SetFixedRows(AValue: Integer);
     procedure SetItemProp(const AKeyOrIndex: Variant; AValue: TItemProp);
     procedure StringsChange(Sender: TObject);
     procedure StringsChanging(Sender: TObject);
@@ -151,6 +150,8 @@ type
     procedure SetFixedCols(const AValue: Integer); override;
     procedure ShowColumnTitles;
     procedure AdjustRowCount; virtual;
+    procedure ColRowExchanged(IsColumn: Boolean; index, WithIndex: Integer); override;
+    procedure ColRowDeleted(IsColumn: Boolean; index: Integer); override;
     procedure DefineCellsProperty(Filer: TFiler); override;
     procedure InvalidateCachedRow;
     procedure GetAutoFillColumnInfo(const Index: Integer; var aMin,aMax,aPriority: Integer); override;
@@ -162,7 +163,9 @@ type
     procedure ResetDefaultColWidths; override;
     procedure SetCells(ACol, ARow: Integer; const AValue: string); override;
     procedure SetEditText(ACol, ARow: Longint; const Value: string); override;
+    procedure SetFixedRows(const AValue: Integer); override;
     procedure SetRowCount(AValue: Integer);
+    procedure Sort(ColSorting: Boolean; index,IndxFrom,IndxTo:Integer); override;
     procedure TitlesChanged(Sender: TObject);
     function ValidateEntry(const ACol,ARow:Integer; const OldValue:string; var NewValue:string): boolean; override;
   public
@@ -177,13 +180,14 @@ type
     procedure InsertColRow(IsColumn: boolean; index: integer);
     function InsertRow(const KeyName, Value: string; Append: Boolean): Integer;
     procedure InsertRowWithValues(Index: Integer; Values: array of String);
-    procedure ExchangeColRow(IsColumn: Boolean; index, WithIndex: Integer);
+    procedure ExchangeColRow(IsColumn: Boolean; index, WithIndex: Integer); override;
     function IsEmptyRow: Boolean; {Delphi compatible function}
     function IsEmptyRow(aRow: Integer): Boolean; {This for makes more sense to me}
     procedure MoveColRow(IsColumn: Boolean; FromIndex, ToIndex: Integer);
     function RestoreCurrentRow: Boolean;
+    procedure Sort(Index, IndxFrom, IndxTo: Integer);
+    procedure Sort(ACol: TVleSortCol = colKey);
 
-    property FixedRows: Integer read GetFixedRows write SetFixedRows default 1;
     property Modified;
     property Keys[Index: Integer]: string read GetKey write SetKey;
     property Values[const Key: string]: string read GetValue write SetValue;
@@ -310,7 +314,7 @@ const
   rsVLEDuplicateKey = 'Duplicate Key:'+LineEnding+'A key with name "%s" already exists at column %d';
   //ToDo: Make this a resourcestring in lclstrconsts unit, once we are satisfied with ShowColumnTitles
   rsVLEKey = 'Key';
-  rsVLEName = 'Name';
+  rsVLEValue = 'Value';
   rsVLEInvalidRowColOperation = 'The operation %s is not allowed on a TValueListEditor%s.';
 
 procedure Register;
@@ -538,6 +542,7 @@ end;
 procedure TValueListStrings.Assign(Source: TPersistent);
 begin
   FGrid.InvalidateCachedRow;
+  Clear;  //if this is not done, and a TValueListEditor.Sort() is done and then later a Strings.Assign, an exception will occur.
   inherited Assign(Source);
   if (Source is TValueListStrings) then
     FItemProps.Assign(TValueListStrings(Source).FItemProps);
@@ -766,9 +771,8 @@ end;
 
 procedure TValueListEditor.DeleteRow(Index: Integer);
 begin
-  Index := Index - FixedRows;
   //If we have only one row, it may be empty and we cannot remove
-  if not ((Index = 0) and (Strings.Count = 0)) then Strings.Delete(Index);
+  if not ((Index - FixedRows = 0) and (Strings.Count = 0)) then inherited DeleteRow(Index) ;
 end;
 
 procedure TValueListEditor.DeleteCol(Index: Integer);
@@ -850,7 +854,7 @@ end;
 procedure TValueListEditor.ExchangeColRow(IsColumn: Boolean; index, WithIndex: Integer);
 begin
   if not IsColumn then
-    Strings.Exchange(Index - FixedRows, WithIndex - FixedRows)
+    inherited ExchangeColRow(IsColumn, index, WithIndex)
   else
     Raise EGridException.CreateFmt(rsVLEInvalidRowColOperation,['ExchangeColRow',' on columns']);
 end;
@@ -912,9 +916,18 @@ begin
   end;
 end;
 
+procedure TValueListEditor.Sort(ACol: TVleSortCol = colKey);
+begin
+  SortColRow(True, Ord(ACol));
+end;
+
+procedure TValueListEditor.Sort(Index, IndxFrom, IndxTo: Integer);
+begin
+  Sort(True, Index, IndxFrom, IndxTo);
+end;
+
 procedure TValueListEditor.StringsChange(Sender: TObject);
 begin
-  //Since we never call inherited SetCell, this seems the logical place to do it
   Modified := True;
   AdjustRowCount;
   Invalidate;
@@ -928,18 +941,13 @@ begin
     OnStringsChanging(Self);
 end;
 
-function TValueListEditor.GetFixedRows: Integer;
-begin
-  Result := inherited FixedRows;
-end;
-
 procedure TValueListEditor.SetFixedCols(const AValue: Integer);
 begin
   if (AValue in [0,1]) then
     inherited SetFixedCols(AValue);
 end;
 
-procedure TValueListEditor.SetFixedRows(AValue: Integer);
+procedure TValueListEditor.SetFixedRows(const AValue: Integer);
 begin
   if AValue in [0,1] then begin  // No other values are allowed
     if AValue = 0 then           // Typically DisplayOptions are changed directly
@@ -973,9 +981,9 @@ begin
     if doColumnTitles in AValue then begin
       if RowCount < 2 then
         {inherited} RowCount := 2;
-      inherited FixedRows := 1;
+      inherited SetFixedRows(1);// don't do FixedRows := 1 here, it wil cause infinite recursion (Issue 0029993)
     end else
-      inherited FixedRows := 0;
+      inherited SetFixedRows(0);
 
   if (doAutoColResize in DisplayOptions) <> (doAutoColResize in AValue) then
     AutoFillColumns := (doAutoColResize in AValue);
@@ -1076,7 +1084,7 @@ begin
   if (doColumnTitles in DisplayOptions) then
   begin
     KeyCap := rsVLEKey;
-    ValCap := rsVLEName;
+    ValCap := rsVLEValue;
     if (TitleCaptions.Count > 0) then KeyCap := TitleCaptions[0];
     if (TitleCaptions.Count > 1) then ValCap := TitleCaptions[1];
     //Columns[0].Title.Caption := KeyCap;
@@ -1105,6 +1113,20 @@ begin
         Row:=1;
     inherited RowCount:=NewC;
   end;
+end;
+
+procedure TValueListEditor.ColRowExchanged(IsColumn: Boolean; index,
+  WithIndex: Integer);
+begin
+  Strings.Exchange(Index - FixedRows, WithIndex - FixedRows);
+  inherited ColRowExchanged(IsColumn, index, WithIndex);
+end;
+
+procedure TValueListEditor.ColRowDeleted(IsColumn: Boolean; index: Integer);
+begin
+  EditorMode := False;
+  Strings.Delete(Index-FixedRows);
+  inherited ColRowDeleted(IsColumn, index);
 end;
 
 procedure TValueListEditor.DefineCellsProperty(Filer: TFiler);
@@ -1343,6 +1365,22 @@ begin
   end;
 end;
 
+procedure TValueListEditor.Sort(ColSorting: Boolean; index, IndxFrom,
+  IndxTo: Integer);
+var
+  HideEditor: Boolean;
+begin
+  HideEditor := goAlwaysShowEditor in Options;
+  if HideEditor then Options := Options - [goAlwaysShowEditor];
+  Strings.BeginUpdate;
+  try
+    inherited Sort(True, index, IndxFrom, IndxTo);
+  finally
+    Strings.EndUpdate;
+  end;
+  if HideEditor then Options := Options + [goAlwaysShowEditor];
+end;
+
 procedure TValueListEditor.TitlesChanged(Sender: TObject);
 begin
   // Refresh the display.
@@ -1365,7 +1403,7 @@ begin
     begin
       if (Index <> i) and (FStrings.Names[i] <> '') then
       begin
-        if (LazUTF8.Utf8CompareText(FStrings.Names[i], NewValue) = 0) then
+        if (Utf8CompareText(FStrings.Names[i], NewValue) = 0) then
         begin
           Result := False;
           ShowMessage(Format(rsVLEDuplicateKey,[NewValue, i + FixedRows]));

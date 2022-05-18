@@ -27,9 +27,10 @@ unit SynGutterLineOverview;
 interface
 
 uses
-  Classes, Graphics, Controls, LCLProc, LCLType, LCLIntf, Forms, FPCanvas, sysutils, math,
-  SynGutterBase, SynEditTypes, LazSynEditText, SynEditTextBuffer, SynEditMarks,
-  SynEditMiscClasses, SynEditFoldedView;
+  Classes, Graphics, Controls, LCLProc, LCLType, LCLIntf, Forms, LMessages,
+  FPCanvas, sysutils, math, SynGutterBase, SynEditTypes, LazSynEditText,
+  SynEditTextBuffer, SynEditMarks, SynEditMiscClasses, SynEditFoldedView,
+  SynEditMouseCmds, LazUtilities;
 
 type
   TSynGutterLineOverview = class;
@@ -115,12 +116,13 @@ type
     FTextLineCount: Integer;
     function GetLineMarks(Index: Integer): TSynGutterLOvLineMarks;
     procedure PutLineMarks(Index: Integer; const AValue: TSynGutterLOvLineMarks);
-    function IndexForLine(ALine: Integer; PreviousIfNotExist: Boolean = False): Integer;
     function ItemForLine(ALine: Integer; CreateIfNotExists: Boolean = False): TSynGutterLOvLineMarks;
     procedure SetItemHeight(const AValue: Integer);
     procedure SetPixelHeight(const AValue: Integer);
     procedure SetTextLineCount(const AValue: Integer);
   protected
+    function IndexForLine(ALine: Integer; PreviousIfNotExist: Boolean = False;
+      UseItemHeight: Boolean = False): Integer;
     procedure ReSort;
     procedure MarkChanged(Sender: TObject);
     procedure MarkDestroying(Sender: TObject);
@@ -271,6 +273,8 @@ type
   }
 
   TSynChildWinControl = class(TCustomControl)
+  protected
+    procedure WMNCHitTest(var Message: TLMessage); message LM_NCHITTEST;
   public
     constructor Create(AOwner: TComponent); override;
   end;
@@ -284,11 +288,15 @@ type
     FProviders: TSynGutterLineOverviewProviderList;
     FWinControl: TSynChildWinControl;
     FLineMarks: TSynGutterLOvLineMarksList;
+    FMouseActionsForMarks: TSynEditMouseInternalActions;
     FState: TSynGutterLOvStateFlags;
+    FPpiPenWidth: Integer;
     function GetMarkHeight: Integer;
+    function GetMouseActionsForMarks: TSynEditMouseActions;
     procedure SetMarkHeight(const AValue: Integer);
     procedure ScheduleASync(AStates: TSynGutterLOvStateFlags);
     procedure ExecASync(Data: PtrInt);
+    procedure SetMouseActionsForMarks(AValue: TSynEditMouseActions);
   protected
     function  PreferedWidth: Integer; override;
     procedure Init; override;
@@ -300,20 +308,31 @@ type
   protected
     procedure InvalidateTextLines(AFromLine, AToLine: Integer);
     procedure InvalidatePixelLines(AFromLine, AToLine: Integer);
+    function  PixelLineToText(ALineIdx: Integer): Integer;
     function  TextLineToPixel(ALine: Integer): Integer;
     function  TextLineToPixelEnd(ALine: Integer): Integer;
     procedure DoResize(Sender: TObject); override;
     Procedure PaintWinControl(Sender: TObject);
+    //function CreateMouseActions: TSynEditMouseInternalActions; override;
   public
+    constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure Assign(Source: TPersistent); override;
     procedure Paint(Canvas: TCanvas; AClip: TRect; FirstLine, LastLine: integer); override;
     procedure AddMark(AMark: TSynGutterLOvMark);
+    procedure ScalePPI(const AScaleFactor: Double); override;
+
+    function MaybeHandleMouseAction(var AnInfo: TSynEditMouseActionInfo;
+      HandleActionProc: TSynEditMouseActionHandler): Boolean; override;
+    function DoHandleMouseAction(AnAction: TSynEditMouseAction;
+                                 var AnInfo: TSynEditMouseActionInfo): Boolean; override;
 
     property Providers: TSynGutterLineOverviewProviderList read FProviders;
   published
     property MarkHeight: Integer read GetMarkHeight write SetMarkHeight;
     property MarkupInfo;
+    property MouseActionsForMarks: TSynEditMouseActions
+      read GetMouseActionsForMarks write SetMouseActionsForMarks;
   end;
 
 implementation
@@ -330,9 +349,7 @@ begin
   if Result <> 0 then exit;
   Result := Column - Other.Column;
   if Result <> 0 then exit;
-  {$PUSH}{$Q-} // Overflow is allowed to occur
-  Result := Integer(PtrUint(self) - PtrUInt(Other));
-  {$POP}
+  Result := ComparePointers(Pointer(self), Pointer(Other));
 end;
 
 function TSynGutterLOvMark.CompareByLine(Other: TSynGutterLOvMark): Integer;
@@ -343,9 +360,7 @@ begin
   if Result <> 0 then exit;
   Result := Priority - Other.Priority;
   if Result <> 0 then exit;
-  {$PUSH}{$Q-} // Overflow is allowed to occur
-  Result := Integer(PtrUint(self) - PtrUInt(Other));
-  {$POP}
+  Result := ComparePointers(Pointer(self), Pointer(Other));
 end;
 
 procedure TSynGutterLOvMark.DoChange;
@@ -444,9 +459,7 @@ function TSynGutterLOvLineMarks.Compare(Other: TSynGutterLOvLineMarks): Integer;
 begin
   Result := PixLine - Other.PixLine;
   if Result <> 0 then exit;
-  {$PUSH}{$Q-} // Overflow is allowed to occur
-  Result := PtrUint(self) - PtrUInt(Other);
-  {$POP}
+  Result := ComparePointers(Pointer(self), Pointer(Other));
 end;
 
 constructor TSynGutterLOvLineMarks.Create;
@@ -716,13 +729,36 @@ begin
 end;
 
 function TSynGutterLOvLineMarksList.IndexForLine(ALine: Integer;
-  PreviousIfNotExist: Boolean = False): Integer;
+  PreviousIfNotExist: Boolean; UseItemHeight: Boolean): Integer;
+var
+  l, h, m: Integer;
 begin
-  Result := Count - 1;
-  while (Result >= 0) and (Items[Result].PixLine > ALine) do
+  l := 0;
+  h := Count - 1;
+  if h < 0 then
+    exit(-1);
+
+  while h > l do begin
+    m := (h+l) div 2;
+    if Items[m].PixLine <= ALine then
+      l := m + 1
+    else
+      h := m;
+  end;
+  Result := h;
+
+  if Items[Result].PixLine > ALine then begin
     dec(Result);
-  if ((Result >= 0) and (Items[Result].PixLine = ALine)) or (PreviousIfNotExist) then
+    if Result < 0 then exit;
+  end;
+  Assert(Items[Result].PixLine <= ALine);
+
+  if UseItemHeight and (Items[Result].PixLine + ItemHeight > ALine) then
     exit;
+
+  if (Items[Result].PixLine = ALine) or (PreviousIfNotExist) then
+    exit;
+
   Result := -1;
 end;
 
@@ -1001,7 +1037,7 @@ var
 begin
   if FFirstTextLineChanged > 0 then ReScan;
 
-  AClip.Right := AClip.Left + 3;
+  AClip.Right := AClip.Left + Round((AClip.Right - AClip.Left) / 3);
   i := AClip.Top - TopOffset;
   imax := AClip.Bottom - TopOffset;
   if imax > high(FPixLineStates) then imax := high(FPixLineStates);
@@ -1072,7 +1108,7 @@ procedure TSynGutterLOvProviderModifiedLines.BufferChanged(Sender: TObject);
 begin
   TSynEditStringList(Sender).RemoveHanlders(self);
   TSynEditStringList(TextBuffer).AddModifiedHandler(senrLinesModified, @LineModified);
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
 end;
 
 procedure TSynGutterLOvProviderModifiedLines.LineModified(Sender: TSynEditStrings; aIndex,
@@ -1105,7 +1141,7 @@ constructor TSynGutterLOvProviderModifiedLines.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   TSynEditStringList(TextBuffer).AddModifiedHandler(senrLinesModified, @LineModified);
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
   TCustomSynEdit(SynEdit).RegisterStatusChangedHandler(@SynStatusChanged, [scModified]);
   FFirstTextLineChanged := -1;
   FLastTextLineChanged := -1;
@@ -1217,8 +1253,8 @@ var
   i: Integer;
 begin
   TSynEditStringList(Sender).RemoveHanlders(self);
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanging, TMethod(@BufferChanging));
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanging, @BufferChanging);
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
   TCustomSynEdit(SynEdit).Marks.RegisterChangeHandler(@DoMarkChange,
     [smcrAdded, smcrRemoved, smcrLine, smcrVisible, smcrChanged]);
 
@@ -1238,8 +1274,8 @@ var
 begin
   inherited Create(AOwner);
   Color := clBlue;
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanging, TMethod(@BufferChanging));
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanging, @BufferChanging);
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
 
   TCustomSynEdit(SynEdit).Marks.RegisterChangeHandler(@DoMarkChange,
     [smcrAdded, smcrRemoved, smcrLine, smcrVisible, smcrChanged]);
@@ -1258,12 +1294,15 @@ end;
 
 { TSynChildWinControl }
 
+procedure TSynChildWinControl.WMNCHitTest(var Message: TLMessage);
+begin
+  Message.Result := HTTRANSPARENT;
+end;
+
 constructor TSynChildWinControl.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   BorderStyle := bsNone;
-  if AOwner is TWinControl then
-    DoubleBuffered := TWinControl(AOwner).DoubleBuffered;
 end;
 
 { TSynGutterLineOverview }
@@ -1271,11 +1310,10 @@ end;
 procedure TSynGutterLineOverview.Init;
 begin
   inherited Init;
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrLineCount, TMethod(@LineCountChanged));
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddChangeHandler(senrLineCount, @LineCountChanged);
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
   FWinControl := TSynChildWinControl.Create(Self);
   FWinControl.Parent := SynEdit;
-  FWinControl.DoubleBuffered := SynEdit.DoubleBuffered;
   FWinControl.OnPaint := @PaintWinControl;
 
   FLineMarks := TSynGutterLOvLineMarksList.Create;
@@ -1293,6 +1331,7 @@ begin
   FreeAndNil(FProviders);
   FreeAndNil(FWinControl);
   FreeAndNil(FLineMarks);
+  FreeAndNil(FMouseActionsForMarks);
   inherited Destroy;
 end;
 
@@ -1307,8 +1346,8 @@ end;
 procedure TSynGutterLineOverview.BufferChanged(Sender: TObject);
 begin
   TSynEditStringList(Sender).RemoveHanlders(self);
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrLineCount, TMethod(@LineCountChanged));
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddChangeHandler(senrLineCount, @LineCountChanged);
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
   LineCountChanged(nil, 0, 0);
 end;
 
@@ -1348,6 +1387,18 @@ begin
   r.Top := AFromLine;
   r.Bottom := AToLine + 1;
   InvalidateRect(FWinControl.Handle, @r, False);
+end;
+
+function TSynGutterLineOverview.PixelLineToText(ALineIdx: Integer): Integer;
+var
+  c: Integer;
+begin
+  if ALineIdx < 0 then exit(-1);
+  c := TextBuffer.Count;
+  if c = 0 then
+    Result := -1
+  else
+    Result := Min(Int64(ALineIdx) * Int64(c) div Height, c-1);
 end;
 
 function TSynGutterLineOverview.TextLineToPixel(ALine: Integer): Integer;
@@ -1415,6 +1466,8 @@ begin
   AClip.Right := Width;
   FWinControl.Canvas.Brush.Color := MarkupInfo.Background;
   FWinControl.Canvas.FillRect(AClip);
+  FWinControl.Canvas.Pen.Width := FPpiPenWidth;
+  FWinControl.Canvas.Pen.JoinStyle := pjsMiter;
 
   for i := 0 to Providers.Count - 1 do
     Providers[i].Paint(FWinControl.Canvas, AClip, 0);
@@ -1423,9 +1476,21 @@ begin
     FLineMarks[i].Paint(FWinControl.Canvas, AClip, 0, MarkHeight);
 end;
 
+constructor TSynGutterLineOverview.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FPpiPenWidth := 1;
+  FMouseActionsForMarks := TSynEditMouseInternalActions.Create(Self);
+end;
+
 function TSynGutterLineOverview.GetMarkHeight: Integer;
 begin
   Result := FLineMarks.ItemHeight;
+end;
+
+function TSynGutterLineOverview.GetMouseActionsForMarks: TSynEditMouseActions;
+begin
+  Result := FMouseActionsForMarks.UserActions;
 end;
 
 procedure TSynGutterLineOverview.SetMarkHeight(const AValue: Integer);
@@ -1461,14 +1526,27 @@ begin
   FState := FState - [losASyncScheduled, losResized, losLineCountChanged];
 end;
 
+procedure TSynGutterLineOverview.SetMouseActionsForMarks(
+  AValue: TSynEditMouseActions);
+begin
+  FMouseActionsForMarks.UserActions := AValue;
+end;
+
 function TSynGutterLineOverview.PreferedWidth: Integer;
 begin
   Result := 10;
 end;
 
+procedure TSynGutterLineOverview.ScalePPI(const AScaleFactor: Double);
+begin
+  FLineMarks.ItemHeight := Round(FLineMarks.ItemHeight*AScaleFactor);
+  FPpiPenWidth := Max(1, Scale96ToFont(1));
+  inherited ScalePPI(AScaleFactor);
+end;
+
 procedure TSynGutterLineOverview.Assign(Source : TPersistent);
 begin
-  if Assigned(Source) and (Source is TSynGutterLineOverview) then
+  if Source is TSynGutterLineOverview then
   begin
     inherited;
     // Todo: assign providerlist?
@@ -1484,6 +1562,53 @@ end;
 procedure TSynGutterLineOverview.AddMark(AMark: TSynGutterLOvMark);
 begin
   FLineMarks.AddMark(AMark);
+end;
+
+function TSynGutterLineOverview.MaybeHandleMouseAction(
+  var AnInfo: TSynEditMouseActionInfo;
+  HandleActionProc: TSynEditMouseActionHandler): Boolean;
+begin
+  Result := False;
+  if FLineMarks.IndexForLine(AnInfo.MouseY, False, True) >= 0 then
+    Result := HandleActionProc(FMouseActionsForMarks.GetActionsForOptions(TCustomSynEdit(SynEdit).MouseOptions), AnInfo);
+
+  if not Result then
+    Result := inherited MaybeHandleMouseAction(AnInfo, HandleActionProc);
+end;
+
+function TSynGutterLineOverview.DoHandleMouseAction(
+  AnAction: TSynEditMouseAction; var AnInfo: TSynEditMouseActionInfo): Boolean;
+var
+  i, TextLine: Integer;
+begin
+  Result := False;
+  if AnAction = nil then exit;
+
+  case AnAction.Command of
+    emcOverViewGutterScrollTo: begin
+      TextLine := PixelLineToText(AnInfo.MouseY);
+
+      AnInfo.NewCaret.BytePos := 1;
+      Result := True;
+    end;
+    emcOverViewGutterGotoMark: begin
+      i := FLineMarks.IndexForLine(AnInfo.MouseY, False, True);
+      if (i < 0) or (FLineMarks.Items[i].Count = 0) then
+        exit;
+      TextLine := FLineMarks.Items[i].Items[0].Line;
+      AnInfo.NewCaret.BytePos := Max(FLineMarks.Items[i].Items[0].Column, 1);
+      Result := True;
+    end;
+  end;
+
+  if Result then begin
+    if (TextLine < TCustomSynEdit(SynEdit).TopLine) or
+       (TextLine > TCustomSynEdit(SynEdit).TopLine + TCustomSynEdit(SynEdit).LinesInWindow)
+    then
+      TCustomSynEdit(SynEdit).TopLine := Max(1, TextLine - TCustomSynEdit(SynEdit).LinesInWindow div 2);
+
+    AnInfo.NewCaret.LinePos := TextLine;
+  end;
 end;
 
 end.

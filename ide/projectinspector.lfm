@@ -8,8 +8,11 @@ object ProjectInspectorForm: TProjectInspectorForm
   Caption = 'ProjectInspectorForm'
   ClientHeight = 456
   ClientWidth = 299
+  OnActivate = FormActivate
+  OnCreate = FormCreate
+  OnDeactivate = FormDeactivate
   OnDropFiles = FormDropFiles
-  LCLVersion = '1.5'
+  LCLVersion = '1.9.0.0'
   object ItemsTreeView: TTreeView
     Left = 0
     Height = 378
@@ -18,7 +21,6 @@ object ProjectInspectorForm: TProjectInspectorForm
     Align = alClient
     Anchors = [akTop, akLeft, akBottom]
     BorderSpacing.Top = 2
-    DefaultItemHeight = 18
     DragMode = dmAutomatic
     MultiSelect = True
     PopupMenu = ItemsPopupMenu
@@ -30,7 +32,6 @@ object ProjectInspectorForm: TProjectInspectorForm
     OnDragDrop = ItemsTreeViewDragDrop
     OnDragOver = ItemsTreeViewDragOver
     OnKeyDown = ItemsTreeViewKeyDown
-    OnSelectionChanged = ItemsTreeViewSelectionChanged
     Options = [tvoAllowMultiselect, tvoAutoItemHeight, tvoHideSelection, tvoKeepCollapsedNodes, tvoReadOnly, tvoRightClickSelect, tvoShowButtons, tvoShowLines, tvoShowRoot, tvoToolTips, tvoThemedDraw]
   end
   object BtnPanel: TPanel
@@ -106,15 +107,13 @@ object ProjectInspectorForm: TProjectInspectorForm
       AnchorSideTop.Control = SortAlphabeticallyButton
       AnchorSideTop.Side = asrCenter
       Left = 95
-      Height = 23
-      Top = 3
+      Height = 25
+      Top = 2
       Width = 201
-      UseFormActivate = True
       ButtonWidth = 23
-      NumGlyphs = 1
       Anchors = [akTop, akLeft, akRight]
       BorderSpacing.Left = 3
-      Font.Color = clBtnShadow
+      NumGlyphs = 1
       MaxLength = 0
       ParentFont = False
       TabOrder = 0
@@ -129,6 +128,7 @@ object ProjectInspectorForm: TProjectInspectorForm
     Width = 299
     AutoSize = True
     ButtonHeight = 46
+    ButtonWidth = 23
     ShowCaptions = True
     TabOrder = 2
   end
@@ -151,10 +151,6 @@ object ProjectInspectorForm: TProjectInspectorForm
     object MenuItem2: TMenuItem
       Caption = '-'
     end
-    object mnuAddDiskFiles: TMenuItem
-      Caption = 'Add files'
-      OnClick = mnuAddDiskFilesClick
-    end
     object mnuAddEditorFiles: TMenuItem
       Caption = 'Add editor files'
       OnClick = mnuAddEditorFilesClick
@@ -162,6 +158,10 @@ object ProjectInspectorForm: TProjectInspectorForm
     object mnuAddReq: TMenuItem
       Caption = 'Add requirement'
       OnClick = mnuAddReqClick
+    end
+    object mnuAddFPMakeReq: TMenuItem
+      Caption = 'Add FPMake requirement'
+      OnClick = mnuAddFPMakeReqClick
     end
   end
 end

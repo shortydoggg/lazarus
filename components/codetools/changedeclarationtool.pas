@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -28,11 +28,14 @@ unit ChangeDeclarationTool;
 
 {$mode objfpc}{$H+}
 
+{off $define VerboseAddProcModifier}
+
 interface
 
 uses
-  Classes, SysUtils, AVL_Tree, contnrs, CodeAtom, CodeCache,
-  FileProcs, CodeTree, ExtractProcTool, FindDeclarationTool,
+  Classes, SysUtils, Laz_AVL_Tree, contnrs,
+  // Codetools
+  CodeAtom, CodeCache, FileProcs, CodeTree, ExtractProcTool, FindDeclarationTool,
   BasicCodeTools, KeywordFuncLists, LinkScanner, SourceChanger;
 
 type
@@ -64,7 +67,7 @@ type
 
   { TChangeDeclarationTool }
 
-  TChangeDeclarationTool = class(TExtractProcTool)
+  TChangeDeclarationTool = class(TExtractCodeTool)
   private
     procedure CDTParseParamList(ParentNode: TCodeTreeNode; Transactions: TObject);
     function ApplyParamListTransactions(Transactions: TObject;
@@ -77,9 +80,12 @@ type
       SourceChanger: TSourceChangeCache): boolean;
   public
     function ChangeParamList(Changes: TObjectList; // list of TChangeParamListItem
-       var ProcPos: TCodeXYPosition; // if it is in this unit the proc declaration is changed and this position is cleared
-       TreeOfPCodeXYPosition: TAVLTree; // positions in this unit are processed and removed from the tree
-       SourceChanger: TSourceChangeCache): boolean;
+      var ProcPos: TCodeXYPosition; // if it is in this unit the proc declaration is changed and this position is cleared
+      TreeOfPCodeXYPosition: TAVLTree; // positions in this unit are processed and removed from the tree
+      SourceChanger: TSourceChangeCache): boolean;
+
+    function AddProcModifier(const CursorPos: TCodeXYPosition; aModifier: string;
+      SourceChanger: TSourceChangeCache): boolean;
   end;
 
 implementation
@@ -330,7 +336,7 @@ begin
     MoveCursorBehindPropName(ParentNode)
   else
     raise EInvalidOperation.Create('TChangeDeclarationTool.ChangeParamListDeclaration kind not supported: '+ParentNode.DescAsString);
-  t.BehindNamePos:=LastAtoms.GetValueAt(0).EndPos;
+  t.BehindNamePos:=LastAtoms.GetPriorAtom.EndPos;
   // read bracket
   if CurPos.Flag=cafRoundBracketOpen then
     CloseBracket:=')'
@@ -352,7 +358,7 @@ begin
       // parse end of parameter list
       if (CurPos.StartPos>SrcLen)
       or (Src[CurPos.StartPos]<>CloseBracket) then
-        RaiseCharExpectedButAtomFound(CloseBracket);
+        RaiseCharExpectedButAtomFound(20170421201949,CloseBracket);
       break;
     end else begin
       ReadPrefixModifier;
@@ -381,13 +387,13 @@ begin
         ReadNextAtom;
         CurParam.Typ:=CurPos;
         if not ReadParamType(true,false,[]) then exit;
-        CurParam.Typ.EndPos:=LastAtoms.GetValueAt(0).EndPos;
+        CurParam.Typ.EndPos:=LastAtoms.GetPriorAtom.EndPos;
         if CurPos.Flag=cafEqual then begin
           // read default value
           ReadNextAtom;
           CurParam.DefaultValue:=CurPos;
           ReadConstant(true,false,[]);
-          CurParam.DefaultValue.EndPos:=LastAtoms.GetValueAt(0).EndPos;
+          CurParam.DefaultValue.EndPos:=LastAtoms.GetPriorAtom.EndPos;
         end;
       end;
       // close bracket or semicolon
@@ -396,7 +402,7 @@ begin
         break;
       end;
       if CurPos.Flag<>cafSemicolon then
-        RaiseCharExpectedButAtomFound(CloseBracket);
+        RaiseCharExpectedButAtomFound(20170421201951,CloseBracket);
       CurParam.Separator:=CurPos.StartPos;
       inc(ParamIndex);
     end;
@@ -885,6 +891,163 @@ begin
     ProcPos:=CleanCodeXYPosition;
     if not ChangeParamListDeclarationAtPos(CleanPos,Changes,SourceChanger) then exit;
   end;
+  Result:=SourceChanger.Apply;
+end;
+
+function TChangeDeclarationTool.AddProcModifier(
+  const CursorPos: TCodeXYPosition; aModifier: string;
+  SourceChanger: TSourceChangeCache): boolean;
+var
+  CleanPos, EndPos, p, AtomStart, InsertFromPos, InsertToPos: integer;
+  ProcNode, Node: TCodeTreeNode;
+  s, ModifierAtom, InsertTxt: String;
+  Beauty: TBeautifyCodeOptions;
+  NeedLeftSemicolon, NeedRightSemicolon: Boolean;
+  FromGap, ToGap: TGapTyp;
+begin
+  Result:=false;
+
+  aModifier:=Trim(aModifier);
+  if aModifier='' then
+    RaiseException(20180513104525,'AddProcModifier invalid modifier "'+aModifier+'"');
+  if aModifier[length(aModifier)]=';' then begin
+    aModifier:=Trim(LeftStr(aModifier,length(aModifier)-1));
+    if aModifier='' then
+      RaiseException(20180513104659,'AddProcModifier invalid modifier "'+aModifier+'"');
+  end;
+
+  BuildTreeAndGetCleanPos(CursorPos,CleanPos);
+  ProcNode:=FindDeepestNodeAtPos(CleanPos,true);
+  if ProcNode.Desc<>ctnProcedure then begin
+    Node:=ProcNode.GetNodeOfType(ctnProcedureHead);
+    if Node=nil then
+      RaiseExceptionAtCleanPos(20180513100158,'AddProcModifier expects a procedure header, but found '+ProcNode.DescAsString,CleanPos);
+    ProcNode:=Node.Parent;
+    if ProcNode.Desc<>ctnProcedure then
+      RaiseExceptionAtCleanPos(20180513100346,'AddProcModifier expects a procedure, but found '+ProcNode.DescAsString,CleanPos);
+  end;
+  BuildSubTreeForProcHead(ProcNode);
+
+  // get new modifier type
+  p:=1;
+  s:=ReadNextPascalAtom(aModifier,p,AtomStart,Scanner.NestedComments,true);
+  if s='' then
+    RaiseExceptionAtCleanPos(20180513101346,'AddProcModifier invalid modifier "'+aModifier+'"',CleanPos);
+  ModifierAtom:=shortstring(UpperCaseStr(s));
+
+  MoveCursorToFirstProcSpecifier(ProcNode);
+  // cursor is now at semicolon or at first modifier
+  EndPos:=ProcNode.FirstChild.EndPos;
+  InsertFromPos:=CurPos.StartPos;
+  InsertToPos:=0;
+  NeedLeftSemicolon:=true;
+  NeedRightSemicolon:=CurPos.Flag<>cafSemicolon;
+  {$IFDEF VerboseAddProcModifier}
+  debugln(['TChangeDeclarationTool.AddProcModifier ModifierAtom="',ModifierAtom,'" FIRST ATOM ',GetAtom]);
+  {$ENDIF}
+  while (CurPos.StartPos<EndPos) do begin
+    {$IFDEF VerboseAddProcModifier}
+    debugln(['TChangeDeclarationTool.AddProcModifier NEXT ATOM ',GetAtom]);
+    {$ENDIF}
+    if CurPos.Flag=cafSemicolon then begin
+      ReadNextAtom;
+    end else begin
+      if UpAtomIs(ModifierAtom) then begin
+        // found
+        InsertFromPos:=CurPos.StartPos;
+        InsertToPos:=InsertFromPos;
+        NeedLeftSemicolon:=false;
+      end else begin
+        InsertFromPos:=CurPos.EndPos;
+        NeedLeftSemicolon:=true;
+      end;
+      if (CurPos.Flag=cafEdgedBracketOpen) then begin
+        ReadTilBracketClose(false);
+        ReadNextAtom;
+      end else if UpAtomIs('MESSAGE') or UpAtomIs('DISPID') or UpAtomIs('ENUMERATOR')
+      or UpAtomIs('DEPRECATED') then begin
+        ReadNextAtom;
+        ReadConstant(true,false,[]);
+      end else if UpAtomIs('IS') then begin
+        ReadNextAtom;
+        if UpAtomIs('NESTED') then
+          ReadNextAtom;
+      end else if UpAtomIs('EXTERNAL') or UpAtomIs('WEAKEXTERNAL')
+      or UpAtomIs('PUBLIC')  then begin
+        ReadNextAtom;
+        if CurPos.Flag<>cafSemicolon then begin
+          if not UpAtomIs('NAME') then
+            ReadConstant(true,false,[]);
+          if UpAtomIs('NAME') or UpAtomIs('INDEX') then begin
+            ReadNextAtom;
+            ReadConstant(true,false,[]);
+          end;
+          if UpAtomIs('DELAYED') then
+            ReadNextAtom;
+        end;
+      end else begin
+        ReadNextAtom;
+      end;
+      if InsertToPos>0 then begin
+        InsertToPos:=CurPos.StartPos;
+        NeedRightSemicolon:=CurPos.Flag<>cafSemicolon;
+        {$IFDEF VerboseAddProcModifier}
+        debugln(['TChangeDeclarationTool.AddProcModifier FOUND "',copy(Src,InsertFromPos,InsertToPos-InsertFromPos),'"']);
+        {$ENDIF}
+        break;
+      end else begin
+        if CurPos.Flag=cafSemicolon then begin
+          InsertFromPos:=CurPos.EndPos;
+          NeedLeftSemicolon:=false;
+        end else begin
+          InsertFromPos:=CurPos.StartPos;
+          NeedLeftSemicolon:=true;
+        end;
+        NeedRightSemicolon:=true;
+      end;
+    end;
+  end;
+
+  SourceChanger.MainScanner:=Scanner;
+  Beauty:=SourceChanger.BeautifyCodeOptions;
+  InsertTxt:=aModifier;
+  if NeedLeftSemicolon then begin
+    InsertTxt:=';'+InsertTxt;
+    FromGap:=gtNone;
+  end else
+    FromGap:=gtSpace;
+  ToGap:=gtNone;
+  if NeedRightSemicolon then
+    InsertTxt:=InsertTxt+';';
+  InsertTxt:=Beauty.BeautifyStatement(InsertTxt,0);
+
+  if InsertToPos>0 then begin
+    // there is already such a modifier
+    s:=ExtractCode(InsertFromPos,InsertToPos,[]);
+    if CompareTextIgnoringSpace(s,InsertTxt,false)=0 then begin
+      debugln(['TChangeDeclarationTool.AddProcModifier EXISTS ALREADY "',s,'"']);
+      exit(true);
+    end;
+  end;
+  InsertFromPos:=FindLineEndOrCodeInFrontOfPosition(InsertFromPos,false);
+  InsertToPos:=FindLineEndOrCodeAfterPosition(InsertToPos);
+
+  if InsertToPos=0 then begin
+    // append new modifier
+    {$IFDEF VerboseAddProcModifier}
+    debugln(['TChangeDeclarationTool.AddProcModifier APPEND "',InsertTxt,'"']);
+    {$ENDIF}
+    if not SourceChanger.Replace(FromGap,ToGap,InsertFromPos,InsertFromPos,InsertTxt) then
+      RaiseExceptionAtCleanPos(20180513105500,'AddProcModifier replace failed',InsertFromPos);
+  end else begin
+    // replace old modifier
+    {$IFDEF VerboseAddProcModifier}
+    debugln(['TChangeDeclarationTool.AddProcModifier REPLACE "',copy(Src,InsertFromPos,InsertToPos-InsertFromPos),'" with "',InsertTxt,'"']);
+    {$ENDIF}
+    if not SourceChanger.Replace(FromGap,ToGap,InsertFromPos,InsertToPos,InsertTxt) then
+      RaiseExceptionAtCleanPos(20180513105502,'AddProcModifier replace failed',InsertFromPos);
+  end;
+
   Result:=SourceChanger.Apply;
 end;
 

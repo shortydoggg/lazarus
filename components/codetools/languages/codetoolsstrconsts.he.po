@@ -84,6 +84,10 @@ msgstr "סוגר s% לא נמצא"
 msgid "bracket open expected, but %s found"
 msgstr "צפויה פתיחת סוגריים, אבל s% נמצא"
 
+#: codetoolsstrconsts.ctscannotaddaunittotheimplementationbecauseonlyaunith
+msgid "cannot add a unit to the implementation, because only a unit has one"
+msgstr ""
+
 #: codetoolsstrconsts.ctscharacterconstantoutofrange
 msgid "character constant out of range"
 msgstr "קבוע תו מחוץ לתחום"
@@ -105,6 +109,10 @@ msgstr "צומת של מחלקה ללא הורה"
 #| msgid "class %s%s%s not found"
 msgid "class \"%s\" not found"
 msgstr "המחלקה %s%s%s לא נמצאה"
+
+#: codetoolsstrconsts.ctsclassnotfound2
+msgid "class not found \"%s\""
+msgstr ""
 
 #: codetoolsstrconsts.ctsclassofdefinitionnotresolved
 #, fuzzy,badformat
@@ -147,10 +155,6 @@ msgstr "קבוע"
 #: codetoolsstrconsts.ctsconverterdirectory
 msgid "Converter Directory"
 msgstr "תיקיית הממיר"
-
-#: codetoolsstrconsts.ctscpudirectory
-msgid "CPU directory"
-msgstr "תיקיית המעבדים"
 
 #: codetoolsstrconsts.ctscursorposoutsideofcode
 msgid "cursor pos outside of code"
@@ -229,30 +233,10 @@ msgstr "הגדרת LCL"
 msgid "Define LCLwidgetset, e.g. LCLgtk"
 msgstr "הגדרת LCLwidgetset, למשל LCLgtk"
 
-#: codetoolsstrconsts.ctsdefinemacrocarbon1
-msgid "Define macro carbon1"
-msgstr "הגדר מאקרו carbon1"
-
-#: codetoolsstrconsts.ctsdefinemacrogtk1
-msgid "Define macro gtk1"
-msgstr "הגדר מאקרו gtk1"
-
-#: codetoolsstrconsts.ctsdefinemacrogtk2
-msgid "Define macro gtk2"
-msgstr "הגדר מאקרו gtk2"
-
 #: codetoolsstrconsts.ctsdefinemacroname
 #, fuzzy,badformat
 msgid "Define Macro %s"
 msgstr "הגדר מאקרו s%"
-
-#: codetoolsstrconsts.ctsdefinemacroqt1
-msgid "Define macro qt1"
-msgstr "הגדר מאקרו qt1"
-
-#: codetoolsstrconsts.ctsdefinemacrowince1
-msgid "Define macro wince1"
-msgstr "הגדר מאקרו wince1"
 
 #: codetoolsstrconsts.ctsdefineprocessortype
 msgid "Define processor type"
@@ -265,20 +249,6 @@ msgstr "הגדרות עבור הקוד של לזארוס"
 #: codetoolsstrconsts.ctsdesignerdirectory
 msgid "Designer Directory"
 msgstr "תיקיית המעצב"
-
-#: codetoolsstrconsts.ctsdesignerunitsdirectory
-msgid "Designer Units"
-msgstr "יחידות המעצב"
-
-#: codetoolsstrconsts.ctsdircomponentdoesnotexistsorisdanglingsymlink
-#, fuzzy,badformat
-msgid "a directory component in %s does not exist or is a dangling symlink"
-msgstr "רכיב בתיקייה s% אינו קיים או שהוא קישור סימבולי מפוקפק"
-
-#: codetoolsstrconsts.ctsdircomponentisnotdir
-#, fuzzy,badformat
-msgid "a directory component in %s is not a directory"
-msgstr "רכיב של תיקייה ב s% אינו תיקייה"
 
 #: codetoolsstrconsts.ctsdispidparameterexpectedbutatomfound
 msgid "dispid parameter expected, but %s found"
@@ -348,11 +318,6 @@ msgstr "שגיאה בביטוי הוראה"
 msgid "error in paramlist"
 msgstr "שגיאה ברשימת הפרמטרים"
 
-#: codetoolsstrconsts.ctsexecuteaccessdeniedforfile
-#, fuzzy,badformat
-msgid "execute access denied for %s"
-msgstr "הרשאת ריצה הוגדרה עבור s%"
-
 #: codetoolsstrconsts.ctsexpected
 msgid "\"%s\" expected"
 msgstr ""
@@ -388,11 +353,6 @@ msgstr "סעיף ייצוא מותר רק בספריות"
 #: codetoolsstrconsts.ctsexprtypemustbeclassorrecord
 msgid "expression type must be class or record type"
 msgstr "סוג הביטוי חייב להיות מחלקה מסוג רשומה"
-
-#: codetoolsstrconsts.ctsfilehascircularsymlink
-#, fuzzy,badformat
-msgid "%s has a circular symbolic link"
-msgstr "יש ל s% קישור סימבולי מעגלי"
 
 #: codetoolsstrconsts.ctsfileisreadonly
 msgid "file is read only"
@@ -442,10 +402,6 @@ msgstr "הפונקציה GetEnumerator אינה נמצאת במחלקה זאת"
 msgid "generic identifier"
 msgstr "מזהה כללי"
 
-#: codetoolsstrconsts.ctsgtk2intfdirectory
-msgid "gtk2 interface directory"
-msgstr "תיקיית הממשק של gtk2"
-
 #: codetoolsstrconsts.ctshaserror
 msgid "HasError"
 msgstr "יש בו שגיאה"
@@ -457,10 +413,6 @@ msgstr ""
 #: codetoolsstrconsts.ctsidedirectory
 msgid "IDE Directory"
 msgstr "תיקיית ה IDE "
-
-#: codetoolsstrconsts.ctsideintfdirectory
-msgid "IDEIntf Directory"
-msgstr "תיקיית IDEIntf"
 
 #: codetoolsstrconsts.ctsidentexpectedbutatomfound
 #, fuzzy,badformat
@@ -570,17 +522,9 @@ msgstr "תיקיית ההתקנות"
 msgid "Installer directories"
 msgstr "תיקייות של תכנת ההתקנה"
 
-#: codetoolsstrconsts.ctsinsufficientmemory
-msgid "insufficient memory"
-msgstr "זיכרון לא מספיק"
-
 #: codetoolsstrconsts.ctsinterfacesectionnotfound
 msgid "interface section not found"
 msgstr "קטע הממשק לא נמצא"
-
-#: codetoolsstrconsts.ctsintfdirectory
-msgid "interface directory"
-msgstr "תיקיית הממשק"
 
 #: codetoolsstrconsts.ctsinvalidclassname
 #, fuzzy,badformat
@@ -611,6 +555,10 @@ msgstr "מתג מצב לא חוקי  \"%s\""
 msgid "invalid operator %s"
 msgstr "אופרטור לא חוקי %s"
 
+#: codetoolsstrconsts.ctsinvalidpositionforinsertionofstatements
+msgid "invalid position for insertion of statements"
+msgstr ""
+
 #: codetoolsstrconsts.ctsinvalidsubrange
 msgid "invalid subrange"
 msgstr "תת תחום לא חוקי"
@@ -630,10 +578,6 @@ msgstr "שם משתנה לא חוקי %s%s%s"
 #| msgid "invalid variable type %s%s%s"
 msgid "invalid variable type \"%s\""
 msgstr "סוג משתנה לא חוקי %s%s%s"
-
-#: codetoolsstrconsts.ctsjitformdirectory
-msgid "JITForm Directory"
-msgstr "תיקיית IDEIntf"
 
 #: codetoolsstrconsts.ctskeyword
 msgid "keyword"
@@ -655,6 +599,10 @@ msgstr "התיקייה הראשית של לזארוס"
 #: codetoolsstrconsts.ctslazarussources
 msgid "Lazarus Sources"
 msgstr "הקוד של לזארוס"
+
+#: codetoolsstrconsts.ctsmethodhasnodeclaration
+msgid "method \"%s\" has no declaration"
+msgstr ""
 
 #: codetoolsstrconsts.ctsmethodname
 msgid "method name"
@@ -872,10 +820,6 @@ msgstr "הקוד אינו יחידה"
 msgid "source not found: unit %s. Check your FPC source directory."
 msgstr "הקוד לא נמצא: יחידה s%"
 
-#: codetoolsstrconsts.ctssrcpathforcompiledunits
-msgid "src path for compiled units"
-msgstr "נתיב המקור עבור יחידות מהודרות"
-
 #: codetoolsstrconsts.ctssrcpathinitialization
 msgid "SrcPath Initialization"
 msgstr "איתחול של SrcPath"
@@ -893,10 +837,6 @@ msgstr "קבוע מסוג מחרוזת"
 #: codetoolsstrconsts.ctssyntaxerrorinexpr
 msgid "Syntax Error in expression \"%s\""
 msgstr "שגיאת תחביר בביטוי \"%s\""
-
-#: codetoolsstrconsts.ctstcodetoolmanagerconsistencycheck
-msgid "TCodeToolManager.ConsistencyCheck=%d"
-msgstr "TCodeToolManager.ConsistencyCheck=%d"
 
 #: codetoolsstrconsts.ctstermnotsimple
 msgid "Term has no simple type"
@@ -962,6 +902,10 @@ msgstr "מלת מפתח לא צפויה \"%s\" נמצאה בתוך בלוק \"ה
 msgid "unexpected keyword \"%s\" found while reading blocks backwards"
 msgstr "מלת מפתח לא צפויה \"%s\" נמצאה בזמן קריאת בלוקים מהסוף להתחלה"
 
+#: codetoolsstrconsts.ctsunexpectedsectionkeyword
+msgid "unexpected section keyword %s found"
+msgstr ""
+
 #: codetoolsstrconsts.ctsunexpectedsubrangeoperatorfound
 msgid "unexpected subrange operator '..' found"
 msgstr "אופרטור בלתי צפוי של תת תחום  '..' נמצא"
@@ -984,11 +928,6 @@ msgstr "פונקציה לא ידועה s%"
 msgid "(unknown mainfilename)"
 msgstr "(שם קובץ ראשי לא ידוע)"
 
-#: codetoolsstrconsts.ctsunknownsectionkeyword
-#, fuzzy,badformat
-msgid "unknown section keyword %s found"
-msgstr "מלת מפתח s% לא ידוע באזור נמצאה"
-
 #: codetoolsstrconsts.ctsunknownsubdescriptor
 #, fuzzy,badformat
 msgid "(unknown subdescriptor %s)"
@@ -1009,10 +948,6 @@ msgstr "תיקיות של יחידות"
 #: codetoolsstrconsts.ctsvarisonlyallowedingenericsendofclassnotfound
 msgid "var is only allowed in generics, end of class not found"
 msgstr "הסעיף var מותר רק במחלקות גנריות, סוף המחלקה לא נמצא"
-
-#: codetoolsstrconsts.ctswidgetdirectory
-msgid "Widget Directory"
-msgstr "תיקיית העצמים"
 
 #: codetoolsstrconsts.ctswordnotfound
 msgid "\"%s\" not found"

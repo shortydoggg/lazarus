@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -473,7 +473,6 @@ begin
   FCoolBar.HorizontalSpacing := 1;
   FCoolBar.VerticalSpacing := 3;
   FCoolBar.FixedSize := True;
-  FCoolBar.DoubleBuffered := True;
   FCoolBar.EdgeInner := esNone;
   FCoolBar.EdgeOuter := esNone;
 
@@ -512,8 +511,7 @@ begin
   FCoolBarToolBars.Clear;
   for I := 0 to Options.FToolBars.Count - 1 do
   begin
-    IDEToolBar := TIDEToolBar.Create(Nil);
-    FCoolBarToolBars.Add(IDEToolBar);
+    IDEToolBar := Add;
     IDEToolBar.CurrentOptions.PosIndex := I;
     IDEToolBar.CurrentOptions.Break := Options.FToolBars[I].Break;
     IDEToolBar.CurrentOptions.ButtonNames.Assign(Options.FToolBars[I].ButtonNames);
@@ -548,13 +546,8 @@ var
 begin
   Result := -1;
   for I := 0 to FCoolbarToolBars.Count-1 do
-  begin
     if ToolBars[I].ToolBar = aToolBar then
-    begin
-      Result := I;
-      Break;
-    end;
-  end;
+      Exit(I);
 end;
 
 function Compare(const Item1, Item2: TIDEToolBar): Integer;

@@ -1,4 +1,4 @@
-{ $Id: gtk2wsmenus.pp 49466 2015-06-29 09:32:46Z mattias $}
+{ $Id: gtk2wsmenus.pp 58255 2018-06-14 09:05:50Z juha $}
 {
  *****************************************************************************
  *                              Gtk2WSMenus.pp                               *
@@ -22,12 +22,12 @@ interface
 
 uses
   // RTL
-  glib2, gdk2, gtk2,
-  Classes,
+  Classes, Types, glib2, gdk2, gtk2,
+  // LazUtils
+  LazTracer,
   // LCL
   Gtk2Int, Gtk2Proc, Gtk2Globals, Gtk2Def, Gtk2Extra,
-  InterfaceBase, Types, LCLProc, LCLType, WSMenus, WSLCLClasses,
-  LMessages, Graphics, Menus, Forms, LCLIntf;
+  LCLType, LCLIntf, InterfaceBase, WSMenus, LMessages, Graphics, Menus, Forms;
 
 type
 
@@ -196,10 +196,13 @@ procedure Gtk2MenuItemToggleSizeRequest(AMenuItem: PGtkMenuItem; requisition: Pg
 var
   spacing: guint;
   IconWidth: Integer;
+  DC: HDC;
 begin
   if LCLItem.HasIcon then
   begin
-    IconWidth := LCLItem.GetIconSize.X;
+    DC := Widgetset.GetDC(HWND({%H-}PtrUInt(AMenuItem)));
+    IconWidth := LCLItem.GetIconSize(DC).X;
+    WidgetSet.ReleaseDC(HWND({%H-}PtrUInt(AMenuItem)), DC);
     if IconWidth > 0 then
     begin
       gtk_widget_style_get(PGtkWidget(AMenuItem), 'toggle-spacing', [@spacing, nil]);
@@ -215,9 +218,12 @@ end;
 procedure Gtk2MenuItemSizeRequest(AMenuItem: PGtkMenuItem; requisition: PGtkRequisition; LCLItem: TMenuItem); cdecl;
 var
   IconHeight: Integer;
+  DC: HDC;
 begin
   GTK_WIDGET_GET_CLASS(AMenuItem)^.size_request(PGtkWidget(AMenuItem), requisition);
-  IconHeight := LCLItem.GetIconSize.Y;
+  DC := Widgetset.GetDC(HWND({%H-}PtrUInt(AMenuItem)));
+  IconHeight := LCLItem.GetIconSize(DC).Y;
+  Widgetset.ReleaseDC(HWND({%H-}PtrUInt(AMenuItem)), DC);
   if requisition^.height < IconHeight then
     requisition^.height := IconHeight;
 end;
@@ -631,7 +637,7 @@ begin
   Widget := gtk_menu_new;
   Result := HMENU({%H-}PtrUInt(Widget));
   {$IFDEF DebugLCLComponents}
-  DebugGtkWidgets.MarkCreated(Widget, dbgsName(Sender));
+  DebugGtkWidgets.MarkCreated(Widget, dbgsName(AMenu));
   {$ENDIF}
   WidgetInfo := CreateWidgetInfo(Widget);
   WidgetInfo^.LCLObject := AMenu;
@@ -645,6 +651,9 @@ var
   AProc: Pointer;
   WidgetInfo: PWidgetInfo;
 begin
+  if MenuWidget<>nil then //cannot popup when another popup menu is visible
+    Exit;
+
   ReleaseMouseCapture;
   APoint.X := X;
   APoint.Y := Y;

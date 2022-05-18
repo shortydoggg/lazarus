@@ -18,9 +18,13 @@ unit LazHelpHTML;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LCLIntf, Forms, Process, LazFileUtils, UTF8Process,
-  LazConfigStorage, LazUTF8, LCLStrConsts, HelpIntfs, LazHelpIntf;
-  
+  {$IFDEF MSWindows}Windows, ShellApi,{$ENDIF} // needed for ShellExecute, not good for WinCE, issue #36558
+  Classes, SysUtils,
+  // LazUtils
+  LazFileUtils, UTF8Process, LazUTF8, LazConfigStorage,
+  // LCL
+  LCLProc, LCLIntf, LCLStrConsts, HelpIntfs, LazHelpIntf;
+
 type
   { THTMLHelpDatabase
 
@@ -53,6 +57,7 @@ type
     FKeywordPrefixNode: THelpNode;
     function IsBaseURLStored: boolean;
     procedure SetBaseURL(const AValue: string);
+    procedure SetBuiltInBaseURL(const AValue: string);
     procedure SetDefaultBaseURL(const AValue: string);
   public
     constructor Create(TheOwner: TComponent); override;
@@ -70,6 +75,7 @@ type
     procedure Save(Storage: TConfigStorage); override;
     property DefaultBaseURL: string read FDefaultBaseURL write SetDefaultBaseURL;// used, if BaseURL is empty
   published
+    property BuiltInBaseURL: string read FDefaultBaseURL write SetBuiltInBaseURL;// read only, shown in the IDE help options
     property BaseURL: string read FBaseURL write SetBaseURL stored IsBaseURLStored;
     property AutoRegister;
     property KeywordPrefix: string read FKeywordPrefix write FKeywordPrefix;// see above
@@ -127,6 +133,12 @@ begin
     FBaseURL:=''
   else
     FBaseURL:=AValue;
+end;
+
+procedure THTMLHelpDatabase.SetBuiltInBaseURL(const AValue: string);
+begin
+  if AValue=BuiltInBaseURL then exit;
+  raise Exception.Create(rsTheBuiltInURLIsReadOnlyChangeTheBaseURLInstead);
 end;
 
 procedure THTMLHelpDatabase.SetDefaultBaseURL(const AValue: string);
@@ -309,6 +321,7 @@ var
   URLMacroPos: LongInt;
   BrowserProcess: TProcessUTF8;
   Executable, ParamsStr: String;
+  IsShellStr: Boolean = false;
 begin
   Result:=shrViewerError;
   ErrMsg:='';
@@ -340,16 +353,19 @@ begin
   //otherwise FileExistsUf8 and FileIsExecutable fail. Issue #0030502
   if (Length(Executable) > 1) and (Executable[1] = '"') and (Executable[Length(Executable)] = '"') then
     Executable := Copy(Executable, 2, Length(Executable)-2);
+  // Preparation of special handling for Microsoft Edge in Win10, issue #35659
+  IsShellStr := UpperCase(LeftStr(Executable,Pos(':',Executable)))='SHELL:';
   {$endif windows}
-  if (not FileExistsUTF8(Executable)) then begin
-    ErrMsg:=Format(hhsHelpBrowserNotFound, [Executable]);
-    exit;
+  if not IsShellStr then begin
+    if (not FileExistsUTF8(Executable)) then begin
+      ErrMsg:=Format(hhsHelpBrowserNotFound, [Executable]);
+      exit;
+    end;
+    if (not FileIsExecutable(Executable)) then begin
+      ErrMsg:=Format(hhsHelpBrowserNotExecutable, [Executable]);
+      exit;
+    end;
   end;
-  if (not FileIsExecutable(Executable)) then begin
-    ErrMsg:=Format(hhsHelpBrowserNotExecutable, [Executable]);
-    exit;
-  end;
-
   //debugln('THTMLBrowserHelpViewer.ShowNode Node.URL=',Node.URL);
 
   // create params and replace %ParamsStr for URL
@@ -367,6 +383,15 @@ begin
   {$ENDIF}
 
   // run
+  {$IFDEF MSWindows}     // not good for WinCE! Issue #36558.
+  // Special handling for Microsoft Edge in Win10, issue #35659
+  if IsShellStr then begin
+    if ShellExecute(0,'open',PChar(Executable),PChar(ParamsStr),'',SW_SHOWNORMAL)<=32 then
+      ErrMsg := Format(hhsHelpErrorWhileExecuting,[Executable+' ',ParamsStr, LineEnding, 'ShellExecute']) 
+    else
+      Result := shrSuccess;
+  end else
+  {$ENDIF}
   try
     BrowserProcess:=TProcessUTF8.Create(nil);
     try

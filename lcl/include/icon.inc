@@ -12,8 +12,18 @@
  *****************************************************************************
 }
 
+function IconCompare(Item1, Item2: Pointer): Integer;
+var
+  Icon1: TIconImage absolute Item1;
+  Icon2: TIconImage absolute Item2;
+begin
+  Result := CompareValue(Icon1.Width, Icon2.Width);
+  if Result=0 then
+    Result := -CompareValue(Ord(Icon1.PixelFormat), Ord(Icon2.PixelFormat));
+end;
+
 const
-  IconSignature: array [0..3] of char = #0#0#1#0;
+  IconSignature: array [0..3] of Byte = (0, 0, 1, 0);
 
 type
   TIconHeader = {packed} record // packed it not needed
@@ -119,6 +129,11 @@ end;
 function TSharedIcon.IsEmpty: boolean;
 begin
   Result := inherited IsEmpty and (Count = 0);
+end;
+
+procedure TSharedIcon.Sort;
+begin
+  FImages.Sort(@IconCompare);
 end;
 
 function TSharedIcon.GetImage(const AIndex: Integer): TIconImage;
@@ -342,7 +357,7 @@ begin
   then raise EInvalidGraphicOperation.Create(rsDuplicateIconFormat);
   
   UnshareImage(True);
-  if TSharedIcon(FSharedImage).FImages.Add(TIconImage.Create(AFormat, AHeight, AWidth)) = 0
+  if TSharedIcon(FSharedImage).FImages.Add(TSharedIcon(FSharedImage).GetImagesClass.Create(AFormat, AHeight, AWidth)) = 0
   then begin
     // First added
     FCurrent := 0;
@@ -409,7 +424,7 @@ begin
   FreeCanvasContext;
   
   RawImg := ASource.GetRawImagePtr;
-  NewImage := TIconImage.Create(Image.PixelFormat, Image.Height, Image.Width);
+  NewImage := TSharedIcon(FSharedImage).GetImagesClass.Create(Image.PixelFormat, Image.Height, Image.Width);
   try
     NewImage.FImage.Description := RawImg^.Description;
 
@@ -434,9 +449,9 @@ begin
         NewImage.FImage.Mask := GetMem(NewImage.FImage.MaskSize);
         Move(RawMsk.Mask^, NewImage.FImage.Mask^, NewImage.FImage.MaskSize);
 
-        // prevent cleanup
-        RawMsk.MaskSize := 0;
-        RawMsk.Mask := nil;
+        //// prevent cleanup
+        //RawMsk.MaskSize := 0;
+        //RawMsk.Mask := nil;
       end;
       RawMsk.FreeData;
     end
@@ -770,7 +785,7 @@ end;
 
 procedure TCustomIcon.ReadData(Stream: TStream);
 var
-  Signature: array [0..3] of Char;
+  Signature: array [0..3] of Byte;
   Size: longint absolute Signature;
   Position: Int64;
 begin
@@ -858,6 +873,10 @@ begin
 
         if QWord(PNGComn.Signature) = QWord(PNGSig)
         then begin
+          {$if FPC_FULLVERSION < 30200}
+          //workaround for fpc bug #0034185 (dangling FPalette pointer in TFPReaderPNG.InternalRead causes AV)
+          if Assigned(PNGReader) then FreeAndNil(PngReader);
+          {$ENDIF}
           if PNGReader = nil
           then PNGReader := TLazReaderPNG.Create;
           ImgReader := PNGReader;
@@ -1000,6 +1019,19 @@ begin
   // nothing
 end;
 
+procedure TCustomIcon.Sort;
+var
+  ACurrent: Pointer;
+begin
+  if FCurrent>=0 then
+    ACurrent := TSharedIcon(FSharedImage).FImages[FCurrent]
+  else
+    ACurrent := nil;
+  TSharedIcon(FSharedImage).Sort;
+  if ACurrent<>nil then
+    FCurrent := TSharedIcon(FSharedImage).FImages.IndexOf(ACurrent);
+end;
+
 procedure TCustomIcon.SetSize(AWidth, AHeight: integer);
 begin
   if FCurrent <> -1
@@ -1025,7 +1057,7 @@ begin
       for n := 0 to OldIcon.FImages.Count -1 do
       begin
         OldImage := TIconImage(OldIcon.FImages[n]);
-        NewImage := TIconImage.Create(OldImage.PixelFormat, OldImage.Height, OldImage.Width);
+        NewImage := NewIcon.GetImagesClass.Create(OldImage.PixelFormat, OldImage.Height, OldImage.Width);
         NewIcon.FImages.Add(NewImage);
         NewImage.FImage.Description := OldImage.FImage.Description;
         NewImage.FImage.DataSize := OldImage.FImage.DataSize;

@@ -5,8 +5,14 @@ unit compiler_debugging_options;
 interface
 
 uses
-  StdCtrls, IDEOptionsIntf, CompilerOptions, CompOptsIntf, LazLoggerBase,
-  LazarusIDEStrConsts;
+  // LCL
+  StdCtrls,
+  // LazUtils
+  LazLoggerBase,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, CompOptsIntf,
+  // IDE
+  CompilerOptions, LazarusIDEStrConsts;
 
 type
 
@@ -113,7 +119,7 @@ begin
   chkUseExternalDbgSyms.Caption := dlgExtSymb + ' (-Xg)';
   chkUseHeaptrc.Caption := dlgCOHeaptrc + ' (-gh)';
   chkTrashVariables.Caption := dlgCOTrashVariables + ' (-gt)';
-  chkGenGProfCode.Caption := dlgGPROF + ' (-pg)';
+  chkGenGProfCode.Caption := dlgGPROF + ' (-pg, '+lisOnly32bit+')';
   chkSymbolsStrip.Caption := dlgCOStrip + ' (-Xs)';
 end;
 

@@ -293,6 +293,10 @@ msgstr "Präprozessor"
 msgid "Previous value"
 msgstr "Vorheriger Wert"
 
+#: syneditstrconst.syns_attrprocedureheadername
+msgid "Procedure header name"
+msgstr ""
+
 #: syneditstrconst.syns_attrprocessinginstr
 msgid "Processing Instruction"
 msgstr "Befehl ausführen"
@@ -484,6 +488,14 @@ msgstr "Unterstreichen, ja, nein"
 #: syneditstrconst.syns_emcnone
 msgid "No Action"
 msgstr "Keine Aktion"
+
+#: syneditstrconst.syns_emcoverviewguttergotomark
+msgid "Jump to Mark (Overview Gutter)"
+msgstr ""
+
+#: syneditstrconst.syns_emcoverviewgutterscrollto
+msgid "Scroll (Overview Gutter)"
+msgstr ""
 
 #: syneditstrconst.syns_emcpasteselection
 msgid "Quick Paste Selection"

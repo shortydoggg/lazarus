@@ -1,5 +1,11 @@
 {
+ **********************************************************************
+  This file is part of LazUtils.
   All functions are thread safe unless explicitely stated
+
+  See the file COPYING.modifiedLGPL.txt, included in this distribution,
+  for details about the license.
+ **********************************************************************
 }
 unit LazFileUtils;
 
@@ -10,24 +16,20 @@ interface
 uses
   Classes, SysUtils, SysConst, LazUTF8, LazUtilsStrConsts;
 
-
+{$IF defined(Windows) or defined(darwin) or defined(HASAMIGA)}
+{$define CaseInsensitiveFilenames}
 {$IFDEF Windows}
-  {$define CaseInsensitiveFilenames}
   {$define HasUNCPaths}
 {$ENDIF}
-{$IFDEF darwin}
-  {$define CaseInsensitiveFilenames}
 {$ENDIF}
-{$IF defined(CaseInsensitiveFilenames) or defined(darwin)}
-  {$DEFINE NotLiteralFilenames} // e.g. HFS+ normalizes file names
+{$IF defined(CaseInsensitiveFilenames)}
+  {$define NotLiteralFilenames} // e.g. HFS+ normalizes file names
 {$ENDIF}
 
 function CompareFilenames(const Filename1, Filename2: string): integer; overload;
 function CompareFilenamesIgnoreCase(const Filename1, Filename2: string): integer;
 function CompareFileExt(const Filename, Ext: string;
-                        CaseSensitive: boolean): integer; overload;
-function CompareFileExt(const Filename, Ext: string): integer; overload;
-
+                        CaseSensitive: boolean = False): integer;
 function CompareFilenameStarts(const Filename1, Filename2: string): integer;
 function CompareFilenames(Filename1: PChar; Len1: integer;
   Filename2: PChar; Len2: integer): integer; overload;
@@ -38,6 +40,7 @@ function CompareFilenamesP(Filename1, Filename2: PChar;
 function DirPathExists(DirectoryName: string): boolean;
 function DirectoryIsWritable(const DirectoryName: string): boolean;
 function ExtractFileNameOnly(const AFilename: string): string;
+function ExtractFileNameWithoutExt(const AFilename: string): string;
 function FilenameIsAbsolute(const TheFilename: string):boolean;
 function FilenameIsWinAbsolute(const TheFilename: string):boolean;
 function FilenameIsUnixAbsolute(const TheFilename: string):boolean;
@@ -55,19 +58,41 @@ function FilenameIsTrimmed(const TheFilename: string): boolean;
 function FilenameIsTrimmed(StartPos: PChar; NameLen: integer): boolean;
 function TrimFilename(const AFilename: string): string;
 function ResolveDots(const AFilename: string): string;
-Procedure ForcePathDelims(Var FileName: string);
-Function GetForcedPathDelims(Const FileName: string): String;
 function CleanAndExpandFilename(const Filename: string): string; // empty string returns current directory
 function CleanAndExpandDirectory(const Filename: string): string; // empty string returns current directory
 function TrimAndExpandFilename(const Filename: string; const BaseDir: string = ''): string; // empty string returns empty string
 function TrimAndExpandDirectory(const Filename: string; const BaseDir: string = ''): string; // empty string returns empty string
+function CreateAbsolutePath(const Filename, BaseDirectory: string): string;
 function TryCreateRelativePath(const Dest, Source: String; UsePointDirectory: boolean;
-                               AlwaysRequireSharedBaseFolder: Boolean; out RelPath: String): Boolean;
+  AlwaysRequireSharedBaseFolder: Boolean; out RelPath: String): Boolean;
 function CreateRelativePath(const Filename, BaseDirectory: string;
-                            UsePointDirectory: boolean = false; AlwaysRequireSharedBaseFolder: Boolean = True): string;
+  UsePointDirectory: boolean = false; AlwaysRequireSharedBaseFolder: Boolean = True): string;
 function FileIsInPath(const Filename, Path: string): boolean;
+
+type
+  TPathDelimSwitch = (
+    pdsNone,    // no change
+    pdsSystem,  // switch to current PathDelim
+    pdsUnix,    // switch to slash /
+    pdsWindows  // switch to backslash \
+    );
+const
+  PathDelimSwitchToDelim: array[TPathDelimSwitch] of char = (
+    PathDelim, // pdsNone
+    PathDelim, // pdsSystem
+    '/',       // pdsUnix
+    '\'        // pdsWindows
+    );
+
+// Path delimiters
+procedure ForcePathDelims(Var FileName: string);
+function GetForcedPathDelims(const FileName: string): string;
 function AppendPathDelim(const Path: string): string;
 function ChompPathDelim(const Path: string): string;
+function SwitchPathDelims(const Filename: string; Switch: TPathDelimSwitch): string;
+function SwitchPathDelims(const Filename: string; Switch: boolean): string;
+function CheckPathDelim(const OldPathDelim: string; out Changed: boolean): TPathDelimSwitch;
+function IsCurrentPathDelim(Switch: TPathDelimSwitch): boolean;
 
 // search paths
 function CreateAbsoluteSearchPath(const SearchPath, BaseDirectory: string): string;
@@ -106,7 +131,7 @@ Function FileCreateUtf8(Const FileName : String; ShareMode : Integer; Rights : C
 function FileSizeUtf8(const Filename: string): int64;
 function GetFileDescription(const AFilename: string): string;
 function ReadAllLinks(const Filename: string;
-                      ExceptionOnError: boolean): string; // if a link is broken returns ''
+                 {%H-}ExceptionOnError: boolean): string; // if a link is broken returns ''
 function TryReadAllLinks(const Filename: string): string; // if a link is broken returns Filename
 function GetShellLinkTarget(const FileName: string): string;
 
@@ -139,10 +164,21 @@ function GetDarwinSystemFilename(Filename: string): string;
 function GetDarwinNormalizedFilename(Filename: string; nForm:Integer=2): string;
 {$ENDIF}
 
+// windows paths
+{$IFDEF windows}
+function SHGetFolderPathUTF8(ID :  Integer) : String;
+{$ENDIF}
+
+// Command line
 procedure SplitCmdLineParams(const Params: string; ParamList: TStrings;
                              ReadBackslash: boolean = false);
 function StrToCmdLineParam(const Param: string): string;
 function MergeCmdLineParams(ParamList: TStrings): string;
+// ToDo: Study if they are needed or if the above functions could be used instead.
+procedure SplitCmdLine(const CmdLine: string;
+                       out ProgramFilename, Params: string);
+function PrepareCmdLineOption(const Option: string): string;
+
 
 type
   TInvalidateFileStateCacheEvent = procedure(const Filename: string);
@@ -157,17 +193,25 @@ uses
 {$IFDEF Windows}
   Windows {$IFnDEF WinCE}, ShlObj, ActiveX, WinDirs{$ENDIF};
 {$ELSE}
-  {$IFDEF darwin}
-  MacOSAll,
+  {$IFDEF HASAMIGA}
+  exec, amigados;
+  {$ELSE}
+    {$IFDEF darwin}
+    MacOSAll,
+    {$ENDIF}
+    Unix, BaseUnix;
   {$ENDIF}
-  Unix, BaseUnix;
 {$ENDIF}
 
 {$I lazfileutils.inc}
 {$IFDEF windows}
   {$I winlazfileutils.inc}
 {$ELSE}
-  {$I unixlazfileutils.inc}
+  {$IFDEF HASAMIGA}
+    {$I amigalazfileutils.inc}
+  {$ELSE}
+    {$I unixlazfileutils.inc}
+  {$ENDIF}
 {$ENDIF}
 
 function CompareFilenames(const Filename1, Filename2: string): integer;
@@ -196,8 +240,7 @@ begin
   {$ENDIF}
 end;
 
-function CompareFilenamesIgnoreCase(const Filename1, Filename2: string
-  ): integer;
+function CompareFilenamesIgnoreCase(const Filename1, Filename2: string): integer;
 {$IFDEF darwin}
 var
   F1: CFStringRef;
@@ -249,11 +292,6 @@ begin
     if Result > 0 then Result := 1;
 end;
 
-function CompareFileExt(const Filename, Ext: string): integer;
-begin
-  Result := CompareFileExt(Filename, Ext, False);
-end;
-
 function ExtractFileNameOnly(const AFilename: string): string;
 var
   StartPos: Integer;
@@ -262,7 +300,7 @@ begin
   StartPos:=length(AFilename)+1;
   while (StartPos>1)
   and not (AFilename[StartPos-1] in AllowDirectorySeparators)
-  {$IFDEF Windows}and (AFilename[StartPos-1]<>':'){$ENDIF}
+  {$IF defined(Windows) or defined(HASAMIGA)}and (AFilename[StartPos-1]<>':'){$ENDIF}
   do
     dec(StartPos);
   ExtPos:=length(AFilename);
@@ -270,6 +308,24 @@ begin
     dec(ExtPos);
   if (ExtPos<StartPos) then ExtPos:=length(AFilename)+1;
   Result:=copy(AFilename,StartPos,ExtPos-StartPos);
+end;
+
+function ExtractFileNameWithoutExt(const AFilename: string): string;
+var
+  p: Integer;
+begin
+  Result:=AFilename;
+  p:=length(Result);
+  while (p>0) do begin
+    case Result[p] of
+      PathDelim: exit;
+      {$ifdef windows}
+      '/': if ('/' in AllowDirectorySeparators) then exit;
+      {$endif}
+      '.': exit(copy(Result,1, p-1));
+    end;
+    dec(p);
+  end;
 end;
 
 {$IFDEF darwin}
@@ -482,15 +538,19 @@ begin
 end;
 
 function ForceDirectory(DirectoryName: string): boolean;
-var i: integer;
+var
+  i: integer;
   Dir: string;
 begin
   DirectoryName:=AppendPathDelim(DirectoryName);
   i:=1;
   while i<=length(DirectoryName) do begin
     if DirectoryName[i] in AllowDirectorySeparators then begin
+      // optimize paths like \foo\\bar\\foobar
+      while (i<length(DirectoryName)) and (DirectoryName[i+1] in AllowDirectorySeparators) do
+        Delete(DirectoryName,i+1,1);
       Dir:=copy(DirectoryName,1,i-1);
-      if not DirPathExists(Dir) then begin
+      if (Dir<>'') and not DirPathExists(Dir) then begin
         Result:=CreateDirUTF8(Dir);
         if not Result then exit;
       end;
@@ -499,7 +559,6 @@ begin
   end;
   Result:=true;
 end;
-
 
 function FileIsText(const AFilename: string): boolean;
 var
@@ -513,10 +572,11 @@ function FileIsText(const AFilename: string; out FileReadable: boolean): boolean
 var
   Buf: string;
   Len: integer;
-  NewLine: boolean;
   p: PChar;
   ZeroAllowed: Boolean;
   fHandle: THandle;
+const
+  BufSize = 2048;
 begin
   Result:=false;
   FileReadable:=true;
@@ -524,7 +584,7 @@ begin
   if (THandle(fHandle) <> feInvalidHandle)  then
   begin
     try
-      Len:=1024;
+      Len:=BufSize;
       SetLength(Buf,Len+1);
       Len := FileRead(fHandle,Buf[1],Len);
 
@@ -544,7 +604,6 @@ begin
           inc(p,2);
           ZeroAllowed:=true;
         end;
-        NewLine:=false;
         while true do begin
           case p^ of
           #0:
@@ -556,12 +615,10 @@ begin
           // #12: form feed
           // #26: end of file
           #1..#8,#11,#14..#25,#27..#31: exit;
-          #10,#13: NewLine:=true;
           end;
           inc(p);
         end;
-        if NewLine or (Len<1024) then
-          Result:=true;
+        Result:=true;
       end else
         Result:=true;
     finally
@@ -625,7 +682,6 @@ end;
 function TrimFilename(const AFilename: string): string;
 //Trim leading and trailing spaces
 //then call ResolveDots to trim double path delims and expand special dirs like .. and .
-
 var
   Len, Start: Integer;
 begin
@@ -642,26 +698,6 @@ begin
   while (Len > 0) and (Result[Len] = #32) do Dec(Len);
   SetLength(Result, Len);
   Result := ResolveDots(Result);
-end;
-
-procedure ForcePathDelims(var FileName: string);
-var
-  i: Integer;
-begin
-  for i:=1 to length(FileName) do
-    {$IFDEF Windows}
-    if Filename[i]='/' then
-      Filename[i]:='\';
-    {$ELSE}
-    if Filename[i]='\' then
-      Filename[i]:='/';
-    {$ENDIF}
-end;
-
-function GetForcedPathDelims(const FileName: string): String;
-begin
-  Result:=FileName;
-  ForcePathDelims(Result);
 end;
 
 {------------------------------------------------------------------------------
@@ -694,11 +730,6 @@ begin
   Result:=TrimFilename(AppendPathDelim(ExpandFileNameUTF8(Result,BaseDir)));
 end;
 
-
-
-{------------------------------------------------------------------------------
-  function FileIsInPath(const Filename, Path: string): boolean;
- ------------------------------------------------------------------------------}
 function FileIsInPath(const Filename, Path: string): boolean;
 var
   ExpFile: String;
@@ -714,6 +745,29 @@ begin
   l:=length(ExpPath);
   Result:=(l>0) and (length(ExpFile)>l) and (ExpFile[l]=PathDelim)
           and (CompareFilenames(ExpPath,LeftStr(ExpFile,l))=0);
+end;
+
+
+// Path delimiters
+
+procedure ForcePathDelims(var FileName: string);
+var
+  i: Integer;
+begin
+  for i:=1 to length(FileName) do
+    {$IFDEF Windows}
+    if Filename[i]='/' then
+      Filename[i]:='\';
+    {$ELSE}
+    if Filename[i]='\' then
+      Filename[i]:='/';
+    {$ENDIF}
+end;
+
+function GetForcedPathDelims(const FileName: string): string;
+begin
+  Result:=FileName;
+  ForcePathDelims(Result);
 end;
 
 function AppendPathDelim(const Path: string): string;
@@ -754,8 +808,55 @@ begin
     SetLength(Result,Len);
 end;
 
-function CreateAbsoluteSearchPath(const SearchPath, BaseDirectory: string
-  ): string;
+function SwitchPathDelims(const Filename: string; Switch: TPathDelimSwitch): string;
+var
+  i: Integer;
+  p: Char;
+begin
+  Result:=Filename;
+  case Switch of
+  pdsSystem:  p:=PathDelim;
+  pdsUnix:    p:='/';
+  pdsWindows: p:='\';
+  else exit;
+  end;
+  for i:=1 to length(Result) do
+    if Result[i] in ['/','\'] then
+      Result[i]:=p;
+end;
+
+function SwitchPathDelims(const Filename: string; Switch: boolean): string;
+begin
+  if Switch then
+    Result:=SwitchPathDelims(Filename,pdsSystem)
+  else
+    Result:=Filename;
+end;
+
+function CheckPathDelim(const OldPathDelim: string; out Changed: boolean): TPathDelimSwitch;
+begin
+  Changed:=OldPathDelim<>PathDelim;
+  if Changed then begin
+    if OldPathDelim='/' then
+      Result:=pdsUnix
+    else if OldPathDelim='\' then
+      Result:=pdsWindows
+    else
+      Result:=pdsSystem;
+  end else begin
+    Result:=pdsNone;
+  end;
+end;
+
+function IsCurrentPathDelim(Switch: TPathDelimSwitch): boolean;
+begin
+  Result:=(Switch in [pdsNone,pdsSystem])
+     or ((Switch=pdsUnix) and (PathDelim='/'))
+     or ((Switch=pdsWindows) and (PathDelim='\'));
+end;
+
+
+function CreateAbsoluteSearchPath(const SearchPath, BaseDirectory: string): string;
 var
   PathLen: Integer;
   EndPos: Integer;
@@ -1017,7 +1118,7 @@ begin
       Start:=Start+Prefix;
     I:=0;
     repeat
-      Result:=Format('%s%.5d.tmp',[Start,I]);
+      Result:=SysUtils.Format('%s%.5d.tmp',[Start,I]);
       Inc(I);
     until not FileExistsUTF8(Result);
   end;
@@ -1282,6 +1383,82 @@ begin
   end;
 end;
 
+procedure SplitCmdLine(const CmdLine: string;
+                       out ProgramFilename, Params: string);
+var
+  p: integer;
+
+  procedure SkipChar; inline;
+  begin
+    {$IFDEF Unix}
+    if (CmdLine[p]='\') and (p<length(CmdLine)) then
+      // skip escaped char
+      inc(p,2)
+    else
+    {$ENDIF}
+      inc(p);
+  end;
+
+var s, l: integer;
+  quote: char;
+begin
+  ProgramFilename:='';
+  Params:='';
+  if CmdLine='' then exit;
+  p:=1;
+  s:=1;
+  if (CmdLine[p] in ['"','''']) then
+  begin
+    // skip quoted string
+    quote:=CmdLine[p];
+    inc(s);
+    inc(p);
+    while (p<=length(CmdLine)) and (CmdLine[p]<>quote) do
+      SkipChar;
+    // go past last character or quoted string
+    l:=p-s;
+    inc(p);
+  end else begin
+    while (p<=length(CmdLine)) and (CmdLine[p]>' ') do
+      SkipChar;
+    l:=p-s;
+  end;
+  ProgramFilename:=Copy(CmdLine,s,l);
+  while (p<=length(CmdLine)) and (CmdLine[p]<=' ') do inc(p);
+  Params:=copy(CmdLine,p,length(CmdLine));
+end;
+
+function PrepareCmdLineOption(const Option: string): string;
+// If there is a space in the option add " " around the whole option
+var
+  i: integer;
+begin
+  Result:=Option;
+  if (Result='') or (Result[1] in ['"','''']) then exit;
+  for i:=1 to length(Result) do begin
+    case Result[i] of
+    ' ','''':
+      begin
+        Result:=AnsiQuotedStr(Result,'"');
+        exit;
+      end;
+    '"':
+      begin
+        Result:=AnsiQuotedStr(Result,'''');
+        exit;
+      end;
+    end;
+  end;
+end;
+{
+function AddCmdLineParameter(const CmdLine, AddParameter: string): string;
+begin
+  Result:=CmdLine;
+  if (Result<>'') and (Result[length(Result)]<>' ') then
+    Result:=Result+' ';
+  Result:=Result+AddParameter;
+end;
+}
 {
   Returns
   - DriveLetter + : + PathDelim on Windows (if present) or
@@ -1311,8 +1488,13 @@ begin
       {$if defined(unix) or defined(wince)}
       if (FileName[1] = PathDelim) then Result := PathDelim;
       {$else}
-      if (Len > 2) and (FileName[1] in ['a'..'z','A'..'Z']) and (FileName[2] = ':') and (FileName[3] in AllowDirectorySeparators) then
-        Result := UpperCase(Copy(FileName,1,3));
+        {$ifdef HASAMIGA}
+        if Pos(':', FileName) > 1 then
+          Result := Copy(FileName, 1, Pos(':', FileName));
+        {$else}
+        if (Len > 2) and (FileName[1] in ['a'..'z','A'..'Z']) and (FileName[2] = ':') and (FileName[3] in AllowDirectorySeparators) then
+          Result := UpperCase(Copy(FileName,1,3));
+        {$endif}
       {$endif}
     end;
   end;

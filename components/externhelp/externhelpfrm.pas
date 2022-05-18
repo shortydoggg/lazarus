@@ -25,7 +25,7 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
 unit ExternHelpFrm;
@@ -35,10 +35,15 @@ unit ExternHelpFrm;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, FileUtil, LResources, Forms, Controls, Graphics,
-  Dialogs, LazConfigStorage, LazFileUtils, ComCtrls, Buttons, StdCtrls,
-  ExtCtrls, ButtonPanel, LazHelpIntf, PackageIntf, MacroIntf, IDEOptionsIntf,
-  LazIDEIntf, BaseIDEIntf, IDEDialogs, HelpIntfs, IDEImagesIntf, SrcEditorIntf;
+  Classes, SysUtils,
+  // LazUtils
+  FileUtil, LazFileUtils, LazConfigStorage,
+  // LCL
+  LCLProc, LResources, Forms, Controls, Graphics, Dialogs, ComCtrls, Buttons, StdCtrls,
+  ExtCtrls, ButtonPanel, HelpIntfs,
+  // IdeIntf
+  LazHelpIntf, PackageIntf, MacroIntf, IDEOptionsIntf, IDEOptEditorIntf,
+  LazIDEIntf, BaseIDEIntf, IDEDialogs, IDEImagesIntf, SrcEditorIntf;
 
 const
   ExternHelpConfigVersion = 1;
@@ -1132,8 +1137,8 @@ constructor TExternHelpGeneralOptsFrame.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
   FOptions:=TExternHelpOptions.Create;
-  AddSpeedButton.LoadGlyphFromResourceName(HInstance, 'laz_add');
-  DeleteSpeedButton.LoadGlyphFromResourceName(HInstance, 'laz_delete');
+  IDEImages.AssignImage(AddSpeedButton, 'laz_add');
+  IDEImages.AssignImage(DeleteSpeedButton, 'laz_delete');
 end;
 
 destructor TExternHelpGeneralOptsFrame.Destroy;

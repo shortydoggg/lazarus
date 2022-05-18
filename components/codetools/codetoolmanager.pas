@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -40,15 +40,19 @@ uses
   {$IFDEF MEM_CHECK}
   MemCheck,
   {$ENDIF}
-  Classes, SysUtils, contnrs, TypInfo, types, FileProcs, LazFileUtils,
-  BasicCodeTools, CodeToolsStrConsts, LazFileCache, LazMethodList,
+  Classes, SysUtils, contnrs, TypInfo, types, Laz_AVL_Tree,
+  // LazUtils
+  LazFileUtils, LazFileCache, LazMethodList, LazDbgLog, AvgLvlTree,
+  LazStringUtils,
+  // Codetools
+  FileProcs, BasicCodeTools, CodeToolsStrConsts,
   EventCodeTool, CodeTree, CodeAtom, SourceChanger, DefineTemplates, CodeCache,
   ExprEval, LinkScanner, KeywordFuncLists, FindOverloads, CodeBeautifier,
-  FindDeclarationCache, DirectoryCacher, AVL_Tree,
+  FindDeclarationCache, DirectoryCacher,
   PPUCodeTools, LFMTrees, DirectivesTree, CodeCompletionTemplater,
   PascalParserTool, CodeToolsConfig, CustomCodeTool, FindDeclarationTool,
   IdentCompletionTool, StdCodeTools, ResourceCodeTool, CodeToolsStructs,
-  CTUnitGraph, ExtractProcTool, LazDbgLog;
+  CTUnitGraph, ExtractProcTool;
 
 type
   TCodeToolManager = class;
@@ -70,7 +74,14 @@ type
   TOnFindFPCMangledSource = procedure(Sender: TObject; SrcType: TCodeTreeNodeDesc;
     const SrcName: string; out SrcFilename: string) of object;
 
-  ECodeToolManagerError = class(Exception);
+  { ECodeToolManagerError }
+
+  ECodeToolManagerError = class(Exception)
+  public
+    Id: int64;
+    constructor Create(TheID: int64; const Msg: string);
+    constructor CreateFmt(TheID: int64; const Msg: string; const Args: array of const);
+  end;
 
   TCodeToolManagerHandler = (
     ctmOnToolTreeChanging
@@ -98,12 +109,14 @@ type
     FDirectivesTools: TAVLTree; // tree of TDirectivesTool sorted for Code (TCodeBuffer)
     FErrorCode: TCodeBuffer;
     FErrorColumn: integer;
+    FErrorId: int64;
     FErrorLine: integer;
     FErrorMsg: string;
     FErrorTopLine: integer;
     FCodeTreeNodesDeletedStep: integer;
     FIndentSize: integer;
-    FJumpCentered: boolean;
+    FJumpSingleLinePos: integer;
+    FJumpCodeBlockPos: integer;
     FIdentifierListUpdating: boolean;
     FOnAfterApplyChanges: TOnAfterApplyCTChanges;
     FOnBeforeApplyChanges: TOnBeforeApplyCTChanges;
@@ -112,8 +125,10 @@ type
     FOnGatherExternalChanges: TOnGatherExternalChanges;
     FOnFindDefinePropertyForContext: TOnFindDefinePropertyForContext;
     FOnFindDefineProperty: TOnFindDefineProperty;
+    FOnGatherUserIdentifiers: TOnGatherUserIdentifiers;
     FOnGetIndenterExamples: TOnGetFABExamples;
     FOnGetMethodName: TOnGetMethodname;
+    FOnRescanFPCDirectoryCache: TNotifyEvent;
     FOnScannerInit: TOnScannerInit;
     FOnSearchUsedUnit: TOnSearchUsedUnit;
     FResourceTool: TResourceCodeTool;
@@ -129,6 +144,10 @@ type
     FWriteLockCount: integer;// Set/Unset counter
     FWriteLockStep: integer; // current write lock ID
     FHandlers: array[TCodeToolManagerHandler] of TMethodList;
+    FErrorDbgMsg: string;
+    procedure DoOnGatherUserIdentifiers(Sender: TIdentCompletionTool;
+      const ContextFlags: TIdentifierListContextFlags);
+    procedure DoOnRescanFPCDirectoryCache(Sender: TObject);
     function GetBeautifier: TBeautifyCodeOptions; inline;
     function DoOnScannerGetInitValues(Scanner: TLinkScanner; Code: Pointer;
       out AChangeStep: integer): TExpressionEvaluator;
@@ -155,7 +174,8 @@ type
     procedure SetTabWidth(const AValue: integer);
     procedure SetUseTabs(AValue: boolean);
     procedure SetVisibleEditorLines(NewValue: integer);
-    procedure SetJumpCentered(NewValue: boolean);
+    procedure SetJumpSingleLinePos(NewValue: integer);
+    procedure SetJumpCodeBlockPos(NewValue: integer);
     procedure SetCursorBeyondEOL(NewValue: boolean);
     procedure BeforeApplyingChanges(var Abort: boolean);
     procedure AfterApplyingChanges;
@@ -197,11 +217,12 @@ type
     PPUCache: TPPUTools;
     GlobalValues: TExpressionEvaluator;
     DirectoryCachePool: TCTDirectoryCachePool;
-    FPCDefinesCache: TFPCDefinesCache;
+    CompilerDefinesCache: TCompilerDefinesCache;
     IdentifierList: TIdentifierList;
     IdentifierHistory: TIdentifierHistoryList;
     Positions: TCodeXYPositions;
     Indenter: TFullyAutomaticBeautifier;
+    property FPCDefinesCache: TCompilerDefinesCache read CompilerDefinesCache; deprecated 'use CompilerDefinesCache'; // 1.9
     property Beautifier: TBeautifyCodeOptions read GetBeautifier;
 
     constructor Create;
@@ -238,6 +259,7 @@ type
                                  out ListOfCodeBuffer: TFPList): boolean;
     property OnSearchUsedUnit: TOnSearchUsedUnit
                                  read FOnSearchUsedUnit write FOnSearchUsedUnit;
+    property OnRescanFPCDirectoryCache: TNotifyEvent read FOnRescanFPCDirectoryCache write FOnRescanFPCDirectoryCache;
 
     // initializing single scanner
     property OnScannerInit: TOnScannerInit read FOnScannerInit write FOnScannerInit;
@@ -263,7 +285,7 @@ type
     // exception handling
     procedure ClearError;
     function HandleException(AnException: Exception): boolean;
-    procedure SetError(Code: TCodeBuffer; Line, Column: integer;
+    procedure SetError(Id: int64; Code: TCodeBuffer; Line, Column: integer;
                        const TheMessage: string);
     property CatchExceptions: boolean
                                    read FCatchExceptions write FCatchExceptions;
@@ -273,7 +295,9 @@ type
     property ErrorColumn: integer read fErrorColumn;
     property ErrorLine: integer read fErrorLine;
     property ErrorMessage: string read fErrorMsg;
+    property ErrorId: int64 read FErrorId;
     property ErrorTopLine: integer read fErrorTopLine;
+    property ErrorDbgMsg: string read FErrorDbgMsg;
     property Abortable: boolean read FAbortable write SetAbortable;
     property OnCheckAbort: TOnCodeToolCheckAbort
                                          read FOnCheckAbort write FOnCheckAbort;
@@ -286,7 +310,8 @@ type
     property CursorBeyondEOL: boolean read FCursorBeyondEOL
                                       write SetCursorBeyondEOL;
     property IndentSize: integer read FIndentSize write SetIndentSize;
-    property JumpCentered: boolean read FJumpCentered write SetJumpCentered;
+    property JumpSingleLinePos: integer read FJumpSingleLinePos write SetJumpSingleLinePos;
+    property JumpCodeBlockPos: integer read FJumpCodeBlockPos write SetJumpCodeBlockPos;
     property SetPropertyVariablename: string
                    read FSetPropertyVariablename write SetSetPropertyVariablename;
     property SetPropertyVariableIsPrefix: Boolean
@@ -348,12 +373,18 @@ type
                                         UseCache: boolean = true): string;// value of macro #FPCUnitPath
     procedure GetFPCVersionForDirectory(const Directory: string;
                                  out FPCVersion, FPCRelease, FPCPatch: integer);
+    function GetPCVersionForDirectory(const Directory: string): integer; deprecated 'use below'; // 2.0.1
+    function GetPCVersionForDirectory(const Directory: string; out Kind: TPascalCompiler): integer;
+    function GetNamespacesForDirectory(const Directory: string;
+                          UseCache: boolean = true): string;// value of macro #Namespaces
 
     // miscellaneous
     property OnGetMethodName: TOnGetMethodname read FOnGetMethodName
                                                write FOnGetMethodName;
     property OnGetIndenterExamples: TOnGetFABExamples
                        read FOnGetIndenterExamples write FOnGetIndenterExamples;
+    property OnGatherUserIdentifiers: TOnGatherUserIdentifiers
+      read FOnGatherUserIdentifiers write FOnGatherUserIdentifiers;
 
     // data function
     procedure FreeListOfPCodeXYPosition(var List: TFPList);
@@ -390,10 +421,10 @@ type
     function FindIncludeDirective(Code: TCodeBuffer; StartX, StartY: integer;
           out NewCode: TCodeBuffer; out NewX, NewY, NewTopLine: integer;
           const Filename: string = ''; SearchInCleanSrc: boolean = true): boolean;
-    function AddIncludeDirective(Code: TCodeBuffer; const Filename: string;
-          const NewSrc: string = ''): boolean; deprecated;
     function AddIncludeDirectiveForInit(Code: TCodeBuffer; const Filename: string;
           const NewSrc: string = ''): boolean;
+    function AddUnitWarnDirective(Code: TCodeBuffer; WarnID, Comment: string;
+          TurnOn: boolean): boolean;
     function RemoveDirective(Code: TCodeBuffer; NewX, NewY: integer;
           RemoveEmptyIFs: boolean): boolean;
     function FixIncludeFilenames(Code: TCodeBuffer; Recursive: boolean;
@@ -406,7 +437,8 @@ type
     // keywords and comments
     function IsKeyword(Code: TCodeBuffer; const KeyWord: string): boolean;
     function ExtractCodeWithoutComments(Code: TCodeBuffer;
-          KeepDirectives: boolean = false): string;
+          KeepDirectives: boolean = false;
+          KeepVerbosityDirectives: boolean = false): string;
     function GetPasDocComments(Code: TCodeBuffer; X, Y: integer;
           out ListOfPCodeXYPosition: TFPList): boolean;
 
@@ -431,7 +463,7 @@ type
     // method jumping
     function JumpToMethod(Code: TCodeBuffer; X,Y: integer;
           out NewCode: TCodeBuffer;
-          out NewX, NewY, NewTopLine: integer;
+          out NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer;
           out RevertableJump: boolean): boolean;
     function FindProcDeclaration(Code: TCodeBuffer; CleanDef: string;
           out Tool: TCodeTool; out Node: TCodeTreeNode;
@@ -440,7 +472,7 @@ type
     // find declaration
     function FindDeclaration(Code: TCodeBuffer; X,Y: integer;
           out NewCode: TCodeBuffer;
-          out NewX, NewY, NewTopLine: integer;
+          out NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer;
           Flags: TFindSmartFlags = DefaultFindSmartFlags): boolean;
     function FindDeclarationOfIdentifier(Code: TCodeBuffer; X,Y: integer;
           Identifier: PChar;
@@ -451,6 +483,9 @@ type
     function FindDeclarationInInterface(Code: TCodeBuffer;
           const Identifier: string; out NewCode: TCodeBuffer;
           out NewX, NewY, NewTopLine: integer): boolean;
+    function FindDeclarationInInterface(Code: TCodeBuffer;
+          const Identifier: string; out NewCode: TCodeBuffer;
+          out NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer): boolean;
     function FindDeclarationWithMainUsesSection(Code: TCodeBuffer;
           const Identifier: string;
           out NewCode: TCodeBuffer;
@@ -464,12 +499,18 @@ type
     function FindDeclarationOfPropertyPath(Code: TCodeBuffer;
           const PropertyPath: string; out NewCode: TCodeBuffer;
           out NewX, NewY, NewTopLine: integer): Boolean;
+    function FindFileAtCursor(Code: TCodeBuffer; X,Y: integer;
+      out Found: TFindFileAtCursorFlag; out FoundFilename: string;
+      Allowed: TFindFileAtCursorFlags = DefaultFindFileAtCursorAllowed;
+      StartPos: PCodeXYPosition = nil): boolean;
 
-    // get code context
+    // get code context (aka parameter hints)
     function FindCodeContext(Code: TCodeBuffer; X,Y: integer;
           out CodeContexts: TCodeContextInfo): boolean;
     function ExtractProcedureHeader(Code: TCodeBuffer; X,Y: integer;
-          Attributes: TProcHeadAttributes; var ProcHead: string): boolean;
+          Attributes: TProcHeadAttributes; out ProcHead: string): boolean;
+    function HasInterfaceRegisterProc(Code: TCodeBuffer;
+          out HasRegisterProc: boolean): boolean;
 
     // gather identifiers (i.e. all visible)
     function GatherUnitNames(Code: TCodeBuffer): Boolean;
@@ -481,7 +522,7 @@ type
           out ListOfPCodeXYPosition: TFPList;
           SkipAbstractsInStartClass: boolean = false): boolean;
     function GetValuesOfCaseVariable(Code: TCodeBuffer; X,Y: integer;
-          List: TStrings): boolean;
+          List: TStrings; WithTypeDefIfScoped: boolean = true): boolean;
     function GatherOverloads(Code: TCodeBuffer; X,Y: integer;
           out Graph: TDeclarationOverloadsGraph): boolean;
 
@@ -512,7 +553,6 @@ type
        var ProcPos: TCodeXYPosition; // if it is in this unit the proc declaration is changed and this position is cleared
        TreeOfPCodeXYPosition: TAVLTree // positions in this unit are processed and removed from the tree
        ): boolean;
-
 
     // resourcestring sections
     function GatherResourceStringSections(
@@ -551,18 +591,18 @@ type
           out Operand: string; ResolveProperty: Boolean): Boolean;
 
     // code completion = auto class completion, auto forward proc completion,
-    //             local var assignment completion, event assignment completion
+    //             (local) var assignment completion, event assignment completion
     function CompleteCode(Code: TCodeBuffer; X,Y,TopLine: integer;
           out NewCode: TCodeBuffer;
-          out NewX, NewY, NewTopLine: integer): boolean;
+          out NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer;Interactive: Boolean): boolean;
     function CreateVariableForIdentifier(Code: TCodeBuffer; X,Y,TopLine: integer;
           out NewCode: TCodeBuffer;
-          out NewX, NewY, NewTopLine: integer): boolean;
+          out NewX, NewY, NewTopLine: integer; Interactive: Boolean): boolean;
     function AddMethods(Code: TCodeBuffer; X,Y, TopLine: integer;
           ListOfPCodeXYPosition: TFPList;
           const VirtualToOverride: boolean;
           out NewCode: TCodeBuffer;
-          out NewX, NewY, NewTopLine: integer): boolean;
+          out NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer): boolean;
     function GuessTypeOfIdentifier(Code: TCodeBuffer; X,Y: integer;
           out ItsAKeyword, IsSubIdentifier: boolean;
           out ExistingDefinition: TFindContext; // next existing definition
@@ -622,6 +662,10 @@ type
     function InsertStatements(InsertPos: TInsertStatementPosDescription;
           const Statements: string): boolean;
 
+    // alter proc
+    function AddProcModifier(Code: TCodeBuffer;  X, Y: integer;
+          const aModifier: string): boolean;
+
     // extract proc (creates a new procedure from code in selection)
     function CheckExtractProc(Code: TCodeBuffer;
           const StartPoint, EndPoint: TPoint;
@@ -632,11 +676,11 @@ type
     function ExtractProc(Code: TCodeBuffer; const StartPoint, EndPoint: TPoint;
           ProcType: TExtractProcType; const ProcName: string;
           IgnoreIdentifiers: TAVLTree; // tree of PCodeXYPosition
-          var NewCode: TCodeBuffer; var NewX, NewY, NewTopLine: integer;
+          var NewCode: TCodeBuffer; var NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer;
           FunctionResultVariableStartPos: integer = 0
           ): boolean;
 
-    // Assign method
+    // 'Assign' method
     function FindAssignMethod(Code: TCodeBuffer; X, Y: integer;
           out Tool: TCodeTool; out ClassNode: TCodeTreeNode;
           out AssignDeclNode: TCodeTreeNode;
@@ -680,9 +724,11 @@ type
     function FindMissingUnits(Code: TCodeBuffer; var MissingUnits: TStrings;
           FixCase: boolean = false; SearchImplementation: boolean = true): boolean;
     function FindDelphiProjectUnits(Code: TCodeBuffer;
-          var FoundInUnits, MissingInUnits, NormalUnits: TStrings): boolean;
+          out FoundInUnits, MissingInUnits, NormalUnits: TStrings;
+          IgnoreNormalUnits: boolean = false): boolean;
     function FindDelphiPackageUnits(Code: TCodeBuffer;
-          var FoundInUnits, MissingInUnits, NormalUnits: TStrings): boolean;
+          var FoundInUnits, MissingInUnits, NormalUnits: TStrings;
+          IgnoreNormalUnits: boolean = false): boolean;
     function CommentUnitsInUsesSections(Code: TCodeBuffer;
           MissingUnits: TStrings): boolean;
     function FindUnitCaseInsensitive(Code: TCodeBuffer;
@@ -722,10 +768,6 @@ type
                        {%H-}LFMNode: TLFMTreeNode;
                        const IdentName: string; var IsDefined: boolean);
 
-    // register proc
-    function HasInterfaceRegisterProc(Code: TCodeBuffer;
-          out HasRegisterProc: boolean): boolean;
-          
     // Delphi to Lazarus conversion
     function ConvertDelphiToLazarusSource(Code: TCodeBuffer;
           AddLRSCode: boolean): boolean;
@@ -752,6 +794,13 @@ type
     function SetApplicationTitleStatement(Code: TCodeBuffer;
           const NewTitle: string): boolean;
     function RemoveApplicationTitleStatement(Code: TCodeBuffer): boolean;
+
+    // Application.Scaled:= statements in program source
+    function GetApplicationScaledStatement(Code: TCodeBuffer;
+          var AScaled: Boolean): boolean;
+    function SetApplicationScaledStatement(Code: TCodeBuffer;
+          const NewScaled: Boolean): boolean;
+    function RemoveApplicationScaledStatement(Code: TCodeBuffer): boolean;
 
     // forms
     // Hint: to find the class use FindDeclarationInInterface
@@ -786,7 +835,7 @@ type
           out ListOfPInstancePropInfo: TFPList;
           const OverrideGetMethodName: TOnGetMethodname = nil): boolean;
 
-    // functions for events in the object inspector
+    // utilities for the object inspector
     function GetCompatiblePublishedMethods(Code: TCodeBuffer;
           const AClassName: string;
           PropInstance: TPersistent; const PropName: string;
@@ -806,7 +855,7 @@ type
     function JumpToPublishedMethodBody(Code: TCodeBuffer;
           const AClassName, AMethodName: string;
           out NewCode: TCodeBuffer;
-          out NewX, NewY, NewTopLine: integer): boolean;
+          out NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer): boolean;
     function RenamePublishedMethod(Code: TCodeBuffer;
           const AClassName, OldMethodName,
           NewMethodName: string): boolean;
@@ -814,7 +863,7 @@ type
           NewMethodName: string; ATypeInfo: PTypeInfo;
           UseTypeInfoForParameters: boolean = false;
           const APropertyUnitName: string = ''; const APropertyPath: string = '';
-          const CallAncestorMethod: string = ''
+          const CallAncestorMethod: string = ''; AddOverride: boolean = false
           ): boolean;
 
     // private class parts
@@ -929,6 +978,20 @@ begin
     NewMode,NewMode,'1',da_Define));
 end;
 
+{ ECodeToolManagerError }
+
+constructor ECodeToolManagerError.Create(TheID: int64; const Msg: string);
+begin
+  Id:=TheID;
+  inherited Create(Msg);
+end;
+
+constructor ECodeToolManagerError.CreateFmt(TheID: int64; const Msg: string;
+  const Args: array of const);
+begin
+  Id:=TheID;
+  inherited CreateFmt(Msg,Args);
+end;
 
 { TCodeToolManager }
 
@@ -967,15 +1030,22 @@ begin
   OnFileExistsCached:=@DirectoryCachePool.FileExists;
   OnFileAgeCached:=@DirectoryCachePool.FileAge;
   DefineTree.DirectoryCachePool:=DirectoryCachePool;
-  FPCDefinesCache:=TFPCDefinesCache.Create(nil);
+  CompilerDefinesCache:=TCompilerDefinesCache.Create(nil);
   PPUCache:=TPPUTools.Create;
   FAddInheritedCodeToOverrideMethod:=true;
   FAdjustTopLineDueToComment:=true;
   FCatchExceptions:=true;
+
   FCompleteProperties:=true;
+  FSetPropertyVariablename:='AValue';
+  FSetPropertyVariableIsPrefix := false;
+  FSetPropertyVariableUseConst := false;
+  FAddInheritedCodeToOverrideMethod := true;
+
   FCursorBeyondEOL:=true;
   FIndentSize:=2;
-  FJumpCentered:=true;
+  FJumpSingleLinePos:=50;
+  FJumpSingleLinePos:=0;
   FSourceExtensions:='.pp;.pas;.p;.lpr;.lpk;.dpr;.dpk';
   FVisibleEditorLines:=20;
   FWriteExceptions:=true;
@@ -1029,7 +1099,7 @@ begin
   if OnFileAgeCached=@DirectoryCachePool.FileAge then
     OnFileAgeCached:=nil;
   FreeAndNil(DirectoryCachePool);
-  FreeAndNil(FPCDefinesCache);
+  FreeAndNil(CompilerDefinesCache);
   for e:=low(FHandlers) to high(FHandlers) do
     FreeAndNil(FHandlers[e]);
   {$IFDEF CTDEBUG}
@@ -1051,7 +1121,7 @@ var
   LazarusSrcDefines: TDefineTemplate;
   CurFPCOptions: String;
   UnitSetCache: TFPCUnitSetCache;
-  //CfgCache: TFPCTargetConfigCache;
+  //CfgCache: TPCTargetConfigCache;
 
   procedure AddFPCOption(s: string);
   begin
@@ -1070,13 +1140,13 @@ begin
     Variables[ExternalMacroStart+'ProjectDir']:=Config.ProjectDir;
   end;
 
-  FPCDefinesCache.ConfigCaches.Assign(Config.ConfigCaches);
-  FPCDefinesCache.SourceCaches.Assign(Config.SourceCaches);
-  FPCDefinesCache.TestFilename:=Config.TestPascalFile;
-  if FPCDefinesCache.TestFilename='' then
-    FPCDefinesCache.TestFilename:=GetTempFilename('fpctest.pas','');
+  CompilerDefinesCache.ConfigCaches.Assign(Config.ConfigCaches);
+  CompilerDefinesCache.SourceCaches.Assign(Config.SourceCaches);
+  CompilerDefinesCache.TestFilename:=Config.TestPascalFile;
+  if CompilerDefinesCache.TestFilename='' then
+    CompilerDefinesCache.TestFilename:=GetTempFilename('fpctest.pas','');
 
-  UnitSetCache:=FPCDefinesCache.FindUnitSet(Config.FPCPath,
+  UnitSetCache:=CompilerDefinesCache.FindUnitSet(Config.FPCPath,
     Config.TargetOS,Config.TargetProcessor,Config.FPCOptions,Config.FPCSrcDir,
     true);
   // parse compiler settings, fpc sources
@@ -1088,8 +1158,8 @@ begin
   //  debugln(['TCodeToolManager.Init TargetCPU=',CfgCache.TargetCPU,' RealTargetCPU=',CfgCache.RealTargetCPU]);
 
   // save
-  Config.ConfigCaches.Assign(FPCDefinesCache.ConfigCaches);
-  Config.SourceCaches.Assign(FPCDefinesCache.SourceCaches);
+  Config.ConfigCaches.Assign(CompilerDefinesCache.ConfigCaches);
+  Config.SourceCaches.Assign(CompilerDefinesCache.SourceCaches);
 
   // create template for FPC settings
   FPCDefines:=CreateFPCTemplate(UnitSetCache,nil);
@@ -1381,6 +1451,10 @@ begin
   fErrorMsg:='';
   fErrorCode:=nil;
   fErrorLine:=-1;
+  fErrorTopLine:=0;
+  FErrorId:=0;
+  FErrorMsg := '';
+  FErrorDbgMsg := '';
 end;
 
 procedure TCodeToolManager.ClearCurCodeTool;
@@ -1511,16 +1585,11 @@ function TCodeToolManager.GetPascalCompilerForDirectory(const Directory: string
   ): TPascalCompiler;
 var
   Evaluator: TExpressionEvaluator;
-  PascalCompiler: string;
-  pc: TPascalCompiler;
 begin
   Result:=pcFPC;
   Evaluator:=DefineTree.GetDefinesForDirectory(Directory,true);
   if Evaluator=nil then exit;
-  PascalCompiler:=Evaluator.Variables[PascalCompilerDefine];
-  for pc:=Low(TPascalCompiler) to High(TPascalCompiler) do
-    if (PascalCompiler=PascalCompilerNames[pc]) then
-      Result:=pc;
+  Result:=TLinkScanner.GetPascalCompiler(Evaluator);
 end;
 
 function TCodeToolManager.GetCompilerModeForDirectory(const Directory: string
@@ -1595,7 +1664,7 @@ begin
   ID:=GetUnitSetIDForDirectory(Directory,true);
   if ID='' then exit;
   Changed:=false;
-  Result:=FPCDefinesCache.FindUnitSetWithID(ID,Changed,false);
+  Result:=CompilerDefinesCache.FindUnitSetWithID(ID,Changed,false);
   if Changed then Result:=nil;
 end;
 
@@ -1618,48 +1687,73 @@ procedure TCodeToolManager.GetFPCVersionForDirectory(const Directory: string;
   out FPCVersion, FPCRelease, FPCPatch: integer);
 var
   Evaluator: TExpressionEvaluator;
-  i: Integer;
-  VarName: String;
-  p: Integer;
-
-  function ReadInt(var AnInteger: integer): boolean;
-  var
-    StartPos: Integer;
-  begin
-    StartPos:=p;
-    AnInteger:=0;
-    while (p<=length(VarName)) and (VarName[p] in ['0'..'9']) do begin
-      AnInteger:=AnInteger*10+(ord(VarName[p])-ord('0'));
-      if AnInteger>=100 then begin
-        Result:=false;
-        exit;
-      end;
-      inc(p);
-    end;
-    Result:=StartPos<p;
-  end;
-  
+  FPCFullVersion: LongInt;
 begin
   FPCVersion:=0;
   FPCRelease:=0;
   FPCPatch:=0;
   Evaluator:=DefineTree.GetDefinesForDirectory(Directory,true);
   if Evaluator=nil then exit;
-  for i:=0 to Evaluator.Count-1 do begin
-    VarName:=Evaluator.Names(i);
-    if (length(VarName)>3) and (VarName[1] in ['V','v'])
-    and (VarName[2] in ['E','e']) and (VarName[3] in ['R','r'])
-    and (VarName[4] in ['0'..'9']) then begin
-      p:=4;
-      if not ReadInt(FPCVersion) then continue;
-      if (p>=length(VarName)) or (VarName[p]<>'_') then continue;
-      inc(p);
-      if not ReadInt(FPCRelease) then continue;
-      if (p>=length(VarName)) or (VarName[p]<>'_') then continue;
-      inc(p);
-      if not ReadInt(FPCPatch) then continue;
-      exit;
+  FPCFullVersion:=StrToIntDef(Evaluator['FPC_FULLVERSION'],0);
+  FPCVersion:=FPCFullVersion div 10000;
+  FPCRelease:=(FPCFullVersion div 100) mod 100;
+  FPCPatch:=FPCFullVersion mod 100;
+end;
+
+function TCodeToolManager.GetPCVersionForDirectory(const Directory: string
+  ): integer;
+var
+  Kind: TPascalCompiler;
+begin
+  Result:=GetPCVersionForDirectory(Directory,Kind);
+  if Kind=pcFPC then ;
+end;
+
+function TCodeToolManager.GetPCVersionForDirectory(const Directory: string; out
+  Kind: TPascalCompiler): integer;
+var
+  Evaluator: TExpressionEvaluator;
+  s: String;
+begin
+  Result:=0;
+  Kind:=pcFPC;
+  Evaluator:=DefineTree.GetDefinesForDirectory(Directory,true);
+  if Evaluator=nil then
+    exit;
+  s:=Evaluator['FPC_FULLVERSION'];
+  if s<>'' then
+    exit(StrToIntDef(s,0));
+  s:=Evaluator['PAS2JS_FULLVERSION'];
+  if s<>'' then begin
+    Kind:=pcPas2js;
+    exit(StrToIntDef(s,0));
+  end;
+end;
+
+function TCodeToolManager.GetNamespacesForDirectory(const Directory: string;
+  UseCache: boolean): string;
+var
+  Evaluator: TExpressionEvaluator;
+  FPCFullVersion: LongInt;
+  UnitSet: TFPCUnitSetCache;
+begin
+  if UseCache then begin
+    Result:=DirectoryCachePool.GetString(Directory,ctdcsNamespaces,true)
+  end else begin
+    Result:='';
+    Evaluator:=DefineTree.GetDefinesForDirectory(Directory,true);
+    if Evaluator=nil then exit;
+    if Evaluator.IsDefined('PAS2JS') then
+      Result:=Evaluator[NamespacesMacroName]
+    else begin
+      FPCFullVersion:=StrToIntDef(Evaluator['FPC_FULLVERSION'],0);
+      if FPCFullVersion>=30101 then
+        Result:=Evaluator[NamespacesMacroName];
     end;
+    // add default unit scopes from compiler cfg
+    UnitSet:=GetUnitSetForDirectory(Directory);
+    if UnitSet<>nil then
+      Result:=MergeWithDelimiter(Result,UnitSet.GetUnitScopes,';');
   end;
 end;
 
@@ -1710,6 +1804,7 @@ begin
   ClearCurCodeTool;
   MainCode:=GetMainCode(Code);
   if MainCode=nil then begin
+    ClearError;
     FErrorLine:=1;
     FErrorColumn:=1;
     fErrorCode:=Code;
@@ -1740,9 +1835,7 @@ end;
 
 function TCodeToolManager.InitResourceTool: boolean;
 begin
-  fErrorMsg:='';
-  fErrorCode:=nil;
-  fErrorLine:=-1;
+  ClearError;
   Result:=true;
 end;
 
@@ -1760,13 +1853,11 @@ var
   DirtyPos: Integer;
   ErrorDirTool: TCompilerDirectivesTree;
 begin
+  ClearError;
   fErrorMsg:=AnException.Message;
-  fErrorTopLine:=0;
-  fErrorCode:=nil;
-  fErrorColumn:=-1;
-  fErrorLine:=-1;
   if (AnException is ELinkScannerError) then begin
     // link scanner error
+    FErrorId:=ELinkScannerError(AnException).Id;
     if AnException is ELinkScannerConsistency then
       DumpExceptionBackTrace;
     DirtyPos:=0;
@@ -1784,6 +1875,7 @@ begin
   end else if (AnException is ECodeToolError) then begin
     // codetool error
     ErrorSrcTool:=ECodeToolError(AnException).Sender;
+    FErrorId:=ECodeToolError(AnException).Id;
     if ErrorSrcTool.ErrorNicePosition.Code<>nil then begin
       fErrorCode:=ErrorSrcTool.ErrorNicePosition.Code;
       fErrorColumn:=ErrorSrcTool.ErrorNicePosition.X;
@@ -1795,12 +1887,15 @@ begin
     end;
   end else if (AnException is ECDirectiveParserException) then begin
     // Compiler directive parser error
+    FErrorId:=ECDirectiveParserException(AnException).Id;
     ErrorDirTool:=ECDirectiveParserException(AnException).Sender;
     fErrorCode:=ErrorDirTool.Code;
   end else if (AnException is ESourceChangeCacheError) then begin
     // SourceChangeCache error
+    FErrorId:=ESourceChangeCacheError(AnException).Id;
   end else if (AnException is ECodeToolManagerError) then begin
     // CodeToolManager error
+    FErrorId:=ECodeToolManagerError(AnException).Id;
   end else begin
     // unknown exception
     DumpExceptionBackTrace;
@@ -1810,6 +1905,7 @@ begin
       fErrorColumn:=FCurCodeTool.ErrorPosition.X;
       fErrorLine:=FCurCodeTool.ErrorPosition.Y;
     end;
+    FErrorId:=20170421202914;
   end;
 
   SourceChangeCache.Clear;
@@ -1828,8 +1924,8 @@ begin
   // adjust error topline
   if (fErrorCode<>nil) and (fErrorTopLine<1) then begin
     fErrorTopLine:=fErrorLine;
-    if (fErrorTopLine>0) and JumpCentered then begin
-      dec(fErrorTopLine,VisibleEditorLines div 2);
+    if (fErrorTopLine>0) and (JumpSingleLinePos>0) then begin
+      dec(fErrorTopLine,VisibleEditorLines*JumpSingleLinePos div 100);
       if fErrorTopLine<1 then fErrorTopLine:=1;
     end;
   end;
@@ -1838,11 +1934,11 @@ end;
 procedure TCodeToolManager.WriteError;
 begin
   if FWriteExceptions then begin
-    DbgOut('### TCodeToolManager.HandleException: "'+ErrorMessage+'"');
-    if ErrorLine>0 then DbgOut(' at Line=',DbgS(ErrorLine));
-    if ErrorColumn>0 then DbgOut(' Col=',DbgS(ErrorColumn));
-    if ErrorCode<>nil then DbgOut(' in "',ErrorCode.Filename,'"');
-    DebugLn('');
+    FErrorDbgMsg:='### TCodeToolManager.HandleException: ['+IntToStr(FErrorId)+'] "'+ErrorMessage+'"';
+    if ErrorLine>0 then FErrorDbgMsg+=' at Line='+DbgS(ErrorLine);
+    if ErrorColumn>0 then FErrorDbgMsg+=' Col='+DbgS(ErrorColumn);
+    if ErrorCode<>nil then FErrorDbgMsg+=' in "'+ErrorCode.Filename+'"';
+    Debugln(FErrorDbgMsg);
     {$IFDEF CTDEBUG}
     WriteDebugReport(true,false,false,false,false,false);
     {$ENDIF}
@@ -1903,9 +1999,9 @@ begin
   {$ENDIF}
 end;
 
-function TCodeToolManager.JumpToMethod(Code: TCodeBuffer; X,Y: integer;
-  out NewCode: TCodeBuffer; out NewX, NewY, NewTopLine: integer;
-  out RevertableJump: boolean): boolean;
+function TCodeToolManager.JumpToMethod(Code: TCodeBuffer; X, Y: integer; out
+  NewCode: TCodeBuffer; out NewX, NewY, NewTopLine, BlockTopLine,
+  BlockBottomLine: integer; out RevertableJump: boolean): boolean;
 var
   CursorPos: TCodeXYPosition;
   NewPos: TCodeXYPosition;
@@ -1923,7 +2019,7 @@ begin
   {$ENDIF}
   try
     Result:=FCurCodeTool.FindJumpPoint(CursorPos,NewPos,NewTopLine,
-                                       RevertableJump);
+                                       BlockTopLine,BlockBottomLine,RevertableJump);
     if Result then begin
       NewX:=NewPos.X;
       NewY:=NewPos.Y;
@@ -1969,10 +2065,9 @@ begin
   {$ENDIF}
 end;
 
-function TCodeToolManager.FindDeclaration(Code: TCodeBuffer; X,Y: integer;
-  out NewCode: TCodeBuffer;
-  out NewX, NewY, NewTopLine: integer;
-  Flags: TFindSmartFlags): boolean;
+function TCodeToolManager.FindDeclaration(Code: TCodeBuffer; X, Y: integer; out
+  NewCode: TCodeBuffer; out NewX, NewY, NewTopLine, BlockTopLine,
+  BlockBottomLine: integer; Flags: TFindSmartFlags): boolean;
 var
   CursorPos: TCodeXYPosition;
   NewPos: TCodeXYPosition;
@@ -2001,7 +2096,7 @@ begin
     RaiseUnhandableExceptions:=true;
     {$ENDIF}
     Result:=FCurCodeTool.FindDeclaration(CursorPos,Flags,NewTool,NewNode,
-                                         NewPos,NewTopLine);
+                                         NewPos,NewTopLine,BlockTopLine,BlockBottomLine);
     if Result then begin
       NewX:=NewPos.X;
       NewY:=NewPos.Y;
@@ -2107,7 +2202,7 @@ end;
 
 function TCodeToolManager.FindDeclarationInInterface(Code: TCodeBuffer;
   const Identifier: string; out NewCode: TCodeBuffer; out NewX, NewY,
-  NewTopLine: integer): boolean;
+  NewTopLine, BlockTopLine, BlockBottomLine: integer): boolean;
 var
   NewPos: TCodeXYPosition;
 begin
@@ -2121,7 +2216,7 @@ begin
   {$ENDIF}
   try
     Result:=FCurCodeTool.FindDeclarationInInterface(Identifier,NewPos,
-                                                    NewTopLine);
+                                                    NewTopLine,BlockTopLine,BlockBottomLine);
     if Result then begin
       NewX:=NewPos.X;
       NewY:=NewPos.Y;
@@ -2133,6 +2228,16 @@ begin
   {$IFDEF CTDEBUG}
   DebugLn('TCodeToolManager.FindDeclarationInInterface END ');
   {$ENDIF}
+end;
+
+function TCodeToolManager.FindDeclarationInInterface(Code: TCodeBuffer;
+  const Identifier: string; out NewCode: TCodeBuffer; out NewX, NewY,
+  NewTopLine: integer): boolean;
+var
+  BlockTopLine, BlockBottomLine: integer;
+begin
+  Result := FindDeclarationInInterface(Code, Identifier, NewCode, NewX, NewY, NewTopLine,
+    BlockTopLine, BlockBottomLine);
 end;
 
 function TCodeToolManager.FindDeclarationWithMainUsesSection(Code: TCodeBuffer;
@@ -2247,6 +2352,31 @@ begin
   {$ENDIF}
 end;
 
+function TCodeToolManager.FindFileAtCursor(Code: TCodeBuffer; X, Y: integer;
+  out Found: TFindFileAtCursorFlag; out FoundFilename: string;
+  Allowed: TFindFileAtCursorFlags; StartPos: PCodeXYPosition): boolean;
+var
+  CursorPos: TCodeXYPosition;
+begin
+  Result:=false;
+  {$IFDEF CTDEBUG}
+  DebugLn('TCodeToolManager.FindFileAtCursor A ',Code.Filename,' x=',dbgs(x),' y=',dbgs(y));
+  {$ENDIF}
+  if not InitCurCodeTool(Code) then exit;
+  CursorPos.X:=X;
+  CursorPos.Y:=Y;
+  CursorPos.Code:=Code;
+  try
+    Result:=FCurCodeTool.FindFileAtCursor(CursorPos,Found,FoundFilename,
+      Allowed,StartPos);
+  except
+    on e: Exception do HandleException(e);
+  end;
+  {$IFDEF CTDEBUG}
+  DebugLn('TCodeToolManager.FindFileAtCursor END ');
+  {$ENDIF}
+end;
+
 function TCodeToolManager.FindCodeContext(Code: TCodeBuffer; X, Y: integer; out
   CodeContexts: TCodeContextInfo): boolean;
 var
@@ -2272,7 +2402,7 @@ begin
 end;
 
 function TCodeToolManager.ExtractProcedureHeader(Code: TCodeBuffer; X,
-  Y: integer; Attributes: TProcHeadAttributes; var ProcHead: string): boolean;
+  Y: integer; Attributes: TProcHeadAttributes; out ProcHead: string): boolean;
 var
   CursorPos: TCodeXYPosition;
 begin
@@ -2294,6 +2424,22 @@ begin
   {$ENDIF}
 end;
 
+function TCodeToolManager.HasInterfaceRegisterProc(Code: TCodeBuffer;
+  out HasRegisterProc: boolean): boolean;
+begin
+  Result:=false;
+  HasRegisterProc:=false;
+  {$IFDEF CTDEBUG}
+  DebugLn('TCodeToolManager.HasInterfaceRegisterProc A ',Code.Filename);
+  {$ENDIF}
+  if not InitCurCodeTool(Code) then exit;
+  try
+    Result:=FCurCodeTool.HasInterfaceRegisterProc(HasRegisterProc);
+  except
+    on e: Exception do Result:=HandleException(e);
+  end;
+end;
+
 function TCodeToolManager.GatherUnitNames(Code: TCodeBuffer): Boolean;
 var
   CursorPos: TCodeXYPosition;
@@ -2308,6 +2454,27 @@ begin
     Result := FCurCodeTool.GatherAvailableUnitNames(CursorPos, IdentifierList);
   except
     on e: Exception do HandleException(e);
+  end;
+end;
+
+function TCodeToolManager.GetApplicationScaledStatement(Code: TCodeBuffer;
+  var AScaled: Boolean): boolean;
+var
+  StartPos, BooleanConstStartPos, EndPos: integer;
+begin
+  Result:=false;
+  {$IFDEF CTDEBUG}
+  DebugLn('TCodeToolManager.GetApplicationScaledStatement A ',Code.Filename);
+  {$ENDIF}
+  if not InitCurCodeTool(Code) then exit;
+  try
+    Result:=FCurCodeTool.FindApplicationScaledStatement(StartPos,
+                                                    BooleanConstStartPos,EndPos);
+
+    Result:=FCurCodeTool.GetApplicationScaledStatement(BooleanConstStartPos,
+                                                      EndPos,AScaled);
+  except
+    on e: Exception do Result:=HandleException(e);
   end;
 end;
 
@@ -2400,7 +2567,7 @@ begin
 end;
 
 function TCodeToolManager.GetValuesOfCaseVariable(Code: TCodeBuffer; X,
-  Y: integer; List: TStrings): boolean;
+  Y: integer; List: TStrings; WithTypeDefIfScoped: boolean): boolean;
 var
   CursorPos: TCodeXYPosition;
 begin
@@ -2413,7 +2580,7 @@ begin
   CursorPos.Y:=Y;
   CursorPos.Code:=Code;
   try
-    Result:=FCurCodeTool.GetValuesOfCaseVariable(CursorPos,List);
+    Result:=FCurCodeTool.GetValuesOfCaseVariable(CursorPos,List,WithTypeDefIfScoped);
   except
     on e: Exception do Result:=HandleException(e);
   end;
@@ -2617,7 +2784,7 @@ begin
     Result:=true;
     exit;
   end;
-  if (NewIdentifier='') or (not IsValidIdent(NewIdentifier)) then exit;
+  if not IsValidIdent(NewIdentifier) then exit;
 
   ClearCurCodeTool;
   SourceChangeCache.Clear;
@@ -2643,14 +2810,14 @@ begin
     DebugLn('TCodeToolManager.RenameIdentifier File ',Code.Filename,' Line=',dbgs(CurCodePos^.Y),' Col=',dbgs(CurCodePos^.X),' Identifier=',GetIdentifier(@Code.Source[IdentStartPos]));
     // search absolute position in source
     if IdentStartPos<1 then begin
-      SetError(Code, CurCodePos^.Y, CurCodePos^.X, ctsPositionNotInSource);
+      SetError(20170421203205,Code, CurCodePos^.Y, CurCodePos^.X, ctsPositionNotInSource);
       exit;
     end;
     // check if old identifier is there
     if CompareIdentifiers(@Code.Source[IdentStartPos],PChar(Pointer(OldIdentifier)))<>0
     then begin
       debugln(['TCodeToolManager.RenameIdentifier CONSISTENCY ERROR ',Dbgs(CurCodePos^),' ']);
-      SetError(CurCodePos^.Code,CurCodePos^.Y,CurCodePos^.X,
+      SetError(20170421203210,CurCodePos^.Code,CurCodePos^.Y,CurCodePos^.X,
         Format(ctsStrExpectedButAtomFound,[OldIdentifier,
                                    GetIdentifier(@Code.Source[IdentStartPos])])
         );
@@ -3019,6 +3186,26 @@ begin
   end;
 end;
 
+function TCodeToolManager.AddProcModifier(Code: TCodeBuffer; X, Y: integer;
+  const aModifier: string): boolean;
+var
+  CursorPos: TCodeXYPosition;
+begin
+  Result:=false;
+  {$IFDEF CTDEBUG}
+  DebugLn('TCodeToolManager.ExtractOperand A ',Code.Filename);
+  {$ENDIF}
+  if not InitCurCodeTool(Code) then exit;
+  CursorPos.X:=X;
+  CursorPos.Y:=Y;
+  CursorPos.Code:=Code;
+  try
+    Result:=FCurCodeTool.AddProcModifier(CursorPos,aModifier,SourceChangeCache);
+  except
+    on e: Exception do HandleException(e);
+  end;
+end;
+
 function TCodeToolManager.ExtractOperand(Code: TCodeBuffer; X, Y: integer; out
   Operand: string; WithPostTokens, WithAsOperator,
   WithoutTrailingPoints: boolean): boolean;
@@ -3260,12 +3447,6 @@ begin
   end;
 end;
 
-function TCodeToolManager.AddIncludeDirective(Code: TCodeBuffer;
-  const Filename: string; const NewSrc: string): boolean;
-begin
-  Result:=AddIncludeDirectiveForInit(Code,Filename,NewSrc);
-end;
-
 function TCodeToolManager.AddIncludeDirectiveForInit(Code: TCodeBuffer;
   const Filename: string; const NewSrc: string): boolean;
 begin
@@ -3276,6 +3457,21 @@ begin
   if not InitCurCodeTool(Code) then exit;
   try
     Result:=FCurCodeTool.AddIncludeDirectiveForInit(Filename,SourceChangeCache,NewSrc);
+  except
+    on e: Exception do Result:=HandleException(e);
+  end;
+end;
+
+function TCodeToolManager.AddUnitWarnDirective(Code: TCodeBuffer; WarnID,
+  Comment: string; TurnOn: boolean): boolean;
+begin
+  Result:=false;
+  {$IFDEF CTDEBUG}
+  DebugLn(['TCodeToolManager.AddUnitWarnDirective A ',Code.Filename,' aParam="',aParam,'" TurnOn=',TurnOn]);
+  {$ENDIF}
+  if not InitCurCodeTool(Code) then exit;
+  try
+    Result:=FCurCodeTool.AddUnitWarnDirective(WarnID,Comment,TurnOn,SourceChangeCache);
   except
     on e: Exception do Result:=HandleException(e);
   end;
@@ -3328,6 +3524,7 @@ function TCodeToolManager.FixIncludeFilenames(Code: TCodeBuffer;
     fErrorCode:=CodePos^.Code;
     fErrorLine:=CodePos^.Y;
     fErrorColumn:=CodePos^.X;
+    FErrorId:=20170421202903;
     FErrorMsg:='missing include file';
   end;
   
@@ -3355,7 +3552,7 @@ begin
         ToFixIncludeFiles.Delete(ToFixIncludeFiles.Count-1);
         Code:=LoadFile(AFilename,false,false);
         if Code=nil then begin
-          raise ECodeToolError.Create(FCurCodeTool,
+          raise ECodeToolError.Create(FCurCodeTool,20170421202139,
                                       'unable to read file "'+AFilename+'"');
         end;
         // fix file
@@ -3449,10 +3646,11 @@ begin
 end;
 
 function TCodeToolManager.ExtractCodeWithoutComments(Code: TCodeBuffer;
-  KeepDirectives: boolean): string;
+  KeepDirectives: boolean; KeepVerbosityDirectives: boolean): string;
 begin
   Result:=CleanCodeFromComments(Code.Source,
-                    GetNestedCommentsFlagForFile(Code.Filename),KeepDirectives);
+          GetNestedCommentsFlagForFile(Code.Filename),KeepDirectives,
+          KeepVerbosityDirectives);
 end;
 
 function TCodeToolManager.GetPasDocComments(Code: TCodeBuffer; X, Y: integer;
@@ -3694,7 +3892,7 @@ end;
 
 function TCodeToolManager.JumpToPublishedMethodBody(Code: TCodeBuffer;
   const AClassName, AMethodName: string; out NewCode: TCodeBuffer; out NewX,
-  NewY, NewTopLine: integer): boolean;
+  NewY, NewTopLine, BlockTopLine, BlockBottomLine: integer): boolean;
 var NewPos: TCodeXYPosition;
 begin
   {$IFDEF CTDEBUG}
@@ -3704,7 +3902,7 @@ begin
   if not Result then exit;
   try
     Result:=FCurCodeTool.JumpToPublishedMethodBody(AClassName,
-              AMethodName,NewPos,NewTopLine,true);
+              AMethodName,NewPos,NewTopLine,BlockTopLine,BlockBottomLine,true);
     if Result then begin
       NewCode:=NewPos.Code;
       NewX:=NewPos.X;
@@ -3734,9 +3932,9 @@ end;
 
 function TCodeToolManager.CreatePublishedMethod(Code: TCodeBuffer;
   const AClassName, NewMethodName: string; ATypeInfo: PTypeInfo;
-  UseTypeInfoForParameters: boolean;
-  const APropertyUnitName: string; const APropertyPath: string;
-  const CallAncestorMethod: string): boolean;
+  UseTypeInfoForParameters: boolean; const APropertyUnitName: string;
+  const APropertyPath: string; const CallAncestorMethod: string;
+  AddOverride: boolean): boolean;
 begin
   {$IFDEF CTDEBUG}
   DebugLn('TCodeToolManager.CreatePublishedMethod A');
@@ -3748,7 +3946,7 @@ begin
     Result:=FCurCodeTool.CreateMethod(AClassName,
             NewMethodName,ATypeInfo,APropertyUnitName,APropertyPath,
             SourceChangeCache,UseTypeInfoForParameters,pcsPublished,
-            CallAncestorMethod);
+            CallAncestorMethod,AddOverride);
   except
     on e: Exception do Result:=HandleException(e);
   end;
@@ -4075,8 +4273,9 @@ begin
   aMessage:='unknown identifier "'+GDBIdentifier+'"';
 end;
 
-function TCodeToolManager.CompleteCode(Code: TCodeBuffer; X,Y,TopLine: integer;
-  out NewCode: TCodeBuffer; out NewX, NewY, NewTopLine: integer): boolean;
+function TCodeToolManager.CompleteCode(Code: TCodeBuffer; X, Y,
+  TopLine: integer; out NewCode: TCodeBuffer; out NewX, NewY, NewTopLine,
+  BlockTopLine, BlockBottomLine: integer; Interactive: Boolean): boolean;
 var
   CursorPos: TCodeXYPosition;
   NewPos: TCodeXYPosition;
@@ -4095,7 +4294,7 @@ begin
   CursorPos.Code:=Code;
   try
     Result:=FCurCodeTool.CompleteCode(CursorPos,TopLine,
-                                           NewPos,NewTopLine,SourceChangeCache);
+      NewPos,NewTopLine, BlockTopLine, BlockBottomLine,SourceChangeCache,Interactive);
     if Result then begin
       NewX:=NewPos.X;
       NewY:=NewPos.Y;
@@ -4108,7 +4307,7 @@ end;
 
 function TCodeToolManager.CreateVariableForIdentifier(Code: TCodeBuffer; X, Y,
   TopLine: integer; out NewCode: TCodeBuffer; out NewX, NewY,
-  NewTopLine: integer): boolean;
+  NewTopLine: integer; Interactive: Boolean): boolean;
 var
   CursorPos: TCodeXYPosition;
   NewPos: TCodeXYPosition;
@@ -4123,7 +4322,7 @@ begin
   CursorPos.Code:=Code;
   try
     Result:=FCurCodeTool.CreateVariableForIdentifier(CursorPos,TopLine,
-                                             NewPos,NewTopLine,SourceChangeCache);
+      NewPos,NewTopLine,SourceChangeCache,Interactive);
     if Result then begin
       NewX:=NewPos.X;
       NewY:=NewPos.Y;
@@ -4135,8 +4334,9 @@ begin
 end;
 
 function TCodeToolManager.AddMethods(Code: TCodeBuffer; X, Y, TopLine: integer;
-  ListOfPCodeXYPosition: TFPList; const VirtualToOverride: boolean;
-  out NewCode: TCodeBuffer; out NewX, NewY, NewTopLine: integer): boolean;
+  ListOfPCodeXYPosition: TFPList; const VirtualToOverride: boolean; out
+  NewCode: TCodeBuffer; out NewX, NewY, NewTopLine, BlockTopLine,
+  BlockBottomLine: integer): boolean;
 var
   CursorPos, NewPos: TCodeXYPosition;
 begin
@@ -4151,7 +4351,7 @@ begin
   CursorPos.Code:=Code;
   try
     Result:=FCurCodeTool.AddMethods(CursorPos,TopLine,ListOfPCodeXYPosition,
-              VirtualToOverride,NewPos,NewTopLine,SourceChangeCache);
+              VirtualToOverride,NewPos,NewTopLine,BlockTopLine,BlockBottomLine,SourceChangeCache);
     NewCode:=NewPos.Code;
     NewX:=NewPos.X;
     NewY:=NewPos.Y;
@@ -4308,6 +4508,21 @@ begin
     end;
   finally
     DisposeAVLTree(TreeOfCodeTreeNodeExt);
+  end;
+end;
+
+function TCodeToolManager.RemoveApplicationScaledStatement(Code: TCodeBuffer
+  ): boolean;
+begin
+  Result:=false;
+  {$IFDEF CTDEBUG}
+  DebugLn('TCodeToolManager.RemoveApplicationScaledStatement A ',Code.Filename);
+  {$ENDIF}
+  if not InitCurCodeTool(Code) then exit;
+  try
+    Result:=FCurCodeTool.RemoveApplicationScaledStatement(SourceChangeCache);
+  except
+    on e: Exception do Result:=HandleException(e);
   end;
 end;
 
@@ -4611,8 +4826,8 @@ end;
 
 function TCodeToolManager.ExtractProc(Code: TCodeBuffer; const StartPoint,
   EndPoint: TPoint; ProcType: TExtractProcType; const ProcName: string;
-  IgnoreIdentifiers: TAVLTree; // tree of PCodeXYPosition
-  var NewCode: TCodeBuffer; var NewX, NewY, NewTopLine: integer;
+  IgnoreIdentifiers: TAVLTree; var NewCode: TCodeBuffer; var NewX, NewY,
+  NewTopLine, BlockTopLine, BlockBottomLine: integer;
   FunctionResultVariableStartPos: integer): boolean;
 var
   StartPos, EndPos: TCodeXYPosition;
@@ -4631,7 +4846,7 @@ begin
   EndPos.Code:=Code;
   try
     Result:=FCurCodeTool.ExtractProc(StartPos,EndPos,ProcType,ProcName,
-                         IgnoreIdentifiers,NewPos,NewTopLine,SourceChangeCache,
+                         IgnoreIdentifiers,NewPos,NewTopLine,BlockTopLine,BlockBottomLine,SourceChangeCache,
                          FunctionResultVariableStartPos);
     if Result then begin
       NewX:=NewPos.X;
@@ -4972,7 +5187,8 @@ begin
 end;
 
 function TCodeToolManager.FindDelphiProjectUnits(Code: TCodeBuffer;
-  var FoundInUnits, MissingInUnits, NormalUnits: TStrings): boolean;
+  out FoundInUnits, MissingInUnits, NormalUnits: TStrings;
+  IgnoreNormalUnits: boolean): boolean;
 begin
   Result:=false;
   {$IFDEF CTDEBUG}
@@ -4980,15 +5196,16 @@ begin
   {$ENDIF}
   if not InitCurCodeTool(Code) then exit;
   try
-    Result:=FCurCodeTool.FindDelphiProjectUnits(FoundInUnits,
-                                                MissingInUnits, NormalUnits);
+    Result:=FCurCodeTool.FindDelphiProjectUnits(FoundInUnits, MissingInUnits,
+      NormalUnits, false, IgnoreNormalUnits);
   except
     on e: Exception do Result:=HandleException(e);
   end;
 end;
 
 function TCodeToolManager.FindDelphiPackageUnits(Code: TCodeBuffer;
-  var FoundInUnits, MissingInUnits, NormalUnits: TStrings): boolean;
+  var FoundInUnits, MissingInUnits, NormalUnits: TStrings;
+  IgnoreNormalUnits: boolean): boolean;
 begin
   Result:=false;
   {$IFDEF CTDEBUG}
@@ -4997,7 +5214,7 @@ begin
   if not InitCurCodeTool(Code) then exit;
   try
     Result:=FCurCodeTool.FindDelphiProjectUnits(FoundInUnits,
-                                              MissingInUnits, NormalUnits,true);
+                     MissingInUnits,NormalUnits,true,IgnoreNormalUnits);
   except
     on e: Exception do Result:=HandleException(e);
   end;
@@ -5346,6 +5563,22 @@ begin
   end;
 end;
 
+function TCodeToolManager.SetApplicationScaledStatement(Code: TCodeBuffer;
+  const NewScaled: Boolean): boolean;
+begin
+  Result:=false;
+  {$IFDEF CTDEBUG}
+  DebugLn('TCodeToolManager.SetApplicationScaledStatement A ',Code.Filename);
+  {$ENDIF}
+  if not InitCurCodeTool(Code) then exit;
+  try
+    Result:=FCurCodeTool.SetApplicationScaledStatement(NewScaled,
+                                                      SourceChangeCache);
+  except
+    on e: Exception do Result:=HandleException(e);
+  end;
+end;
+
 function TCodeToolManager.GetApplicationTitleStatement(Code: TCodeBuffer;
   var Title: string): boolean;
 var
@@ -5558,22 +5791,6 @@ begin
   end;
 end;
 
-function TCodeToolManager.HasInterfaceRegisterProc(Code: TCodeBuffer;
-  out HasRegisterProc: boolean): boolean;
-begin
-  Result:=false;
-  HasRegisterProc:=false;
-  {$IFDEF CTDEBUG}
-  DebugLn('TCodeToolManager.HasInterfaceRegisterProc A ',Code.Filename);
-  {$ENDIF}
-  if not InitCurCodeTool(Code) then exit;
-  try
-    Result:=FCurCodeTool.HasInterfaceRegisterProc(HasRegisterProc);
-  except
-    on e: Exception do Result:=HandleException(e);
-  end;
-end;
-
 function TCodeToolManager.ConvertDelphiToLazarusSource(Code: TCodeBuffer;
   AddLRSCode: boolean): boolean;
 begin
@@ -5598,6 +5815,14 @@ begin
                              TheUnitName,TheUnitInFilename)
   else
     Result:=nil;
+end;
+
+procedure TCodeToolManager.DoOnGatherUserIdentifiers(
+  Sender: TIdentCompletionTool; const ContextFlags: TIdentifierListContextFlags
+  );
+begin
+  if Assigned(FOnGatherUserIdentifiers) then
+    FOnGatherUserIdentifiers(Sender, ContextFlags);
 end;
 
 function TCodeToolManager.DoOnGetSrcPathForCompiledUnit(Sender: TObject;
@@ -5632,6 +5857,12 @@ begin
   if not FAbortable then exit;
   if not Assigned(OnCheckAbort) then exit;
   Result:=not OnCheckAbort();
+end;
+
+procedure TCodeToolManager.DoOnRescanFPCDirectoryCache(Sender: TObject);
+begin
+  if Assigned(FOnRescanFPCDirectoryCache) then
+    FOnRescanFPCDirectoryCache(Sender);
 end;
 
 procedure TCodeToolManager.DoOnToolTreeChange(Tool: TCustomCodeTool;
@@ -5779,12 +6010,20 @@ begin
     FCurCodeTool.VisibleEditorLines:=NewValue;
 end;
 
-procedure TCodeToolManager.SetJumpCentered(NewValue: boolean);
+procedure TCodeToolManager.SetJumpSingleLinePos(NewValue: integer);
 begin
-  if NewValue=FJumpCentered then exit;
-  FJumpCentered:=NewValue;
+  if NewValue=FJumpSingleLinePos then exit;
+  FJumpSingleLinePos:=NewValue;
   if FCurCodeTool<>nil then
-    FCurCodeTool.JumpCentered:=NewValue;
+    FCurCodeTool.JumpSingleLinePos:=NewValue;
+end;
+
+procedure TCodeToolManager.SetJumpCodeBlockPos(NewValue: integer);
+begin
+  if NewValue=FJumpCodeBlockPos then exit;
+  FJumpCodeBlockPos:=NewValue;
+  if FCurCodeTool<>nil then
+    FCurCodeTool.JumpCodeBlockPos:=NewValue;
 end;
 
 procedure TCodeToolManager.SetSetPropertyVariableIsPrefix(aValue: Boolean);
@@ -5853,9 +6092,10 @@ begin
   Result:=nil;
 end;
 
-procedure TCodeToolManager.SetError(Code: TCodeBuffer; Line, Column: integer;
-  const TheMessage: string);
+procedure TCodeToolManager.SetError(Id: int64; Code: TCodeBuffer; Line,
+  Column: integer; const TheMessage: string);
 begin
+  FErrorId:=Id;
   FErrorMsg:=TheMessage;
   FErrorCode:=Code;
   FErrorLine:=Line;
@@ -5883,7 +6123,7 @@ begin
     CreateScanner(Code);
     if Code.Scanner=nil then begin
       if ExceptionOnError then
-        raise ECodeToolManagerError.CreateFmt(ctsNoScannerFound,[Code.Filename]);
+        raise ECodeToolManagerError.CreateFmt(20170422131430,ctsNoScannerFound,[Code.Filename]);
       exit;
     end;
     Result:=TCodeTool.Create;
@@ -5895,6 +6135,8 @@ begin
     TCodeTool(Result).OnFindUsedUnit:=@DoOnFindUsedUnit;
     TCodeTool(Result).OnGetSrcPathForCompiledUnit:=@DoOnGetSrcPathForCompiledUnit;
     TCodeTool(Result).OnGetMethodName:=@DoOnInternalGetMethodName;
+    TCodeTool(Result).OnRescanFPCDirectoryCache:=@DoOnRescanFPCDirectoryCache;
+    TCodeTool(Result).OnGatherUserIdentifiers:=@DoOnGatherUserIdentifiers;
     TCodeTool(Result).DirectoryCache:=
       DirectoryCachePool.GetCache(ExtractFilePath(Code.Filename),
                                   true,true);
@@ -5913,7 +6155,8 @@ begin
   Result.CheckFilesOnDisk:=FCheckFilesOnDisk;
   Result.IndentSize:=FIndentSize;
   Result.VisibleEditorLines:=FVisibleEditorLines;
-  Result.JumpCentered:=FJumpCentered;
+  Result.JumpSingleLinePos:=FJumpSingleLinePos;
+  Result.JumpCodeBlockPos:=FJumpCodeBlockPos;
   Result.CursorBeyondEOL:=FCursorBeyondEOL;
 end;
 
@@ -6117,6 +6360,7 @@ begin
   ctdcsUnitLinks: Result:=GetUnitLinksForDirectory(ADirectory,false);
   ctdcsUnitSet: Result:=GetUnitSetIDForDirectory(ADirectory,false);
   ctdcsFPCUnitPath: Result:=GetFPCUnitPathForDirectory(ADirectory,false);
+  ctdcsNamespaces: Result:=GetNamespacesForDirectory(ADirectory,false);
   else RaiseCatchableException('');
   end;
 end;
@@ -6141,7 +6385,7 @@ var
   UnitSetCache: TFPCUnitSetCache;
 begin
   Result:='';
-  UnitSetCache:=FPCDefinesCache.FindUnitSetWithID(UnitSet,Changed,false);
+  UnitSetCache:=CompilerDefinesCache.FindUnitSetWithID(UnitSet,Changed,false);
   if UnitSetCache=nil then begin
     debugln(['TCodeToolManager.DirectoryCachePoolGetUnitFromSet invalid UnitSet="',dbgstr(UnitSet),'"']);
     exit;
@@ -6160,7 +6404,7 @@ var
   UnitSetCache: TFPCUnitSetCache;
 begin
   Result:='';
-  UnitSetCache:=FPCDefinesCache.FindUnitSetWithID(UnitSet,Changed,false);
+  UnitSetCache:=CompilerDefinesCache.FindUnitSetWithID(UnitSet,Changed,false);
   if UnitSetCache=nil then begin
     debugln(['TCodeToolManager.DirectoryCachePoolGetCompiledUnitFromSet invalid UnitSet="',dbgstr(UnitSet),'"']);
     exit;
@@ -6177,11 +6421,11 @@ procedure TCodeToolManager.DirectoryCachePoolIterateFPCUnitsFromSet(
 var
   Changed: boolean;
   UnitSetCache: TFPCUnitSetCache;
-  aConfigCache: TFPCTargetConfigCache;
+  aConfigCache: TPCTargetConfigCache;
   Node: TAVLTreeNode;
-  Item: PStringToStringTreeItem;
+  Item: PStringToStringItem;
 begin
-  UnitSetCache:=FPCDefinesCache.FindUnitSetWithID(UnitSet,Changed,false);
+  UnitSetCache:=CompilerDefinesCache.FindUnitSetWithID(UnitSet,Changed,false);
   if UnitSetCache=nil then begin
     debugln(['TCodeToolManager.DirectoryCachePoolIterateFPCUnitsFromSet invalid UnitSet="',dbgstr(UnitSet),'"']);
     exit;
@@ -6194,7 +6438,7 @@ begin
   if (aConfigCache=nil) or (aConfigCache.Units=nil) then exit;
   Node:=aConfigCache.Units.Tree.FindLowest;
   while Node<>nil do begin
-    Item:=PStringToStringTreeItem(Node.Data);
+    Item:=PStringToStringItem(Node.Data);
     Iterate(Item^.Value);
     Node:=aConfigCache.Units.Tree.FindSuccessor(Node);
   end;
@@ -6229,8 +6473,6 @@ begin
 end;
 
 procedure TCodeToolManager.ConsistencyCheck;
-var
-  CurResult: LongInt;
 begin
   if FCurCodeTool<>nil then begin
     FCurCodeTool.ConsistencyCheck;
@@ -6240,12 +6482,8 @@ begin
   SourceCache.ConsistencyCheck;
   GlobalValues.ConsistencyCheck;
   SourceChangeCache.ConsistencyCheck;
-  CurResult:=FPascalTools.ConsistencyCheck;
-  if CurResult<>0 then
-    RaiseCatchableException(IntToStr(CurResult));
-  CurResult:=FDirectivesTools.ConsistencyCheck;
-  if CurResult<>0 then
-    RaiseCatchableException(IntToStr(CurResult));
+  FPascalTools.ConsistencyCheck;
+  FDirectivesTools.ConsistencyCheck;
 end;
 
 procedure TCodeToolManager.WriteDebugReport(WriteTool,
@@ -6340,9 +6578,26 @@ end;
 
 //-----------------------------------------------------------------------------
 
+function FindIncFileInCfgCache(const Name: string; out ExpFilename: string): boolean;
+var
+  CfgCache: TPCTargetConfigCache;
+  UnitSet: TFPCUnitSetCache;
+begin
+  // search the include file in directories defines in fpc.cfg (by -Fi option)
+  UnitSet:=CodeToolBoss.GetUnitSetForDirectory('');
+  if UnitSet<>nil then begin
+    CfgCache:=UnitSet.GetConfigCache(false);
+    Result:=Assigned(CfgCache) and Assigned(CfgCache.Includes)
+      and CfgCache.Includes.GetString(Name,ExpFilename);
+  end
+  else
+    Result:=False;
+end;
+
 initialization
   CodeToolBoss:=TCodeToolManager.Create;
   OnFindOwnerOfCodeTreeNode:=@GetOwnerForCodeTreeNode;
+  BasicCodeTools.FindIncFileInCfgCache:=@FindIncFileInCfgCache;
 
 
 finalization

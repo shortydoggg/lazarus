@@ -24,7 +24,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -39,7 +39,7 @@ interface
 uses
   Classes, SysUtils, Math, types,
   // LCL
-  LCLIntf, LCLType, LCLProc, Controls, Forms, GraphType, Graphics, Menus,
+  LCLIntf, LCLType, LCLProc, Controls, Forms, GraphType, Graphics, Menus, ComCtrls,
   // IDEIntf
   PropEditUtils, ComponentEditors, FormEditingIntf,
   // IDE
@@ -320,6 +320,7 @@ type
     FLookupRoot: TComponent;// component owning the selected components
     FStates: TControlSelStates;
     FUpdateLock: integer;
+    FChangeStamp: int64;
 
     function CompareBottom(Index1, Index2: integer): integer;
     function CompareHorCenter(Index1, Index2: integer): integer;
@@ -362,8 +363,7 @@ type
     procedure UpdateRealBounds;
     procedure UpdateParentChildFlags;
     procedure DoDrawMarker(Index: integer; DC: TDesignerDeviceContext);
-    procedure Notification(AComponent: TComponent; Operation: TOperation);
-           override;
+    procedure Notification(AComponent: TComponent; Operation: TOperation); override;
 
     // snapping
     function CleanGridSizeX: integer;
@@ -372,6 +372,7 @@ type
     function GetBottomGuideLine(var ALine: TRect): boolean;
     function GetLeftGuideLine(var ALine: TRect): boolean;
     function GetRightGuideLine(var ALine: TRect): boolean;
+    function GetRealGrabberSize: integer;
     function GetTopGuideLine(var ALine: TRect): boolean;
     procedure FindNearestBottomGuideLine(var NearestInt: TNearestInt);
     procedure FindNearestClientLeftRight(var NearestInt: TNearestInt);
@@ -418,6 +419,7 @@ type
     function IsSelected(APersistent: TPersistent): Boolean;
     function IsOnlySelected(APersistent: TPersistent): Boolean;
     function ParentLevel: integer;
+    function OkToCopy: boolean;
     function OnlyNonVisualPersistentsSelected: boolean;
     function OnlyVisualComponentsSelected: boolean;
     function OnlyInvisiblePersistentsSelected: boolean;
@@ -523,6 +525,7 @@ type
     property OnSelectionFormChanged: TOnSelectionFormChanged
       read FOnSelectionFormChanged write FOnSelectionFormChanged;
     property LookupRoot: TComponent read FLookupRoot;
+    property ChangeStamp: int64 read FChangeStamp;
   end;
 
 
@@ -756,6 +759,7 @@ begin
       FOldWidth:=r.Right-r.Left;
       FOldHeight:=r.Bottom-r.Top;
     end;
+    FOldFormRelativeLeftTop:=Owner.Mediator.GetComponentOriginOnForm(TComponent(FPersistent));
   end else begin
     GetComponentBounds(TComponent(FPersistent),
                        FOldLeft,FOldTop,FOldWidth,FOldHeight);
@@ -1228,25 +1232,26 @@ end;
 
 procedure TControlSelection.AdjustGrabbers;
 var g:TGrabIndex;
-  OutPix, InPix, NewGrabberLeft, NewGrabberTop: integer;
+  OutPix, InPix, NewGrabberLeft, NewGrabberTop, AGrabberSize: integer;
 begin
-  OutPix:=GrabberSize div 2;
-  InPix:=GrabberSize-OutPix;
+  AGrabberSize := GetRealGrabberSize;
+  OutPix:=AGrabberSize div 2;
+  InPix:=AGrabberSize-OutPix;
   for g:=Low(TGrabIndex) to High(TGrabIndex) do begin
     if gpLeft in FGrabbers[g].Positions then
       NewGrabberLeft:=FRealLeft-OutPix
     else if gpRight in FGrabbers[g].Positions then
       NewGrabberLeft:=FRealLeft+FRealWidth-InPix
     else
-      NewGrabberLeft:=FRealLeft+((FRealWidth-GrabberSize) div 2);
+      NewGrabberLeft:=FRealLeft+((FRealWidth-AGrabberSize) div 2);
     if gpTop in FGrabbers[g].Positions then
       NewGrabberTop:=FRealTop-OutPix
     else if gpBottom in FGrabbers[g].Positions then
       NewGrabberTop:=FRealTop+FRealHeight-InPix
     else
-      NewGrabberTop:=FRealTop+((FRealHeight-GrabberSize) div 2);
-    FGrabbers[g].Width:=GrabberSize;
-    FGrabbers[g].Height:=GrabberSize;
+      NewGrabberTop:=FRealTop+((FRealHeight-AGrabberSize) div 2);
+    FGrabbers[g].Width:=AGrabberSize;
+    FGrabbers[g].Height:=AGrabberSize;
     FGrabbers[g].Move(NewGrabberLeft,NewGrabberTop);
   end;
 end;
@@ -2083,6 +2088,9 @@ begin
   else
   begin
     Exclude(FStates, cssChangedDuringLock);
+    {$push}{$R-}  // range check off
+    Inc(FChangeStamp);
+    {$pop}
     if Assigned(FOnChange) then
       FOnChange(Self, ForceUpdate);
   end;
@@ -2140,9 +2148,9 @@ begin
      end;
 end;
 
-function TControlSelection.GetParentFormRelativeBounds(AComponent: TComponent
-  ): TRect;
-var R:TRect;
+function TControlSelection.GetParentFormRelativeBounds(AComponent: TComponent): TRect;
+var
+  R:TRect;
   P : TPoint;
 begin
   if FMediator <> nil then
@@ -2155,13 +2163,19 @@ begin
     Result := DesignerProcs.GetParentFormRelativeBounds(AComponent);
 end;
 
+function TControlSelection.GetRealGrabberSize: integer;
+begin
+  Result := FGrabberSize;
+  if Assigned(FForm) and Application.Scaled then
+    Result := FForm.Scale96ToScreen(FGrabberSize);
+end;
+
 function TControlSelection.GetItems(Index:integer):TSelectedControl;
 begin
   Result:=TSelectedControl(FControls[Index]);
 end;
 
-procedure TControlSelection.SetItems(Index:integer;
-  ASelectedControl:TSelectedControl);
+procedure TControlSelection.SetItems(Index:integer; ASelectedControl:TSelectedControl);
 begin
   FControls[Index]:=ASelectedControl;
 end;
@@ -2275,11 +2289,13 @@ begin
   FControls.Delete(Index);
   FStates:=FStates+cssSelectionChangeFlags;
 
-  if Count=0 then SetCustomForm;
+  if Count=0 then
+    SetCustomForm;
   UpdateBounds;
-  SaveBounds;
   DoChange;
   EndUpdate;
+  // BoundsHaveChangedSinceLastResize does not recognize a deleted comp selection,
+  SaveBounds(false);   // thus force saving bounds now (not later).
 end;
 
 procedure TControlSelection.Clear;
@@ -2289,7 +2305,8 @@ begin
   InvalidateGrabbers;
   InvalidateGuideLines;
   InvalidateMarkers;
-  for i:=0 to FControls.Count-1 do Items[i].Free;
+  for i:=0 to FControls.Count-1 do
+    Items[i].Free;
   FControls.Clear;
   FStates:=FStates+cssSelectionChangeFlags-[cssLookupRootSelected];
   FForm:=nil;
@@ -2897,6 +2914,22 @@ begin
       InvalidateFrame(FForm.Handle,@InvFrame,false,1);
     end;
   end;
+end;
+
+function TControlSelection.OkToCopy: boolean;
+// Prevent copying / cutting components that would lead to a crash or halt.
+var
+  i: Integer;
+begin
+  for i:=0 to FControls.Count-1 do
+    if (Items[i].Persistent is TCustomTabControl)
+    {$IFDEF LCLGTK2}   // Copying PageControl (TCustomPage) fails with GTK2
+    // in Destroy with LCLRefCount>0 due to some messages used. Issue #r51950.
+    or (Items[i].Persistent is TCustomPage)
+    {$ENDIF}
+    then
+      Exit(False);
+  Result:=True;
 end;
 
 function TControlSelection.OnlyNonVisualPersistentsSelected: boolean;

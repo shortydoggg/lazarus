@@ -114,7 +114,8 @@ type
     procedure EndTextRender(var ALayout: TCarbonTextLayout);
     
     procedure SetAntialiasing(AValue: Boolean);
-    function DrawCGImage(X, Y, Width, Height: Integer; CGImage: CGImageRef): Boolean;
+    function GetBlendModeFromROP(ROP: DWORD) : CGBlendMode;
+    function DrawCGImage(X, Y, Width, Height: Integer; CGImage: CGImageRef; BlendMode: CGBlendMode = kCGBlendModeNormal): Boolean;
     procedure SetCGFillping(Ctx: CGContextRef; Width, Height: Integer);  // Width and Height must be negative to flip the image
     procedure RestoreCGFillping(Ctx: CGContextRef; Width, Height: Integer); // Width and Height must be negative to restore
   public
@@ -185,12 +186,14 @@ type
   TCarbonControlContext = class(TCarbonDeviceContext)
   private
     FOwner: TCarbonWidget;    // owner widget
+    FClipShapeRef: HIShapeRef;
   protected
     function GetSize: TPoint; override;
   public
     constructor Create(AOwner: TCarbonWidget);
-
+    function IsInClipRegion(ARect: TRect): Boolean;
     property Owner: TCarbonWidget read FOwner;
+    property ClipShapeRef: HIShapeRef read FClipShapeRef write FClipShapeRef;
   end;
 
   { TCarbonBitmapContext }
@@ -734,23 +737,41 @@ begin
 end;
 
 {------------------------------------------------------------------------------
+  Method:  TCarbonDeviceContext.GetBlendModeFromROP
+  Params:  ROP - The raster operation. See TCopyMode
+  Returns: The CGBlendMode corresponding to this operation if such mode exists,
+           the default kCGBlendModeNormal otherwise
+
+  Converts a TCopoyMode raster operation to a BlendMode
+ ------------------------------------------------------------------------------}
+function TCarbonDeviceContext.GetBlendModeFromROP(ROP: DWORD) : CGBlendMode;
+begin
+  case ROP of
+    cmSrcPaint  : result := kCGBlendModeNormal;
+    cmSrcInvert : result := kCGBlendModeExclusion;
+  else result := kCGBlendModeNormal;
+  end;
+end;
+
+{------------------------------------------------------------------------------
   Method:  TCarbonDeviceContext.DrawCGImage
   Params:  X, Y - Left, Top
            Width, Height
            CGImage
+           BlendMode
   Returns: If the function succeeds
 
   Draws CGImage into CGContext
  ------------------------------------------------------------------------------}
 function TCarbonDeviceContext.DrawCGImage(X, Y, Width, Height: Integer;
-  CGImage: CGImageRef): Boolean;
+  CGImage: CGImageRef; BlendMode: CGBlendMode): Boolean;
 begin
   Result := False;
   
   // save dest context
   CGContextSaveGState(CGContext);
 
-  CGContextSetBlendMode(CGContext, kCGBlendModeNormal);
+  CGContextSetBlendMode(CGContext, BlendMode);
   try
     SetCGFillping(CGContext, Width, Height);
     if OSError(
@@ -1160,6 +1181,16 @@ begin
     EndTextRender(TextLayout);
   end;
 
+  TM.tmPitchAndFamily := TRUETYPE_FONTTYPE;
+  { Heuristic for determining fixed pitch; "i" is typically small }
+  if BeginTextRender('i', 1, TextLayout) then
+    try
+      if TM.tmAveCharWidth = RoundFixed(TextLayout.TextAfter - TextLayout.TextBefore) then
+        TM.tmPitchAndFamily := TM.tmPitchAndFamily or FIXED_PITCH;
+    finally
+      EndTextRender(TextLayout);
+    end;
+
   TM.tmMaxCharWidth := TM.tmAscent; // TODO: don't know how to determine this right
   TM.tmOverhang := 0;
   TM.tmDigitizedAspectX := 0;
@@ -1187,7 +1218,6 @@ begin
   TM.tmStruckOut := Byte(B);
 
   // TODO: get these from font
-  TM.tmPitchAndFamily := FIXED_PITCH or TRUETYPE_FONTTYPE;
   TM.tmCharSet := DEFAULT_CHARSET;
 
   Result := True;
@@ -1228,40 +1258,45 @@ procedure TCarbonDeviceContext.LineTo(X, Y: Integer);
 var
   deltaX, deltaY, absDeltaX, absDeltaY: Integer;
   clipDeltaX, clipDeltaY: Float32;
-  tx,ty:Float32;
+  tx, ty, bx, by: Float32;
 begin
-  deltaX := X - PenPos.x;
-  deltaY := Y - PenPos.y;
+  bx := FPenPos.x;
+  by := FPenPos.y;
+  deltaX := X - FPenPos.x;
+  deltaY := Y - FPenPos.y;
   if (deltaX=0) and (deltaY=0) then Exit;
 
   absDeltaX := Abs(deltaX);
   absDeltaY := Abs(deltaY);
+
   if (absDeltaX<=1) and (absDeltaY<=1) then
   begin
     // special case for 1-pixel lines
-    tx := FPenPos.x + 0.55;
-    ty := FPenPos.y + 0.55;
+    tx := bx + 0.05 * deltaX;
+    ty := by + 0.05 * deltaY;
   end
   else
   begin
-    // exclude the last pixel from the line
+    // correct start/end coordinates
     if absDeltaX > absDeltaY then
     begin
-      if deltaX > 0 then clipDeltaX := -1.0 else clipDeltaX := 1.0;
+      if deltaX > 0 then clipDeltaX := -0.5 else clipDeltaX := 0.5;
       clipDeltaY := clipDeltaX * deltaY / deltaX;
     end
     else
     begin
-      if deltaY > 0 then clipDeltaY := -1.0 else clipDeltaY := 1.0;
+      if deltaY > 0 then clipDeltaY := -0.5 else clipDeltaY := 0.5;
       clipDeltaX := clipDeltaY * deltaX / deltaY;
     end;
-    tx := X + clipDeltaX + 0.5;
-    ty := Y + clipDeltaY + 0.5;
+    bx := bx + clipDeltaX;
+    by := by + clipDeltaY;
+    tx := X + clipDeltaX;
+    ty := Y + clipDeltaY;
   end;
 
   CGContextBeginPath(CGContext);
-  CGContextMoveToPoint(CGContext, PenPos.x + 0.5, PenPos.y + 0.5);
-  CGContextAddLineToPoint(CGContext, tx, ty);
+  CGContextMoveToPoint(CGContext, bx + 0.5, by + 0.5);
+  CGContextAddLineToPoint(CGContext, tx + 0.5, ty + 0.5);
   CGContextStrokePath(CGContext);
 
   FPenPos.x := X;
@@ -1270,12 +1305,12 @@ end;
 
 {------------------------------------------------------------------------------
   Method:  TCarbonDeviceContext.PolyBezier
-  Params:  Points    - Points defining the cubic Bézier curve
+  Params:  Points    - Points defining the cubic BÃ©zier curve
            NumPts    - Number of points passed
            Filled    - Fill the drawed shape
-           Continous - Connect Bézier curves
+           Continous - Connect BÃ©zier curves
 
-  Draws a cubic Bézier curves. The first curve is drawn from the first point to
+  Draws a cubic BÃ©zier curves. The first curve is drawn from the first point to
   the fourth point with the second and third points being the control points.
  ------------------------------------------------------------------------------}
 procedure TCarbonDeviceContext.PolyBezier(Points: PPoint; NumPts: Integer;
@@ -1423,9 +1458,14 @@ begin
   R.size.width := R.size.width - 1;
   R.size.height := R.size.height - 1;
 
-  CGContextBeginPath(CGContext);
-  CGContextAddRect(CGContext, R);
-  CGContextDrawPath(CGContext, kCGPathFillStroke);
+  CurrentBrush.Apply(Self, false); // apply current brush
+  try
+    CGContextBeginPath(CGContext);
+    CGContextAddRect(CGContext, R);
+    CGContextDrawPath(CGContext, kCGPathFillStroke);
+  finally
+    CurrentBrush.Apply(Self);
+  end;
 end;
 
 {------------------------------------------------------------------------------
@@ -1493,6 +1533,9 @@ begin
 
   if Image = nil then Exit;
 
+  //apply window offset
+  XSrc := XSrc - SrcDC.WindowOfs.X;
+  YSrc := YSrc - SrcDC.WindowOfs.Y;
   DstRect := CGRectMake(X, Y, Abs(Width), Abs(Height));
 
   SubMask := (Msk <> nil)
@@ -1527,7 +1570,7 @@ begin
     if not UseLayer then
     begin
       // Normal drawing
-      Result := DrawCGImage(X, Y, Width, Height, Image);
+      Result := DrawCGImage(X, Y, Width, Height, Image, GetBlendModeFromROP(Rop));
     end
     else
     begin
@@ -1704,6 +1747,13 @@ begin
 
   FOwner := AOwner;
   Reset;
+end;
+
+function TCarbonControlContext.IsInClipRegion(ARect: TRect): Boolean;
+begin
+  Result := True;
+  if ClipShapeRef <> nil then
+    Result := HIShapeIntersectsRect(ClipShapeRef, RectToCGRect(ARect));
 end;
 
 { TCarbonBitmapContext }

@@ -1,11 +1,11 @@
-{ $Id: watchpropertydlg.pp 50485 2015-11-23 17:15:54Z juha $ }
+{ $Id: watchpropertydlg.pp 57196 2018-01-31 00:05:27Z martin $ }
 {               ----------------------------------------------
                  watchproperydlg.pp  -  property editor for 
                                         watches
                 ----------------------------------------------
 
  @created(Fri Dec 14st WET 2001)
- @lastmod($Date: 2015-11-23 18:15:54 +0100 (Mo, 23 Nov 2015) $)
+ @lastmod($Date: 2018-01-31 01:05:27 +0100 (Mi, 31 Jan 2018) $)
  @author(Shane Miller)
  @author(Marc Weustink <marc@@dommelstein.net>)
 
@@ -27,7 +27,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -39,7 +39,7 @@ unit WatchPropertyDlg;
 interface
 
 uses
-  Classes, sysutils, Forms, StdCtrls, Extctrls, ButtonPanel, LazarusIDEStrConsts,
+  Classes, SysUtils, Forms, StdCtrls, Extctrls, ButtonPanel, LazarusIDEStrConsts,
   IDEHelpIntf, DbgIntfDebuggerBase, Debugger, BaseDebugManager, DebuggerStrConst;
 
 type
@@ -76,10 +76,10 @@ implementation
 
 procedure TWatchPropertyDlg.btnOKClick(Sender: TObject);
 const
-  StyleToDispFormat: Array [0..8] of TWatchDisplayFormat =
+  StyleToDispFormat: Array [0..9] of TWatchDisplayFormat =
     (wdfChar, wdfString, wdfDecimal,
      wdfHex, wdfUnsigned, wdfPointer,
-     wdfStructure, wdfDefault, wdfMemDump
+     wdfStructure, wdfDefault, wdfMemDump, wdfBinary
     );
 begin
   if FWatch = nil
@@ -116,7 +116,8 @@ const
      0, 1, //wdfChar, wdfString,
      2, 4, //wdfDecimal, wdfUnsigned, (TODO unsigned)
      7, 3, //wdfFloat, wdfHex,
-     5, 8   //wdfPointer, wdfMemDump
+     5, 8, //wdfPointer, wdfMemDump
+     9     //wdfBinary
     );
 begin
   FWatch := AWatch;
@@ -158,7 +159,8 @@ begin
   rgStyle.Items[6]:= lisRecordStruct;
   rgStyle.Items[7]:= lisDefault;
   rgStyle.Items[8]:= lisMemoryDump;
-  //rgStyle.Items[9]:= lisFloatingPoin;
+  rgStyle.Items[9]:= lisBinary;
+  //rgStyle.Items[10]:= lisFloatingPoin;
 
   ButtonPanel.OKButton.Caption:=lisMenuOk;
   ButtonPanel.HelpButton.Caption:=lisMenuHelp;

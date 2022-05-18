@@ -26,17 +26,15 @@ interface
 
 uses
   {$IFDEF Darwin}MacOSAll, {$ENDIF}
-  {$IFDEF win32}
-  //Win9xWsManager, // Support for Lower/UpperWideStringProc on Win9x, also used by some Utf8 string handling functions
-  {$ENDIF}
-  {$IFnDEF WithOldDebugln} LazLogger, {$ENDIF}
-  Classes, SysUtils, Math, TypInfo, Types, FPCAdds, AvgLvlTree, LazFileUtils,
-  LCLStrConsts, LCLType, WSReferences, LazMethodList, LazUTF8, LazUTF8Classes;
+  Classes, SysUtils, Math, TypInfo, Types, Laz_AVL_Tree,
+  // LazUtils
+  FPCAdds, LazFileUtils, LazUtilities, LazMethodList, LazUTF8, LazUTF8Classes,
+  LazLoggerBase, LazTracer,
+  // LCL
+  LCLStrConsts, LCLType;
 
 type
   TMethodList = LazMethodList.TMethodList;
-
-  TStackTracePointers = array of Pointer;
 
   { TDebugLCLItemInfo }
 
@@ -55,7 +53,7 @@ type
 
   TDebugLCLItems = class
   private
-    FItems: TAvgLvlTree;// tree of TDebugLCLItemInfo
+    FItems: TAvlTree;// tree of TDebugLCLItemInfo
     FName: string;
   public
     constructor Create(const TheName: string);
@@ -70,12 +68,6 @@ type
     property Name: string read FName;
   end;
 
-  TLineInfoCacheItem = record
-    Addr: Pointer;
-    Info: string;
-  end;
-  PLineInfoCacheItem = ^TLineInfoCacheItem;
-
 {$IFDEF DebugLCLComponents}
 var
   DebugLCLComponents: TDebugLCLItems = nil;
@@ -83,9 +75,6 @@ var
 
 function CompareDebugLCLItemInfos(Data1, Data2: Pointer): integer;
 function CompareItemWithDebugLCLItemInfo(Item, DebugItemInfo: Pointer): integer;
-
-function CompareLineInfoCacheItems(Data1, Data2: Pointer): integer;
-function CompareAddrWithLineInfoCacheItem(Addr, Item: Pointer): integer;
 
 
 type
@@ -100,8 +89,10 @@ function GetEnumValueDef(TypeInfo: PTypeInfo; const Name: string;
 
 function KeyAndShiftStateToKeyString(Key: word; ShiftState: TShiftState): String;
 function KeyStringIsIrregular(const s: string): boolean;
-function ShortCutToText(ShortCut: TShortCut): string;// untranslated
-function TextToShortCut(const ShortCutText: string): TShortCut;// untranslated
+function ShortCutToText(ShortCut: TShortCut): string;// localized output
+function ShortCutToTextRaw(ShortCut: TShortCut): string;// NOT localized output
+function TextToShortCut(const ShortCutText: string): TShortCut;// localized input
+function TextToShortCutRaw(const ShortCutText: string): TShortCut;// NOT localized input
 
 function GetCompleteText(const sText: string; iSelStart: Integer;
   bCaseSensitive, bSearchAscending: Boolean; slTextList: TStrings): string;
@@ -139,14 +130,13 @@ procedure CalculateLeftTopWidthHeight(X1,Y1,X2,Y2: integer;
   out Left,Top,Width,Height: integer);
 
 function DeleteAmpersands(var Str : String) : Longint;
-function BreakString(const s: string; MaxLineLength, Indent: integer): string;
 
-function ComparePointers(p1, p2: Pointer): integer;
+function ComparePointers(p1, p2: Pointer): integer; inline;
 function CompareHandles(h1, h2: THandle): integer;
-function CompareLCLHandles(h1, h2: TLCLHandle): integer;
 function CompareRect(R1, R2: PRect): Boolean;
 function ComparePoints(const p1, p2: TPoint): integer;
-function CompareMethods(const m1, m2: TMethod): boolean;
+function CompareCaret(const FirstCaret, SecondCaret: TPoint): integer;
+function CompareMethods(const m1, m2: TMethod): boolean; inline;
 
 function RoundToInt(const e: Extended): integer;
 function RoundToCardinal(const e: Extended): cardinal;
@@ -154,17 +144,8 @@ function TruncToInt(const e: Extended): integer;
 function TruncToCardinal(const e: Extended): cardinal;
 function StrToDouble(const s: string): double;
 
-
-// debugging
-procedure RaiseGDBException(const Msg: string);
-procedure RaiseAndCatchException;
-procedure DumpExceptionBackTrace;
-procedure DumpStack;
-function GetStackTrace(UseCache: boolean): string;
-procedure GetStackTracePointers(var AStack: TStackTracePointers);
-function StackTraceAsString(const AStack: TStackTracePointers;
-                            UseCache: boolean): string;
-function GetLineInfo(Addr: Pointer; UseCache: boolean): string;
+// Call debugging procedure in LazLoggerBase.
+procedure RaiseGDBException(const Msg: string); inline;
 
 {$IFnDEF WithOldDebugln}
 procedure DbgOut(const s: string = ''); inline; overload;
@@ -265,7 +246,6 @@ procedure DbgOut(const s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12: string); overload
 procedure CloseDebugOutput;
 {$ENDIF}
 
-function ConvertLineEndings(const s: string): string; inline;
 function DbgS(const c: cardinal): string; overload; inline;
 function DbgS(const i: longint): string; overload; inline;
 function DbgS(const i: int64): string; overload; inline;
@@ -334,65 +314,11 @@ function UTF16Length(p: PWideChar; WordCount: PtrInt): PtrInt;
 function UTF16CharacterToUnicode(p: PWideChar; out CharLen: integer): Cardinal;
 function UnicodeToUTF16(u: cardinal): UTF16String;
 
-{$IFnDEF DisableWrapperFunctions}
-function UTF8CharacterLength(p: PChar): integer; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8Length(const s: string): PtrInt; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8Length(p: PChar; ByteCount: PtrInt): PtrInt; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8CharacterToUnicode(p: PChar; out CharLen: integer): Cardinal; inline; deprecated 'Use the function in LazUTF8 unit';
-function UnicodeToUTF8(u: cardinal; Buf: PChar): integer; inline; deprecated 'Use the function in LazUTF8 unit';
-function UnicodeToUTF8SkipErrors(u: cardinal; Buf: PChar): integer; inline; deprecated 'Use the function in LazUTF8 unit';
-function UnicodeToUTF8(u: cardinal): shortstring; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8ToDoubleByteString(const s: string): string; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8ToDoubleByte(UTF8Str: PChar; Len: PtrInt; DBStr: PByte): PtrInt; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8FindNearestCharStart(UTF8Str: PChar; Len: integer;
-                                  BytePos: integer): integer; inline; deprecated 'Use the function in LazUTF8 unit';
-// find the n-th UTF8 character, ignoring BIDI
-function UTF8CharStart(UTF8Str: PChar; Len, CharIndex: PtrInt): PChar; inline; deprecated 'Use the function in LazUTF8 unit';
-// find the byte index of the n-th UTF8 character, ignoring BIDI (byte len of substr)
-function UTF8CharToByteIndex(UTF8Str: PChar; Len, CharIndex: PtrInt): PtrInt; inline; deprecated 'Use the function in LazUTF8 unit';
-procedure UTF8FixBroken(P: PChar); inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8CharacterStrictLength(P: PChar): integer; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8CStringToUTF8String(SourceStart: PChar; SourceLen: PtrInt) : string; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8Pos(const SearchForText, SearchInText: string): PtrInt; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8Copy(const s: string; StartCharIndex, CharCount: PtrInt): string; inline; deprecated 'Use the function in LazUTF8 unit';
-procedure UTF8Delete(var s: String; StartCharIndex, CharCount: PtrInt); inline; deprecated 'Use the function in LazUTF8 unit';
-procedure UTF8Insert(const source: String; var s: string; StartCharIndex: PtrInt); inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8LowerCase(const s: String): String; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8UpperCase(const s: String): String; inline; deprecated 'Use the function in LazUTF8 unit';
-function FindInvalidUTF8Character(p: PChar; Count: PtrInt;
-                                  StopOnNonASCII: Boolean = true): PtrInt; inline; deprecated 'Use the function in LazUTF8 unit';
-function ValidUTF8String(const s: String): String; inline; deprecated 'Use the function in LazUTF8 unit';
-
-procedure AssignUTF8ListToAnsi(UTF8List, AnsiList: TStrings); inline; deprecated 'Use the function in LazUTF8 unit';
-
-//compare functions
-
-function UTF8CompareStr(const S1, S2: String): Integer; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF8CompareText(const S1, S2: String): Integer; inline; deprecated 'Use the function in LazUTF8 unit';
-
-type
-  TConvertResult = LazUTF8.TConvertResult;
-  TConvertOption = LazUTF8.TConvertOption;
-  TConvertOptions = LazUTF8.TConvertOptions;
-
-function ConvertUTF8ToUTF16(Dest: PWideChar; DestWideCharCount: SizeUInt;
-  Src: PChar; SrcCharCount: SizeUInt; Options: TConvertOptions;
-  out ActualWideCharCount: SizeUInt): TConvertResult; inline; deprecated 'Use the function in LazUTF8 unit';
-
-function ConvertUTF16ToUTF8(Dest: PChar; DestCharCount: SizeUInt;
-  Src: PWideChar; SrcWideCharCount: SizeUInt; Options: TConvertOptions;
-  out ActualCharCount: SizeUInt): TConvertResult; inline; deprecated 'Use the function in LazUTF8 unit';
-
-function UTF8ToUTF16(const S: AnsiString): UTF16String; inline; deprecated 'Use the function in LazUTF8 unit';
-function UTF16ToUTF8(const S: UTF16String): AnsiString; inline; deprecated 'Use the function in LazUTF8 unit';
-
-// locale
-procedure LCLGetLanguageIDs(var Lang, FallbackLang: String); inline; deprecated 'Use function LazGetLanguageIDs in LazUTF8 unit';
-{$ENDIF DisableWrapperFunctions}
-
 // identifier
 function CreateFirstIdentifier(const Identifier: string): string;
 function CreateNextIdentifier(const Identifier: string): string;
+// Font
+function IsFontNameDefault(const AName: string): boolean; inline;
 
 {$IFDEF WithOldDebugln}
 type
@@ -427,7 +353,6 @@ var
   DebugNestPrefix: PChar = nil;
   DebugNestAtBOL: Boolean;
   {$ENDIF}
-  LineInfoCache: TAvgLvlTree = nil;
 
 function DeleteAmpersands(var Str : String) : Longint;
 // Replace all &x with x
@@ -459,92 +384,272 @@ end;
 //-----------------------------------------------------------------------------
 // Keys and shortcuts
 
-type
-  TMenuKeyCap = (mkcBkSp, mkcTab, mkcEsc, mkcEnter, mkcSpace, mkcPgUp,
-    mkcPgDn, mkcEnd, mkcHome, mkcLeft, mkcUp, mkcRight, mkcDown, mkcIns,
-    mkcDel, mkcShift, mkcCtrl, mkcAlt, mkcMeta);
+const
+  // MS documentation:
+  // https://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx
+  //
+  // Note: ShortcutToText must ignore single key Ctrl, Alt, Shift, Win,
+  // so these items have empty str here
+  //
+  KeyCodeStrings: array[0..$FF] of string = (
+    'Unknown',
+    'Mouse_Left', // 0x1 - VK_LBUTTON
+    'Mouse_Right', // 0x2 - VK_RBUTTON
+    'Cancel', // 0x3 - VK_CANCEL - generated by Ctrl+Break
+    'Mouse_Middle', // 0x4 - VK_MBUTTON
+    'Mouse_X1', // 0x5 - VK_XBUTTON1
+    'Mouse_X2', // 0x6 - VK_XBUTTON2
+    '', // 0x7
+    'Backspace', // 0x8 - VK_BACK
+    'Tab', // 0x9 - VK_TAB
+    '', // 0xa
+    '', // 0xb
+    'NumClear', // 0xc - VK_CLEAR - generated by Num5 (NumLock off)
+    'Enter', // 0xd - VK_RETURN
+    '', // 0xe
+    '', // 0xf
+    '', //'Shift', // 0x10 - VK_SHIFT
+    '', //'Ctrl', // 0x11 - VK_CONTROL
+    '', //'Alt', // 0x12 - VK_MENU
+    'Break', // 0x13 - VK_PAUSE - Pause/Break key
+    'CapsLock', // 0x14 - VK_CAPITAL
+    'IME_Kana', // 0x15 - VK_KANA
+    '', // 0x16
+    'IME_Junja', // 0x17 - VK_JUNJA
+    'IME_final', // 0x18 - VK_FINAL
+    'IME_Hanja', // 0x19 - VK_HANJA
+    '', // 0x1a
+    'Esc', // 0x1b - VK_ESCAPE
+    'IME_convert', // 0x1c - VK_CONVERT
+    'IME_nonconvert', // 0x1d - VK_NONCONVERT
+    'IME_accept', // 0x1e - VK_ACCEPT
+    'IME_mode_change', // 0x1f - VK_MODECHANGE
+    'Space', // 0x20 - VK_SPACE
+    'PgUp', // 0x21 - VK_PRIOR
+    'PgDown', // 0x22 - VK_NEXT
+    'End', // 0x23 - VK_END
+    'Home', // 0x24 - VK_HOME
+    'Left', // 0x25 - VK_LEFT
+    'Up', // 0x26 - VK_UP
+    'Right', // 0x27 - VK_RIGHT
+    'Down', // 0x28 - VK_DOWN
+    'Select', // 0x29 - VK_SELECT
+    'Print', // 0x2a - VK_PRINT
+    'Execute', // 0x2b - VK_EXECUTE
+    'PrintScreen', // 0x2c - VK_SNAPSHOT
+    'Ins', // 0x2d - VK_INSERT
+    'Del', // 0x2e - VK_DELETE
+    'Help', // 0x2f - VK_HELP
+    '0', // 0x30
+    '1', // 0x31
+    '2', // 0x32
+    '3', // 0x33
+    '4', // 0x34
+    '5', // 0x35
+    '6', // 0x36
+    '7', // 0x37
+    '8', // 0x38
+    '9', // 0x39
+    '', // 0x3a
+    '', // 0x3b
+    '', // 0x3c
+    '', // 0x3d
+    '', // 0x3e
+    '', // 0x3f
+    '', // 0x40
+    'A', // 0x41
+    'B', // 0x42
+    'C', // 0x43
+    'D', // 0x44
+    'E', // 0x45
+    'F', // 0x46
+    'G', // 0x47
+    'H', // 0x48
+    'I', // 0x49
+    'J', // 0x4a
+    'K', // 0x4b
+    'L', // 0x4c
+    'M', // 0x4d
+    'N', // 0x4e
+    'O', // 0x4f
+    'P', // 0x50
+    'Q', // 0x51
+    'R', // 0x52
+    'S', // 0x53
+    'T', // 0x54
+    'U', // 0x55
+    'V', // 0x56
+    'W', // 0x57
+    'X', // 0x58
+    'Y', // 0x59
+    'Z', // 0x5a
+    '', //'LWindows', // 0x5b - VK_LWIN
+    '', //'RWindows', // 0x5c - VK_RWIN
+    'PopUp', // 0x5d - VK_APPS - PC, key near right Ctrl
+    '', // 0x5e
+    'Sleep', // 0x5f - VK_SLEEP
+    'Num0', // 0x60 - VK_NUMPAD0
+    'Num1', // 0x61
+    'Num2', // 0x62
+    'Num3', // 0x63
+    'Num4', // 0x64
+    'Num5', // 0x65
+    'Num6', // 0x66
+    'Num7', // 0x67
+    'Num8', // 0x68
+    'Num9', // 0x69 - VK_NUMPAD9
+    'NumMul', // 0x6a - VK_MULTIPLY
+    'NumPlus', // 0x6b - VK_ADD
+    'NumSepar', // 0x6c - VK_SEPARATOR
+    'NumMinus', // 0x6d - VK_SUBTRACT
+    'NumDot', // 0x6e - VK_DECIMAL
+    'NumDiv', // 0x6f - VK_DIVIDE
+    'F1', // 0x70 - VK_F1
+    'F2', // 0x71
+    'F3', // 0x72
+    'F4', // 0x73
+    'F5', // 0x74
+    'F6', // 0x75
+    'F7', // 0x76
+    'F8', // 0x77
+    'F9', // 0x78
+    'F10', // 0x79
+    'F11', // 0x7a
+    'F12', // 0x7b
+    'F13', // 0x7c
+    'F14', // 0x7d
+    'F15', // 0x7e
+    'F16', // 0x7f
+    'F17', // 0x80
+    'F18', // 0x81
+    'F19', // 0x82
+    'F20', // 0x83
+    'F21', // 0x84
+    'F22', // 0x85
+    'F23', // 0x86
+    'F24', // 0x87 - VK_F24
+    '', // 0x88
+    '', // 0x89
+    '', // 0x8a
+    '', // 0x8b
+    '', // 0x8c
+    '', // 0x8d
+    '', // 0x8e
+    '', // 0x8f
+    'NumLock', // 0x90 - VK_NUMLOCK
+    'ScrollLock', // 0x91 - VK_SCROLL
+    'OEM_0x92', // 0x92
+    'OEM_0x93', // 0x93
+    'OEM_0x94', // 0x94
+    'OEM_0x95', // 0x95
+    'OEM_0x96', // 0x96
+    '', // 0x97
+    '', // 0x98
+    '', // 0x99
+    '', // 0x9a
+    '', // 0x9b
+    '', // 0x9c
+    '', // 0x9d
+    '', // 0x9e
+    '', // 0x9f
+    '', //'LShift', // 0xa0 - VK_LSHIFT
+    '', //'RShift', // 0xa1 - VK_RSHIFT
+    '', //'LCtrl', // 0xa2 - VK_LCONTROL
+    '', //'RCtrl', // 0xa3 - VK_RCONTROL
+    '', //'LAlt', // 0xa4 - VK_LMENU
+    '', //'RAlt', // 0xa5 - VK_RMENU
+    'BrowserBack', // 0xa6 - VK_BROWSER_BACK
+    'BrowserForward', // 0xa7 - VK_BROWSER_FORWARD
+    'BrowserRefresh', // 0xa8 - VK_BROWSER_REFRESH
+    'BrowserStop', // 0xa9 - VK_BROWSER_STOP
+    'BrowserSearch', // 0xaa - VK_BROWSER_SEARCH
+    'BrowserFav', // 0xab - VK_BROWSER_FAVORITES
+    'BrowserHome', // 0xac - VK_BROWSER_HOME
+    'VolumeMute', // 0xad - VK_VOLUME_MUTE
+    'VolumeDown', // 0xae - VK_VOLUME_DOWN
+    'VolumeUp', // 0xaf - VK_VOLUME_UP
+    'MediaNext', // 0xb0 - VK_MEDIA_NEXT_TRACK
+    'MediaPrev', // 0xb1 - VK_MEDIA_PREV_TRACK
+    'MediaStop', // 0xb2 - VK_MEDIA_STOP
+    'MediaPlayPause', // 0xb3 - VK_MEDIA_PLAY_PAUSE
+    'LaunchMail', // 0xb4 - VK_LAUNCH_MAIL
+    'LaunchMedia', // 0xb5 - VK_LAUNCH_MEDIA_SELECT
+    'LaunchApp1', // 0xb6 - VK_LAUNCH_APP1
+    'LaunchApp2', // 0xb7 - VK_LAUNCH_APP2
+    '', // 0xb8
+    '', // 0xb9
+    ';', // 0xba - VK_OEM_1 - Can vary by keyboard, US keyboard, the ';:' key
+    '+', // 0xbb - VK_OEM_PLUS - For any country/region, the '+' key
+    ',', // 0xbc - VK_OEM_COMMA - For any country/region, the ',' key
+    '-', // 0xbd - VK_OEM_MINUS - For any country/region, the '-' key
+    '.', // 0xbe - VK_OEM_PERIOD - For any country/region, the '.' key
+    '/', // 0xbf - VK_OEM_2 - Can vary by keyboard, US keyboard, the '/?' key
+    '`', // 0xc0 - VK_OEM_3 - Can vary by keyboard, US keyboard, the '`~' key
+    '', // 0xc1
+    '', // 0xc2
+    '', // 0xc3
+    '', // 0xc4
+    '', // 0xc5
+    '', // 0xc6
+    '', // 0xc7
+    '', // 0xc8
+    '', // 0xc9
+    '', // 0xca
+    '', // 0xcb
+    '', // 0xcc
+    '', // 0xcd
+    '', // 0xce
+    '', // 0xcf
+    '', // 0xd0
+    '', // 0xd1
+    '', // 0xd2
+    '', // 0xd3
+    '', // 0xd4
+    '', // 0xd5
+    '', // 0xd6
+    '', // 0xd7
+    '', // 0xd8
+    '', // 0xd9
+    '', // 0xda
+    '[', // 0xdb - VK_OEM_4 - Can vary by keyboard, US keyboard, the '[{' key
+    '\', // 0xdc - VK_OEM_5 - Can vary by keyboard, US keyboard, the '\|' key
+    ']', // 0xdd - VK_OEM_6 - Can vary by keyboard, US keyboard, the ']}' key
+    '''', // 0xde - VK_OEM_7 - Can vary by keyboard, US keyboard, the 'single-quote/double-quote' key
+    'OEM_8', // 0xdf - VK_OEM_8
+    '', // 0xe0
+    'OEM_0xE1', // 0xe1
+    '\', // 0xe2 - VK_OEM_102 - Either the angle bracket key or the backslash key on the RT 102-key keyboard
+    'OEM_0xE3', // 0xe3
+    'OEM_0xE4', // 0xe4
+    'IME_process', // 0xe5 - VK_PROCESSKEY
+    'OEM_0xE6', // 0xe6
+    'UnicodePacket', // 0xe7 - VK_PACKET
+    '', // 0xe8
+    'OEM_0xE9', // 0xe9
+    'OEM_0xEA', // 0xea
+    'OEM_0xEB', // 0xeb
+    'OEM_0xEC', // 0xec
+    'OEM_0xED', // 0xed
+    'OEM_0xEE', // 0xee
+    'OEM_0xEF', // 0xef
+    'OEM_0xF0', // 0xf0
+    'OEM_0xF1', // 0xf1
+    'OEM_0xF2', // 0xf2
+    'OEM_0xF3', // 0xf3
+    'OEM_0xF4', // 0xf4
+    'OEM_0xF5', // 0xf5
+    'Attn', // 0xf6 - VK_ATTN
+    'CrSel', // 0xf7 - VK_CRSEL
+    'ExSel', // 0xf8 - VK_EXSEL
+    'EraseEOF', // 0xf9 - VK_EREOF
+    'Play', // 0xfa - VK_PLAY
+    'Zoom', // 0xfb - VK_ZOOM
+    '', // 0xfc
+    'PA1', // 0xfd - VK_PA1
+    'OEM_Clear', // 0xfe - VK_OEM_CLEAR
+    '' // 0xff
+  );
 
-var
-  MenuKeyCaps: array[TMenuKeyCap] of string;
-  MenuKeyCapsInited: boolean = false;
-
-procedure InitializeMenuKeyCaps;
-begin
-  if MenuKeyCapsInited=false then
-  begin
-    MenuKeyCaps[mkcBkSp]:=SmkcBkSp;
-    MenuKeyCaps[mkcTab]:=SmkcTab;
-    MenuKeyCaps[mkcEsc]:=SmkcEsc;
-    MenuKeyCaps[mkcEnter]:=SmkcEnter;
-    MenuKeyCaps[mkcSpace]:=SmkcSpace;
-    MenuKeyCaps[mkcPgUp]:=SmkcPgUp;
-    MenuKeyCaps[mkcPgDn]:=SmkcPgDn;
-    MenuKeyCaps[mkcEnd]:=SmkcEnd;
-    MenuKeyCaps[mkcHome]:=SmkcHome;
-    MenuKeyCaps[mkcLeft]:=SmkcLeft;
-    MenuKeyCaps[mkcUp]:=SmkcUp;
-    MenuKeyCaps[mkcRight]:=SmkcRight;
-    MenuKeyCaps[mkcDown]:=SmkcDown;
-    MenuKeyCaps[mkcIns]:=SmkcIns;
-    MenuKeyCaps[mkcDel]:=SmkcDel;
-    MenuKeyCaps[mkcShift]:=SmkcShift;
-    MenuKeyCaps[mkcCtrl]:=SmkcCtrl;
-    MenuKeyCaps[mkcAlt]:=SmkcAlt;
-    MenuKeyCaps[mkcMeta]:=SmkcMeta;
-    MenuKeyCapsInited:=true;
-  end;
-end;
-
-function GetSpecialShortCutName(Key: integer): string;
-begin
-  Result := '';
-  case Key of
-    VK_CANCEL:     Result := 'Cancel'; //generated by Ctrl+Break
-    VK_CLEAR:      Result := 'NumClear'; //generated by Num5 (NumLock off)
-    VK_PAUSE:      Result := 'Break';
-    VK_CAPITAL:    Result := 'CapsLock';
-    VK_APPS:       Result := 'PopUp'; //PC, near right Ctrl
-    VK_MULTIPLY:   Result := 'NumMul';
-    VK_ADD:        Result := 'NumPlus';
-    VK_SUBTRACT:   Result := 'NumMinus';
-    VK_DECIMAL:    Result := 'NumDot';
-    VK_DIVIDE:     Result := 'NumDiv';
-    VK_NUMLOCK:    Result := 'NumLock';
-    VK_SCROLL:     Result := 'ScrollLock';
-    VK_OEM_1:      Result := ';'; // Can vary by keyboard, US keyboard, the ';:' key
-    VK_OEM_PLUS:   Result := '+'; // For any country/region, the '+' key
-    VK_OEM_COMMA:  Result := ','; // For any country/region, the ',' key
-    VK_OEM_MINUS:  Result := '-'; // For any country/region, the '-' key
-    VK_OEM_PERIOD: Result := '.'; // For any country/region, the '.' key
-    VK_OEM_2:      Result := '/'; // Can vary by keyboard, US keyboard, the '/?' key
-    VK_OEM_3:      Result := '`'; // Can vary by keyboard, US keyboard, the '`~' key
-    VK_OEM_4:      Result := '['; // Can vary by keyboard, US keyboard, the '[{' key
-    VK_OEM_5:      Result := '\'; // Can vary by keyboard, US keyboard, the '\|' key
-    VK_OEM_6:      Result := ']'; // Can vary by keyboard, US keyboard, the ']}' key
-    VK_OEM_7:      Result := ''''; // Can vary by keyboard, US keyboard, the 'single-quote/double-quote' key
-    VK_OEM_102:    Result := '\'; // Either the angle bracket key or the backslash key on the RT 102-key keyboard
-
-    //Windows keyboard special:
-    $A6: Result := 'BrowserBack';
-    $A7: Result := 'BrowserForward';
-    $A8: Result := 'BrowserRefresh';
-    $A9: Result := 'BrowserStop';
-    $AA: Result := 'BrowserSearch';
-    $AB: Result := 'BrowserFav';
-    $AC: Result := 'BrowserHome';
-    $AD: Result := 'VolumeMute';
-    $AE: Result := 'VolumeDown';
-    $AF: Result := 'VolumeUp';
-    $B0: Result := 'MediaNext';
-    $B1: Result := 'MediaPrev';
-    $B2: Result := 'MediaStop';
-    $B3: Result := 'MediaPlay';
-    $B4: Result := 'LaunchMail';
-    $B5: Result := 'LaunchMedia';
-    $B6: Result := 'LaunchApp1';
-    $B7: Result := 'LaunchApp2';
-  end;
-end;
 
 function CompareDebugLCLItemInfos(Data1, Data2: Pointer): integer;
 begin
@@ -557,23 +662,56 @@ begin
   Result:=ComparePointers(Item,TDebugLCLItemInfo(DebugItemInfo).Item);
 end;
 
-function CompareLineInfoCacheItems(Data1, Data2: Pointer): integer;
-begin
-  Result:=ComparePointers(PLineInfoCacheItem(Data1)^.Addr,
-                          PLineInfoCacheItem(Data2)^.Addr);
-end;
-
-function CompareAddrWithLineInfoCacheItem(Addr, Item: Pointer): integer;
-begin
-  Result:=ComparePointers(Addr,PLineInfoCacheItem(Item)^.Addr);
-end;
-
 function GetEnumValueDef(TypeInfo: PTypeInfo; const Name: string;
   const DefaultValue: Integer): Integer;
 begin
   Result:=GetEnumValue(TypeInfo,Name);
   if Result<0 then
     Result:=DefaultValue;
+end;
+
+function KeyCodeToKeyString(Key: TShortCut; Localized: boolean): string;
+begin
+  if Key <= High(KeyCodeStrings) then
+  begin
+    if Localized then
+      case Key of
+        VK_UNKNOWN: Result:=ifsVK_UNKNOWN;
+        VK_BACK: Result:=SmkcBkSp;
+        VK_TAB: Result:=SmkcTab;
+        VK_ESCAPE: Result:=SmkcEsc;
+        VK_RETURN: Result:=SmkcEnter;
+        VK_SPACE: Result:=SmkcSpace;
+        VK_PRIOR: Result:=SmkcPgUp;
+        VK_NEXT: Result:=SmkcPgDn;
+        VK_END: Result:=SmkcEnd;
+        VK_HOME: Result:=SmkcHome;
+        VK_LEFT: Result:=SmkcLeft;
+        VK_UP: Result:=SmkcUp;
+        VK_RIGHT: Result:=SmkcRight;
+        VK_DOWN: Result:=SmkcDown;
+        VK_INSERT: Result:=SmkcIns;
+        VK_DELETE: Result:=SmkcDel;
+        VK_HELP: Result:=ifsVK_HELP;
+        // must ignore single Shift, Alt, Ctrl in KeyCodeStrings
+        //VK_SHIFT: Result:=SmkcShift;
+        //VK_CONTROL: Result:=SmkcCtrl;
+        //VK_MENU: Result:=SmkcAlt;
+      otherwise
+        Result := KeyCodeStrings[Key];
+      end
+    else
+      Result := KeyCodeStrings[Key];
+  end
+  else
+    case Key of
+      scMeta: if Localized then Result:=SmkcMeta else Result:='Meta+';
+      scShift: if Localized then Result:=SmkcShift else Result:='Shift+';
+      scCtrl: if Localized then Result:=SmkcCtrl else Result:='Ctrl+';
+      scAlt: if Localized then Result:=SmkcAlt else Result:='Alt+';
+    otherwise
+      Result:='';
+    end;
 end;
 
 // Used also by TWidgetSet.GetAcceleratorString
@@ -586,79 +724,8 @@ function KeyAndShiftStateToKeyString(Key: word; ShiftState: TShiftState): String
     Result := Result + APart;
   end;
 
-  // Tricky routine. This only works for western languages
-  procedure AddKey;
-  begin
-    case Key of
-      VK_UNKNOWN    :AddPart(ifsVK_UNKNOWN);
-      VK_LBUTTON    :AddPart(ifsVK_LBUTTON);
-      VK_RBUTTON    :AddPart(ifsVK_RBUTTON);
-      VK_CANCEL     :AddPart(ifsVK_CANCEL);
-      VK_MBUTTON    :AddPart(ifsVK_MBUTTON);
-      VK_BACK       :AddPart(ifsVK_BACK);
-      VK_TAB        :AddPart(ifsVK_TAB);
-      VK_CLEAR      :AddPart(ifsVK_CLEAR);
-      VK_RETURN     :AddPart(ifsVK_RETURN);
-      VK_SHIFT      :AddPart(ifsVK_SHIFT);
-      VK_CONTROL    :AddPart(ifsVK_CONTROL);
-      VK_MENU       :AddPart(ifsVK_MENU);
-      VK_PAUSE      :AddPart(ifsVK_PAUSE);
-      VK_CAPITAL    :AddPart(ifsVK_CAPITAL);
-      VK_KANA       :AddPart(ifsVK_KANA);
-    //  VK_HANGUL     :AddPart('Hangul');
-      VK_JUNJA      :AddPart(ifsVK_JUNJA);
-      VK_FINAL      :AddPart(ifsVK_FINAL);
-      VK_HANJA      :AddPart(ifsVK_HANJA );
-    //  VK_KANJI      :AddPart('Kanji');
-      VK_ESCAPE     :AddPart(ifsVK_ESCAPE);
-      VK_CONVERT    :AddPart(ifsVK_CONVERT);
-      VK_NONCONVERT :AddPart(ifsVK_NONCONVERT);
-      VK_ACCEPT     :AddPart(ifsVK_ACCEPT);
-      VK_MODECHANGE :AddPart(ifsVK_MODECHANGE);
-      VK_SPACE      :AddPart(ifsVK_SPACE);
-      VK_PRIOR      :AddPart(ifsVK_PRIOR);
-      VK_NEXT       :AddPart(ifsVK_NEXT);
-      VK_END        :AddPart(ifsVK_END);
-      VK_HOME       :AddPart(ifsVK_HOME);
-      VK_LEFT       :AddPart(ifsVK_LEFT);
-      VK_UP         :AddPart(ifsVK_UP);
-      VK_RIGHT      :AddPart(ifsVK_RIGHT);
-      VK_DOWN       :AddPart(ifsVK_DOWN);
-      VK_SELECT     :AddPart(ifsVK_SELECT);
-      VK_PRINT      :AddPart(ifsVK_PRINT);
-      VK_EXECUTE    :AddPart(ifsVK_EXECUTE);
-      VK_SNAPSHOT   :AddPart(ifsVK_SNAPSHOT);
-      VK_INSERT     :AddPart(ifsVK_INSERT);
-      VK_DELETE     :AddPart(ifsVK_DELETE);
-      VK_HELP       :AddPart(ifsVK_HELP);
-      VK_0..VK_9    :AddPart(chr(ord('0')+Key-VK_0));
-      VK_A..VK_Z    :AddPart(chr(ord('A')+Key-VK_A));
-      VK_LWIN       :AddPart(ifsVK_LWIN);
-      VK_RWIN       :AddPart(ifsVK_RWIN);
-      VK_APPS       :AddPart(ifsVK_APPS);
-      VK_NUMPAD0..VK_NUMPAD9:  AddPart(Format(ifsVK_NUMPAD,[Key-VK_NUMPAD0]));
-      VK_MULTIPLY   :AddPart('*');
-      VK_ADD        :AddPart('+');
-      VK_OEM_PLUS   :AddPart('+');
-      VK_SEPARATOR  :AddPart('|');
-      VK_SUBTRACT   :AddPart('-');
-      VK_OEM_MINUS  :AddPart('-');
-      VK_DECIMAL    :AddPart('.');
-      VK_OEM_PERIOD :AddPart('.');
-      VK_OEM_COMMA  :AddPart(',');
-      VK_DIVIDE     :AddPart('/');
-      VK_F1..VK_F24: AddPart('F'+IntToStr(Key-VK_F1+1));
-      VK_NUMLOCK    :AddPart(ifsVK_NUMLOCK);
-      VK_SCROLL     :AddPart(ifsVK_SCROLL);
-      VK_OEM_2      :AddPart('OEM2');
-      VK_OEM_3      :AddPart('OEM3');
-//    VK_EQUAL      :AddPart('=');
-//    VK_AT         :AddPart('@');
-    else
-      AddPart(UNKNOWN_VK_PREFIX + IntToStr(Key) + UNKNOWN_VK_POSTFIX);
-    end;
-  end;
-
+var
+  s: string;
 begin
   Result := '';
   if ssCtrl in ShiftState then AddPart(ifsCtrl);
@@ -671,7 +738,12 @@ begin
     AddPart(ifsVK_META);
     {$ENDIF}
   if ssSuper in ShiftState then AddPart(ifsVK_SUPER);
-  AddKey;
+
+  s := KeyCodeToKeyString(Key, true);
+  // function returned "Word(nnn)" previously, keep this
+  if s = '' then
+    s := UNKNOWN_VK_PREFIX + IntToStr(Key) + UNKNOWN_VK_POSTFIX;
+  AddPart(s);
 end;
 
 function KeyStringIsIrregular(const s: string): boolean;
@@ -680,42 +752,33 @@ begin
     (AnsiStrLComp(PChar(s),PChar(UNKNOWN_VK_PREFIX),length(UNKNOWN_VK_PREFIX))=0);
 end;
 
-function ShortCutToText(ShortCut: TShortCut): string;
+function ShortCutToTextGeneric(ShortCut: TShortCut; Localized: boolean): string;
 var
   Name: string;
-  Key: Byte;
 begin
-  InitializeMenuKeyCaps;
-  Key := ShortCut and $FF;
-  case Key of
-    $08: Name := MenuKeyCaps[mkcBkSp]; //made code little nicer
-    $09: Name := MenuKeyCaps[mkcTab]; //made code little nicer
-    $0D: Name := MenuKeyCaps[mkcEnter];
-    $1B: Name := MenuKeyCaps[mkcEsc];
-    $20..$28:
-      Name := MenuKeyCaps[TMenuKeyCap(Ord(mkcSpace) + Key - $20)];
-    $2D..$2E:
-      Name := MenuKeyCaps[TMenuKeyCap(Ord(mkcIns) + Key - $2D)];
-    $30..$39: Name := Chr(Key - $30 + Ord('0'));
-    $41..$5A: Name := Chr(Key - $41 + Ord('A'));
-    $60..$69: Name := 'Num' + Chr(Key - $60 + Ord('0')); //Delphi differs it from 0..9
-    $70..$87: Name := 'F' + IntToStr(Key - $6F);
-  else
-    Name := GetSpecialShortCutName(Key); //need Key, not shortcut
-  end;
+  Result := '';
+  Name := KeyCodeToKeyString(ShortCut and $FF, Localized);
   if Name <> '' then
   begin
-    Result := '';
-    if ShortCut and scShift <> 0 then Result := Result + MenuKeyCaps[mkcShift];
-    if ShortCut and scCtrl <> 0 then Result := Result + MenuKeyCaps[mkcCtrl];
-    if ShortCut and scMeta <> 0 then Result := Result + MenuKeyCaps[mkcMeta];
-    if ShortCut and scAlt <> 0 then Result := Result + MenuKeyCaps[mkcAlt];
+    if ShortCut and scShift <> 0 then Result := Result + KeyCodeToKeyString(scShift, Localized);
+    if ShortCut and scCtrl <> 0 then Result := Result + KeyCodeToKeyString(scCtrl, Localized);
+    if ShortCut and scMeta <> 0 then Result := Result + KeyCodeToKeyString(scMeta, Localized);
+    if ShortCut and scAlt <> 0 then Result := Result + KeyCodeToKeyString(scAlt, Localized);
     Result := Result + Name;
-  end
-  else Result := '';
+  end;
 end;
 
-function TextToShortCut(const ShortCutText: string): TShortCut;
+function ShortCutToText(ShortCut: TShortCut): string;
+begin
+  Result:=ShortCutToTextGeneric(ShortCut, true);
+end;
+
+function ShortCutToTextRaw(ShortCut: TShortCut): string;
+begin
+  Result:=ShortCutToTextGeneric(ShortCut, false);
+end;
+
+function TextToShortCutGeneric(const ShortCutText: string; Localized: boolean): TShortCut;
 
   function CompareFront(var StartPos: integer; const Front: string): Boolean;
   begin
@@ -735,27 +798,28 @@ var
   Name: string;
 begin
   Result := 0;
+  if ShortCutText = '' then Exit;
   Shift := 0;
-  StartPos:=1;
-  InitializeMenuKeyCaps;
+  StartPos := 1;
   while True do
   begin
-    if CompareFront(StartPos, MenuKeyCaps[mkcShift]) then
+    if CompareFront(StartPos, KeyCodeToKeyString(scShift, Localized)) then
       Shift := Shift or scShift
     else if CompareFront(StartPos, '^') then
       Shift := Shift or scCtrl
-    else if CompareFront(StartPos, MenuKeyCaps[mkcCtrl]) then
+    else if CompareFront(StartPos, KeyCodeToKeyString(scCtrl, Localized)) then
       Shift := Shift or scCtrl
-    else if CompareFront(StartPos, MenuKeyCaps[mkcAlt]) then
+    else if CompareFront(StartPos, KeyCodeToKeyString(scAlt, Localized)) then
       Shift := Shift or scAlt
-    else if CompareFront(StartPos, MenuKeyCaps[mkcMeta]) then
+    else if CompareFront(StartPos, KeyCodeToKeyString(scMeta, Localized)) then
       Shift := Shift or scMeta
     else
       Break;
   end;
-  if ShortCutText = '' then Exit;
-  for Key := $08 to $FF do begin { Copy range from table in ShortCutToText }
-    Name:=ShortCutToText(Key);
+
+  for Key := Low(KeyCodeStrings) to High(KeyCodeStrings) do
+  begin
+    Name := KeyCodeToKeyString(Key, Localized);
     if (Name<>'') and (length(Name)=length(ShortCutText)-StartPos+1)
     and (AnsiStrLIComp(@ShortCutText[StartPos], PChar(Name), length(Name)) = 0)
     then begin
@@ -763,6 +827,16 @@ begin
       Exit;
     end;
   end;
+end;
+
+function TextToShortCut(const ShortCutText: string): TShortCut;
+begin
+  Result:=TextToShortCutGeneric(ShortCutText, true);
+end;
+
+function TextToShortCutRaw(const ShortCutText: string): TShortCut;
+begin
+  Result:=TextToShortCutGeneric(ShortCutText, false);
 end;
 
 function GetCompleteText(const sText: string; iSelStart: Integer;
@@ -774,9 +848,9 @@ function GetCompleteText(const sText: string; iSelStart: Integer;
     sTempText: string;
   begin
     Result := False;
-    sTempText := LazUTF8.UTF8Copy(sCompareText, 1, iStart);
+    sTempText := UTF8Copy(sCompareText, 1, iStart);
     if not bCaseSensitive then
-      sTempText := LazUTF8.UTF8UpperCase(sTempText);
+      sTempText := UTF8UpperCase(sTempText);
     if (sTempText = sPrefix) then
     begin
       ResultText := sCompareText;
@@ -793,9 +867,9 @@ begin
   if (sText = '') then Exit;//Everything is compatible with nothing, Exit.
   if (iSelStart = 0) then Exit;//Cursor at beginning
   if (slTextList.Count = 0) then Exit;//No text list to search for idtenticals, Exit.
-  sPrefixText := LazUTF8.UTF8Copy(sText, 1, iSelStart);//Get text from beginning to cursor position.
+  sPrefixText := UTF8Copy(sText, 1, iSelStart);//Get text from beginning to cursor position.
   if not bCaseSensitive then
-    sPrefixText := LazUTF8.UTF8UpperCase(sPrefixText);
+    sPrefixText := UTF8UpperCase(sPrefixText);
   if bSearchAscending then
   begin
     for i := 0 to slTextList.Count - 1 do
@@ -852,11 +926,7 @@ end;
 
 procedure FreeThenNil(var obj);
 begin
-  if Pointer(obj) <> nil then 
-  begin
-    TObject(obj).Free;
-    Pointer(obj) := nil;
-  end;
+  LazUtilities.FreeThenNil(obj);
 end;
 
 procedure RegisterInterfaceInitializationHandler(p: TProcedure);
@@ -883,143 +953,6 @@ var
 begin
   for i:=InterfaceFinalizationHandlers.Count-1 downto 0 do
     TProcedure(InterfaceFinalizationHandlers[i])();
-end;
-
-{------------------------------------------------------------------------------
-  procedure RaiseGDBException(const Msg: string);
-
-  Raises an exception.
-  Normally gdb does not catch fpc Exception objects, therefore this procedure
-  raises a standard "division by zero" exception which is catched by gdb.
-  This allows one to stop a program, without extra gdb configuration.
- ------------------------------------------------------------------------------}
-procedure RaiseGDBException(const Msg: string);
-begin
-  debugln(rsERRORInLCL, Msg);
-  // creates an exception, that gdb catches:
-  debugln(rsCreatingGdbCatchableError);
-  DumpStack;
-  if (length(Msg) div (length(Msg) div 10000))=0 then ;
-end;
-
-procedure RaiseAndCatchException;
-begin
-  try
-    if (length(rsERRORInLCL) div (length(rsERRORInLCL) div 10000))=0 then ;
-  except
-  end;
-end;
-
-procedure DumpAddr(Addr: Pointer);
-begin
-  // preventing another exception, while dumping stack trace
-  try
-    DebugLn(BackTraceStrFunc(Addr));
-  except
-    DebugLn(SysBackTraceStr(Addr));
-  end;
-end;
-
-procedure DumpExceptionBackTrace;
-var
-  FrameCount: integer;
-  Frames: PPointer;
-  FrameNumber:Integer;
-begin
-  DebugLn('  Stack trace:');
-  DumpAddr(ExceptAddr);
-  FrameCount:=ExceptFrameCount;
-  Frames:=ExceptFrames;
-  for FrameNumber := 0 to FrameCount-1 do
-    DumpAddr(Frames[FrameNumber]);
-end;
-
-function GetStackTrace(UseCache: boolean): string;
-var
-  bp: Pointer;
-  addr: Pointer;
-  oldbp: Pointer;
-  CurAddress: Shortstring;
-begin
-  Result:='';
-  { retrieve backtrace info }
-  bp:=get_caller_frame(get_frame);
-  while bp<>nil do begin
-    addr:=get_caller_addr(bp);
-    CurAddress:=GetLineInfo(addr,UseCache);
-    //DebugLn('GetStackTrace ',CurAddress);
-    Result:=Result+CurAddress+LineEnding;
-    oldbp:=bp;
-    bp:=get_caller_frame(bp);
-    if (bp<=oldbp) or (bp>(StackBottom + StackLength)) then
-      bp:=nil;
-  end;
-end;
-
-procedure GetStackTracePointers(var AStack: TStackTracePointers);
-var
-  Depth: Integer;
-  bp: Pointer;
-  oldbp: Pointer;
-begin
-  // get stack depth
-  Depth:=0;
-  bp:=get_caller_frame(get_frame);
-  while bp<>nil do begin
-    inc(Depth);
-    oldbp:=bp;
-    bp:=get_caller_frame(bp);
-    if (bp<=oldbp) or (bp>(StackBottom + StackLength)) then
-      bp:=nil;
-  end;
-  SetLength(AStack,Depth);
-  if Depth>0 then begin
-    Depth:=0;
-    bp:=get_caller_frame(get_frame);
-    while bp<>nil do begin
-      AStack[Depth]:=get_caller_addr(bp);
-      inc(Depth);
-      oldbp:=bp;
-      bp:=get_caller_frame(bp);
-      if (bp<=oldbp) or (bp>(StackBottom + StackLength)) then
-        bp:=nil;
-    end;
-  end;
-end;
-
-function StackTraceAsString(const AStack: TStackTracePointers;
-  UseCache: boolean): string;
-var
-  i: Integer;
-  CurAddress: String;
-begin
-  Result:='';
-  for i:=0 to length(AStack)-1 do begin
-    CurAddress:=GetLineInfo(AStack[i],UseCache);
-    Result:=Result+CurAddress+LineEnding;
-  end;
-end;
-
-function GetLineInfo(Addr: Pointer; UseCache: boolean): string;
-var
-  ANode: TAvgLvlTreeNode;
-  Item: PLineInfoCacheItem;
-begin
-  if UseCache then begin
-    if LineInfoCache=nil then
-      LineInfoCache:=TAvgLvlTree.Create(@CompareLineInfoCacheItems);
-    ANode:=LineInfoCache.FindKey(Addr,@CompareAddrWithLineInfoCacheItem);
-    if ANode=nil then begin
-      Result:=BackTraceStrFunc(Addr);
-      New(Item);
-      Item^.Addr:=Addr;
-      Item^.Info:=Result;
-      LineInfoCache.Add(Item);
-    end else begin
-      Result:=PLineInfoCacheItem(ANode.Data)^.Info;
-    end;
-  end else
-    Result:=BackTraceStrFunc(Addr);
 end;
 
 procedure MoveRect(var ARect: TRect; x, y: Integer);
@@ -1092,106 +1025,12 @@ begin
   end;
 end;
 
-function BreakString(const s: string; MaxLineLength, Indent: integer): string;
-var
-  SrcLen: Integer;
-  APos: Integer;
-  Src: String;
-  SplitPos: Integer;
-  CurMaxLineLength: Integer;
-begin
-  Result:='';
-  Src:=s;
-  CurMaxLineLength:=MaxLineLength;
-  if Indent>MaxLineLength-2 then Indent:=MaxLineLength-2;
-  if Indent<0 then MaxLineLength:=0;
-  repeat
-    SrcLen:=length(Src);
-    if SrcLen<=CurMaxLineLength then begin
-      Result:=Result+Src;
-      break;
-    end;
-    // split line
-    SplitPos:=0;
-    // search new line chars
-    APos:=1;
-    while (APos<=CurMaxLineLength) do begin
-      if Src[APos] in [#13,#10] then begin
-        SplitPos:=APos;
-        break;
-      end;
-      inc(APos);
-    end;
-    // search a space boundary
-    if SplitPos=0 then begin
-      APos:=CurMaxLineLength;
-      while APos>1 do begin
-        if (Src[APos-1] in [' ',#9])
-        and (not (Src[APos] in [' ',#9])) then begin
-          SplitPos:=APos;
-          break;
-        end;
-        dec(APos);
-      end;
-    end;
-    // search a word boundary
-    if SplitPos=0 then begin
-      APos:=CurMaxLineLength;
-      while APos>1 do begin
-        if (Src[APos] in ['A'..'Z','a'..'z'])
-        and (not (Src[APos-1] in ['A'..'Z','a'..'z'])) then begin
-          SplitPos:=APos;
-          break;
-        end;
-        dec(APos);
-      end;
-    end;
-    if SplitPos=0 then begin
-      // no word boundary found -> split chars
-      SplitPos:=CurMaxLineLength;
-    end;
-    // append part and newline
-    if (SplitPos<=SrcLen) and (Src[SplitPos] in [#10,#13]) then begin
-      // there is already a new line char at position
-      inc(SplitPos);
-      if (SplitPos<=SrcLen) and (Src[SplitPos] in [#10,#13])
-      and (Src[SplitPos]<>Src[SplitPos-1]) then
-        inc(SplitPos);
-      Result:=Result+copy(Src,1,SplitPos-1);
-    end else begin
-      Result:=Result+copy(Src,1,SplitPos-1)+LineEnding;
-    end;
-    // append indent
-    if Indent>0 then
-      Result:=Result+StringOfChar(' ',Indent);
-    // calculate new LineLength
-    CurMaxLineLength:=MaxLineLength-Indent;
-    // cut string
-    Src:=copy(Src,SplitPos,length(Src)-SplitPos+1);
-  until false;
-end;
-
 function ComparePointers(p1, p2: Pointer): integer;
 begin
-  if p1>p2 then
-    Result:=1
-  else if p1<p2 then
-    Result:=-1
-  else
-    Result:=0;
+  Result:=LazUtilities.ComparePointers(p1, p2);
 end;
 
 function CompareHandles(h1, h2: THandle): integer;
-begin
-  if h1>h2 then
-    Result:=1
-  else if h1<h2 then
-    Result:=-1
-  else
-    Result:=0;
-end;
-
-function CompareLCLHandles(h1, h2: TLCLHandle): integer;
 begin
   if h1>h2 then
     Result:=1
@@ -1225,9 +1064,23 @@ begin
     Result:=0;
 end;
 
+function CompareCaret(const FirstCaret, SecondCaret: TPoint): integer;
+begin
+  if (FirstCaret.Y<SecondCaret.Y) then
+    Result:=1
+  else if (FirstCaret.Y>SecondCaret.Y) then
+    Result:=-1
+  else if (FirstCaret.X<SecondCaret.X) then
+    Result:=1
+  else if (FirstCaret.X>SecondCaret.X) then
+    Result:=-1
+  else
+    Result:=0;
+end;
+
 function CompareMethods(const m1, m2: TMethod): boolean;
 begin
-  Result:=(m1.Code=m2.Code) and (m1.Data=m2.Data);
+  Result:=LazMethodList.CompareMethods(m1, m2);
 end;
 
 function RoundToInt(const e: Extended): integer;
@@ -1450,12 +1303,12 @@ end;
 
 // Debug funcs :
 
-{$IFnDEF WithOldDebugln}
-procedure DumpStack;
+procedure RaiseGDBException(const Msg: string);
 begin
-  DebugLogger.DebuglnStack;
+  LazTracer.RaiseGDBException(Msg);
 end;
 
+{$IFnDEF WithOldDebugln}
 procedure CloseDebugOutput;
 begin
   DebugLogger.Finish;
@@ -1983,104 +1836,99 @@ begin
 end;
 {$ENDIF}
 
-function ConvertLineEndings(const s: string): string;
-begin
-  Result:=LazLogger.ConvertLineEndings(s);
-end;
-
 function DbgS(const c: cardinal): string;
 begin
-  Result:=LazLogger.DbgS(c);
+  Result:=LazLoggerBase.DbgS(c);
 end;
 
 function DbgS(const i: longint): string;
 begin
-  Result:=LazLogger.DbgS(i);
+  Result:=LazLoggerBase.DbgS(i);
 end;
 
 function DbgS(const i: int64): string;
 begin
-  Result:=LazLogger.DbgS(i);
+  Result:=LazLoggerBase.DbgS(i);
 end;
 
 function DbgS(const q: qword): string;
 begin
-  Result:=LazLogger.DbgS(q);
+  Result:=LazLoggerBase.DbgS(q);
 end;
 
 function DbgS(const r: TRect): string;
 begin
-  Result:=LazLogger.DbgS(r);
+  Result:=LazLoggerBase.DbgS(r);
 end;
 
 function DbgS(const p: TPoint): string;
 begin
-  Result:=LazLogger.DbgS(p);
+  Result:=LazLoggerBase.DbgS(p);
 end;
 
 function DbgS(const p: pointer): string;
 begin
-  Result:=LazLogger.DbgS(p);
+  Result:=LazLoggerBase.DbgS(p);
 end;
 
 function DbgS(const e: extended; MaxDecimals: integer): string;
 begin
-  Result:=LazLogger.DbgS(e,MaxDecimals);
+  Result:=LazLoggerBase.DbgS(e,MaxDecimals);
 end;
 
 function DbgS(const b: boolean): string;
 begin
-  Result:=LazLogger.DbgS(b);
+  Result:=LazLoggerBase.DbgS(b);
 end;
 
 function DbgS(const s: TComponentState): string;
 begin
-  Result:=LazLogger.DbgS(s);
+  Result:=LazLoggerBase.DbgS(s);
 end;
 
 function DbgS(const m: TMethod): string;
 begin
-  Result:=LazLogger.DbgS(m);
+  Result:=LazLoggerBase.DbgS(m);
 end;
 
 function DbgSName(const p: TObject): string;
 begin
-  Result:=LazLogger.DbgSName(p);
+  Result:=LazLoggerBase.DbgSName(p);
 end;
 
 function DbgSName(const p: TClass): string;
 begin
-  Result:=LazLogger.DbgSName(p);
+  Result:=LazLoggerBase.DbgSName(p);
 end;
 
 function DbgStr(const StringWithSpecialChars: string): string;
 begin
-  Result:=LazLogger.DbgStr(StringWithSpecialChars);
+  Result:=LazLoggerBase.DbgStr(StringWithSpecialChars);
 end;
 
 function DbgWideStr(const StringWithSpecialChars: widestring): string;
 begin
-  Result:=LazLogger.DbgWideStr(StringWithSpecialChars);
+  Result:=LazLoggerBase.DbgWideStr(StringWithSpecialChars);
 end;
 
 function dbgMemRange(P: PByte; Count: integer; Width: integer): string;
 begin
-  Result:=LazLogger.dbgMemRange(P,Count,Width);
+  Result:=LazLoggerBase.dbgMemRange(P,Count,Width);
 end;
 
 function dbgMemStream(MemStream: TCustomMemoryStream; Count: integer): string;
 begin
-  Result:=LazLogger.dbgMemStream(MemStream,Count);
+  Result:=LazLoggerBase.dbgMemStream(MemStream,Count);
 end;
 
 function dbgObjMem(AnObject: TObject): string;
 begin
-  Result:=LazLogger.dbgObjMem(AnObject);
+  Result:=LazLoggerBase.dbgObjMem(AnObject);
 end;
 
 function dbghex(i: Int64): string;
 begin
-  Result:=LazLogger.dbghex(i);
+  Result:=LazLoggerBase.dbghex(i);
 end;
 
 function DbgSWindowPosFlags(Flags: UInt): String;
@@ -2122,12 +1970,12 @@ end;
 
 function DbgS(const i1, i2, i3, i4: integer): string;
 begin
-  Result:=LazLogger.DbgS(i1,i2,i3,i4);
+  Result:=LazLoggerBase.DbgS(i1,i2,i3,i4);
 end;
 
 function DbgS(const Shift: TShiftState): string;
 begin
-  Result:=LazLogger.DbgS(Shift);
+  Result:=LazLoggerBase.DbgS(Shift);
 end;
 
 function DbgsVKCode(c: word): string;
@@ -2309,7 +2157,7 @@ end;
 
 function DbgS(const ASize: TSize): string;
 begin
-  Result:=LazLogger.DbgS(ASize);
+  Result:=LazLoggerBase.DbgS(ASize);
 end;
 
 function DbgS(const ATM: TTextMetric): string;
@@ -2751,255 +2599,6 @@ begin
     Result:=system.widechar($D800+((u - $10000) shr 10))+system.widechar($DC00+((u - $10000) and $3ff));
 end;
 
-{$IFnDEF DisableWrapperFunctions}
-function UTF8CharacterLength(p: PChar): integer;
-begin
-  Result := LazUTF8.UTF8CharacterLength(p);
-end;
-
-function UTF8Length(const s: string): PtrInt;
-begin
-  Result:=LazUTF8.UTF8Length(PChar(s),length(s));
-end;
-
-function UTF8Length(p: PChar; ByteCount: PtrInt): PtrInt;
-begin
-  Result := LazUTF8.UTF8Length(p, ByteCount);
-end;
-
-function UTF8CharacterToUnicode(p: PChar; out CharLen: integer): Cardinal;
-begin
-  Result := LazUTF8.UTF8CharacterToUnicode(p, CharLen);
-end;
-
-function UnicodeToUTF8(u: cardinal; Buf: PChar): integer;
-begin
-  Result := LazUTF8.UnicodeToUTF8(u, Buf);
-end;
-
-function UnicodeToUTF8SkipErrors(u: cardinal; Buf: PChar): integer;
-begin
-  Result := LazUTF8.UnicodeToUTF8SkipErrors(u, Buf);
-end;
-
-function UnicodeToUTF8(u: cardinal): shortstring;
-begin
-  Result[0]:=chr(LazUTF8.UnicodeToUTF8(u,@Result[1]));
-end;
-
-function UTF8ToDoubleByteString(const s: string): string;
-begin
-  Result := LazUTF8.UTF8ToDoubleByteString(s);
-end;
-
-{ returns number of double bytes }
-function UTF8ToDoubleByte(UTF8Str: PChar; Len: PtrInt; DBStr: PByte): PtrInt;
-begin
-  Result := LazUTF8.UTF8ToDoubleByte(UTF8Str, Len, DBStr);
-end;
-
-{ Find the start of the UTF8 character which contains BytePos,
-  Len is length in byte, BytePos starts at 0 }
-function UTF8FindNearestCharStart(UTF8Str: PChar; Len: integer;
-  BytePos: integer): integer;
-begin
-  Result := LazUTF8.UTF8FindNearestCharStart(UTF8Str, Len, BytePos);
-end;
-
-{ Len is the length in bytes of UTF8Str
-  CharIndex is the position of the desired char (starting at 0), in chars
-
-  This function is similar to UTF8FindNearestCharStart
-}
-function UTF8CharStart(UTF8Str: PChar; Len, CharIndex: PtrInt): PChar;
-begin
-  Result := LazUTF8.UTF8CharStart(UTF8Str, Len, CharIndex);
-end;
-
-function UTF8CharToByteIndex(UTF8Str: PChar; Len, CharIndex: PtrInt): PtrInt;
-begin
-  Result := LazUTF8.UTF8CharToByteIndex(UTF8Str, Len, CharIndex);
-end;
-
-{ fix any broken UTF8 sequences with spaces }
-procedure UTF8FixBroken(P: PChar);
-begin
-  LazUTF8.UTF8FixBroken(P);
-end;
-
-function UTF8CharacterStrictLength(P: PChar): integer;
-begin
-  Result := LazUTF8.UTF8CharacterStrictLength(P);
-end;
-
-function UTF8CStringToUTF8String(SourceStart: PChar; SourceLen: PtrInt) : string;
-begin
-  Result := LazUTF8.UTF8CStringToUTF8String(SourceStart, SourceLen);
-end;
-
-function UTF8Pos(const SearchForText, SearchInText: string): PtrInt;
-begin
-  Result := LazUTF8.UTF8Pos(SearchForText, SearchInText);
-end;
-
-function UTF8Copy(const s: string; StartCharIndex, CharCount: PtrInt): string;
-begin
-  Result := LazUTF8.UTF8Copy(s, StartCharIndex, CharCount);
-end;
-
-procedure UTF8Delete(var s: String; StartCharIndex, CharCount: PtrInt);
-begin
-  LazUTF8.UTF8Delete(s, StartCharIndex, CharCount);
-end;
-
-procedure UTF8Insert(const source: String; var s: string; StartCharIndex: PtrInt);
-begin
-  LazUTF8.UTF8Insert(source, s, StartCharIndex);
-end;
-
-function UTF8LowerCase(const s: String): String;
-begin
-  Result := LazUTF8.UTF8LowerCase(S);
-end;
-
-function UTF8UpperCase(const s: String): String;
-begin
-  Result := LazUTF8.UTF8UpperCase(s);
-end;
-
-function FindInvalidUTF8Character(p: PChar; Count: PtrInt;
-  StopOnNonASCII: Boolean): PtrInt;
-// return -1 if ok
-begin
-  Result := LazUTF8.FindInvalidUTF8Character(p, Count, StopOnNonASCII);
-end;
-
-function ValidUTF8String(const s: String): String;
-begin
-  Result := LazUTF8.ValidUTF8String(s);
-end;
-
-procedure AssignUTF8ListToAnsi(UTF8List, AnsiList: TStrings);
-begin
-  LazUTF8.AssignUTF8ListToAnsi(UTF8List, AnsiList);
-end;
-
-{------------------------------------------------------------------------------
-  Name:    UTF8CompareStr
-  Params: S1, S2 - UTF8 encoded strings
-  Returns: < 0 if S1 < S2, 0 if S1 = S2, > 0 if S2 > S1.
-  Compare 2 UTF8 encoded strings, case sensitive.
- ------------------------------------------------------------------------------}
-function UTF8CompareStr(const S1, S2: String): Integer;
-begin
-  Result := LazUTF8.UTF8CompareStr(S1,S2);
-end;
-
-{------------------------------------------------------------------------------
-  Name:    UTF8CompareText
-  Params: S1, S2 - UTF8 encoded strings
-  Returns: < 0 if S1 < S2, 0 if S1 = S2, > 0 if S2 > S1.
-  Compare 2 UTF8 encoded strings, case insensitive.
- ------------------------------------------------------------------------------}
-function UTF8CompareText(const S1, S2: String): Integer;
-begin
-  Result := LazUTF8.UTF8CompareText(S1,S2);
-end;
-
-{------------------------------------------------------------------------------
-  Name:    ConvertUTF8ToUTF16
-  Params:  Dest                - Pointer to destination string
-           DestWideCharCount   - Wide char count allocated in destination string
-           Src                 - Pointer to source string
-           SrcCharCount        - Char count allocated in source string
-           Options             - Conversion options, if none is set, both
-             invalid and unfinished source chars are skipped
-
-             toInvalidCharError       - Stop on invalid source char and report
-                                      error
-             toInvalidCharToSymbol    - Replace invalid source chars with '?'
-             toUnfinishedCharError    - Stop on unfinished source char and
-                                      report error
-             toUnfinishedCharToSymbol - Replace unfinished source char with '?'
-
-           ActualWideCharCount - Actual wide char count converted from source
-                               string to destination string
-  Returns:
-    trNoError        - The string was successfully converted without
-                     any error
-    trNullSrc        - Pointer to source string is nil
-    trNullDest       - Pointer to destination string is nil
-    trDestExhausted  - Destination buffer size is not big enough to hold
-                     converted string
-    trInvalidChar    - Invalid source char has occured
-    trUnfinishedChar - Unfinished source char has occured
-
-  Converts the specified UTF-8 encoded string to UTF-16 encoded (system endian)
- ------------------------------------------------------------------------------}
-function ConvertUTF8ToUTF16(Dest: PWideChar; DestWideCharCount: SizeUInt;
-  Src: PChar; SrcCharCount: SizeUInt; Options: TConvertOptions;
-  out ActualWideCharCount: SizeUInt): TConvertResult;
-begin
-  Result := LazUTF8.ConvertUTF8ToUTF16(Dest, DestWideCharCount,
-    Src, SrcCharCount, Options, ActualWideCharCount);
-end;
-
-{------------------------------------------------------------------------------
-  Name:    ConvertUTF16ToUTF8
-  Params:  Dest             - Pointer to destination string
-           DestCharCount    - Char count allocated in destination string
-           Src              - Pointer to source string
-           SrcWideCharCount - Wide char count allocated in source string
-           Options          - Conversion options, if none is set, both
-             invalid and unfinished source chars are skipped.
-             See ConvertUTF8ToUTF16 for details.
-
-           ActualCharCount  - Actual char count converted from source
-                            string to destination string
-  Returns: See ConvertUTF8ToUTF16
-
-  Converts the specified UTF-16 encoded string (system endian) to UTF-8 encoded
- ------------------------------------------------------------------------------}
-function ConvertUTF16ToUTF8(Dest: PChar; DestCharCount: SizeUInt;
-  Src: PWideChar; SrcWideCharCount: SizeUInt; Options: TConvertOptions;
-  out ActualCharCount: SizeUInt): TConvertResult;
-begin
-  Result := LazUTF8.ConvertUTF16ToUTF8(Dest, DestCharCount,
-    Src, SrcWideCharCount, Options, ActualCharCount);
-end;
-
-{------------------------------------------------------------------------------
-  Name:    UTF8ToUTF16
-  Params:  S - Source UTF-8 string
-  Returns: UTF-16 encoded string
-
-  Converts the specified UTF-8 encoded string to UTF-16 encoded (system endian)
-  Avoid copying the result string since on windows a widestring requires a full 
-  copy
- ------------------------------------------------------------------------------}
-function UTF8ToUTF16(const S: AnsiString): UTF16String;
-begin
-  Result := LazUTF8.UTF8ToUTF16(S);
-end;
-
-{------------------------------------------------------------------------------
-  Name:    UTF16ToUTF8
-  Params:  S - Source UTF-16 string (system endian)
-  Returns: UTF-8 encoded string
-
-  Converts the specified UTF-16 encoded string (system endian) to UTF-8 encoded
- ------------------------------------------------------------------------------}
-function UTF16ToUTF8(const S: UTF16String): AnsiString;
-begin
-  Result := LazUTF8.UTF16ToUTF8(S);
-end;
-
-procedure LCLGetLanguageIDs(var Lang, FallbackLang: String);
-begin
-  LazUTF8.LazGetLanguageIDs(Lang, FallbackLang);
-end;
-{$ENDIF DisableWrapperFunctions}
-
 function CreateFirstIdentifier(const Identifier: string): string;
 // example: Ident59 becomes Ident1
 var
@@ -3021,20 +2620,9 @@ begin
           +IntToStr(1+StrToIntDef(copy(Identifier,p+1,length(Identifier)-p),0));
 end;
 
-procedure FreeLineInfoCache;
-var
-  ANode: TAvgLvlTreeNode;
-  Item: PLineInfoCacheItem;
+function IsFontNameDefault(const AName: string): boolean;
 begin
-  if LineInfoCache=nil then exit;
-  ANode:=LineInfoCache.FindLowest;
-  while ANode<>nil do begin
-    Item:=PLineInfoCacheItem(ANode.Data);
-    Dispose(Item);
-    ANode:=LineInfoCache.FindSuccessor(ANode);
-  end;
-  LineInfoCache.Free;
-  LineInfoCache:=nil;
+  Result := CompareText(AName, 'default') = 0;
 end;
 
 { TDebugLCLItems }
@@ -3042,7 +2630,7 @@ end;
 constructor TDebugLCLItems.Create(const TheName: string);
 begin
   FName:=TheName;
-  FItems:=TAvgLvlTree.Create(@CompareDebugLCLItemInfos);
+  FItems:=TAvlTree.Create(@CompareDebugLCLItemInfos);
 end;
 
 destructor TDebugLCLItems.Destroy;
@@ -3052,10 +2640,9 @@ begin
   inherited Destroy;
 end;
 
-function TDebugLCLItems.FindInfo(p: Pointer; CreateIfNotExists: boolean
-  ): TDebugLCLItemInfo;
+function TDebugLCLItems.FindInfo(p: Pointer; CreateIfNotExists: boolean): TDebugLCLItemInfo;
 var
-  ANode: TAvgLvlTreeNode;
+  ANode: TAvlTreeNode;
 begin
   ANode:=FItems.FindKey(p,@CompareItemWithDebugLCLItemInfo);
   if ANode<>nil then
@@ -3197,6 +2784,11 @@ initialization
   // that just outputs addresses and not source and line number
   BackTraceStrFunc := @SysBackTraceStr;
   {$endif}
+  {$ifdef AROS}
+    {$if FPC_FULLVERSION>=30101}
+    EnableBackTraceStr;
+    {$endif}
+  {$endif}
   InterfaceInitializationHandlers := TFPList.Create;
   InterfaceFinalizationHandlers := TFPList.Create;
   {$IFDEF DebugLCLComponents}
@@ -3211,7 +2803,6 @@ finalization
   DebugLCLComponents.Free;
   DebugLCLComponents:=nil;
   {$ENDIF}
-  FreeLineInfoCache;
   {$IFDEF WithOldDebugln}
   FinalizeDebugOutput;
   DebugLnNestFreePrefix;

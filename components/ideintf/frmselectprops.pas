@@ -13,20 +13,21 @@ unit frmSelectProps;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Graphics, Dialogs,
-  StdCtrls, ObjInspStrConsts, IDEWindowIntf, Buttons, ExtCtrls, TypInfo,
-  RTTIUtils;
+  Classes, SysUtils, RTTIUtils, TypInfo,
+  // LCL
+  Forms, StdCtrls, Buttons, ExtCtrls, ButtonPanel,
+  // IdeIntf
+  IDEWindowIntf, IDEImagesIntf, ObjInspStrConsts;
 
 type
 
   { TSelectPropertiesForm }
 
   TSelectPropertiesForm = class(TForm)
-    BAdd: TButton;
-    BDelete: TButton;
-    BClear: TButton;
-    BOK: TButton;
-    BCancel: TButton;
+    BAdd: TBitBtn;
+    BClear: TBitBtn;
+    BDelete: TBitBtn;
+    ButtonPanel1: TButtonPanel;
     LLBSelected: TLabel;
     LBComponents: TListBox;
     LComponents: TLabel;
@@ -72,13 +73,31 @@ implementation
 
 { TSelectPropertiesForm }
 
+procedure TSelectPropertiesForm.SelectPropertiesFormCreate(Sender: TObject);
+begin
+  BAdd.Caption:=ilesAdd;
+  IDEImages.AssignImage(BAdd, 'laz_add');
+  BDelete.Caption:=oisDelete;
+  IDEImages.AssignImage(BDelete, 'laz_delete');
+  BClear.Caption:=oisClear;
+  IDEImages.AssignImage(BClear, 'menu_clean');
+  LComponents.Caption:=oisBtnComponents;
+  LProperties.Caption:=oisBtnProperties;
+  LLBSelected.Caption:=oisSelectedProperties;
+  IDEDialogLayoutList.ApplyLayout(Self,485,460);
+end;
+
+procedure TSelectPropertiesForm.SelectPropertiesFormClose(Sender: TObject;
+  var CloseAction: TCloseAction);
+begin
+  IDEDialogLayoutList.SaveLayout(Self);
+end;
+
 procedure TSelectPropertiesForm.SetPropComponent(const AValue: TComponent);
 begin
   if FPropComponent=AValue then exit;
-    begin
-    FPropComponent:=AValue;
-    ShowComponents;
-    end
+  FPropComponent:=AValue;
+  ShowComponents;
 end;
 
 procedure TSelectPropertiesForm.LBComponentsSelectionChange(Sender: TObject;
@@ -90,25 +109,6 @@ end;
 procedure TSelectPropertiesForm.LBPropertiesDblClick(Sender: TObject);
 begin
   AddSelectedProperties;
-end;
-
-procedure TSelectPropertiesForm.SelectPropertiesFormClose(Sender: TObject;
-  var CloseAction: TCloseAction);
-begin
-  IDEDialogLayoutList.SaveLayout(Self);
-end;
-
-procedure TSelectPropertiesForm.SelectPropertiesFormCreate(Sender: TObject);
-begin
-  BAdd.Caption:=ilesAdd;
-  BDelete.Caption:=oisDelete;
-  BClear.Caption:=oisClear;
-  BOK.Caption:=oisOk;
-  BCancel.Caption:=oiStdActDataSetCancel1Hint;
-  LComponents.Caption:=oisBtnComponents;
-  LProperties.Caption:=oisBtnProperties;
-  LLBSelected.Caption:=oisSelectedProperties;
-  IDEDialogLayoutList.ApplyLayout(Self,485,460);
 end;
 
 procedure TSelectPropertiesForm.BAddClick(Sender: TObject);

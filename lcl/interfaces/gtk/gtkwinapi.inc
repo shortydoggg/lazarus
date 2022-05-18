@@ -1,5 +1,5 @@
 {%MainUnit gtkint.pp}
-{ $Id: gtkwinapi.inc 50291 2015-11-11 13:17:45Z mattias $ }
+{ $Id: gtkwinapi.inc 55188 2017-06-03 18:56:34Z juha $ }
 
 {******************************************************************************
                          All GTK Winapi implementations.
@@ -1605,7 +1605,7 @@ begin
 
       FamilyName := StrPas(lfFaceName);
 
-      if (CompareText(FamilyName,'default')<>0) then begin
+      if not IsFontNameDefault(FamilyName) then begin
       
         // check if we have foundry encoded in family name
         n := pos(FOUNDRYCHAR_OPEN, FamilyName);
@@ -1622,7 +1622,7 @@ begin
         
       end;
 
-      if CompareText(FamilyName,'default')=0 then begin
+      if IsFontNameDefault(FamilyName) then begin
         {$IFDEF VerboseFonts}
         DebugLn('TGtkWidgetSet.CreateFontIndirectEx FamilyName="',FamilyName,'" PixelSize=',PixelSize,' LogFont.lfHeight=',dbgs(LogFont.lfHeight));
         {$ENDIF}

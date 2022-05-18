@@ -1,4 +1,4 @@
-{ $Id: win32wscontrols.pp 51007 2015-12-23 13:12:36Z ondrej $}
+{ $Id: win32wscontrols.pp 58912 2018-09-08 20:04:47Z michl $}
 {
  *****************************************************************************
  *                            Win32WSControls.pp                             *
@@ -35,17 +35,17 @@ uses
   InterfaceBase, LCLType, LCLIntf, LCLProc, LazUTF8, Themes, Forms;
 
 type
-  { TWin32WSDragImageList }
+  { TWin32WSDragImageListResolution }
 
-  TWin32WSDragImageList = class(TWSDragImageList)
+  TWin32WSDragImageListResolution = class(TWSDragImageListResolution)
   published
-    class function BeginDrag(const ADragImageList: TDragImageList; Window: HWND;
+    class function BeginDrag(const ADragImageList: TDragImageListResolution; Window: HWND;
       AIndex, X, Y: Integer): Boolean; override;
-    class function DragMove(const ADragImageList: TDragImageList; X, Y: Integer): Boolean; override;
-    class procedure EndDrag(const ADragImageList: TDragImageList); override;
-    class function HideDragImage(const ADragImageList: TDragImageList;
+    class function DragMove(const ADragImageList: TDragImageListResolution; X, Y: Integer): Boolean; override;
+    class procedure EndDrag(const ADragImageList: TDragImageListResolution); override;
+    class function HideDragImage(const ADragImageList: TDragImageListResolution;
       ALockedWindow: HWND; DoUnLock: Boolean): Boolean; override;
-    class function ShowDragImage(const ADragImageList: TDragImageList;
+    class function ShowDragImage(const ADragImageList: TDragImageListResolution;
       ALockedWindow: HWND; X, Y: Integer; DoLock: Boolean): Boolean; override;
   end;
 
@@ -164,6 +164,9 @@ begin
     LCLBoundsToWin32Bounds(AWinControl, Left, Top, Width, Height);
     SetStdBiDiModeParams(AWinControl, Params);
 
+    if not (csDesigning in AWinControl.ComponentState) and not AWinControl.IsEnabled then
+      Flags := Flags or WS_DISABLED;
+
     {$IFDEF VerboseSizeMsg}
     DebugLn('PrepareCreateWindow ' + dbgsName(AWinControl) + ' ' +
       Format('%d, %d, %d, %d', [Left, Top, Width, Height]));
@@ -177,7 +180,6 @@ var
   lhFont: HFONT;
   AErrorCode: Cardinal;
   NCCreateParams: TNCCreateParams;
-  WindowClass, DummyClass: WndClass;
   WindowClassW, DummyClassW: WndClassW;
 begin
   NCCreateParams.DefWndProc := nil;
@@ -190,52 +192,26 @@ begin
     begin
       if SubClass then
       begin
-        if UnicodeEnabledOS then
+        if GetClassInfoW(System.HInstance, PWideChar(WideString(pClassName)), @WindowClassW) then
         begin
-          if GetClassInfoW(System.HInstance, PWideChar(WideString(pClassName)), @WindowClassW) then
+          NCCreateParams.DefWndProc := WndProc(WindowClassW.lpfnWndProc);
+          if not GetClassInfoW(System.HInstance, PWideChar(WideString(pSubClassName)), @DummyClassW) then
           begin
-            NCCreateParams.DefWndProc := WndProc(WindowClassW.lpfnWndProc);
-            if not GetClassInfoW(System.HInstance, PWideChar(WideString(pSubClassName)), @DummyClassW) then
+            with WindowClassW do
             begin
-              with WindowClassW do
-              begin
-                LPFnWndProc := SubClassWndProc;
-                hInstance := System.HInstance;
-                lpszClassName := PWideChar(WideString(pSubClassName));
-              end;
-              Windows.RegisterClassW(@WindowClassW);
+              LPFnWndProc := SubClassWndProc;
+              hInstance := System.HInstance;
+              lpszClassName := PWideChar(WideString(pSubClassName));
             end;
-            pClassName := pSubClassName;
+            Windows.RegisterClassW(@WindowClassW);
           end;
-        end
-        else
-        begin
-          if GetClassInfo(System.HInstance, pClassName, @WindowClass) then
-          begin
-            NCCreateParams.DefWndProc := WndProc(WindowClass.lpfnWndProc);
-            if not GetClassInfo(System.HInstance, pSubClassName, @DummyClass) then
-            begin
-              with WindowClass do
-              begin
-                LPFnWndProc := SubClassWndProc;
-                hInstance := System.HInstance;
-                lpszClassName := pSubClassName;
-              end;
-              Windows.RegisterClass(@WindowClass);
-            end;
-            pClassName := pSubClassName;
-          end;
+          pClassName := pSubClassName;
         end;
       end;
 
-      if UnicodeEnabledOS then
-        Window := CreateWindowExW(FlagsEx, PWideChar(WideString(pClassName)),
-          PWideChar(UTF8ToUTF16(WindowTitle)), Flags,
-          Left, Top, Width, Height, Parent, 0, HInstance, @NCCreateParams)
-      else
-        Window := CreateWindowEx(FlagsEx, pClassName,
-          PChar(Utf8ToAnsi(WindowTitle)), Flags,
-          Left, Top, Width, Height, Parent, 0, HInstance, @NCCreateParams);
+      Window := CreateWindowExW(FlagsEx, PWideChar(WideString(pClassName)),
+        PWideChar(UTF8ToUTF16(WindowTitle)), Flags,
+        Left, Top, Width, Height, Parent, 0, HInstance, @NCCreateParams);
 
       if Window = 0 then
       begin
@@ -388,6 +364,8 @@ end;
 class procedure TWin32WSWinControl.SetBorderStyle(const AWinControl: TWinControl; const ABorderStyle: TBorderStyle);
 begin
   RecreateWnd(AWinControl);
+  if AWinControl.HandleObjectShouldBeVisible then
+    AWinControl.HandleNeeded;
 end;
 
 class procedure TWin32WSWinControl.SetChildZPosition(
@@ -397,6 +375,7 @@ var
   AfterWnd: hWnd;
   n, StopPos: Integer;
   Child: TWinControl;
+  WindowInfo: PWin32WindowInfo;
 begin
   if not WSCheckHandleAllocated(AWincontrol, 'SetChildZPosition')
   then Exit;
@@ -430,9 +409,20 @@ begin
     if AfterWnd = 0 then Exit; // nothing to do
   end;
 
-  Windows.SetWindowPos(AChild.Handle, AfterWnd, 0, 0, 0, 0,
-    SWP_NOACTIVATE or SWP_NOMOVE or SWP_NOOWNERZORDER or
-    SWP_NOSIZE or SWP_NOSENDCHANGING or SWP_DEFERERASE);
+  WindowInfo := GetWin32WindowInfo(AChild.Handle);
+  if WindowInfo^.UpDown <> 0 then
+  begin
+    Windows.SetWindowPos(WindowInfo^.UpDown, AfterWnd, 0, 0, 0, 0,
+      SWP_NOACTIVATE or SWP_NOMOVE or SWP_NOOWNERZORDER or
+      SWP_NOSIZE or SWP_NOSENDCHANGING or SWP_DEFERERASE);
+    Windows.SetWindowPos(AChild.Handle, WindowInfo^.UpDown, 0, 0, 0, 0,
+      SWP_NOACTIVATE or SWP_NOMOVE or SWP_NOOWNERZORDER or
+      SWP_NOSIZE or SWP_NOSENDCHANGING or SWP_DEFERERASE);
+  end
+  else
+    Windows.SetWindowPos(AChild.Handle, AfterWnd, 0, 0, 0, 0,
+      SWP_NOACTIVATE or SWP_NOMOVE or SWP_NOOWNERZORDER or
+      SWP_NOSIZE or SWP_NOSENDCHANGING or SWP_DEFERERASE);
 end;
 
 {------------------------------------------------------------------------------
@@ -495,10 +485,7 @@ end;
 class procedure TWin32WSWinControl.SetText(const AWinControl: TWinControl; const AText: string);
 begin
   if not WSCheckHandleAllocated(AWincontrol, 'SetText') then Exit;
-  if UnicodeEnabledOS then
-    SendMessageW(AWinControl.Handle, WM_SETTEXT, 0, LPARAM(PWideChar(UTF8ToUTF16(AText))))
-  else
-    SendMessage(AWinControl.Handle, WM_SETTEXT, 0, LPARAM(PChar(Utf8ToAnsi(AText))));
+  SendMessageW(AWinControl.Handle, WM_SETTEXT, 0, LPARAM(PWideChar(UTF8ToUTF16(AText))));
 end;
 
 class procedure TWin32WSWinControl.SetCursor(const AWinControl: TWinControl; const ACursor: HCursor);
@@ -591,31 +578,33 @@ class procedure TWin32WSWinControl.ScrollBy(const AWinControl: TWinControl;
   DeltaX, DeltaY: integer);
 begin
   if AWinControl.HandleAllocated then
-    ScrollWindowEx(AWinControl.Handle, DeltaX, DeltaY, nil, nil, 0, nil, SW_INVALIDATE or SW_ERASE or SW_SCROLLCHILDREN);
+    ScrollWindowEx(AWinControl.Handle, DeltaX, DeltaY, nil, nil, 0, nil,
+      SW_INVALIDATE or SW_ERASE or SW_SCROLLCHILDREN);
 end;
 
-{ TWin32WSDragImageList }
+{ TWin32WSDragImageListResolution }
 
-class function TWin32WSDragImageList.BeginDrag(
-  const ADragImageList: TDragImageList; Window: HWND; AIndex, X, Y: Integer): Boolean;
+class function TWin32WSDragImageListResolution.BeginDrag(
+  const ADragImageList: TDragImageListResolution; Window: HWND; AIndex, X,
+  Y: Integer): Boolean;
 begin
   // No check to Handle should be done, because if there is no handle (no needed)
   // we must create it here. This is normal for imagelist (we can never need handle)
   Result := ImageList_BeginDrag(ADragImageList.Reference.Handle, AIndex, X, Y);
 end;
 
-class function TWin32WSDragImageList.DragMove(const ADragImageList: TDragImageList;
+class function TWin32WSDragImageListResolution.DragMove(const ADragImageList: TDragImageListResolution;
   X, Y: Integer): Boolean;
 begin
   Result := ImageList_DragMove(X, Y);
 end;
 
-class procedure TWin32WSDragImageList.EndDrag(const ADragImageList: TDragImageList);
+class procedure TWin32WSDragImageListResolution.EndDrag(const ADragImageList: TDragImageListResolution);
 begin
   ImageList_EndDrag;
 end;
 
-class function TWin32WSDragImageList.HideDragImage(const ADragImageList: TDragImageList;
+class function TWin32WSDragImageListResolution.HideDragImage(const ADragImageList: TDragImageListResolution;
   ALockedWindow: HWND; DoUnLock: Boolean): Boolean;
 begin
   if DoUnLock then
@@ -624,7 +613,7 @@ begin
     Result := ImageList_DragShowNolock(False);
 end;
 
-class function TWin32WSDragImageList.ShowDragImage(const ADragImageList: TDragImageList;
+class function TWin32WSDragImageListResolution.ShowDragImage(const ADragImageList: TDragImageListResolution;
   ALockedWindow: HWND; X, Y: Integer; DoLock: Boolean): Boolean;
 begin
   if DoLock then

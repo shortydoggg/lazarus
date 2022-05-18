@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -32,7 +32,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls,
-  Buttons, ComCtrls, LazarusIDEStrConsts;
+  Buttons, ComCtrls, IDEImagesIntf, LazarusIDEStrConsts;
 
 type
   { TMessageFilterRule }
@@ -95,9 +95,9 @@ begin
   DeleteSetButton.Caption:=lisDelete;
   FilterSetGroupBox.Caption:=lisFilterSets;
 
-  AddNewSetButton.LoadGlyphFromResourceName(HInstance, 'laz_add');
-  DeleteSetButton.LoadGlyphFromResourceName(HInstance, 'laz_delete');
-  RenameSetButton.LoadGlyphFromResourceName(HInstance, 'laz_edit');
+  IDEImages.AssignImage(AddNewSetButton, 'laz_add');
+  IDEImages.AssignImage(DeleteSetButton, 'laz_delete');
+  IDEImages.AssignImage(RenameSetButton, 'laz_edit');
 end;
 
 procedure TMsgViewEditorDlg.DeleteSetButtonClick(Sender: TObject);

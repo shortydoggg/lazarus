@@ -26,7 +26,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synmacrorecorder.pas 46820 2014-11-12 19:16:26Z mattias $
+$Id: synmacrorecorder.pas 56399 2017-11-13 23:20:44Z juha $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -837,7 +837,7 @@ end;
 
 procedure TCustomSynMacroRecorder.SetAsString(const Value: string);
 var
-  i, p, Cmd : Integer;
+  i, p, Cmd : Longint;
   S : TStrings;
   cmdStr : string;
   iEvent: TSynMacroEvent;
@@ -853,9 +853,10 @@ begin
     begin
       cmdStr := Trim(S[i]);
       p := Pos(' ', cmdStr);
-      if p = 0 then p := Length(cmdStr)+1;
+      if p = 0 then
+        p := Length(cmdStr)+1;
       Cmd := ecNone;
-      if IdentToEditorCommand(Copy(cmdStr, 1, p-1), Longint(Cmd)) then  // D2 needs type-cast
+      if IdentToEditorCommand(Copy(cmdStr, 1, p-1), Cmd) then
       begin
         Delete(cmdStr, 1, p);
         iEvent := CreateMacroEvent(TSynEditorCommand(Cmd));

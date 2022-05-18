@@ -1,4 +1,4 @@
-{ $Id: wsmenus.pp 42069 2013-07-13 05:12:09Z sekelsenmat $}
+{ $Id: wsmenus.pp 58244 2018-06-13 13:59:07Z juha $}
 {
  *****************************************************************************
  *                                WSMenus.pp                                 * 
@@ -42,7 +42,8 @@ uses
 ////////////////////////////////////////////////////
   Menus, Graphics,
 ////////////////////////////////////////////////////
-  WSLCLClasses, LCLType, LCLProc, WSFactory;
+  WSLCLClasses, LCLType, WSFactory,
+  LazUtilities, LazLogger;
 
 type
   { TWSMenuItem }

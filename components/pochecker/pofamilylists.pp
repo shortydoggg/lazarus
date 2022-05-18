@@ -9,10 +9,6 @@ Uses
   //{$IFDEF UNIX}{$IFNDEF DisableCWString}, cwstring{$ENDIF}{$ENDIF},
   PoFamilies, PoCheckerConsts;
 
-const
-  langAll = '*';
-
-
 type
 
   { TPoFamilyList }
@@ -36,7 +32,9 @@ type
     destructor Destroy; override;
     procedure Add(PoFamily: TPofamily);
     function Count: Integer;
-    procedure RunTests(out ErrorCount, WarningCount: Integer; ErrorLog: TStrings);
+    procedure RunTests(out ErrorCount, NonFuzzyErrorCount, WarningCount,
+      TotalTranslatedCount, TotalUntranslatedCount, TotalFuzzyCount: Integer;
+  ErrorLog, StatLog, DupLog: TStringList);
     property Items[Index: Integer]: TPoFamily read GetItem; // write SetItem;
     property PoFamilyStats: TPoFamilyStats read FPoFamilyStats;
     property TestTypes: TPoTestTypes read FTestTypes write FTestTypes;
@@ -91,10 +89,10 @@ begin
         Add(APoFamily);
       end
       else
-        Msg := Msg + LineEnding +  Format('"%s"',[ChildName]);
+        Msg := Msg + Format('"%s"',[ChildName]) + LineEnding;
     end
     else
-      Msg := Msg + LineEnding +  Format('"%s"',[MasterName]);
+      Msg := Msg + Format('"%s"',[MasterName]) + LineEnding;
   end;
 end;
 
@@ -116,40 +114,39 @@ begin
   Result := FList.Count;
 end;
 
-procedure TPoFamilyList.RunTests(out ErrorCount, WarningCount: Integer;
-  ErrorLog: TStrings);
+procedure TPoFamilyList.RunTests(out ErrorCount, NonFuzzyErrorCount, WarningCount, TotalTranslatedCount, TotalUntranslatedCount, TotalFuzzyCount: Integer;
+  ErrorLog, StatLog, DupLog: TStringList);
 var
-  Index, ThisErrorCount, ThisWarningCount: Integer;
+  Index, ThisErrorCount, ThisNonFuzzyErrorCount, ThisWarningCount: Integer;
+  ThisTranslatedCount, ThisUntranslatedCount, ThisFuzzyCount: Integer;
   PoFamily: TPoFamily;
-  //ThisLog: TStringList;
 begin
   if (FLangID = lang_all) then
     Include(FTestOptions,ptoFindAllChildren)
   else
     Exclude(FTestOptions,ptoFindAllChildren);
-  ErrorLog.Clear;
-  //ThisLog := TStringList.Create;
   ErrorCount := NoError;
+  NonFuzzyErrorCount := NoError;
   WarningCount := NoError;
+  TotalTranslatedCount := 0;
+  TotalUntranslatedCount := 0;
+  TotalFuzzyCount := 0;
   FPoFamilyStats.Clear;
-  try
-    for Index := 0 to FList.Count - 1 do
-    begin
-      PoFamily := GetItem(Index);
-      PoFamily.OnTestStart := FOnTestStart;
-      PoFamily.OnTestEnd := FOnTestEnd;
-      PoFamily.TestTypes := FTesttypes;
-      PoFamily.TestOptions := FTestOptions;
-      PoFamily.RunTests(ThisErrorCount, ThisWarningCount, ErrorLog);
-      PoFamily.PoFamilyStats.AddItemsTo(FPoFamilyStats);
-      ErrorCount := ErrorCount + ThisErrorCount;
-      WarningCount := WarningCount + ThisWarningCount;
-      //ThisLog.AddStrings(ErrorLog)
-
-    end;
-
-  finally
-    //ThisLog.Free;
+  for Index := 0 to FList.Count - 1 do
+  begin
+    PoFamily := GetItem(Index);
+    PoFamily.OnTestStart := FOnTestStart;
+    PoFamily.OnTestEnd := FOnTestEnd;
+    PoFamily.TestTypes := FTesttypes;
+    PoFamily.TestOptions := FTestOptions;
+    PoFamily.RunTests(ThisErrorCount, ThisNonFuzzyErrorCount, ThisWarningCount, ThisTranslatedCount, ThisUntranslatedCount, ThisFuzzyCount, ErrorLog, StatLog, DupLog);
+    PoFamily.PoFamilyStats.AddItemsTo(FPoFamilyStats);
+    ErrorCount := ErrorCount + ThisErrorCount;
+    NonFuzzyErrorCount := NonFuzzyErrorCount + ThisNonFuzzyErrorCount;
+    WarningCount := WarningCount + ThisWarningCount;
+    TotalTranslatedCount := TotalTranslatedCount + ThisTranslatedCount;
+    TotalUntranslatedCount := TotalUntranslatedCount + ThisUntranslatedCount;
+    TotalFuzzyCount := TotalFuzzyCount + ThisFuzzyCount;
   end;
 end;
 

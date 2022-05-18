@@ -299,9 +299,8 @@ const
                   faHidden or
                   faSysFile or
                   faVolumeID or
-                  faDirectory{ or
-                  faArchive};
-  }
+                  faDirectory or
+                  faArchive  }
 var
   Info: TSearchRec;
   FileAttr: LongInt;
@@ -311,9 +310,9 @@ var
     FileTypeToAttrMap: array[TFileAttr] of LongInt =
     (
  { ftReadOnly  } faReadOnly,
- { ftHidden    } faHidden,
- { ftSystem    } faSysFile,
- { ftVolumeID  } faVolumeId,
+ { ftHidden    } faHidden{%H-},
+ { ftSystem    } faSysFile{%H-},
+ { ftVolumeID  } faVolumeId{%H-},
  { ftDirectory } faDirectory,
  { ftArchive   } faArchive,
  { ftNormal    } 0

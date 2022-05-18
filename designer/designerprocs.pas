@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -33,8 +33,13 @@ unit DesignerProcs;
 interface
 
 uses
-  Classes, SysUtils, Types, LCLProc, LCLIntf, LCLType, Forms, Controls,
-  typinfo, Graphics, FormEditingIntf;
+  Classes, SysUtils, Types, typinfo,
+  // LazUtils
+  LazLoggerBase, LazTracer,
+  // LCL
+  LCLIntf, LCLType, Forms, Controls, Graphics,
+  // IdeIntf
+  FormEditingIntf;
 
 type
   TDesignerDCFlag = (
@@ -82,9 +87,7 @@ type
   end;
 
 const
-  NonVisualCompIconWidth = ComponentPaletteImageWidth;
   NonVisualCompBorder = 2;
-  NonVisualCompWidth = NonVisualCompIconWidth + 2 * NonVisualCompBorder;
 
 
 type
@@ -93,6 +96,7 @@ type
 var
   OnComponentIsInvisible: TOnComponentIsInvisible;
 
+function NonVisualCompWidth: integer;
 function GetParentLevel(AControl: TControl): integer;
 function ControlIsInDesignerVisible(AControl: TControl): boolean;
 function ComponentIsInvisible(AComponent: TComponent): boolean;
@@ -118,6 +122,9 @@ procedure InvalidateDesignerRect(aHandle: HWND; ARect: pRect);
 procedure WriteComponentStates(aComponent: TComponent; Recursive: boolean;
   const Prefix: string = '');
 
+procedure ScaleNonVisual(const aParent: TComponent;
+  const AFromPPI, AToPPI: Integer);
+
 implementation
 
 
@@ -130,7 +137,7 @@ var
 begin
   if Component is TControl then
   begin
-    ParentForm := GetParentForm(TControl(Component));
+    ParentForm := GetDesignerForm(TControl(Component));
     Parent := TControl(Component).Parent;
     if (Parent = nil) or (ParentForm = nil) then
     begin
@@ -150,7 +157,7 @@ begin
     if Component.Owner is TWinControl then
     begin
       Parent:=TWinControl(Component.Owner);
-      ParentForm := GetParentForm(Parent);
+      ParentForm := GetDesignerForm(Parent);
       if (ParentForm<>nil) and (ParentForm<>Parent) then
       begin
         p:=Parent.ClientOrigin;
@@ -180,7 +187,7 @@ var
 begin
   if Component is TControl then
   begin
-    ParentForm := GetParentForm(TControl(Component));
+    ParentForm := GetDesignerForm(TControl(Component));
     if ParentForm = nil then
       Result := Point(0, 0)
     else
@@ -205,7 +212,7 @@ var
 begin
   if Component is TControl then
   begin
-    ParentForm := GetParentForm(TControl(Component));
+    ParentForm := GetDesignerForm(TControl(Component));
     Parent := TControl(Component).Parent;
     if (Parent = nil) or (ParentForm = nil) then
       Result := Point(0, 0)
@@ -325,6 +332,31 @@ begin
     for i:=0 to aComponent.ComponentCount-1 do
       WriteComponentStates(aComponent.Components[i],true,Prefix+'  ');
   end;
+end;
+
+procedure ScaleNonVisual(const aParent: TComponent; const AFromPPI,
+  AToPPI: Integer);
+var
+  I: Integer;
+  Comp: TComponent;
+  DsgnInfo: LongInt;
+begin
+  for I := 0 to aParent.ComponentCount-1 do
+  begin
+    Comp := aParent.Components[I];
+    DsgnInfo := Comp.DesignInfo;
+    LongRec(DsgnInfo).Lo:=MulDiv(LongRec(DsgnInfo).Lo, AToPPI, AFromPPI);
+    LongRec(DsgnInfo).Hi:=MulDiv(LongRec(DsgnInfo).Hi, AToPPI, AFromPPI);
+    Comp.DesignInfo := DsgnInfo;
+  end;
+end;
+
+function NonVisualCompWidth: integer;
+begin
+  if Application.Scaled then
+    Result := MulDiv(ComponentPaletteImageWidth, Screen.PixelsPerInch, 96) + 2 * NonVisualCompBorder
+  else
+    Result := ComponentPaletteImageWidth + 2 * NonVisualCompBorder
 end;
 
 function GetParentLevel(AControl: TControl): integer;

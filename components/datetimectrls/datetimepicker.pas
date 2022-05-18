@@ -46,7 +46,8 @@ uses
   clocale, // needed to initialize default locale settings on Linux.
   {$endif}
   Classes, SysUtils, Controls, LCLType, Graphics, Math, StdCtrls, Buttons,
-  ExtCtrls, Forms, ComCtrls, Types, LMessages, LazUTF8, CalControlWrapper;
+  ExtCtrls, Forms, ComCtrls, Types, LMessages, Calendar, LazUTF8, LCLIntf,
+  LCLProc, Themes, CalControlWrapper;
 
 const
   { We will deal with the NullDate value the special way. It will be especially
@@ -86,7 +87,7 @@ type
     parts -- d-m-y, m-d-y or y-m-d.
     When ddoTryDefault is set, the actual order is determined from
     ShortDateFormat global variable -- see coments above
-    AdjustEffectiveHideDateTimeParts procedure }
+    AdjustEffectiveDateDisplayOrder procedure }
   TDateDisplayOrder = (ddoDMY, ddoMDY, ddoYMD, ddoTryDefault);
 
   TTimeDisplay = (tdHM,   // hour and minute
@@ -110,7 +111,7 @@ type
            // course, it makes a difference only when TimeFormat is set to tf12)
 
   TArrowShape = (asClassicSmaller, asClassicLarger, asModernSmaller,
-                                           asModernLarger, asYetAnotherShape);
+    asModernLarger, asYetAnotherShape, asTheme);
 
   TDTDateMode = (dmComboBox, dmUpDown, dmNone);
 
@@ -118,9 +119,16 @@ type
     dtaDefault means it is determined by BiDiMode }
   TDTCalAlignment = (dtaLeft, dtaRight, dtaDefault);
 
+  TDateTimePickerOption = (
+    dtpoDoChangeOnSetDateTime, dtpoEnabledIfUnchecked, dtpoAutoCheck, dtpoFlatButton);
+  TDateTimePickerOptions = set of TDateTimePickerOption;
+
   { TCustomDateTimePicker }
 
   TCustomDateTimePicker = class(TCustomControl)
+  private const
+    cDefOptions = [];
+    cCheckBoxBorder = 3;
   private
     FAutoAdvance: Boolean;
     FAutoButtonSize: Boolean;
@@ -128,6 +136,7 @@ type
     FCalendarWrapperClass: TCalendarControlWrapperClass;
     FCascade: Boolean;
     FCenturyFrom, FEffectiveCenturyFrom: Word;
+    FChecked: Boolean;
     FDateDisplayOrder: TDateDisplayOrder;
     FHideDateTimeParts: TDateTimeParts;
     FEffectiveHideDateTimeParts: set of TDateTimePart;
@@ -141,7 +150,7 @@ type
     FReadOnly: Boolean;
     FMaxDate, FMinDate: TDate;
     FShowMonthNames: Boolean;
-    FTextForNullDate: String;
+    FTextForNullDate: TCaption;
     FTimeSeparator: String;
     FTimeDisplay: TTimeDisplay;
     FTimeFormat: TTimeFormat;
@@ -156,6 +165,8 @@ type
     FTextHeight: Integer;
     FSeparatorWidth: Integer;
     FSepNoSpaceWidth: Integer;
+    FShowCheckBox: Boolean;
+    FMouseInCheckBox: Boolean;
     FTimeSeparatorWidth: Integer;
     FMonthWidth: Integer;
     FNullMonthText: String;
@@ -169,10 +180,11 @@ type
     FArrowShape: TArrowShape;
     FDateMode: TDTDateMode;
     FTextEnabled: Boolean;
-    FCheckBox: TCheckBox;
     FUpDown: TCustomUpDown;
     FOnChange: TNotifyEvent;
     FOnCheckBoxChange: TNotifyEvent;
+    FOnChangeHandlers: TMethodList;
+    FOnCheckBoxChangeHandlers: TMethodList;
     FOnDropDown: TNotifyEvent;
     FOnCloseUp: TNotifyEvent;
     FEffectiveDateDisplayOrder: TDateDisplayOrder;
@@ -183,16 +195,16 @@ type
     FConfirmedDateTime: TDateTime;
     FNoEditingDone: Integer;
     FAllowDroppingCalendar: Boolean;
-    FChangeInRecursiveCall: Boolean;
     FCorrectedDTP: TDateTimePart;
     FCorrectedValue: Word;
+    FSkipChangeInUpdateDate: Integer;
+    FOptions: TDateTimePickerOptions;
 
     function AreSeparatorsStored: Boolean;
     function GetChecked: Boolean;
     function GetDate: TDate;
     function GetDateTime: TDateTime;
     function GetDroppedDown: Boolean;
-    function GetShowCheckBox: Boolean;
     function GetTime: TTime;
     procedure SetArrowShape(const AValue: TArrowShape);
     procedure SetAutoButtonSize(AValue: Boolean);
@@ -216,7 +228,7 @@ type
     procedure SetReadOnly(const AValue: Boolean);
     procedure SetShowCheckBox(const AValue: Boolean);
     procedure SetShowMonthNames(AValue: Boolean);
-    procedure SetTextForNullDate(const AValue: String);
+    procedure SetTextForNullDate(const AValue: TCaption);
     procedure SetTime(const AValue: TTime);
     procedure SetTimeSeparator(const AValue: String);
     procedure SetTimeDisplay(const AValue: TTimeDisplay);
@@ -247,6 +259,7 @@ type
     procedure SetHMSMs(const AValue: THMSMs);
     procedure UpdateIfUserChangedText;
     function GetSelectedText: String;
+    procedure AdjustSelection;
     procedure AdjustEffectiveCenturyFrom;
     procedure AdjustEffectiveDateDisplayOrder;
     procedure AdjustEffectiveHideDateTimeParts;
@@ -257,12 +270,14 @@ type
     procedure UpdateShowArrowButton;
     procedure DestroyUpDown;
     procedure DestroyArrowBtn;
-    procedure ArrowMouseDown(Sender: TObject; {%H-}Button: TMouseButton;
-                                            {%H-}Shift: TShiftState; {%H-}X, {%H-}Y: Integer);
+    procedure ArrowMouseDown(Sender: TObject; Button: TMouseButton;
+                                            Shift: TShiftState; X, Y: Integer);
     procedure UpDownClick(Sender: TObject; Button: TUDBtnType);
-    procedure CheckBoxChange(Sender: TObject);
     procedure SetFocusIfPossible;
     procedure AutoResizeButton;
+    procedure CheckAndApplyKey(const Key: Char);
+    procedure CheckAndApplyKeyCode(var Key: Word);
+    procedure SetOptions(const aOptions: TDateTimePickerOptions);
 
   protected
     procedure WMKillFocus(var Message: TLMKillFocus); message LM_KILLFOCUS;
@@ -273,6 +288,7 @@ type
     procedure ConfirmChanges; virtual;
     procedure UndoChanges; virtual;
 
+    function GetCheckBoxRect(IgnoreRightToLeft: Boolean = False): TRect;
     function GetDateTimePartFromTextPart(TextPart: TTextPart): TDateTimePart;
     function GetSelectedDateTimePart: TDateTimePart;
     procedure FontChanged(Sender: TObject); override;
@@ -280,9 +296,11 @@ type
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure KeyPress(var Key: char); override;
     procedure SelectTextPartUnderMouse(XMouse: Integer);
+    procedure MouseLeave; override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
-    function DoMouseWheel({%H-}Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
-    procedure UpdateDate; virtual;
+    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
+    procedure UpdateDate(const CallChangeFromSetDateTime: Boolean = False); virtual;
     procedure DoEnter; override;
     procedure DoExit; override;
     procedure Click; override;
@@ -291,7 +309,7 @@ type
     procedure KeyUp(var Key: Word; Shift: TShiftState); override;
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
     procedure CalculatePreferredSize(var PreferredWidth,
-                  PreferredHeight: integer; {%H-}WithThemeSpace: Boolean); override;
+                  PreferredHeight: integer; WithThemeSpace: Boolean); override;
     procedure SetBiDiMode(AValue: TBiDiMode); override;
 
     procedure IncreaseCurrentTextPart;
@@ -327,9 +345,19 @@ type
     procedure SetDateTimeJumpMinMax(const AValue: TDateTime);
     procedure ArrangeCtrls; virtual;
     procedure Change; virtual;
+    procedure CheckBoxChange; virtual;
     procedure DoDropDown; virtual;
     procedure DoCloseUp; virtual;
-    procedure DrawArrowButtonGlyph; virtual;
+    procedure DoAutoCheck; virtual;
+    procedure DoAutoAdjustLayout(const AMode: TLayoutAdjustmentPolicy;
+      const AXProportion, AYProportion: Double); override;
+
+    procedure AddHandlerOnChange(const AOnChange: TNotifyEvent;
+      AsFirst: Boolean = False); virtual;
+    procedure AddHandlerOnCheckBoxChange(const AOnCheckBoxChange: TNotifyEvent;
+      AsFirst: Boolean = False); virtual;
+    procedure RemoveHandlerOnChange(AOnChange: TNotifyEvent); virtual;
+    procedure RemoveHandlerOnCheckBoxChange(AOnCheckBoxChange: TNotifyEvent); virtual;
 
     property BorderStyle default bsSingle;
     property AutoSize default True;
@@ -348,7 +376,7 @@ type
              read FTrailingSeparator write SetTrailingSeparator;
     property ReadOnly: Boolean read FReadOnly write SetReadOnly default False;
     property LeadingZeros: Boolean read FLeadingZeros write SetLeadingZeros;
-    property TextForNullDate: String
+    property TextForNullDate: TCaption
              read FTextForNullDate write SetTextForNullDate;
     property NullInputAllowed: Boolean
              read FNullInputAllowed write SetNullInputAllowed default True;
@@ -358,10 +386,10 @@ type
     property OnDropDown: TNotifyEvent read FOnDropDown write FOnDropDown;
     property OnCloseUp: TNotifyEvent read FOnCloseUp write FOnCloseUp;
     property ShowCheckBox: Boolean
-             read GetShowCheckBox write SetShowCheckBox default False;
+             read FShowCheckBox write SetShowCheckBox default False;
     property Checked: Boolean read GetChecked write SetChecked default True;
     property ArrowShape: TArrowShape
-             read FArrowShape write SetArrowShape default asModernSmaller;
+             read FArrowShape write SetArrowShape default asTheme;
     property Kind: TDateTimeKind
              read FKind write SetKind;
     property DateSeparator: String
@@ -389,13 +417,16 @@ type
              read FShowMonthNames write SetShowMonthNames default False;
     property DroppedDown: Boolean read GetDroppedDown;
     property CalAlignment: TDTCalAlignment read FCalAlignment write SetCalAlignment default dtaDefault;
-
+    property Options: TDateTimePickerOptions read FOptions write SetOptions default cDefOptions;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     function DateIsNull: Boolean;
     procedure SelectDate;
     procedure SelectTime;
+    procedure SendExternalKey(const aKey: Char);
+    procedure SendExternalKeyCode(const Key: Word);
+    procedure RemoveAllHandlersOfObject(AnObject: TObject); override;
 
     procedure Paint; override;
     procedure EditingDone; override;
@@ -407,6 +438,13 @@ type
   {TDateTimePicker}
 
   TDateTimePicker = class(TCustomDateTimePicker)
+  public
+    procedure AddHandlerOnChange(const AOnChange: TNotifyEvent; AsFirst: Boolean = False
+      ); override;
+    procedure AddHandlerOnCheckBoxChange(const AOnCheckBoxChange: TNotifyEvent;
+      AsFirst: Boolean = False); override;
+    procedure RemoveHandlerOnChange(AOnChange: TNotifyEvent); override;
+    procedure RemoveHandlerOnCheckBoxChange(AOnCheckBoxChange: TNotifyEvent); override;
   public
     property DateTime;
     property CalendarWrapperClass;
@@ -460,6 +498,7 @@ type
     property MonthNames;
     property ShowMonthNames;
     property CalAlignment;
+    property Options;
 // events:
     property OnChange;
     property OnCheckBoxChange;
@@ -495,6 +534,10 @@ implementation
 uses
   DateUtils, LCLCalWrapper;
 
+const
+  DefaultUpDownWidth = 15;
+  DefaultArrowButtonWidth = DefaultUpDownWidth + 2;
+
 function NumberOfDaysInMonth(const Month, Year: Word): Word;
 begin
   Result := 0;
@@ -521,6 +564,34 @@ end;
 
 type
 
+  { TDTUpDown }
+
+{ The two buttons contained by UpDown control are never disabled in original
+  UpDown class. This class is defined here to override this behaviour. }
+  TDTUpDown = class(TCustomUpDown)
+  private
+    DTPicker: TCustomDateTimePicker;
+  protected
+    procedure SetEnabled(Value: Boolean); override;
+    procedure CalculatePreferredSize(var PreferredWidth,
+                  PreferredHeight: integer; WithThemeSpace: Boolean); override;
+    procedure WndProc(var Message: TLMessage); override;
+  end;
+
+  { TDTSpeedButton }
+
+  TDTSpeedButton = class(TCustomSpeedButton)
+  private
+    DTPicker: TCustomDateTimePicker;
+  protected
+    procedure CalculatePreferredSize(var PreferredWidth,
+                  PreferredHeight: integer; WithThemeSpace: Boolean); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+      override;
+  public
+    procedure Paint; override;
+  end;
+
   { TDTCalendarForm }
 
   TDTCalendarForm = class(TForm)
@@ -538,10 +609,9 @@ type
     procedure CloseCalendarForm(const AndSetTheDate: Boolean = False);
 
     procedure CalendarKeyDown(Sender: TObject; var Key: Word;
-                                      {%H-}Shift: TShiftState);
+                                      Shift: TShiftState);
     procedure CalendarResize(Sender: TObject);
-    procedure CalendarMouseUp(Sender: TObject; {%H-}Button: TMouseButton;
-                                      {%H-}Shift: TShiftState; X, Y: Integer);
+    procedure CalendarClick(Sender: TObject);
     procedure VisibleOfParentChanged(Sender: TObject);
 
   protected
@@ -550,12 +620,38 @@ type
     procedure DoClose(var CloseAction: TCloseAction); override;
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
 
+    procedure WMActivate(var Message: TLMActivate); message LM_ACTIVATE;
   public
     constructor CreateNewDTCalendarForm(AOwner: TComponent;
                   ADTPicker: TCustomDateTimePicker);
     destructor Destroy; override;
   published
   end;
+
+{ TDateTimePicker }
+
+procedure TDateTimePicker.AddHandlerOnChange(const AOnChange: TNotifyEvent;
+  AsFirst: Boolean);
+begin
+  inherited AddHandlerOnChange(AOnChange, AsFirst);
+end;
+
+procedure TDateTimePicker.AddHandlerOnCheckBoxChange(
+  const AOnCheckBoxChange: TNotifyEvent; AsFirst: Boolean);
+begin
+  inherited AddHandlerOnCheckBoxChange(AOnCheckBoxChange, AsFirst);
+end;
+
+procedure TDateTimePicker.RemoveHandlerOnChange(AOnChange: TNotifyEvent);
+begin
+  inherited RemoveHandlerOnChange(AOnChange);
+end;
+
+procedure TDateTimePicker.RemoveHandlerOnCheckBoxChange(
+  AOnCheckBoxChange: TNotifyEvent);
+begin
+  inherited RemoveHandlerOnCheckBoxChange(AOnCheckBoxChange);
+end;
 
 procedure TDTCalendarForm.SetClosingCalendarForm;
 begin
@@ -646,6 +742,7 @@ begin
               // we'll change the date, but keep the time:
               DTPicker.SetDateTime(ComposeDateTime(Cal.GetDate, DTPicker.DateTime));
             end;
+            DTPicker.DoAutoCheck;
           finally
             Dec(DTPicker.FUserChanging);
           end;
@@ -666,14 +763,16 @@ end;
 procedure TDTCalendarForm.CalendarKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-  case Key of
-    VK_ESCAPE:
-      CloseCalendarForm;
+  if (not(Cal.GetCalendarControl is TCustomCalendar))
+       or (TCustomCalendar(Cal.GetCalendarControl).GetCalendarView = cvMonth) then
+    case Key of
+      VK_ESCAPE:
+        CloseCalendarForm;
 
-    VK_RETURN, VK_SPACE:
-      CloseCalendarForm(True);
+      VK_RETURN, VK_SPACE:
+        CloseCalendarForm(True);
 
-  end;
+    end;
 end;
 
 procedure TDTCalendarForm.CalendarResize(Sender: TObject);
@@ -681,11 +780,13 @@ begin
   AdjustCalendarFormSize;
 end;
 
-procedure TDTCalendarForm.CalendarMouseUp(Sender: TObject;
-  Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+procedure TDTCalendarForm.CalendarClick(Sender: TObject);
+var
+  P: TPoint;
 begin
-  if Cal.AreCoordinatesOnDate(X, Y) then
-    CloseCalendarForm(True);
+  P := Cal.GetCalendarControl.ScreenToClient(Mouse.CursorPos);
+  if Cal.AreCoordinatesOnDate(P.x, P.y) then
+     CloseCalendarForm(True);
 
 end;
 
@@ -696,6 +797,17 @@ procedure TDTCalendarForm.VisibleOfParentChanged(Sender: TObject);
 begin
   SetClosingCalendarForm;
   Release;
+end;
+
+procedure TDTCalendarForm.WMActivate(var Message: TLMActivate);
+var
+  PP: HWND;
+begin
+  inherited;
+
+  PP := LCLIntf.GetParent(Handle);
+  if (PP<>0) then
+    SendMessage(PP, LM_NCACTIVATE, Ord(Message.Active <> WA_INACTIVE), 0);
 end;
 
 procedure TDTCalendarForm.Notification(AComponent: TComponent;
@@ -732,11 +844,6 @@ begin
 
   inherited DoClose(CloseAction);
 end;
-
-type
-  { To be able to access TControl's protected members,
-    we derive our class TDTControl from TControl: }
-  TDTControl = class(TControl);
 
 constructor TDTCalendarForm.CreateNewDTCalendarForm(AOwner: TComponent;
   ADTPicker: TCustomDateTimePicker);
@@ -797,7 +904,7 @@ begin
     Cal.SetDate(DTPicker.Date);
 
   Cal.GetCalendarControl.OnResize := @CalendarResize;
-  TDTControl(Cal.GetCalendarControl).OnMouseUp := @CalendarMouseUp;
+  Cal.GetCalendarControl.OnClick := @CalendarClick;
   if Cal.GetCalendarControl is TWinControl then begin
     TWinControl(Cal.GetCalendarControl).OnKeyDown := @CalendarKeyDown;
     TWinControl(Cal.GetCalendarControl).TabStop := True;
@@ -817,7 +924,7 @@ begin
 
   if Assigned(Cal) then begin
     Cal.GetCalendarControl.OnResize := nil;
-    TDTControl(Cal.GetCalendarControl).OnMouseUp := nil;
+    Cal.GetCalendarControl.OnClick := nil;
     if Cal.GetCalendarControl is TWinControl then
       TWinControl(Cal.GetCalendarControl).OnKeyDown := nil;
     Cal.Free;
@@ -841,25 +948,24 @@ end;
 
 procedure TCustomDateTimePicker.SetChecked(const AValue: Boolean);
 begin
-  if Assigned(FCheckBox) then
-    FCheckBox.Checked := AValue;
+  if (FChecked=AValue) or not FShowCheckBox then
+    Exit;
+  FChecked := AValue;
 
+  CheckBoxChange;
   CheckTextEnabled;
   Invalidate;
 end;
 
 procedure TCustomDateTimePicker.CheckTextEnabled;
 begin
-  FTextEnabled := Self.Enabled and GetChecked;
+  FTextEnabled := Self.Enabled and ((dtpoEnabledIfUnchecked in Options) or GetChecked);
 
   if Assigned(FArrowButton) then
     FArrowButton.Enabled := FTextEnabled;
 
   if Assigned(FUpDown) then
     FUpDown.Enabled := FTextEnabled;
-
-  if Assigned(FCheckBox) then
-    FCheckBox.Enabled := Self.Enabled;
 end;
 
 procedure TCustomDateTimePicker.SetDateDisplayOrder(
@@ -871,8 +977,10 @@ begin
     PreviousEffectiveDDO := FEffectiveDateDisplayOrder;
     FDateDisplayOrder := AValue;
     AdjustEffectiveDateDisplayOrder;
-    if FEffectiveDateDisplayOrder <> PreviousEffectiveDDO then
+    if FEffectiveDateDisplayOrder <> PreviousEffectiveDDO then begin
+      AdjustSelection;
       UpdateDate;
+    end;
   end;
 end;
 
@@ -965,6 +1073,22 @@ begin
   FNullInputAllowed := AValue;
 end;
 
+procedure TCustomDateTimePicker.SetOptions(
+  const aOptions: TDateTimePickerOptions);
+begin
+  if FOptions = aOptions then Exit;
+  FOptions := aOptions;
+
+  if FArrowButton<>nil then
+    FArrowButton.Flat := dtpoFlatButton in Options;
+
+  if FUpDown <> nil then
+    TDTUpDown(FUpDown).Flat := dtpoFlatButton in Options;
+
+  CheckTextEnabled;
+  Invalidate;
+end;
+
 procedure TCustomDateTimePicker.SetDate(const AValue: TDate);
 begin
   if IsNullDate(AValue) then
@@ -982,8 +1106,11 @@ begin
       FDateTime := NullDate
     else
       FDateTime := AValue;
-  end;
-  UpdateDate;
+
+    UpdateDate(dtpoDoChangeOnSetDateTime in FOptions);
+  end else
+    UpdateDate;
+
 end;
 
 procedure TCustomDateTimePicker.SetDateSeparator(const AValue: String);
@@ -1039,71 +1166,13 @@ begin
   end;
 end;
 
-type
-  TDTCheckBox = class(TCheckBox)
-  protected
-    procedure CalculatePreferredSize(var PreferredWidth,
-                  PreferredHeight: integer; WithThemeSpace: Boolean); override;
-  end;
-
-procedure TDTCheckBox.CalculatePreferredSize(var PreferredWidth,
-  PreferredHeight: integer; WithThemeSpace: Boolean);
-begin
-  inherited CalculatePreferredSize(PreferredWidth, PreferredHeight,
-    WithThemeSpace);
-
-  PreferredHeight := 1;
-end;
-
 procedure TCustomDateTimePicker.SetShowCheckBox(const AValue: Boolean);
 begin
-  if GetShowCheckBox <> AValue then begin
-    DisableAlign;
-    try
-      if AValue then begin
-        FCheckBox := TDTCheckBox.Create(Self);
+  if FShowCheckBox = AValue then
+    Exit;
 
-        {$IFNDEF WINDOWS}
-        { On Windows, the following line seems to not have any effect, but I
-         enclosed it in IFNDEF anyway. }
-        FCheckBox.Color := clBtnFace; { This line is here because of CheckBox's
-         strange behavior in Linux -- when parent's colour is white, which is
-         the default in our case (actually, our default is clWindow, but it's
-         usually white) and when the check box is on a form shown modally, if
-         we close the form and then show it again, the check box refuses to
-         paint it's "checker" shape.
-
-         I spent a lot of time trying to solve this and this is the best I
-         came up with -- setting the check box's colour to clBtnFace seems to
-         be a workaround.
-
-         Nice thing is that it seems not to really effect neither the checker's
-         colour on the screen, nor the colour of check box's "box", so we didn't
-         actually spoil the check box's default appearence on the screen.   }
-        {$ENDIF}
-
-        FCheckBox.ControlStyle := FCheckBox.ControlStyle +
-                                    [csNoFocus, csNoDesignSelectable];
-        FCheckBox.AllowGrayed := False;
-        FCheckBox.TabStop := False;
-
-        FCheckBox.Checked := True;
-        FCheckBox.Enabled := Self.Enabled;
-
-        FCheckBox.Parent := Self;
-
-        FCheckBox.OnChange := @CheckBoxChange;
-      end else begin
-        FCheckBox.OnChange := nil;
-        FreeAndNil(FCheckBox);
-
-      end;
-      ArrangeCtrls;
-
-    finally
-      EnableAlign;
-    end;
-  end;
+  FShowCheckBox := AValue;
+  ArrangeCtrls;
 end;
 
 procedure TCustomDateTimePicker.SetShowMonthNames(AValue: Boolean);
@@ -1117,7 +1186,7 @@ begin
   end;
 end;
 
-procedure TCustomDateTimePicker.SetTextForNullDate(const AValue: String);
+procedure TCustomDateTimePicker.SetTextForNullDate(const AValue: TCaption);
 begin
   if FTextForNullDate = AValue then
     Exit;
@@ -1292,8 +1361,6 @@ begin
       for I := dtpHour to dtpMiliSec do
         if not (I in FEffectiveHideDateTimeParts) then begin
           Inc(TimeParts);
-          if TimeParts > 1 then
-            Inc(FTimeWidth, FTimeSeparatorWidth);
 
           if I = dtpMiliSec then
             FTimeWidth := FTimeWidth + 3 * FDigitWidth
@@ -1609,6 +1676,13 @@ begin
     Result := FTimeText[TDateTimePart(FSelectedTextPart - 1)];
 end;
 
+procedure TCustomDateTimePicker.AdjustSelection;
+begin
+  if GetDateTimePartFromTextPart(FSelectedTextPart) in
+                   FEffectiveHideDateTimeParts then
+    MoveSelectionLR(False);
+end;
+
 procedure TCustomDateTimePicker.AdjustEffectiveCenturyFrom;
 var
   Y1, Y2, M, D: Word;
@@ -1787,10 +1861,7 @@ begin
 
   if FEffectiveHideDateTimeParts
                           <> PreviousEffectiveHideDateTimeParts then begin
-    if GetDateTimePartFromTextPart(FSelectedTextPart) in
-                     FEffectiveHideDateTimeParts then
-      MoveSelectionLR(False);
-
+    AdjustSelection;
     FRecalculatingTextSizesNeeded := True;
     UpdateShowArrowButton;
     UpdateDate;
@@ -1839,8 +1910,19 @@ end;
 
 procedure TCustomDateTimePicker.UndoChanges;
 begin
-  FDateTime := FConfirmedDateTime;
-  UpdateDate;
+  if FDateTime = FConfirmedDateTime then begin
+    Inc(FSkipChangeInUpdateDate); // prevents calling Change in UpdateDate,
+    try  // but UpdateDate should be called anyway, because user might have
+         // changed text on screen and it should be updated to what it was.
+      UpdateDate;
+    finally
+      Dec(FSkipChangeInUpdateDate);
+    end;
+  end else begin
+    FDateTime := FConfirmedDateTime;
+    UpdateDate;
+  end;
+
 end;
 
 { GetDateTimePartFromTextPart function
@@ -1879,22 +1961,52 @@ begin
   inherited FontChanged(Sender);
 end;
 
+function TCustomDateTimePicker.GetCheckBoxRect(
+  IgnoreRightToLeft: Boolean): TRect;
+var
+  Details: TThemedElementDetails;
+  CSize: TSize;
+begin
+  Details := ThemeServices.GetElementDetails(tbCheckBoxCheckedNormal);
+  CSize := ThemeServices.GetDetailSize(Details);
+  CSize.cx := ScaleScreenToFont(CSize.cx);
+  CSize.cy := ScaleScreenToFont(CSize.cy);
+  if IsRightToLeft and not IgnoreRightToLeft then
+  begin
+    Result.Right := ClientWidth-(BorderSpacing.InnerBorder+BorderWidth);
+    Result.Left := Result.Right-CSize.cx;
+  end else
+  begin
+    Result.Left := BorderSpacing.InnerBorder+BorderWidth;
+    Result.Right := Result.Left+CSize.cx;
+  end;
+  Result.Top := (ClientHeight-CSize.cy) div 2;
+  Result.Bottom := Result.Top+CSize.cy;
+end;
+
 { GetTextOrigin
  ---------------
   Returns upper left corner of the rectangle where the text is written.
   Also used in calculating our preffered size. }
 function TCustomDateTimePicker.GetTextOrigin(IgnoreRightToLeft: Boolean
   ): TPoint;
+var
+  R: TRect;
 begin
   Result.y := BorderSpacing.InnerBorder + BorderWidth;
-  if Assigned(FCheckBox) then
-    Result.x := Result.y + FCheckBox.BorderSpacing.Left
-             + FCheckBox.BorderSpacing.Right + FCheckBox.Width
-  else
+  if FShowCheckBox then
+  begin
+    R := GetCheckBoxRect(IgnoreRightToLeft);
+    if not IgnoreRightToLeft and IsRightToLeft then
+      Result.x := R.Left - Scale96ToFont(cCheckBoxBorder) - FTextWidth
+    else
+      Result.x := R.Right + Scale96ToFont(cCheckBoxBorder);
+  end else
+  begin
     Result.x := Result.y;
-
-  if (not IgnoreRightToLeft) and IsRightToLeft then
-    Result.x := ClientWidth - Result.x - FTextWidth;
+    if not IgnoreRightToLeft and IsRightToLeft then
+      Result.x := ClientWidth - Result.x - FTextWidth;
+  end;
 end;
 
 { MoveSelectionLR
@@ -1934,58 +2046,13 @@ begin
 end;
 
 procedure TCustomDateTimePicker.KeyDown(var Key: Word; Shift: TShiftState);
-var
-  K: Word;
 begin
   Inc(FUserChanging);
   try
     if FTextEnabled then
       inherited KeyDown(Key, Shift); // calls OnKeyDown event
 
-    if (Key = VK_SPACE) then begin
-      if GetShowCheckBox then
-        FCheckBox.Checked := not FCheckBox.Checked;
-
-    end else if FTextEnabled then begin
-
-      case Key of
-        VK_LEFT, VK_RIGHT, VK_OEM_COMMA, VK_OEM_PERIOD, VK_DIVIDE,
-            VK_OEM_MINUS, VK_SEPARATOR, VK_DECIMAL, VK_SUBTRACT:
-          begin
-            K := Key;
-            Key := 0;
-            MoveSelectionLR(K = VK_LEFT);
-            Invalidate;
-          end;
-        VK_UP:
-          begin
-            Key := 0;
-            UpdateIfUserChangedText;
-            if not FReadOnly then
-              IncreaseCurrentTextPart;
-          end;
-        VK_DOWN:
-          begin
-            Key := 0;
-            UpdateIfUserChangedText;
-            if not FReadOnly then
-              DecreaseCurrentTextPart;
-          end;
-        VK_RETURN:
-          if not FReadOnly then
-            EditingDone;
-
-        VK_ESCAPE:
-          if not FReadOnly then begin
-            UndoChanges;
-            EditingDone;
-          end;
-        VK_N:
-          if (not FReadOnly) and FNullInputAllowed then
-            SetDateTime(NullDate);
-      end;
-
-    end;
+    CheckAndApplyKeyCode(Key);
   finally
     Dec(FUserChanging);
   end;
@@ -1993,177 +2060,13 @@ begin
 end;
 
 procedure TCustomDateTimePicker.KeyPress(var Key: char);
-var
-  S: String;
-  DTP: TDateTimePart;
-  N, L: Integer;
-  YMD: TYMD;
-  HMSMs: THMSMs;
-  D, T: TDateTime;
-  Finished, ForceChange: Boolean;
-
 begin
   if FTextEnabled then begin
     Inc(FUserChanging);
     try
       inherited KeyPress(Key);
 
-      if (not FReadOnly) then begin
-        Finished := False;
-        ForceChange := False;
-
-        if FSelectedTextPart = 8 then begin
-          case upCase(Key) of
-            'A': S := 'AM';
-            'P': S := 'PM';
-          else
-            Finished := True;
-          end;
-          ForceChange := True;
-
-        end else if Key in ['0'..'9'] then begin
-
-          DTP := GetSelectedDateTimePart;
-
-          if DTP = dtpYear then
-            N := 4
-          else if DTP = dtpMiliSec then
-            N := 3
-          else
-            N := 2;
-
-          S := Trim(GetSelectedText);
-          if FUserChangedText and (Length(S) < N) then
-            S := S + Key
-          else
-            S := Key;
-
-          if (Length(S) >= N) then begin
-
-            FCorrectedDTP := dtpAMPM;
-
-            L := StrToInt(S);
-            if DTP < dtpHour then begin
-              YMD := GetYYYYMMDD(True);
-              case DTP of
-                dtpDay: YMD.Day := L;
-                dtpMonth: YMD.Month := L;
-                dtpYear: YMD.Year := L;
-              end;
-
-              if AutoAdvance and (YMD.Day <= 31) and
-                  (YMD.Day > NumberOfDaysInMonth(YMD.Month, YMD.Year)) then begin
-                case DTP of
-                  dtpDay:
-                    case FEffectiveDateDisplayOrder of
-                      ddoDMY: begin
-                        FCorrectedValue := YMD.Month + 1;
-                        FCorrectedDTP := dtpMonth;
-                      end;
-                      ddoMDY:
-                        FCorrectedDTP := dtpYear;
-                    end;
-                  dtpMonth:
-                    case FEffectiveDateDisplayOrder of
-                      ddoMDY, ddoYMD: begin
-                          FCorrectedValue := NumberOfDaysInMonth(YMD.Month, YMD.Year);
-                          FCorrectedDTP := dtpDay;
-                        end;
-                      ddoDMY:
-                        FCorrectedDTP := dtpYear;
-                    end;
-                  dtpYear:
-                    if (FEffectiveDateDisplayOrder = ddoYMD) and (YMD.Month = 2)
-                          and (YMD.Day = 29) and not IsLeapYear(YMD.Year) then begin
-                      FCorrectedValue := YMD.Month + 1;
-                      FCorrectedDTP := dtpMonth;
-                    end;
-                end;
-
-                case FCorrectedDTP of
-                  dtpDay:
-                    YMD.Day := FCorrectedValue;
-                  dtpMonth:
-                    YMD.Month := FCorrectedValue;
-                  dtpYear:
-                    if (YMD.Day = 29) and (YMD.Month = 2) then begin
-                      while not IsLeapYear(YMD.Year) do
-                        Inc(YMD.Year);
-                      FCorrectedValue := YMD.Year;
-                    end;
-
-                end;
-              end;
-
-              if TryEncodeDate(YMD.Year, YMD.Month, YMD.Day, D)
-                        and (D >= MinDate) and (D <= MaxDate) then
-                ForceChange := True
-              else if N = 4 then begin
-                UpdateDate;
-                Finished := True;
-              end else
-                S := Key;
-
-            end else begin
-              if (DTP = dtpHour) and (FTimeFormat = tf12) then begin
-                if not (L in [1..12]) then
-                  S := Key
-                else
-                  ForceChange := True;
-
-              end else begin
-
-                HMSMs := GetHMSMs(True);
-                case DTP of
-                  dtpHour: HMSMs.Hour := L;
-                  dtpMinute: HMSMs.Minute := L;
-                  dtpSecond: HMSMs.Second := L;
-                  dtpMiliSec: HMSMs.MiliSec := L;
-                end;
-                if not TryEncodeTime(HMSMs.Hour, HMSMs.Minute, HMSMs.Second,
-                                             HMSMs.MiliSec, T) then
-                  S := Key
-                else
-                  ForceChange := True;
-
-              end;
-            end;
-
-          end;
-        end else
-          Finished := True;
-
-        if (not Finished) and (GetSelectedText <> S) then begin
-          if (not FUserChangedText) and DateIsNull then
-            if FSelectedTextPart <= 3 then
-              DateTime := SysUtils.Date
-            else
-              DateTime := SysUtils.Now;
-
-          if (not FLeadingZeros) and (FSelectedTextPart <= 4) then
-            while (Length(S) > 1) and (S[1] = '0') do
-              Delete(S, 1, 1);
-
-          if FSelectedTextPart <= 3 then
-            FTextPart[FSelectedTextPart] := S
-          else
-            FTimeText[TDateTimePart(FSelectedTextPart - 1)] := S;
-
-          FUserChangedText := True;
-
-          if ForceChange then begin
-            if FAutoAdvance then begin
-              MoveSelectionLR(False);
-              Invalidate;
-            end else
-              UpdateIfUserChangedText;
-          end else
-            Invalidate;
-
-        end;
-
-      end;
-
+      CheckAndApplyKey(Key);
     finally
       Dec(FUserChanging);
     end;
@@ -2263,13 +2166,48 @@ end;
 
 procedure TCustomDateTimePicker.MouseDown(Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
+var
+  R: TRect;
 begin
-  if FTextEnabled then begin
+  if FTextEnabled then
     SelectTextPartUnderMouse(X);
-    inherited MouseDown(Button, Shift, X, Y);
-  end else
-    SetFocusIfPossible;
+  if ShowCheckBox then
+  begin
+    R := GetCheckBoxRect;
+    if PtInRect(R, Point(X, Y)) then
+    begin
+      Checked := not Checked;
+    end;
+  end;
+  SetFocusIfPossible;
+  inherited MouseDown(Button, Shift, X, Y);
+end;
 
+procedure TCustomDateTimePicker.MouseLeave;
+begin
+  inherited MouseLeave;
+  if FShowCheckBox and FMouseInCheckBox then
+  begin
+    FMouseInCheckBox := False;
+    Invalidate;
+  end;
+end;
+
+procedure TCustomDateTimePicker.MouseMove(Shift: TShiftState; X, Y: Integer);
+var
+  NewMouseInCheckBox: Boolean;
+begin
+  inherited MouseMove(Shift, X, Y);
+
+  if ShowCheckBox then
+  begin
+    NewMouseInCheckBox := PtInRect(GetCheckBoxRect, Point(X, Y));
+    if FMouseInCheckBox<>NewMouseInCheckBox then
+    begin
+      FMouseInCheckBox := NewMouseInCheckBox;
+      Invalidate;
+    end;
+  end;
 end;
 
 function TCustomDateTimePicker.DoMouseWheel(Shift: TShiftState;
@@ -2651,128 +2589,132 @@ begin
   SetHMSMs(HMSMs);
 end;
 
-procedure TCustomDateTimePicker.UpdateDate;
+procedure TCustomDateTimePicker.UpdateDate(const CallChangeFromSetDateTime: Boolean);
 var
   W: Array[1..3] of Word;
   WT: Array[dtpHour..dtpAMPM] of Word;
   DTP: TDateTimePart;
 begin
-  if HandleAllocated then begin
-    FCorrectedDTP := dtpAMPM;
+  FCorrectedDTP := dtpAMPM;
 
-    FUserChangedText := False;
+  FUserChangedText := False;
 
-    if not (DateIsNull or FJumpMinMax) then begin
-      if Int(FDateTime) > FMaxDate then
-        FDateTime := ComposeDateTime(FMaxDate, FDateTime);
+  if not (DateIsNull or FJumpMinMax) then begin
+    if Int(FDateTime) > FMaxDate then
+      FDateTime := ComposeDateTime(FMaxDate, FDateTime);
 
-      if FDateTime < FMinDate then
-        FDateTime := ComposeDateTime(FMinDate, FDateTime);
-    end;
-
-    if not FChangeInRecursiveCall then begin // we'll skip the next part in
-           // recursive calls which could be made through Change or UndoChanges
-      FChangeInRecursiveCall := True;
-      try
-        if FUserChanging > 0 then begin // this means that the change is caused by user interaction
-          try
-            Change;
-          except
-            UndoChanges;
-            raise;
-          end
-        end else
-          FConfirmedDateTime := FDateTime;
-      finally
-        FChangeInRecursiveCall := False;
-      end;
-    end;
-
-    if DateIsNull then begin
-      if dtpYear in FEffectiveHideDateTimeParts then
-        FTextPart[FYearPos] := ''
-      else
-        FTextPart[FYearPos] := '0000';
-
-      if dtpMonth in FEffectiveHideDateTimeParts then
-        FTextPart[FMonthPos] := ''
-      else
-        FTextPart[FMonthPos] := '00';
-
-      if dtpDay in FEffectiveHideDateTimeParts then
-        FTextPart[FDayPos] := ''
-      else
-        FTextPart[FDayPos] := '00';
-
-      for DTP := dtpHour to dtpAMPM do begin
-        if DTP in FEffectiveHideDateTimeParts then
-          FTimeText[DTP] := ''
-        else if DTP = dtpAMPM then
-          FTimeText[DTP] := 'XX'
-        else if DTP = dtpMiliSec then
-          FTimeText[DTP] := '999'
-        else
-          FTimeText[DTP] := '99';
-      end;
-
-    end else begin
-      DecodeDate(FDateTime, W[3], W[2], W[1]);
-
-      if dtpYear in FEffectiveHideDateTimeParts then
-        FTextPart[FYearPos] := ''
-      else if FLeadingZeros then
-        FTextPart[FYearPos] := RightStr('000' + IntToStr(W[3]), 4)
-      else
-        FTextPart[FYearPos] := IntToStr(W[3]);
-
-      if dtpMonth in FEffectiveHideDateTimeParts then
-        FTextPart[FMonthPos] := ''
-      else if FShowMonthNames then
-        FTextPart[FMonthPos] := FMonthNamesArray[W[2]]
-      else if FLeadingZeros then
-        FTextPart[FMonthPos] := RightStr('0' + IntToStr(W[2]), 2)
-      else
-        FTextPart[FMonthPos] := IntToStr(W[2]);
-
-      if dtpDay in FEffectiveHideDateTimeParts then
-        FTextPart[FDayPos] := ''
-      else if FLeadingZeros then
-        FTextPart[FDayPos] := RightStr('0' + IntToStr(W[1]), 2)
-      else
-        FTextPart[FDayPos] := IntToStr(W[1]);
-
-      DecodeTime(FDateTime, WT[dtpHour], WT[dtpMinute], WT[dtpSecond], WT[dtpMiliSec]);
-
-      if dtpAMPM in FEffectiveHideDateTimeParts then
-        FTimeText[dtpAMPM] := ''
-      else begin
-        if WT[dtpHour] < 12 then begin
-          FTimeText[dtpAMPM] := 'AM';
-          if WT[dtpHour] = 0 then
-            WT[dtpHour] := 12;
-        end else begin
-          FTimeText[dtpAMPM] := 'PM';
-          if WT[dtpHour] > 12 then
-            Dec(WT[dtpHour], 12);
-        end;
-      end;
-
-      for DTP := dtpHour to dtpMiliSec do begin
-        if DTP in FEffectiveHideDateTimeParts then
-          FTimeText[DTP] := ''
-        else if (DTP = dtpHour) and (not FLeadingZeros) then
-          FTimeText[DTP] := IntToStr(WT[dtpHour])
-        else if DTP = dtpMiliSec then
-          FTimeText[DTP] := RightStr('00' + IntToStr(WT[DTP]), 3)
-        else
-          FTimeText[DTP] := RightStr('0' + IntToStr(WT[DTP]), 2);
-
-      end;
-
-    end;
-
-    Invalidate;
+    if FDateTime < FMinDate then
+      FDateTime := ComposeDateTime(FMinDate, FDateTime);
   end;
+
+  if (FSkipChangeInUpdateDate = 0) then begin
+   // we'll skip the next part if called from UndoChanges
+   // and in recursive calls which could be made through calling Change
+    Inc(FSkipChangeInUpdateDate);
+    try
+      if (FUserChanging > 0) // the change is caused by user interaction
+          or CallChangeFromSetDateTime // call from SetDateTime with option dtpoDoChangeOnSetDateTime
+      then
+        try
+          Change;
+        except
+          UndoChanges;
+          raise;
+        end;
+
+      if FUserChanging = 0 then
+        FConfirmedDateTime := FDateTime;
+
+    finally
+      Dec(FSkipChangeInUpdateDate);
+    end;
+  end;
+
+  if DateIsNull then begin
+    if dtpYear in FEffectiveHideDateTimeParts then
+      FTextPart[FYearPos] := ''
+    else
+      FTextPart[FYearPos] := '0000';
+
+    if dtpMonth in FEffectiveHideDateTimeParts then
+      FTextPart[FMonthPos] := ''
+    else
+      FTextPart[FMonthPos] := '00';
+
+    if dtpDay in FEffectiveHideDateTimeParts then
+      FTextPart[FDayPos] := ''
+    else
+      FTextPart[FDayPos] := '00';
+
+    for DTP := dtpHour to dtpAMPM do begin
+      if DTP in FEffectiveHideDateTimeParts then
+        FTimeText[DTP] := ''
+      else if DTP = dtpAMPM then
+        FTimeText[DTP] := 'XX'
+      else if DTP = dtpMiliSec then
+        FTimeText[DTP] := '999'
+      else
+        FTimeText[DTP] := '99';
+    end;
+
+  end else begin
+    DecodeDate(FDateTime, W[3], W[2], W[1]);
+
+    if dtpYear in FEffectiveHideDateTimeParts then
+      FTextPart[FYearPos] := ''
+    else if FLeadingZeros then
+      FTextPart[FYearPos] := RightStr('000' + IntToStr(W[3]), 4)
+    else
+      FTextPart[FYearPos] := IntToStr(W[3]);
+
+    if dtpMonth in FEffectiveHideDateTimeParts then
+      FTextPart[FMonthPos] := ''
+    else if FShowMonthNames then
+      FTextPart[FMonthPos] := FMonthNamesArray[W[2]]
+    else if FLeadingZeros then
+      FTextPart[FMonthPos] := RightStr('0' + IntToStr(W[2]), 2)
+    else
+      FTextPart[FMonthPos] := IntToStr(W[2]);
+
+    if dtpDay in FEffectiveHideDateTimeParts then
+      FTextPart[FDayPos] := ''
+    else if FLeadingZeros then
+      FTextPart[FDayPos] := RightStr('0' + IntToStr(W[1]), 2)
+    else
+      FTextPart[FDayPos] := IntToStr(W[1]);
+
+    DecodeTime(FDateTime, WT[dtpHour], WT[dtpMinute], WT[dtpSecond], WT[dtpMiliSec]);
+
+    if dtpAMPM in FEffectiveHideDateTimeParts then
+      FTimeText[dtpAMPM] := ''
+    else begin
+      if WT[dtpHour] < 12 then begin
+        FTimeText[dtpAMPM] := 'AM';
+        if WT[dtpHour] = 0 then
+          WT[dtpHour] := 12;
+      end else begin
+        FTimeText[dtpAMPM] := 'PM';
+        if WT[dtpHour] > 12 then
+          Dec(WT[dtpHour], 12);
+      end;
+    end;
+
+    for DTP := dtpHour to dtpMiliSec do begin
+      if DTP in FEffectiveHideDateTimeParts then
+        FTimeText[DTP] := ''
+      else if (DTP = dtpHour) and (not FLeadingZeros) then
+        FTimeText[DTP] := IntToStr(WT[dtpHour])
+      else if DTP = dtpMiliSec then
+        FTimeText[DTP] := RightStr('00' + IntToStr(WT[DTP]), 3)
+      else
+        FTimeText[DTP] := RightStr('0' + IntToStr(WT[DTP]), 2);
+
+    end;
+
+  end;
+
+  if HandleAllocated then
+    Invalidate;
 end;
 
 procedure TCustomDateTimePicker.DoEnter;
@@ -2831,6 +2773,47 @@ end;
 procedure TCustomDateTimePicker.SelectYear;
 begin
   SelectDateTimePart(dtpYear);
+end;
+
+procedure TCustomDateTimePicker.SendExternalKey(const aKey: Char);
+var
+  K: Word;
+begin
+  if FTextEnabled then begin
+    if aKey in ['n', 'N'] then begin
+      K := VK_N;
+      CheckAndApplyKeyCode(K);
+    end else
+      CheckAndApplyKey(aKey);
+  end;
+end;
+
+procedure TCustomDateTimePicker.SendExternalKeyCode(const Key: Word);
+var
+  Ch: Char;
+  K: Word;
+begin
+  if Key in [Ord('0')..Ord('9'), Ord('a'), Ord('A'), Ord('p'), Ord('P')] then begin
+    if FTextEnabled then begin
+      Ch := Char(Key);
+      CheckAndApplyKey(Ch);
+    end;
+  end else begin
+    K := Key;
+    CheckAndApplyKeyCode(K);
+  end;
+
+end;
+
+procedure TCustomDateTimePicker.RemoveAllHandlersOfObject(AnObject: TObject);
+begin
+  inherited RemoveAllHandlersOfObject(AnObject);
+
+  if Assigned(FOnChangeHandlers) then
+    FOnChangeHandlers.RemoveAllMethodsOfObject(AnObject);
+
+  if Assigned(FOnCheckBoxChangeHandlers) then
+    FOnCheckBoxChangeHandlers.RemoveAllMethodsOfObject(AnObject);
 end;
 
 procedure TCustomDateTimePicker.SelectHour;
@@ -2894,7 +2877,6 @@ begin
     Its purpose is to prevent control anchoring until this point. That's because
     on Linux Lazarus crashes when control is dropped on form in designer if
     particular anchoring code executes before CreateWnd has done its job. }
-    UpdateDate;
     FDoNotArrangeControls := False;
     ArrangeCtrls;
   end;
@@ -2917,19 +2899,6 @@ begin
   if not FDoNotArrangeControls then begin //Read the note above CreateWnd procedure.
     DisableAlign;
     try
-      if GetShowCheckBox then begin
-        if IsRightToLeft then begin
-          FCheckBox.Align := alRight;
-          FCheckBox.BorderSpacing.Left := 0;
-          FCheckBox.BorderSpacing.Right := 2;
-        end else begin
-          FCheckBox.Align := alLeft;
-          FCheckBox.BorderSpacing.Left := 2;
-          FCheckBox.BorderSpacing.Right := 0;
-        end;
-        FCheckBox.BringToFront;
-      end;
-
       if Assigned(FUpDown) then
         C := FUpDown
       else if Assigned(FArrowButton) then
@@ -2961,6 +2930,8 @@ procedure TCustomDateTimePicker.Change;
 begin
   if Assigned(FOnChange) then
     FOnChange(Self);
+  if FOnChangeHandlers<>nil then
+    FOnChangeHandlers.CallNotifyEvents(Self);
 end;
 
 procedure TCustomDateTimePicker.SelectDate;
@@ -3000,7 +2971,12 @@ var
   TextStyle: TTextStyle;
   DTP: TDateTimePart;
   S: String;
-
+const
+  CheckStates: array[Boolean, Boolean, Boolean] of TThemedButton = (
+    ((tbCheckBoxUncheckedDisabled, tbCheckBoxUncheckedDisabled),
+     (tbCheckBoxCheckedDisabled, tbCheckBoxCheckedDisabled)),
+    ((tbCheckBoxUncheckedNormal, tbCheckBoxUncheckedHot),
+     (tbCheckBoxCheckedNormal, tbCheckBoxCheckedHot)));
 begin
   if ClientRectNeedsInterfaceUpdate then // In Qt widgetset, this solves the
     DoAdjustClientRectChange;           // problem of dispositioned client rect.
@@ -3034,7 +3010,12 @@ begin
   TextStyle.Opaque := False;
   TextStyle.RightToLeft := IsRightToLeft;
 
-  if DateIsNull and (FTextForNullDate > '')
+  if ShowCheckBox then
+    ThemeServices.DrawElement(Canvas.Handle,
+      ThemeServices.GetElementDetails(CheckStates[Enabled, Checked, FMouseInCheckBox]),
+      GetCheckBoxRect);
+
+  if DateIsNull and (FTextForNullDate <> '')
                        and (not (FTextEnabled and Focused)) then begin
 
     if IsRightToLeft then begin
@@ -3235,53 +3216,7 @@ end;
 
 function TCustomDateTimePicker.GetChecked: Boolean;
 begin
-  Result := (not Assigned(FCheckBox)) or (FCheckBox.State = cbChecked);
-end;
-
-{ DrawArrowButtonGlyph
- ----------------------
- Draws the arrow shape on button (when DateMode dmComboBox is set). }
-procedure TCustomDateTimePicker.DrawArrowButtonGlyph;
-const
-  ArrowColor = TColor($8D665A);
-begin
-// First I ment to put arrow images in a lrs file. In my opinion, however, that
-// wouldn't be an elegant option for so simple shapes.
-
-  if Assigned(FArrowButton) then begin
-    FArrowButton.Glyph.SetSize(9, 6);
-    FArrowButton.Glyph.Canvas.Brush.Style := bsSolid;
-    FArrowButton.Glyph.Canvas.Brush.Color := clSkyBlue;
-    FArrowButton.Glyph.Canvas.FillRect(0, 0, 9, 6);
-    FArrowButton.Glyph.Canvas.Pen.Color := ArrowColor;
-    FArrowButton.Glyph.Canvas.Brush.Color := FArrowButton.Glyph.Canvas.Pen.Color;
-
-{ Let's draw shape of the arrow on the button: }
-    case FArrowShape of
-      asClassicLarger:
-        { triangle: }
-        FArrowButton.Glyph.Canvas.Polygon([Point(0, 1), Point(8, 1),
-                                                        Point(4, 5)]);
-      asClassicSmaller:
-        { triangle -- smaller variant:  }
-        FArrowButton.Glyph.Canvas.Polygon([Point(1, 2), Point(7, 2),
-                                                        Point(4, 5)]);
-      asModernLarger:
-        { modern: }
-        FArrowButton.Glyph.Canvas.Polygon([Point(0, 1), Point(1, 0),
-                          Point(4, 3), Point(7, 0), Point(8, 1), Point(4, 5)]);
-      asModernSmaller:
-        { modern -- smaller variant:    }
-        FArrowButton.Glyph.Canvas.Polygon([Point(1, 2), Point(2, 1),
-                          Point(4, 3), Point(6, 1), Point(7, 2), Point(4, 5)]);
-      asYetAnotherShape:
-        { something in between, not very pretty:  }
-        FArrowButton.Glyph.Canvas.Polygon([Point(0, 1), Point(1, 0),
-              Point(2, 1), Point(6, 1),Point(7, 0), Point(8, 1), Point(4, 5)]);
-    end;
-
-    FArrowButton.Glyph.Mask(clSkyBlue);
-  end;
+  Result := not FShowCheckBox or FChecked;
 end;
 
 function TCustomDateTimePicker.AreSeparatorsStored: Boolean;
@@ -3310,11 +3245,6 @@ begin
   Result := Assigned(FCalendarForm);
 end;
 
-function TCustomDateTimePicker.GetShowCheckBox: Boolean;
-begin
-  Result := Assigned(FCheckBox);
-end;
-
 function TCustomDateTimePicker.GetTime: TTime;
 begin
   if DateIsNull then
@@ -3328,12 +3258,9 @@ begin
   if FArrowShape = AValue then Exit;
 
   FArrowShape := AValue;
-  DrawArrowButtonGlyph;
+  if FArrowButton<>nil then
+    FArrowButton.Invalidate;
 end;
-
-const
-  DefaultUpDownWidth = 15;
-  DefaultArrowButtonWidth = DefaultUpDownWidth + 2;
 
 procedure TCustomDateTimePicker.SetAutoButtonSize(AValue: Boolean);
 begin
@@ -3344,9 +3271,9 @@ begin
       AutoResizeButton
     else begin
       if Assigned(FUpDown) then
-        FUpDown.Width := DefaultUpDownWidth
+        FUpDown.Width := Scale96ToFont(DefaultUpDownWidth)
       else if Assigned(FArrowButton) then
-        FArrowButton.Width := DefaultArrowButtonWidth;
+        FArrowButton.Width := Scale96ToFont(DefaultArrowButtonWidth);
     end;
 
   end;
@@ -3373,15 +3300,13 @@ begin
   AdjustEffectiveCenturyFrom;
 end;
 
-procedure TCustomDateTimePicker.CheckBoxChange(Sender: TObject);
+procedure TCustomDateTimePicker.CheckBoxChange;
 begin
-  CheckTextEnabled;
-  SetFocusIfPossible;
-
   if Assigned(FOnCheckBoxChange) then
-    FOnCheckBoxChange(Sender);
+    FOnCheckBoxChange(Self);
 
-  Invalidate;
+  if FOnCheckBoxChangeHandlers<>nil then
+    FOnCheckBoxChangeHandlers.CallNotifyEvents(Self);
 end;
 
 procedure TCustomDateTimePicker.SetFocusIfPossible;
@@ -3407,6 +3332,233 @@ begin
     FArrowButton.Width := MulDiv(ClientHeight, 9, 10)
   else if Assigned(FUpDown) then
     FUpDown.Width := MulDiv(ClientHeight, 79, 100);
+end;
+
+procedure TCustomDateTimePicker.CheckAndApplyKey(const Key: Char);
+var
+  S: String;
+  DTP: TDateTimePart;
+  N, L: Integer;
+  YMD: TYMD;
+  HMSMs: THMSMs;
+  D, T: TDateTime;
+  Finished, ForceChange: Boolean;
+
+begin
+  if (not FReadOnly) then begin
+    Finished := False;
+    ForceChange := False;
+
+    if FSelectedTextPart = 8 then begin
+      case upCase(Key) of
+        'A': S := 'AM';
+        'P': S := 'PM';
+      else
+        Finished := True;
+      end;
+      ForceChange := True;
+
+    end else if Key in ['0'..'9'] then begin
+
+      DTP := GetSelectedDateTimePart;
+
+      if DTP = dtpYear then
+        N := 4
+      else if DTP = dtpMiliSec then
+        N := 3
+      else
+        N := 2;
+
+      S := Trim(GetSelectedText);
+      if FUserChangedText and (Length(S) < N) then
+        S := S + Key
+      else
+        S := Key;
+
+      if (Length(S) >= N) then begin
+
+        FCorrectedDTP := dtpAMPM;
+
+        L := StrToInt(S);
+        if DTP < dtpHour then begin
+          YMD := GetYYYYMMDD(True);
+          case DTP of
+            dtpDay: YMD.Day := L;
+            dtpMonth: YMD.Month := L;
+            dtpYear: YMD.Year := L;
+          end;
+
+          if AutoAdvance and (YMD.Day <= 31) and
+              (YMD.Day > NumberOfDaysInMonth(YMD.Month, YMD.Year)) then begin
+            case DTP of
+              dtpDay:
+                case FEffectiveDateDisplayOrder of
+                  ddoDMY: begin
+                    FCorrectedValue := YMD.Month + 1;
+                    FCorrectedDTP := dtpMonth;
+                  end;
+                  ddoMDY:
+                    FCorrectedDTP := dtpYear;
+                end;
+              dtpMonth:
+                case FEffectiveDateDisplayOrder of
+                  ddoMDY, ddoYMD: begin
+                      FCorrectedValue := NumberOfDaysInMonth(YMD.Month, YMD.Year);
+                      FCorrectedDTP := dtpDay;
+                    end;
+                  ddoDMY:
+                    FCorrectedDTP := dtpYear;
+                end;
+              dtpYear:
+                if (FEffectiveDateDisplayOrder = ddoYMD) and (YMD.Month = 2)
+                      and (YMD.Day = 29) and not IsLeapYear(YMD.Year) then begin
+                  FCorrectedValue := YMD.Month + 1;
+                  FCorrectedDTP := dtpMonth;
+                end;
+            end;
+
+            case FCorrectedDTP of
+              dtpDay:
+                YMD.Day := FCorrectedValue;
+              dtpMonth:
+                YMD.Month := FCorrectedValue;
+              dtpYear:
+                if (YMD.Day = 29) and (YMD.Month = 2) then begin
+                  while not IsLeapYear(YMD.Year) do
+                    Inc(YMD.Year);
+                  FCorrectedValue := YMD.Year;
+                end;
+
+            end;
+          end;
+
+          if TryEncodeDate(YMD.Year, YMD.Month, YMD.Day, D)
+                    and (D >= MinDate) and (D <= MaxDate) then
+            ForceChange := True
+          else if N = 4 then begin
+            UpdateDate;
+            Finished := True;
+          end else
+            S := Key;
+
+        end else begin
+          if (DTP = dtpHour) and (FTimeFormat = tf12) then begin
+            if not (L in [1..12]) then
+              S := Key
+            else
+              ForceChange := True;
+
+          end else begin
+
+            HMSMs := GetHMSMs(True);
+            case DTP of
+              dtpHour: HMSMs.Hour := L;
+              dtpMinute: HMSMs.Minute := L;
+              dtpSecond: HMSMs.Second := L;
+              dtpMiliSec: HMSMs.MiliSec := L;
+            end;
+            if not TryEncodeTime(HMSMs.Hour, HMSMs.Minute, HMSMs.Second,
+                                         HMSMs.MiliSec, T) then
+              S := Key
+            else
+              ForceChange := True;
+
+          end;
+        end;
+
+      end;
+    end else
+      Finished := True;
+
+    if (not Finished) and (GetSelectedText <> S) then begin
+      if (not FUserChangedText) and DateIsNull then
+        if FSelectedTextPart <= 3 then
+          DateTime := SysUtils.Date
+        else
+          DateTime := SysUtils.Now;
+
+      if (not FLeadingZeros) and (FSelectedTextPart <= 4) then
+        while (Length(S) > 1) and (S[1] = '0') do
+          Delete(S, 1, 1);
+
+      if FSelectedTextPart <= 3 then
+        FTextPart[FSelectedTextPart] := S
+      else
+        FTimeText[TDateTimePart(FSelectedTextPart - 1)] := S;
+
+      FUserChangedText := True;
+
+      if ForceChange then begin
+        if FAutoAdvance then begin
+          MoveSelectionLR(False);
+          Invalidate;
+        end else
+          UpdateIfUserChangedText;
+      end else
+        Invalidate;
+
+      DoAutoCheck;
+    end;
+
+    FCorrectedDTP := dtpAMPM;
+  end;
+
+end;
+
+procedure TCustomDateTimePicker.CheckAndApplyKeyCode(var Key: Word);
+var
+  K: Word;
+begin
+  if (Key = VK_SPACE) then begin
+    if ShowCheckBox then
+      Checked := not Checked;
+
+  end else if FTextEnabled then begin
+
+    case Key of
+      VK_LEFT, VK_RIGHT, VK_OEM_COMMA, VK_OEM_PERIOD, VK_DIVIDE,
+          VK_OEM_MINUS, VK_SEPARATOR, VK_DECIMAL, VK_SUBTRACT:
+        begin
+          K := Key;
+          Key := 0;
+          MoveSelectionLR(K = VK_LEFT);
+          Invalidate;
+        end;
+      VK_UP:
+        begin
+          Key := 0;
+          UpdateIfUserChangedText;
+          if not FReadOnly then
+          begin
+            IncreaseCurrentTextPart;
+            DoAutoCheck;
+          end;
+        end;
+      VK_DOWN:
+        begin
+          Key := 0;
+          UpdateIfUserChangedText;
+          if not FReadOnly then
+          begin
+            DecreaseCurrentTextPart;
+            DoAutoCheck;
+          end;
+        end;
+      VK_RETURN:
+        if not FReadOnly then
+          EditingDone;
+
+      VK_ESCAPE:
+        if not FReadOnly then begin
+          UndoChanges;
+          EditingDone;
+        end;
+      VK_N:
+        if (not FReadOnly) and FNullInputAllowed then
+          SetDateTime(NullDate);
+    end;
+
+  end;
 
 end;
 
@@ -3445,34 +3597,6 @@ begin
   end;
 
 end;
-
-type
-
-  { TDTUpDown }
-
-{ The two buttons contained by UpDown control are never disabled in original
-  UpDown class. This class is defined here to override this behaviour. }
-  TDTUpDown = class(TCustomUpDown)
-  private
-    DTPicker: TCustomDateTimePicker;
-  protected
-    procedure SetEnabled(Value: Boolean); override;
-    procedure CalculatePreferredSize(var PreferredWidth,
-                  PreferredHeight: integer; WithThemeSpace: Boolean); override;
-    procedure WndProc(var Message: TLMessage); override;
-  end;
-
-  { TDTSpeedButton }
-
-  TDTSpeedButton = class(TCustomSpeedButton)
-  private
-    DTPicker: TCustomDateTimePicker;
-  protected
-    procedure CalculatePreferredSize(var PreferredWidth,
-                  PreferredHeight: integer; WithThemeSpace: Boolean); override;
-    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-      override;
-  end;
 
 { TDTUpDown }
 
@@ -3558,6 +3682,69 @@ begin
   end;
 end;
 
+procedure TDTSpeedButton.Paint;
+  procedure DrawDropDownArrow(const Canvas: TCanvas; const DropDownButtonRect: TRect);
+  var
+    Details: TThemedElementDetails;
+    ArrowState: TThemedToolBar;
+    ASize: TSize;
+    ARect: TRect;
+  begin
+    if Enabled then
+      ArrowState := ttbSplitButtonDropDownNormal
+    else
+      ArrowState := ttbSplitButtonDropDownDisabled;
+    Details := ThemeServices.GetElementDetails(ArrowState);
+    ASize := ThemeServices.GetDetailSize(Details);
+    ARect := DropDownButtonRect;
+    InflateRect(ARect, -(ARect.Right-ARect.Left-ASize.cx) div 2, 0);
+    ThemeServices.DrawElement(Canvas.Handle, Details, ARect);
+  end;
+const
+  ArrowColor = TColor($8D665A);
+var
+  X, Y: Integer;
+begin
+  inherited Paint;
+
+  // First I ment to put arrow images in a lrs file. In my opinion, however, that
+  // wouldn't be an elegant option for so simple shapes.
+
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Pen.Color := ArrowColor;
+  Canvas.Brush.Color := Canvas.Pen.Color;
+
+  X := (Width-9) div 2;
+  Y := (Height-6) div 2;
+
+{ Let's draw shape of the arrow on the button: }
+  case DTPicker.FArrowShape of
+    asTheme:
+      DrawDropDownArrow(Canvas, Rect(0, 0, Width, Height));
+
+    asClassicLarger:
+      { triangle: }
+      Canvas.Polygon([Point(X+0, Y+1), Point(X+8, Y+1),
+                                                      Point(X+4, Y+5)]);
+    asClassicSmaller:
+      { triangle -- smaller variant:  }
+      Canvas.Polygon([Point(X+1, Y+2), Point(X+7, Y+2),
+                                                      Point(X+4, Y+5)]);
+    asModernLarger:
+      { modern: }
+      Canvas.Polygon([Point(X+0, Y+1), Point(X+1, Y+0),
+                        Point(X+4, Y+3), Point(X+7, Y+0), Point(X+8, Y+1), Point(X+4, Y+5)]);
+    asModernSmaller:
+      { modern -- smaller variant:    }
+      Canvas.Polygon([Point(X+1, Y+2), Point(X+2, Y+1),
+                        Point(X+4, Y+3), Point(X+6, Y+1), Point(X+7, Y+2), Point(X+4, Y+5)]);
+    asYetAnotherShape:
+      { something in between, not very pretty:  }
+      Canvas.Polygon([Point(X+0, Y+1), Point(X+1, Y+0),
+            Point(X+2, Y+1), Point(X+6, Y+1),Point(X+7, Y+0), Point(X+8, Y+1), Point(X+4, Y+5)]);
+  end;
+end;
+
 procedure TCustomDateTimePicker.UpdateShowArrowButton;
 
   procedure CreateArrowBtn;
@@ -3569,10 +3756,9 @@ procedure TCustomDateTimePicker.UpdateShowArrowButton;
       FArrowButton := TDTSpeedButton.Create(Self);
       FArrowButton.ControlStyle := FArrowButton.ControlStyle +
                                             [csNoFocus, csNoDesignSelectable];
+      FArrowButton.Flat := dtpoFlatButton in Options;
       TDTSpeedButton(FArrowButton).DTPicker := Self;
-      FArrowButton.SetBounds(0, 0, DefaultArrowButtonWidth, 1);
-
-      DrawArrowButtonGlyph;
+      FArrowButton.SetBounds(0, 0, Scale96ToFont(DefaultArrowButtonWidth), 1);
 
       FArrowButton.Parent := Self;
       FAllowDroppingCalendar := True;
@@ -3592,8 +3778,9 @@ procedure TCustomDateTimePicker.UpdateShowArrowButton;
                                      [csNoFocus, csNoDesignSelectable];
 
       TDTUpDown(FUpDown).DTPicker := Self;
+      TDTUpDown(FUpDown).Flat := dtpoFlatButton in Options;
 
-      FUpDown.SetBounds(0, 0, DefaultUpDownWidth, 1);
+      FUpDown.SetBounds(0, 0, Scale96ToFont(DefaultUpDownWidth), 1);
 
       FUpDown.Parent := Self;
 
@@ -3641,6 +3828,28 @@ begin
   end;
 end;
 
+procedure TCustomDateTimePicker.DoAutoCheck;
+begin
+  if ShowCheckBox and not Checked and (dtpoAutoCheck in Options) then
+    Checked := True;
+end;
+
+procedure TCustomDateTimePicker.DoAutoAdjustLayout(
+  const AMode: TLayoutAdjustmentPolicy;
+  const AXProportion, AYProportion: Double);
+begin
+  inherited;
+  if AMode in [lapAutoAdjustWithoutHorizontalScrolling, lapAutoAdjustForDPI] then
+  begin
+    if (not FAutoButtonSize) then begin
+      if Assigned(FArrowButton) then
+        FArrowButton.Width := Scale96ToFont(DefaultArrowButtonWidth);
+      if Assigned(FUpDown) then
+        FUpDown.Width := Scale96ToFont(DefaultUpdownWidth);
+    end;
+  end;
+end;
+
 procedure TCustomDateTimePicker.DestroyArrowBtn;
 begin
   if Assigned(FArrowButton) then begin
@@ -3663,21 +3872,22 @@ begin
   FCalAlignment := dtaDefault;
   FCorrectedDTP := dtpAMPM;
   FCorrectedValue := 0;
-  FChangeInRecursiveCall := False;
+  FSkipChangeInUpdateDate := 0;
   FNoEditingDone := 0;
-  FArrowShape := asModernSmaller;
+  FArrowShape := asTheme;
   FAllowDroppingCalendar := True;
+  FChecked := True;
 
   FOnDropDown := nil;
   FOnCloseUp := nil;
 
   ParentColor := False;
-  FCheckBox := nil;
   FArrowButton := nil;
   FUpDown := nil;
 
   FKind := dtkDate;
   FNullInputAllowed := True;
+  FOptions := cDefOptions;
 
   { Thanks to Luiz Américo for this:
     Lazarus ignores empty string when saving to lrs. Therefore, the problem
@@ -3754,12 +3964,43 @@ begin
   SetDateMode(dmComboBox);
 end;
 
+procedure TCustomDateTimePicker.AddHandlerOnChange(
+  const AOnChange: TNotifyEvent; AsFirst: Boolean);
+begin
+  if FOnChangeHandlers=nil then
+    FOnChangeHandlers := TMethodList.Create;
+  FOnChangeHandlers.Add(TMethod(AOnChange), not AsFirst);
+end;
+
+procedure TCustomDateTimePicker.AddHandlerOnCheckBoxChange(
+  const AOnCheckBoxChange: TNotifyEvent; AsFirst: Boolean);
+begin
+  if FOnCheckBoxChangeHandlers=nil then
+    FOnCheckBoxChangeHandlers := TMethodList.Create;
+  FOnCheckBoxChangeHandlers.Add(TMethod(AOnCheckBoxChange), not AsFirst);
+end;
+
+procedure TCustomDateTimePicker.RemoveHandlerOnChange(AOnChange: TNotifyEvent);
+begin
+  if Assigned(FOnChangeHandlers) then
+    FOnChangeHandlers.Remove(TMethod(AOnChange));
+end;
+
+procedure TCustomDateTimePicker.RemoveHandlerOnCheckBoxChange(
+  AOnCheckBoxChange: TNotifyEvent);
+begin
+  if Assigned(FOnCheckBoxChangeHandlers) then
+    FOnCheckBoxChangeHandlers.Remove(TMethod(AOnCheckBoxChange));
+end;
+
 destructor TCustomDateTimePicker.Destroy;
 begin
   FDoNotArrangeControls := True;
   DestroyArrowBtn;
   DestroyUpDown;
   SetShowCheckBox(False);
+  FOnChangeHandlers.Free;
+  FOnCheckBoxChangeHandlers.Free;
 
   inherited Destroy;
 end;

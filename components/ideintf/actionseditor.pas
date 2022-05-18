@@ -24,10 +24,13 @@ unit ActionsEditor;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Dialogs,
-  ActnList, ExtCtrls, Buttons, StdCtrls, ObjInspStrConsts,
-  ComponentEditors, PropEdits, PropEditUtils, DBActns, StdActns, LCLIntf,
-  LCLType, Graphics, Menus, ComCtrls, contnrs, IDEWindowIntf;
+  Classes, SysUtils, contnrs,
+  // LCL
+  LCLIntf, LCLType, LCLProc, Forms, Controls, Dialogs, ExtCtrls, StdCtrls,
+  Graphics, Menus, ComCtrls, DBActns, StdActns, ActnList,
+  // IDEIntf
+  ObjInspStrConsts, ComponentEditors, PropEdits, PropEditUtils, IDEWindowIntf,
+  IDEImagesIntf;
 
 type
   TActStdPropItem = class;
@@ -80,7 +83,6 @@ type
     ActNewStd: TAction;
     ActionListSelf: TActionList;
     ActNew: TAction;
-    ImageList1: TImageList;
     lblCategory: TLabel;
     lblName: TLabel;
     lstCategory: TListBox;
@@ -103,14 +105,13 @@ type
     Splitter: TSplitter;
     ToolBar1: TToolBar;
     btnAdd: TToolButton;
-    btnAddMore: TToolButton;
     btnDelete: TToolButton;
     ToolButton4: TToolButton;
     btnUp: TToolButton;
     btnDown: TToolButton;
     procedure ActDeleteExecute(Sender: TObject);
     procedure ActDeleteUpdate(Sender: TObject);
-    procedure ActMoveDownExecute(Sender: TObject);
+    procedure ActMoveUpDownExecute(Sender: TObject);
     procedure ActMoveDownUpdate(Sender: TObject);
     procedure ActMoveUpUpdate(Sender: TObject);
     procedure ActNewExecute(Sender: TObject);
@@ -123,6 +124,8 @@ type
       {%H-}Shift: TShiftState);
     procedure ActionListEditorKeyPress(Sender: TObject; var Key: char);
     procedure FormCreate(Sender: TObject);
+    procedure FormHide(Sender: TObject);
+    procedure FormShow(Sender: TObject);
     procedure lstActionNameDrawItem(Control: TWinControl; Index: Integer;
       ARect: TRect; State: TOwnerDrawState);
     procedure SplitterCanResize(Sender: TObject; var {%H-}NewSize: Integer;
@@ -145,16 +148,20 @@ type
   private
     FActionList: TActionList;
     FDesigner: TComponentEditorDesigner;
+    procedure AddCategoryActions(aCategory: String);
+    function CategoryIndexOf(Category: String): Integer;
+    function IsValidCategory(Category: String): Boolean;
+    function ValidCategoriesInAllActions: Boolean;
     procedure ResultStdActProc(const Category: string; ActionClass: TBasicActionClass;
                             ActionProperty: TActStdPropItem; LastItem: Boolean);
+    procedure FillCategories;
+    procedure FillActionByCategory(iIndex: Integer);
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure SetActionList(AActionList: TActionList);
-    procedure FillCategories;
-    procedure FillActionByCategory(iIndex: Integer);
     property Designer:TComponentEditorDesigner read FDesigner write FDesigner;
-  end; 
+  end;
 
   { TActionListComponentEditor }
 
@@ -250,6 +257,8 @@ function CreateAction(TheOwner: TComponent;
 
 implementation
 
+{$R *.lfm}
+
 var
   EditorForms : TList = nil;
   
@@ -285,16 +294,11 @@ var
 begin
   if AList<>nil then
     for i:=0 to EditorForms.Count-1 do begin
-      if TActionListEditor(EditorForms[i]).FActionList=AList then begin
-        Result:=TActionListEditor(EditorForms[i]);
-        Exit;
-      end;
+      if TActionListEditor(EditorForms[i]).FActionList=AList then
+        Exit(TActionListEditor(EditorForms[i]));
     end;
   Result:=nil
 end;
-
-
-{$R *.lfm}
 
 procedure RegisterActions(const ACategory: string;
   const AClasses: array of TBasicActionClass; AResource: TComponentClass);
@@ -362,7 +366,6 @@ begin
       if (Dest is TContainedAction) and (Dest.ImageIndex>=0)
       and (Src is TContainedAction) then begin
         // ToDo: copy image
-
       end;
     end;
   finally
@@ -372,165 +375,202 @@ end;
 
 { TActionListEditor }
 
-procedure TActionListEditor.OnComponentRenamed(AComponent: TComponent);
+constructor TActionListEditor.Create(AOwner: TComponent);
 begin
-  if Visible and Assigned(FActionList)
-  and (AComponent is TAction) and (TAction(AComponent).ActionList = FActionList)
-  and Assigned(FActionList.ActionByName(AComponent.Name)) then
-    lstActionName.Items[lstActionName.ItemIndex] := AComponent.Name;
+  inherited Create(AOwner);
+  Caption := oisActionListEditor;
+  lblCategory.Caption := oisCategory;
+  lblName.Caption := oisAction;
+  Splitter.MinSize := lblCategory.Left + lblCategory.Width;
+  ActNew.Hint := cActionListEditorNewAction;
+  ActNewStd.Hint := cActionListEditorNewStdAction;
+  ActDelete.Hint := cActionListEditorDeleteActionHint;
+  ActMoveUp.Hint := cActionListEditorMoveUpAction;
+  ActMoveDown.Hint := cActionListEditorMoveDownAction;
+  ActPanelDescr.Caption := cActionListEditorPanelDescrriptions;
+  ActPanelToolBar.Caption := cActionListEditorPanelToolBar;
+  btnAdd.Hint := cActionListEditorNewAction;
+  mItemToolBarNewAction.Caption := cActionListEditorNewAction;
+  mItemToolBarNewStdAction.Caption := cActionListEditorNewStdAction;
+  mItemActListNewAction.Caption := cActionListEditorNewAction;
+  mItemActListNewStdAction.Caption := cActionListEditorNewStdAction;
+  mItemActListMoveDownAction.Caption := cActionListEditorMoveDownAction;
+  mItemActListMoveUpAction.Caption := cActionListEditorMoveUpAction;
+  mItemActListDelAction.Caption := cActionListEditorDeleteAction;
+  AddActionEditor(Self);
+end;
+
+destructor TActionListEditor.Destroy;
+begin
+  if Assigned(GlobalDesignHook) then
+    GlobalDesignHook.RemoveAllHandlersForObject(Self);
+  ReleaseActionEditor(Self);
+  inherited Destroy;
+end;
+
+procedure TActionListEditor.FormCreate(Sender: TObject);
+begin
+  ToolBar1.Images := IDEImages.Images_16;
+  btnAdd.ImageIndex := IDEImages.GetImageIndex('laz_add');
+  btnDelete.ImageIndex := IDEImages.GetImageIndex('laz_delete');
+  btnUp.ImageIndex := IDEImages.GetImageIndex('arrow_up');
+  btnDown.ImageIndex := IDEImages.GetImageIndex('arrow_down');
+  IDEDialogLayoutList.ApplyLayout(Self);
+end;
+
+procedure TActionListEditor.ActionListEditorClose(Sender: TObject;
+  var CloseAction: TCloseAction);
+begin
+  IDEDialogLayoutList.SaveLayout(Self);
+  CloseAction := caFree;
+end;
+
+procedure TActionListEditor.FormShow(Sender: TObject);
+begin
+  Assert(Assigned(GlobalDesignHook), 'TActionListEditor.FormShow: GlobalDesignHook not assigned.');
+  GlobalDesignHook.AddHandlerComponentRenamed(@OnComponentRenamed);
+  GlobalDesignHook.AddHandlerSetSelection(@OnComponentSelection);
+  GlobalDesignHook.AddHandlerRefreshPropertyValues(@OnRefreshPropertyValues);
+  GlobalDesignHook.AddHandlerPersistentDeleting(@OnComponentDelete);
+end;
+
+procedure TActionListEditor.FormHide(Sender: TObject);
+begin
+  GlobalDesignHook.RemoveHandlerComponentRenamed(@OnComponentRenamed);
+  GlobalDesignHook.RemoveHandlerSetSelection(@OnComponentSelection);
+  GlobalDesignHook.RemoveHandlerRefreshPropertyValues(@OnRefreshPropertyValues);
+  GlobalDesignHook.RemoveHandlerPersistentDeleting(@OnComponentDelete);
+end;
+
+function TActionListEditor.CategoryIndexOf(Category: String): Integer;
+begin
+  Assert((Category <> cActionListEditorUnknownCategory)
+     and (Category <> cActionListEditorAllCategory), 'TActionListEditor.CategoryIndexOf: unexpected value.');
+  Result := lstCategory.Items.IndexOf(Category);
+end;
+
+function TActionListEditor.IsValidCategory(Category: String): Boolean;
+begin
+  Assert((Category <> cActionListEditorUnknownCategory)
+     and (Category <> cActionListEditorAllCategory), 'TActionListEditor.IsValidCategory: unexpected value.');
+  Result := (lstCategory.Items.IndexOf(Category) >= 0);
+end;
+
+function TActionListEditor.ValidCategoriesInAllActions: Boolean;
+var
+  i: Integer;
+begin
+  Result := True;
+  if FActionList = nil then Exit;
+  for i := FActionList.ActionCount-1 downto 0 do
+    if not IsValidCategory(TContainedAction(FActionList.Actions[i]).Category) then
+      Exit(False);
+end;
+
+procedure TActionListEditor.OnComponentRenamed(AComponent: TComponent);
+var
+  i: Integer;
+begin
+  if not (AComponent is TContainedAction) then Exit;
+  i := lstActionName.Items.IndexOfObject(AComponent);
+  if i >= 0 then
+    lstActionName.Items[i] := AComponent.Name;
 end;
 
 procedure TActionListEditor.OnComponentSelection(
   const NewSelection: TPersistentSelectionList);
 var
-  CurSelect: TContainedAction;
+  CurAct: TContainedAction;
   tmpCategory: String;
-  function CategoryIndexOf(Name: String): Integer;
-  var
-    i: Integer;
-  begin
-    for i:= lstCategory.Items.Count-1 downto 0 do begin
-      if lstCategory.Items[i] = Name
-      then Break;
-    end;
-    Result := i;
-    if (i = lstCategory.Items.IndexOf(cActionListEditorUnknownCategory))
-       and (i = lstCategory.Items.IndexOf(cActionListEditorAllCategory))
-    then Result := 0;
-  end;
 begin
   // TODO: multiselect
-  if Self.Visible
-     and Assigned(NewSelection)
-     and (NewSelection.Count > 0)
-     and (NewSelection.Items[0] is TContainedAction)
-     and (TContainedAction(NewSelection.Items[0]).ActionList = FActionList) then
+  if Assigned(NewSelection) and (NewSelection.Count > 0)
+  and (NewSelection.Items[0] is TContainedAction)
+  and (TContainedAction(NewSelection.Items[0]).ActionList = FActionList) then
     begin
-      if GetSelectedAction = NewSelection.Items[0]
-      then Exit;
-      CurSelect := TContainedAction(NewSelection.Items[0]);
-      CurSelect.Category := Trim(CurSelect.Category);
-      tmpCategory := CurSelect.Category;
-      if (tmpCategory <> '')
-         and (lstCategory.Items.IndexOf(tmpCategory) < 0)
-      then FillCategories;
-      if tmpCategory = ''
-      then tmpCategory := cActionListEditorUnknownCategory;
+      if GetSelectedAction = NewSelection.Items[0] then Exit;
+      CurAct := TContainedAction(NewSelection.Items[0]);
+      Assert(curAct.Category = Trim(curAct.Category),
+             'TActionListEditor.OnComponentSelection: Category must be trimmed.');
+      tmpCategory := CurAct.Category;
+      if (tmpCategory <> '') and (lstCategory.Items.IndexOf(tmpCategory) < 0) then
+        FillCategories;
+      if tmpCategory = '' then
+        tmpCategory := cActionListEditorUnknownCategory;
       if (lstCategory.Items[lstCategory.ItemIndex] <> tmpCategory)
-         or ((lstCategory.Items[lstCategory.ItemIndex] = tmpCategory)
-              and (lstActionName.Items.IndexOf(CurSelect.Name) < 0)) then begin
-        if CurSelect.Category = ''
-        then lstCategory.ItemIndex := lstCategory.Items.IndexOf(tmpCategory)
-        else lstCategory.ItemIndex := CategoryIndexOf(CurSelect.Category);
+      or (lstActionName.Items.IndexOf(CurAct.Name) < 0) then
+      begin
+        lstCategory.ItemIndex := lstCategory.Items.IndexOf(tmpCategory);
         lstCategory.Click;
       end;
-      lstActionName.ItemIndex := lstActionName.Items.IndexOf(CurSelect.Name);
+      lstActionName.ItemIndex := lstActionName.Items.IndexOf(CurAct.Name);
       lstActionName.Click;
     end
-  else lstActionName.ItemIndex := -1;
+  else
+    lstActionName.ItemIndex := -1;
 end;
 
 procedure TActionListEditor.OnRefreshPropertyValues;
-  function ValidCategory: Boolean;
-  // spr. czy wszystkie kategorie w ListBox'sie istniej¹ w TActionList
-  // inaczej: czy istnieje kategoria elementu wywoluj¹cego zdarzenie
-  var
-    i, j: Integer;
-    bool: Boolean;
-  begin
-    Result := True;
-    for i:= lstCategory.Items.Count-1 downto 0 do begin
-      if (lstCategory.Items[i] = cActionListEditorUnknownCategory)
-         and (i = lstCategory.Items.IndexOf(cActionListEditorAllCategory))
-      then Break;
-      bool := False;
-      if FActionList<>nil then
-        for j:= FActionList.ActionCount-1 downto 0 do begin
-          if TContainedAction(FActionList.Actions[j]).Category = lstCategory.Items[i] then begin
-            bool := True;
-            Break;
-          end;
-        end;
-      if not bool then begin
-        Result := False;
-        Break;
-      end;
-    end;  // for i
-  end;
-  function IsCategory(Category: String): Boolean;
-  var
-    i: Integer;
-  begin
-    Result := False;
-    for i:= lstCategory.Items.Count-1 downto 0 do begin
-      if lstCategory.Items[i] = Category then begin
-        Result := True;
-        Break;
-      end;
-    end;
-    if (i >= 0)
-       and ((i = lstCategory.Items.IndexOf(cActionListEditorUnknownCategory))
-            or (i = lstCategory.Items.IndexOf(cActionListEditorAllCategory)))
-    then Result := False;
-  end;
 var
   ASelections: TPersistentSelectionList;
-  curSelect: TContainedAction;
+  curSel: TPersistent;
+  curAct: TContainedAction;
   oldSelCategory, tmpCategory: String;
-  tmpIndex: Integer;
-  tmpValidCategory, tmpIsActCategory: Boolean;
+  tmpIndex, OldIndex: Integer;
+  tmpValidAllCategories, tmpIsActCategory: Boolean;
 begin
-  if Self.Visible and Assigned(GlobalDesignHook) then begin
-    ASelections:= TPersistentSelectionList.Create;
+  ASelections := TPersistentSelectionList.Create;
+  try
+    Assert(Assigned(GlobalDesignHook));
     GlobalDesignHook.GetSelection(ASelections);
-    try
-      if (ASelections.Count > 0)
-         and (ASelections.Items[0] is TContainedAction)
-         and (TContainedAction(ASelections.Items[0]).ActionList = FActionList)
-      then begin
-        curSelect := TContainedAction(ASelections.Items[0]);
-        CurSelect.Category := Trim(CurSelect.Category);
-        oldSelCategory := lstCategory.Items[lstCategory.ItemIndex];
-        tmpCategory := CurSelect.Category;
-        
-        tmpValidCategory := ValidCategory;
-        tmpIsActCategory := IsCategory(CurSelect.Category);
-        
-        if tmpCategory = '' then tmpCategory := cActionListEditorUnknownCategory;
-        if ((curSelect.Category <> '') and not tmpIsActCategory)
-           or not tmpValidCategory
-           or ((tmpCategory <> lstCategory.Items[lstCategory.Items.IndexOf(tmpCategory)])
-               and ((lstCategory.Items.IndexOf(cActionListEditorAllCategory) >= 0)
-                      and (tmpCategory <> lstCategory.Items[lstCategory.Items.IndexOf(cActionListEditorAllCategory)]))
-               and (tmpCategory <> lstCategory.Items[lstCategory.Items.IndexOf(cActionListEditorUnknownCategory)]))
-        then FillCategories;
+    if ASelections.Count = 0 then Exit;
+    curSel := ASelections.Items[0];
+    if not (curSel is TContainedAction) then Exit;
+    curAct := TContainedAction(curSel);
+    if curAct.ActionList <> FActionList then Exit;
+    Assert(curAct.Category = Trim(curAct.Category),
+           'TActionListEditor.OnRefreshPropertyValues: Category must be trimmed.');
+    oldSelCategory := lstCategory.Items[lstCategory.ItemIndex];
+    tmpCategory := curAct.Category;
 
-        tmpIndex := lstCategory.Items.IndexOf(tmpCategory);
-        if (lstCategory.Items.Count > 1)
-           and ( ((not tmpIsActCategory) and (not tmpValidCategory))
-                 or ((lstCategory.Items.IndexOf(oldSelCategory) >=0) and (not tmpIsActCategory))
-                 or ((lstCategory.Items.IndexOf(oldSelCategory) = -1) and (tmpIndex >= 0))
-                 or ((lstCategory.Items.IndexOf(oldSelCategory) >= 0) and (tmpIndex >= 0)) )
-           and (oldSelCategory <> cActionListEditorAllCategory) then begin
-          lstCategory.ItemIndex := tmpIndex;
-          lstCategory.Click;
-        end;
-        tmpIndex := lstActionName.items.IndexOf(CurSelect.Name);
-        if lstActionName.ItemIndex <> tmpIndex then begin
-          lstActionName.ItemIndex := tmpIndex;
-          lstActionName.Click;
-        end;
-      end;
-    finally
-      ASelections.Free;
+    tmpValidAllCategories := ValidCategoriesInAllActions;
+    tmpIsActCategory := IsValidCategory(curAct.Category);
+
+    if tmpCategory = '' then
+      tmpCategory := cActionListEditorUnknownCategory;
+    tmpIndex := lstCategory.Items.IndexOf(tmpCategory);
+    if ( (curAct.Category <> '') and not tmpIsActCategory )
+       or not tmpValidAllCategories
+       or ( (tmpCategory <> lstCategory.Items[tmpIndex])
+         and (tmpCategory <> cActionListEditorUnknownCategory) )
+    then
+      FillCategories;
+
+    tmpIndex := lstCategory.Items.IndexOf(tmpCategory);
+    OldIndex := lstCategory.Items.IndexOf(oldSelCategory);
+    if (lstCategory.Items.Count > 1)
+       and ( ( not (tmpIsActCategory or tmpValidAllCategories) )
+             or ( (OldIndex >=0) and (not tmpIsActCategory) )
+             or ( tmpIndex >= 0 ) )
+       and (oldSelCategory <> cActionListEditorAllCategory) then
+    begin
+      lstCategory.ItemIndex := tmpIndex;
+      lstCategory.Click;
     end;
+    tmpIndex := lstActionName.items.IndexOf(curAct.Name);
+    if lstActionName.ItemIndex <> tmpIndex then
+    begin
+      lstActionName.ItemIndex := tmpIndex;
+      lstActionName.Click;
+    end;
+  finally
+    ASelections.Free;
   end;
 end;
 
 function TActionListEditor.GetSelectedAction: TContainedAction;
 begin
-  if (lstActionName.ItemIndex >= 0)
-  and (FActionList<>nil) then
+  if (lstActionName.ItemIndex >= 0) and (FActionList <> nil) then
     Result := FActionList.ActionByName(lstActionName.Items[lstActionName.ItemIndex])
   else
     Result := nil;
@@ -574,8 +614,8 @@ begin
   FDesigner.PropertyEditorHook.PersistentAdded(NewAction,True);
 
   FDesigner.Modified;
-  if LastItem
-  then FDesigner.SelectOnlyThisComponent(FActionList.ActionByName(NewAction.Name));
+  if LastItem then
+    FDesigner.SelectOnlyThisComponent(FActionList.ActionByName(NewAction.Name));
 end;
 
 procedure TActionListEditor.SplitterCanResize(Sender: TObject;
@@ -622,7 +662,7 @@ begin
   TAction(Sender).Enabled := lstActionName.SelCount > 0;
 end;
 
-procedure TActionListEditor.ActMoveDownExecute(Sender: TObject);
+procedure TActionListEditor.ActMoveUpDownExecute(Sender: TObject);
 var
   fact0,fAct1: TContainedAction;
   lboxIndex: Integer;
@@ -671,6 +711,10 @@ begin
 
   NewAction.ActionList := FActionList;
 
+  // Selection updates correctly when we first clear the selection in Designer
+  //  and in Object Inspector, then add a new item. Otherwise there is
+  //  a loop of back-and-forth selection updates and the new item does not show.
+  FDesigner.ClearSelection;
   FDesigner.PropertyEditorHook.PersistentAdded(NewAction,True);
   FDesigner.Modified;
 end;
@@ -693,12 +737,6 @@ begin
   ToolBar1.Visible := TAction(Sender).Checked;
 end;
 
-procedure TActionListEditor.ActionListEditorClose(Sender: TObject;
-  var CloseAction: TCloseAction);
-begin
-  CloseAction := caFree;
-end;
-
 procedure TActionListEditor.ActionListEditorKeyDown(Sender: TObject;
   var Key: Word; Shift: TShiftState);
 var
@@ -713,21 +751,6 @@ procedure TActionListEditor.ActionListEditorKeyPress(Sender: TObject;
   var Key: char);
 begin
   if Ord(Key) = VK_ESCAPE then Self.Close;
-end;
-
-procedure TActionListEditor.FormCreate(Sender: TObject);
-begin
-  //imageindex 0 exists
-  ImageList1.AddResourceName(HInstance, 'laz_add'); //imageindex 1
-  ImageList1.AddResourceName(HInstance, 'laz_delete'); //imageindex 2
-  ImageList1.AddResourceName(HInstance, 'arrow_up'); //imadeindex 3
-  ImageList1.AddResourceName(HInstance, 'arrow_down'); //imageindex 4
-  btnAddMore.ImageIndex := 0;
-  // These must be set in code because OI does not work with non-existent values.
-  btnAdd.ImageIndex := 1;
-  btnDelete.ImageIndex := 2;
-  btnUp.ImageIndex := 3;
-  btnDown.ImageIndex := 4;
 end;
 
 procedure TActionListEditor.lstActionNameDrawItem(Control: TWinControl;
@@ -786,18 +809,17 @@ begin
 end;
 
 procedure TActionListEditor.ActDeleteExecute(Sender: TObject);
-  function IsCategory(Category: String): Boolean;
+
+  function ActionListHasCategory(Category: String): Boolean;
   var
     i: Integer;
   begin
     Result := False;
-    for i:= FActionList.ActionCount-1 downto 0 do begin
-      if FActionList.Actions[i].Category = Category then begin
-        Result := True;
-        Break;
-      end;
-    end;
+    for i:= FActionList.ActionCount-1 downto 0 do
+      if FActionList.Actions[i].Category = Category then
+        Exit(True);
   end;
+
 var
   iNameIndex: Integer;
   OldName: String;
@@ -840,7 +862,7 @@ begin
        FActionList.ActionByName(lstActionName.Items[lstActionName.ItemIndex]));
   end;
 
-  If not IsCategory(OldName) then begin
+  If not ActionListHasCategory(OldName) then begin
     OldIndex:=lstCategory.Items.IndexOf(OldName);
     if OldIndex>=0 then
       lstCategory.Items.Delete(OldIndex);
@@ -879,50 +901,6 @@ begin
   CreateComponentEvent(CurAction,'OnExecute');
 end;
 
-constructor TActionListEditor.Create(AOwner: TComponent);
-begin
-  inherited Create(AOwner);
-  Caption := oisActionListEditor;
-  lblCategory.Caption := oisCategory;
-  lblName.Caption := oisAction;
-  Splitter.MinSize := lblCategory.Left + lblCategory.Width;
-  ActNew.Hint := cActionListEditorNewAction;
-  ActNewStd.Hint := cActionListEditorNewStdAction;
-  ActDelete.Hint := cActionListEditorDeleteActionHint;
-  ActMoveUp.Hint := cActionListEditorMoveUpAction;
-  ActMoveDown.Hint := cActionListEditorMoveDownAction;
-  ActPanelDescr.Caption := cActionListEditorPanelDescrriptions;
-  ActPanelToolBar.Caption := cActionListEditorPanelToolBar;
-  btnAddMore.Hint := cActionListEditorNewAction;
-  mItemToolBarNewAction.Caption := cActionListEditorNewAction;
-  mItemToolBarNewStdAction.Caption := cActionListEditorNewStdAction;
-  mItemActListNewAction.Caption := cActionListEditorNewAction;
-  mItemActListNewStdAction.Caption := cActionListEditorNewStdAction;
-  mItemActListMoveDownAction.Caption := cActionListEditorMoveDownAction;
-  mItemActListMoveUpAction.Caption := cActionListEditorMoveUpAction;
-  mItemActListDelAction.Caption := cActionListEditorDeleteAction;
-
-  if Assigned(GlobalDesignHook) then
-  begin
-    GlobalDesignHook.AddHandlerComponentRenamed(@OnComponentRenamed);
-    GlobalDesignHook.AddHandlerSetSelection(@OnComponentSelection);
-    GlobalDesignHook.AddHandlerRefreshPropertyValues(@OnRefreshPropertyValues);
-    GlobalDesignHook.AddHandlerPersistentDeleting(@OnComponentDelete);
-  end;
-
-  AddActionEditor(Self);
-end;
-
-destructor TActionListEditor.Destroy;
-begin
-  if Assigned(GlobalDesignHook) then
-    GlobalDesignHook.RemoveAllHandlersForObject(Self);
-
-  ReleaseActionEditor(Self);
-  
-  inherited Destroy;
-end;
-
 procedure TActionListEditor.SetActionList(AActionList: TActionList);
 begin
   if FActionList = AActionList then exit;
@@ -930,7 +908,7 @@ begin
   FActionList := AActionList;
   if FActionList<>nil then FreeNotification(FActionList);
   FillCategories;
-  FillActionByCategory(-1);
+  //FillActionByCategory(-1);
 end;
 
 procedure TActionListEditor.FillCategories;
@@ -943,8 +921,8 @@ var
 begin
   // try remember old category
   sOldCategory := '';
-  if (lstCategory.Items.Count>0) and (lstCategory.ItemIndex>-1)
-  then sOldCategory := lstCategory.Items[lstCategory.ItemIndex];
+  if lstCategory.ItemIndex > -1 then
+    sOldCategory := lstCategory.Items[lstCategory.ItemIndex];
 
   lstCategory.Items.BeginUpdate;
   try
@@ -952,63 +930,76 @@ begin
     lstCategory.Clear;
 
     if FActionList<>nil then
-      for i := 0 to FActionList.ActionCount-1 do begin
+      for i := 0 to FActionList.ActionCount-1 do
+      begin
         sCategory := FActionList.Actions[i].Category;
-        if sCategory = ''
-        then Continue;
+        if sCategory = '' then Continue;
         xIndex := lstCategory.Items.IndexOf(sCategory);
-        if xIndex < 0
-        then lstCategory.Items.Add(sCategory);
+        if xIndex < 0 then
+          lstCategory.Items.Add(sCategory);
       end;
-    if lstCategory.Items.Count > 0
-    then lstCategory.Sorted := True;
+    if lstCategory.Items.Count > 0 then
+      lstCategory.Sorted := True;
     lstCategory.Sorted := False;
     
     xIndex := lstCategory.Items.IndexOf(sOldCategory);
     
-    if lstCategory.Items.Count > 0 then begin
-      lstCategory.Items.Insert(0, cActionListEditorAllCategory);
-      if xIndex > 0 then Inc(xIndex);
-    end;
     if lstCategory.Items.Count > 0 then
-      begin
-        lstCategory.Items.Insert(1, cActionListEditorUnknownCategory);
-        if xIndex > 0 then Inc(xIndex);
-      end
-    else lstCategory.Items.Add(cActionListEditorUnknownCategory);
+    begin
+      lstCategory.Items.Insert(0, cActionListEditorAllCategory);
+      lstCategory.Items.Insert(1, cActionListEditorUnknownCategory);
+      if xIndex > 0 then
+        Inc(xIndex, 2);
+    end
+    else
+      lstCategory.Items.Add(cActionListEditorUnknownCategory);
   finally
     lstCategory.Items.EndUpdate;
   end;
+
   if xIndex < 0 then begin
-    if Assigned(GetSelectedAction)
-       and (GetSelectedAction.Category = '')
-    then xIndex := lstCategory.Items.IndexOf(cActionListEditorUnknownCategory)
-    else xIndex := 0;
+    if Assigned(GetSelectedAction) and (GetSelectedAction.Category = '') then
+      xIndex := lstCategory.Items.IndexOf(cActionListEditorUnknownCategory)
+    else
+      xIndex := 0;
   end;
   lstCategory.ItemIndex := xIndex;
 
-  if ( ((lstCategory.ItemIndex <> lstCategory.items.IndexOf(cActionListEditorAllCategory))
-         or (lstActionName.Items.Count = 0))
-      or (countCategory <> lstCategory.Items.Count) )
-  then FillActionByCategory(xIndex);
+  if (lstCategory.ItemIndex <> lstCategory.items.IndexOf(cActionListEditorAllCategory))
+  or (lstActionName.Items.Count = 0)
+  or (countCategory <> lstCategory.Items.Count) then
+    FillActionByCategory(xIndex);
 end;
 
-procedure TActionListEditor.FillActionByCategory(iIndex:Integer);
+procedure TActionListEditor.AddCategoryActions(aCategory: String);
 var
   i: Integer;
-  sCategory: String;
+  Act: TContainedAction;
+begin
+  for i := 0 to FActionList.ActionCount-1 do
+  begin
+    Act := FActionList.Actions[i];
+    if Act.Category = aCategory then
+      lstActionName.Items.AddObject(Act.Name, Act);
+  end;
+end;
+
+procedure TActionListEditor.FillActionByCategory(iIndex: Integer);
+var
+  i: Integer;
   IndexedActionName: String;
 begin
   if FActionList=nil then
   begin
-    lstActionName.Items.Clear;
+    lstActionName.Clear;
     exit;
   end;
   lstActionName.Items.BeginUpdate;
   try
-    if iIndex < 0 then iIndex := 0;  // the first possition
-    if lstActionName.ItemIndex > -1
-    then IndexedActionName := lstActionName.Items[lstActionName.ItemIndex];
+    if iIndex < 0 then
+      iIndex := 0;  // the first position
+    if lstActionName.ItemIndex > -1 then
+      IndexedActionName := lstActionName.Items[lstActionName.ItemIndex];
 
     lstActionName.Clear;
     // handle all
@@ -1020,27 +1011,22 @@ begin
 
     // handle unknown
     if iIndex = lstCategory.Items.IndexOf(cActionListEditorUnknownCategory) then begin
-      for i := 0 to FActionList.ActionCount-1 do begin
-        if Trim(FActionList.Actions[i].Category) = '' then
-          lstActionName.Items.AddObject(FActionList.Actions[i].Name, FActionList.Actions[i]);
-      end;
+      AddCategoryActions('');
       Exit; //throught finally
     end;
 
     // else sort to categories
-    sCategory := lstCategory.Items[iIndex];
-    for i := 0 to FActionList.ActionCount-1 do
-    begin
-      if FActionList.Actions[i].Category = sCategory
-      then lstActionName.Items.AddObject(FActionList.Actions[i].Name, FActionList.Actions[i]);
-    end;
+    AddCategoryActions(lstCategory.Items[iIndex]);
+
   finally
     lstActionName.Items.EndUpdate;
-    if (IndexedActionName <> '')
-       and (lstActionName.Items.IndexOf(IndexedActionName) > -1)
-    then lstActionName.ItemIndex := lstActionName.Items.IndexOf(IndexedActionName)
-    else if lstActionName.ItemIndex = -1
-    then FDesigner.SelectOnlyThisComponent(FActionList);
+    i := -1;
+    if IndexedActionName <> '' then
+      i := lstActionName.Items.IndexOf(IndexedActionName);
+    if i > -1 then
+      lstActionName.ItemIndex := i
+    else if lstActionName.ItemIndex = -1 then
+      FDesigner.SelectOnlyThisComponent(FActionList);
   end;
 end;
 
@@ -1120,8 +1106,7 @@ begin
   FResource := AResource;
 end;
 
-procedure TRegisteredActionCategory.Add(
-  const AClasses: array of TBasicActionClass);
+procedure TRegisteredActionCategory.Add(const AClasses: array of TBasicActionClass);
 var
   i: integer;
   CurCount: Integer;
@@ -1171,15 +1156,13 @@ begin
   inherited Destroy;
 end;
 
-function TRegisteredActionCategory.IndexOfClass(AClass: TBasicActionClass
-  ): integer;
+function TRegisteredActionCategory.IndexOfClass(AClass: TBasicActionClass): integer;
 begin
   Result:=Count-1;
   while (Result>=0) and (FItems[Result].ActionClass<>AClass) do Dec(Result);
 end;
 
-procedure TRegisteredActionCategory.EnumActions(Proc: TEnumActionProc;
-  Info: Pointer);
+procedure TRegisteredActionCategory.EnumActions(Proc: TEnumActionProc; Info: Pointer);
 var
   i: Integer;
 begin
@@ -1190,8 +1173,7 @@ end;
 
 { TRegisteredActionCategories }
 
-function TRegisteredActionCategories.GetItems(Index: integer
-  ): TRegisteredActionCategory;
+function TRegisteredActionCategories.GetItems(Index: integer): TRegisteredActionCategory;
 begin
   Result:=TRegisteredActionCategory(FItems[Index]);
 end;
@@ -1252,10 +1234,8 @@ begin
   Result := nil;
   for i := 0 to Count-1 do begin
     Category := Items[i];
-    if Category.IndexOfClass(AClass) >= 0 then begin
-      Result := Category.Resource;
-      Break;
-    end;
+    if Category.IndexOfClass(AClass) >= 0 then
+      Exit(Category.Resource);
   end;
 end;
 
@@ -1299,12 +1279,9 @@ var
   i: Integer;
 begin
   Result := nil;
-  for i:= 0 to fPropList.Count-1 do begin
-    if TActStdPropItem(fPropList[i]).ActClassName = ActClassName then begin
-      Result := TActStdPropItem(fPropList[i]);
-      Break;
-    end;
-  end;
+  for i:= 0 to fPropList.Count-1 do
+    if TActStdPropItem(fPropList[i]).ActClassName = ActClassName then
+      Exit(TActStdPropItem(fPropList[i]));
 end;
 
 { TActStdPropItem }

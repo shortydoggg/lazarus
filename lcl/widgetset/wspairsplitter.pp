@@ -1,4 +1,4 @@
-{ $Id: wspairsplitter.pp 41387 2013-05-24 18:30:06Z juha $}
+{ $Id: wspairsplitter.pp 61929 2019-09-26 17:25:46Z martin $}
 {
  *****************************************************************************
  *                             WSPairSplitter.pp                             * 
@@ -53,6 +53,7 @@ type
   published
     class function AddSide(ASplitter: TCustomPairSplitter; ASide: TPairSplitterSide; Side: integer): Boolean; virtual;
     class function RemoveSide(ASplitter: TCustomPairSplitter; ASide: TPairSplitterSide; Side: integer): Boolean; virtual;
+    class function GetPosition(ASplitter: TCustomPairSplitter): Integer; virtual;
     class function SetPosition(ASplitter: TCustomPairSplitter; var NewPosition: integer): Boolean; virtual;
 
     // special cursor handling
@@ -131,6 +132,18 @@ class function TWSCustomPairSplitter.RemoveSide(ASplitter: TCustomPairSplitter;
   ASide: TPairSplitterSide; Side: integer): Boolean;
 begin
   Result := False;
+end;
+
+class function TWSCustomPairSplitter.GetPosition(ASplitter: TCustomPairSplitter): Integer;
+begin
+  if WSCheckHandleAllocated(ASplitter, 'GetPosition') then
+  begin
+    if ASplitter.SplitterType = pstHorizontal then
+      Result := ASplitter.Sides[0].Width
+    else
+      Result := ASplitter.Sides[0].Height;
+  end else
+    Result := ASplitter.Position;
 end;
 
 class function TWSCustomPairSplitter.SetPosition(

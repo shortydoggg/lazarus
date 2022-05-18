@@ -94,11 +94,63 @@ begin
 end;
 
 function TCocoaWidgetSet.ClientToScreen(Handle: HWND; var P: TPoint): Boolean;
+var
+  r : NSRect;
+  cl : NSView;
+  clr : TRect;
 begin
   Result := Handle <> 0;
 
   if Result then
-    NSObject(Handle).lclLocalToScreen(P.X, P.Y);
+  begin
+    // must use lclContentView! - it's client view
+    cl := NSObject(Handle).lclContentView;
+    if HWND(cl) = Handle then
+    begin
+      // if Handle is lclContentView, then we should check clientRect
+      // (i.e. TabControl doesn't have lclContentView, yet its clientRect is adjusted)
+      clr := NSObject(Handle).lclClientFrame;
+      P.X := P.X + clr.Left;
+      P.Y := P.Y + clr.Top;
+    end;
+    cl.lclLocalToScreen(P.X, P.Y);
+  end;
+end;
+
+procedure TCocoaWidgetSet.CallDefaultWndHandler(Sender: TObject; var Message);
+var
+  hnd : NSObject;
+  vw  : NSView;
+  tb : Boolean;
+  ar : Boolean;
+  ks : Boolean;
+  rt : Boolean;
+const
+  WantTab   : array [boolean] of integer = (0, DLGC_WANTTAB);
+  WantArrow : array [boolean] of integer = (0, DLGC_WANTARROWS);
+  WantKeys  : array [boolean] of integer = (0, DLGC_WANTALLKEYS);
+begin
+  case TLMessage(Message).Msg of
+    LM_GETDLGCODE: begin
+      hnd := nil;
+      if (Sender is TWinControl) then hnd := NSObject(TWinControl(Sender).Handle);
+      if not Assigned(hnd) then Exit;
+      vw := hnd.lclContentView();
+      if Assigned(vw) then
+      begin
+        tb := false;
+        ar := false;
+        ks := false;
+        rt := false;
+        vw.lclExpectedKeys(tb, ar, rt, ks);
+        ks := ks or rt; // Return is handled by LCL as part of ALLKey
+        TLMessage(Message).Result := TLMessage(Message).Result or WantTab[tb] or WantArrow[ar] or WantKeys[ks];
+      end;
+
+    end;
+  else
+    TLMessage(Message).Result := 0;
+  end;
 end;
 
 {------------------------------------------------------------------------------
@@ -107,16 +159,11 @@ end;
   Returns: The corresponding mime type as string
  ------------------------------------------------------------------------------}
 function TCocoaWidgetSet.ClipboardFormatToMimeType(FormatID: TClipboardFormat): string;
-var
-  lFormat: TCocoaClipboardData;
 begin
   {$IFDEF VerboseClipboard}
     DebugLn('TCocoaWidgetSet.ClipboardFormatToMimeType FormatID: ' + DbgS(FormatID));
   {$ENDIF}
-
-  lFormat := GetClipboardDataForFormat(FormatID);
-  if lFormat = nil then Exit;
-  Result := lFormat.MimeType;
+  Result := fClipboard.FormatToMimeType(FormatID);
 end;
 
 {------------------------------------------------------------------------------
@@ -129,84 +176,12 @@ end;
  ------------------------------------------------------------------------------}
 function TCocoaWidgetSet.ClipboardGetData(ClipboardType: TClipboardType;
   FormatID: TClipboardFormat; Stream: TStream): boolean;
-var
-  pasteboard: NSPasteboard;
-  lFormat: TCocoaClipboardData;
-  lNSStr: NSString;
-  // for text
-  lStr: String;
-  // for standard
-  lNSData: NSData;
-  lNSbytes: PByte;
-  i: Integer;
-  // for bitmap
-  image: TFPCustomImage;
-  lTmpStream: TMemoryStream;
-  reader: TFPCustomImageReader;
-  writer: TFPCustomImageWriter;
 begin
-  Result := False;
   {$IFDEF VerboseClipboard}
     DebugLn('TCocoaWidgetSet.ClipboardGetData ClipboardType=' +
       ClipboardTypeName[ClipboardType] + ' FormatID: ' + DbgS(FormatID));
   {$ENDIF}
-
-  case ClipboardType of
-  ctPrimarySelection:   pasteboard := PrimarySelection;
-  ctSecondarySelection: pasteboard := SecondarySelection;
-  ctClipboard:          pasteboard := NSPasteboard.generalPasteboard;
-  end;
-
-  lFormat := GetClipboardDataForFormat(FormatID);
-  if lFormat = nil then Exit;
-
-  case lFormat.DataType of
-  ccdtText:
-  begin
-    lNSStr := pasteboard.stringForType(lFormat.CocoaFormat);
-    if lNSStr = nil then Exit;
-    lStr := NSStringToString(lNSStr);
-    Stream.Write(lStr[1], Length(lStr));
-    {$IFDEF VerboseClipboard}
-      DebugLn('TCocoaWidgetSet.ClipboardGetData IsText Result=' + lStr);
-    {$ENDIF}
-  end;
-  ccdtCocoaStandard, ccdtNonStandard:
-  begin
-    lNSData := pasteboard.dataForType(lFormat.CocoaFormat);
-    if lNSData = nil then Exit;
-    lNSbytes := lNSData.bytes;
-    for i := 0 to lNSData.length-1 do
-      Stream.WriteByte(lNSbytes[i]);
-  end;
-  // In Cocoa images are stored as PNG, convert to BMP for LCL app usage
-  ccdtBitmap:
-  begin
-    lNSData := pasteboard.dataForType(lFormat.CocoaFormat);
-    if lNSData = nil then Exit;
-    lNSbytes := lNSData.bytes;
-
-    Image := TFPMemoryImage.Create(10, 10);
-    Reader := TFPReaderPNG.Create;
-    Writer := TFPWriterBMP.Create;
-    lTmpStream := TMemoryStream.Create;
-    try
-      for i := 0 to lNSData.length-1 do
-        lTmpStream.WriteByte(lNSbytes[i]);
-      lTmpStream.Position := 0;
-
-      Image.LoadFromStream(lTmpStream, Reader);
-      Image.SaveToStream(Stream, Writer);
-    finally
-      Image.Free;
-      Reader.Free;
-      Writer.Free;
-      lTmpStream.Free;
-    end;
-  end;
-  end;
-
-  Result := True;
+  Result := fClipboard.GetData(ClipboardType, FormatID, Stream);
 end;
 
 {------------------------------------------------------------------------------
@@ -217,28 +192,23 @@ end;
                            (you must free it yourself)
   Returns: If the function succeeds
  ------------------------------------------------------------------------------}
+
 function TCocoaWidgetSet.ClipboardGetFormats(ClipboardType: TClipboardType;
   var Count: integer; var List: PClipboardFormat): boolean;
 var
-  ListDataSize, ListCount: Integer;
-  i: Integer;
+  fmt: TDynClipboardFormatArray;
 begin
-  Result := False;
   {$IFDEF VerboseClipboard}
     DebugLn('TCocoaWidgetSet.ClipboardGetFormats ClipboardType' +
       ClipboardTypeName[ClipboardType]);
   {$ENDIF}
-
-  ListCount := Min(ClipboardFormats.Count, Count);
-  ListDataSize := SizeOf(Pointer) * ListCount;
-  List := GetMem(ListDataSize);
-
-  for i := 0 to ListCount - 1 do
-  begin
-    List[i] := PtrUInt(ClipboardFormats.Items[i]);
-  end;
-
-  Result := True;
+  fmt := nil;
+  Result := fClipboard.GetFormats(ClipboardType, Count, fmt);
+  if Count > 0 then begin
+    GetMem(List, Count * sizeof(TClipboardFormat));
+    System.Move(fmt[0], List^, Count * sizeof(TClipboardFormat));
+  end else
+    List := nil;
 end;
 
 {------------------------------------------------------------------------------
@@ -261,104 +231,12 @@ end;
 function TCocoaWidgetSet.ClipboardGetOwnerShip(ClipboardType: TClipboardType;
   OnRequestProc: TClipboardRequestEvent; FormatCount: integer;
   Formats: PClipboardFormat): boolean;
-var
-  pasteboard: NSPasteboard;
-  i: Integer;
-  lCurFormat: TCocoaClipboardData;
-  DataStream: TMemoryStream;
-  FormatToOwn: NSString;
-  FormatToOwnArray: NSArray;
-  // text format
-  lText: string;
-  lNSText: NSString;
-  // non-text
-  lNSData: NSData;
-  // for bitmap
-  image: TFPCustomImage;
-  lTmpStream: TMemoryStream;
-  reader: TFPCustomImageReader;
-  writer: TFPCustomImageWriter;
 begin
-  Result := False;
   {$IFDEF VerboseClipboard}
     DebugLn('TCocoaWidgetSet.ClipboardGetOwnerShip ClipboardType=' +
       ClipboardTypeName[ClipboardType] + ' FormatCount: ' + DbgS(FormatCount));
   {$ENDIF}
-
-  case ClipboardType of
-  ctPrimarySelection:   pasteboard := PrimarySelection;
-  ctSecondarySelection: pasteboard := SecondarySelection;
-  ctClipboard:          pasteboard := NSPasteboard.generalPasteboard;
-  end;
-
-  DataStream := TMemoryStream.Create;
-  try
-    for i := 0 to FormatCount-1 do
-    begin
-      lCurFormat := TCocoaClipboardData(Formats[i]);
-      if lCurFormat = nil then Continue;
-      DataStream.Position := 0;
-      DataStream.Size := 0;
-      OnRequestProc(Formats[i], DataStream);
-
-      case lCurFormat.DataType of
-      ccdtText:
-      begin
-        FormatToOwn := lCurFormat.CocoaFormat;
-        FormatToOwnArray := NSArray.arrayWithObjects_count(@FormatToOwn, 1);
-
-        DataStream.Position := 0;
-        SetLength(lText, DataStream.Size);
-        DataStream.Read(lText[1], DataStream.Size);
-        lNSText := NSStringUtf8(lText);
-
-        pasteboard.declareTypes_owner(FormatToOwnArray, nil);
-        pasteboard.setString_forType(lNSText, lCurFormat.CocoaFormat);
-      end;
-      ccdtCocoaStandard, ccdtNonStandard:
-      begin
-        FormatToOwn := lCurFormat.CocoaFormat;
-        FormatToOwnArray := NSArray.arrayWithObjects_count(@FormatToOwn, 1);
-
-        DataStream.Position := 0;
-        lNSData := NSData.dataWithBytes_length(DataStream.Memory, DataStream.Size);
-
-        pasteboard.declareTypes_owner(FormatToOwnArray, nil);
-        pasteboard.setData_forType(lNSData, lCurFormat.CocoaFormat);
-        //lNSData.release; // this causes a crash
-      end;
-      ccdtBitmap:
-      begin
-        FormatToOwn := lCurFormat.CocoaFormat;
-        FormatToOwnArray := NSArray.arrayWithObjects_count(@FormatToOwn, 1);
-
-        Image := TFPMemoryImage.Create(10, 10);
-        Reader := TFPReaderBMP.Create;
-        Writer := TFPWriterPNG.Create;
-        lTmpStream := TMemoryStream.Create;
-        try
-          DataStream.Position := 0;
-          Image.LoadFromStream(DataStream, Reader);
-          Image.SaveToStream(lTmpStream, Writer);
-          lTmpStream.Position := 0;
-          lNSData := NSData.dataWithBytes_length(lTmpStream.Memory, lTmpStream.Size);
-          pasteboard.declareTypes_owner(FormatToOwnArray, nil);
-          pasteboard.setData_forType(lNSData, lCurFormat.CocoaFormat);
-          //lNSData.release;
-        finally
-          Image.Free;
-          Reader.Free;
-          Writer.Free;
-          lTmpStream.Free;
-        end;
-      end;
-      end;
-    end;
-  finally
-    DataStream.Free;
-  end;
-
-  Result := True;
+  Result := fClipboard.GetOwnership(ClipboardType, OnRequestProc, FormatCount, Formats);
 end;
 
 {------------------------------------------------------------------------------
@@ -368,65 +246,18 @@ end;
   Returns: The registered Format identifier (TClipboardFormat)
  ------------------------------------------------------------------------------}
 function TCocoaWidgetSet.ClipboardRegisterFormat(const AMimeType: string): TClipboardFormat;
-var
-  i: Integer;
-  lCurData: TCocoaClipboardData;
-  lNSStr: NSString = nil;
-  lDataType: TCocoaClipboardDataType;
 begin
-  Result := 0;
-
-  // Check first if it was already registered
-  for i := 0 to ClipboardFormats.Count-1 do
-  begin
-    lCurData := TCocoaClipboardData(ClipboardFormats.Items[i]);
-    if lCurData.MimeType = AMimeType then
-    begin
-      Result := TClipboardFormat(lCurData);
-      {$IFDEF VerboseClipboard}
-        DebugLn('TCocoaWidgetSet.ClipboardRegisterFormat AMimeType=' + AMimeType
-          + ' Result='+DbgS(Result));
-      {$ENDIF}
-      Exit;
-    end;
-  end;
-
-  // if none was found, we need to register it
-
-  lDataType := ccdtNonStandard;
-  // See PredefinedClipboardMimeTypes for the most common mime-types
-  case AMimeType of
-  'text/plain':
-  begin
-    lNSStr := NSPasteboardTypeString;
-    lDataType := ccdtText;
-  end;
-  'image/png':
-  begin
-    lNSStr := NSPasteboardTypePNG;
-    lDataType := ccdtCocoaStandard;
-  end;
-  'image/bmp':
-  begin
-    lNSStr := NSPasteboardTypePNG;
-    lDataType := ccdtBitmap;
-  end;
-  else
-    lNSStr := NSStringUtf8(AMimeType);
-    lDataType := ccdtNonStandard;
-  end;
-
-  if lNSStr <> nil then
-  begin
-    lCurData := TCocoaClipboardData.Create(AMimeType, lNSStr, lDataType);
-    ClipboardFormats.Add(lCurData);
-    Result := TClipboardFormat(lCurData);
-  end;
-
+  Result := fClipboard.RegisterFormat(AMimeType);
   {$IFDEF VerboseClipboard}
     DebugLn('TCocoaWidgetSet.ClipboardRegisterFormat AMimeType=' + AMimeType
       + ' Result='+DbgS(Result));
   {$ENDIF}
+end;
+
+function TCocoaWidgetSet.ClipboardFormatNeedsNullByte(
+  const AFormat: TPredefinedClipboardFormat): Boolean;
+begin
+  Result := False
 end;
 
 function TCocoaWidgetSet.CombineRgn(Dest, Src1, Src2: HRGN; fnCombineMode: Longint): Longint;
@@ -483,20 +314,10 @@ end;
 
 function TCocoaWidgetSet.CreateCaret(Handle: HWND; Bitmap: hBitmap; Width,
   Height: Integer): Boolean;
-var
-  Obj: NSObject;
-  View: NSView;
 begin
   Result := (Handle <> 0);
   if Result then
-  begin
-    Obj := NSObject(Handle);
-    View := GetNSObjectView(Obj);
-    if View <> nil then
-      Result := CocoaCaret.CreateCaret(View, Bitmap, Width, Height)
-    else
-      Result := False;
-  end;
+    Result := CocoaCaret.CreateCaret(NSView(Handle).lclContentView, Bitmap, Width, Height)
 end;
 
 function TCocoaWidgetSet.CreateCompatibleBitmap(DC: HDC; Width, Height: Integer): HBITMAP;
@@ -532,7 +353,7 @@ begin
   Result := HFont(TCocoaFont.Create(LogFont, LongFontName));
 end;
 
-function Create32BitAlphaBitmap(ABitmap, AMask: TCocoaBitmap): TCocoaBitmap;
+class function TCocoaWidgetSet.Create32BitAlphaBitmap(ABitmap, AMask: TCocoaBitmap): TCocoaBitmap;
 var
   ARawImage: TRawImage;
   Desc: TRawImageDescription absolute ARawimage.Description;
@@ -546,7 +367,7 @@ var
 begin
   Result := nil;
 
-  if not RawImage_FromBitmap(ARawImage, HBITMAP(ABitmap), HBITMAP(AMask)) then
+  if not LCLIntf.RawImage_FromBitmap(ARawImage, HBITMAP(ABitmap), HBITMAP(AMask)) then
     Exit;
 
   ImgMaskHandle := 0;
@@ -576,7 +397,7 @@ begin
   end;
 
   try
-    if not RawImage_CreateBitmaps(ImagePtr^, ImgHandle, ImgMaskHandle, True) then Exit;
+    if not LCLIntf.RawImage_CreateBitmaps(ImagePtr^, ImgHandle, ImgMaskHandle, True) then Exit;
 
     Result := TCocoaBitmap(ImgHandle);
   finally
@@ -635,6 +456,8 @@ begin
 end;
 
 function TCocoaWidgetSet.DeleteObject(GDIObject: HGDIOBJ): Boolean;
+const
+  SName = 'TCocoaWidgetSet.DeleteObject';
 var
   gdi: TCocoaGDIObject;
 begin
@@ -645,17 +468,31 @@ begin
   gdi := CheckGDIOBJ(GdiObject);
 
   if not Assigned(gdi) then
+  begin
+    DebugLn(SName, ' Error - GDIObject: ' +  DbgSName(gdi) + ' is unknown!');
     Exit;
+  end;
 
   if gdi.Global then
+  begin
+    // global brushes can be cached, so just exit here since we will free the resource later on
+    //DebugLn(SName, ' Error - GDIObject: ' +  DbgSName(gdi) + ' is global!');
     Exit;
+  end;
 
-  if gdi.RefCount = 0 then gdi.Destroy;
+  if gdi.RefCount <> 1 then
+  begin
+    DebugLn(SName, 'Error - GDIObject: ' + DbgSName(gdi) + ' is still selected!');
+    Exit;
+  end;
+
+  gdi.Destroy;
+  Result := True;
 end;
 
 function TCocoaWidgetSet.DestroyCaret(Handle: HWND): Boolean;
 begin
-  Result := CocoaCaret.DestroyCaret;
+  Result := CocoaCaret.DestroyCaret( NSView(Handle).lclContentView );
 end;
 
 function TCocoaWidgetSet.DestroyIcon(Handle: HICON): Boolean;
@@ -694,11 +531,124 @@ end;
 function TCocoaWidgetSet.DrawFocusRect(DC: HDC; const Rect: TRect): boolean;
 var
   ctx: TCocoaContext;
+  p: Integer;
+  pn: TCocoaPen;
+  opn: TCocoaPen;
+  r: TRect;
 begin
+
   ctx := CheckDC(DC);
   Result := Assigned(ctx);
   if Result then
-    ctx.DrawFocusRect(Rect);
+  begin
+    //ctx.DrawFocusRect(Rect);
+
+    // drawing in Windows compatible XOR style
+
+    p:=ctx.ROP2;
+    opn:=ctx.Pen;
+    pn:=TCocoaPen.Create(clDkGray, psSolid, true, 2, pmCopy, pecFlat, pjsRound, false );
+    try
+      ctx.Pen:=pn;
+      ctx.ROP2:=R2_NOTXORPEN;
+      ctx.Pen.Apply(ctx, true);
+      r:=Rect;
+      dec(r.Right);
+      dec(r.Bottom);
+      ctx.Frame(r);
+    finally
+      ctx.ROP2:=p;
+      ctx.Pen:=opn;
+      pn.Free;
+    end;
+  end;
+end;
+
+procedure DrawEdgeRect(dst: TCocoaContext; const r: TRect; flags: Cardinal;
+  LTColor, BRColor: TColor);
+begin
+  dst.Pen.SetColor(LTColor, true);
+  dst.Pen.Apply(dst);
+  if flags and BF_LEFT > 0 then
+  begin
+    dst.MoveTo(r.Left, r.Bottom);
+    dst.LineTo(r.Left, r.Top);
+  end;
+  if flags and BF_TOP > 0 then
+  begin
+    dst.MoveTo(r.Left, r.Top);
+    dst.LineTo(r.Right, r.Top);
+  end;
+
+  dst.Pen.SetColor(BRColor, true);
+  dst.Pen.Apply(dst);
+  if flags and BF_RIGHT > 0 then
+  begin
+    dst.MoveTo(r.Right, r.Top);
+    dst.LineTo(r.Right, r.Bottom);
+  end;
+  if flags and BF_BOTTOM > 0 then
+  begin
+    dst.MoveTo(r.Right, r.Bottom);
+    // there's a missing pixel. Seems like it's accumulating an offset
+    dst.LineTo(r.Left-1, r.Bottom);
+  end;
+end;
+
+function TCocoaWidgetSet.DrawEdge(DC: HDC; var Rect: TRect; edge: Cardinal;
+  grfFlags: Cardinal): Boolean;
+var
+  ctx: TCocoaContext;
+  r: TRect;
+  keepPen   : TCocoaPen;
+  edgePen   : TCocoaPen;
+  keepBrush : TCocoaBrush;
+  edgeBrush : TCocoaBrush;
+const
+  OutLT = cl3DLight;    // the next to hilight
+  OutBR = cl3DDkShadow; // the darkest (almost black)
+  InnLT = cl3DHiLight;  // the lightest (almost white)
+  InnBR = cl3DShadow;   // darker than light, lighter than dark shadow
+begin
+  ctx := CheckDC(DC);
+  Result := Assigned(ctx);
+  if not Result then Exit;
+
+  keepPen := ctx.Pen;
+  keepBrush := ctx.Brush;
+  try
+    edgePen := TCocoaPen.Create($FFFFFF, psSolid, false, 1, pmCopy, pecRound, pjsRound);
+    edgeBrush := TCocoaBrush.Create(NSColor.whiteColor, false);
+    edgeBrush.Solid := false;
+    ctx.Pen := edgePen;
+    ctx.Brush := edgeBrush;
+
+    r := Rect;
+    if (edge and BDR_OUTER > 0) then
+    begin
+      if edge and BDR_RAISEDOUTER > 0 then
+        DrawEdgeRect(ctx, r, grfFlags, OutLT, OutBR)
+      else
+        DrawEdgeRect(ctx, r, grfFlags, InnBR, InnLT);
+      InflateRect(r, -1, -1);
+    end;
+
+    if (edge and BDR_INNER > 0) then
+    begin
+      if edge and BDR_RAISEDINNER > 0 then
+        DrawEdgeRect(ctx, r, grfFlags, InnLT, InnBR)
+      else
+        DrawEdgeRect(ctx, r, grfFlags, OutBR, OutLT);
+    end;
+
+  finally
+    ctx.Pen := keepPen;
+    ctx.Brush := keepBrush;
+    edgeBrush.Free;
+    edgePen.Free;
+  end;
+
+  Result := true;
 end;
 
 function TCocoaWidgetSet.Ellipse(DC: HDC; x1, y1, x2, y2: Integer): Boolean;
@@ -712,10 +662,33 @@ begin
 end;
 
 function TCocoaWidgetSet.EnableWindow(hWnd: HWND; bEnable: Boolean): Boolean;
+var
+  obj : NSObject;
 begin
   Result := hWnd <> 0;
   if Result then
-    NSObject(hWnd).lclSetEnabled(bEnable)
+  begin
+    obj := NSObject(hWnd);
+
+    // The following check is actually a hack. LCL enables all windows disabled
+    // during ShowModal form. No matter if the windows are on the stack of the modality or not.
+    // Since Cocoa doesn't do much of the "modal" control over the windows
+    // (runWindowModal isn't used... maybe it should be?)
+    // It's possible that windows "disabled" by a another model window would be
+    // re-enabled. This check verifies that only a window on the top of the modal stack
+    // will be brought back active... what about other windows?
+    if bEnable and isModalSession and (obj.isKindOfClass(TCocoaWindowContent)) then begin
+      if not (TCocoaWindowContent(obj).isembedded)
+        and not isTopModalWin(TCocoaWindowContent(obj).window) then Exit;
+    end;
+    obj.lclSetEnabled(bEnable);
+
+    if (CaptureControl <> 0)
+      and (not bEnable)
+      and (obj.isKindOfClass(NSView))
+      and NSViewIsLCLEnabled(NSView(obj)) then
+      ReleaseCapture
+  end;
 end;
 
 function TCocoaWidgetSet.EndPaint(Handle: hwnd; var PS: TPaintStruct): Integer;
@@ -750,18 +723,68 @@ begin
   end;
 end;
 
+// According to the documentation of NSScreen.screen It's recommended
+// not to cache NSScreen objects stored in the array. As those might change.
+// However, according to the same documentation, the objects can change
+// only with a notificatio sent out. BUT while using a macincloud (remote desktop)
+// services, it was identified that NSScreen object CAN change without any notification.
+// So, instead of passing NSScreen as HMonitor, only INDEX+1 in NSScreen.screen
+// is used.
+function IndexToHMonitor(i: NSUInteger): HMonitor;
+begin
+  if i = NSIntegerMax then Result := 0
+  else Result := i + 1;
+end;
+
+function HMonitorToIndex(h: HMonitor): NSUInteger;
+begin
+  if h = 0 then Result := NSIntegerMax
+  else Result := NSUInteger(h)-1;
+end;
+
 function TCocoaWidgetSet.EnumDisplayMonitors(hdc: HDC; lprcClip: PRect;
   lpfnEnum: MonitorEnumProc; dwData: LPARAM): LongBool;
 var
-  i: integer;
+  i: NSUInteger;
+  cnt: NSUInteger;
 begin
   Result := True;
+  cnt := NSScreen.screens.count;
+  if cnt = 0 then
+  begin
+    Result := false;
+    Exit;
+  end;
   for i := 0 to NSScreen.screens.count - 1 do
   begin
-    Result := Result and lpfnEnum(HMONITOR(NSScreen.screens.objectAtIndex(i)), 0, nil, dwData);
+    Result := Result and lpfnEnum(IndexToHMonitor(i), 0, nil, dwData);
     if not Result then break;
   end;
 end;
+
+function TCocoaWidgetSet.ExcludeClipRect(dc: hdc;
+  Left, Top, Right, Bottom : Integer) : Integer;
+var
+  RRGN : HRGN;
+  R : TRect;
+begin
+  // there seems to be a bug in TWidgetset ExcludeClipRect.
+  // as it doesn't use LPtoDP() (as IntersectClipRect does).
+  // Fixing the problem here.
+  R := Types.Rect(Left, Top, Right, Bottom);
+  LPtoDP(DC, R, 2);
+
+  If DCClipRegionValid(DC) then begin
+    //DebugLn('TWidgetSet.ExcludeClipRect A DC=',DbgS(DC),' Rect=',Left,',',Top,',',Right,',',Bottom);
+    // create the rectangle region, that should be excluded
+    RRGN := CreateRectRgn(R.Left,R.Top,R.Right,R.Bottom);
+    Result := ExtSelectClipRGN(DC, RRGN, RGN_DIFF);
+    //DebugLn('TWidgetSet.ExcludeClipRect B Result=',Result);
+    DeleteObject(RRGN);
+  end else
+    Result:=ERROR;
+end;
+
 
 function TCocoaWidgetSet.ExtSelectClipRGN(dc: hdc; rgn: hrgn; Mode: Longint): Integer;
 var
@@ -867,9 +890,13 @@ begin
 end;
 
 function TCocoaWidgetSet.GetActiveWindow: HWND;
+var
+  wn : NSWindow;
 begin
   // return the currect application active window
-  Result := HWND(NSApp.keyWindow);
+  wn := NSApp.keyWindow;
+  if not Assigned(wn) then Result := 0
+  else Result := HWND(wn.contentView);
 end;
 
 function TCocoaWidgetSet.GetBkColor(DC: HDC): TColorRef;
@@ -907,30 +934,58 @@ end;
 ------------------------------------------------------------------------------}
 function TCocoaWidgetSet.ShowWindow(hWnd: HWND; nCmdShow: Integer): Boolean;
 var
-  win : NSWindow;
+  win: NSWindow;
+  lCocoaWin: TCocoaWindow = nil;
+  lWinContent: TCocoaWindowContent = nil;
+  disableFS : Boolean;
+const
+  NSFullScreenWindowMask = 1 shl 14;
+
 begin
+  Result:=true;
   {$ifdef VerboseCocoaWinAPI}
     DebugLn('TCocoaWidgetSet.ShowWindow');
   {$endif}
 
-  //todo: should a call to lclShowWindow (to be added) be made instead?
-  if (NSObject(hWnd).isKindOfClass(TCocoaWindowContent)) and (not TCocoaWindowContent(hWnd).isembedded) then
+  // for regular controls (non-window or embedded window, acting as a control)
+  if (not NSObject(hWnd).isKindOfClass(TCocoaWindowContent)) or (TCocoaWindowContent(hWnd).isembedded) then
   begin
-    win := TCocoaWindowContent(hWnd).window;
-    case nCmdShow of
-      SW_SHOW, SW_SHOWNORMAL:
-        win.orderFront(nil);
-      SW_HIDE:
-        win.orderOut(nil);
-      SW_MINIMIZE:
-        win.miniaturize(nil);
-      SW_MAXIMIZE:
-        win.zoom(nil);
-    end;
-  end
-  else
     NSObject(hWnd).lclSetVisible(nCmdSHow <> SW_HIDE);
-  Result:=true;
+    Exit;
+  end;
+
+  // for windows
+  lWinContent := TCocoaWindowContent(hWnd);
+
+  //todo: should it be lclOwnWindow?
+  if Assigned(lWinContent.fswin) then
+    win := lWinContent.fswin
+  else
+    win := NSWindow(lWinContent.window);
+
+  disableFS := false;
+  if win.isKindOfClass(TCocoaWindow) then
+  begin
+    lCocoaWin := TCocoaWindow(win);
+    disableFS := Assigned(lCocoaWin) and (lCocoaWin.lclIsFullScreen) and (nCmdShow <> SW_SHOWFULLSCREEN);
+  end;
+
+  if disableFS and Assigned(lCocoaWin) then
+    lCocoaWin.lclSwitchFullScreen(false);
+
+  case nCmdShow of
+    SW_SHOW, SW_SHOWNORMAL:
+      win.orderFront(nil);
+    SW_HIDE:
+      win.orderOut(nil);
+    SW_MINIMIZE:
+      win.miniaturize(nil);
+    SW_MAXIMIZE:
+      win.zoom(nil);
+    SW_SHOWFULLSCREEN:
+      if Assigned(lCocoaWin) then
+        lCocoaWin.lclSwitchFullScreen(true);
+  end;
 end;
 
 function TCocoaWidgetSet.StretchBlt(DestDC: HDC; X, Y, Width, Height: Integer;
@@ -974,10 +1029,11 @@ begin
   case uiAction of
     SPI_GETWHEELSCROLLLINES: PDword(pvPAram)^ := 3;
     SPI_GETWORKAREA:
-      TRect(pvParam^) := Bounds(GetSystemMetrics(SM_XVIRTUALSCREEN),
-                                GetSystemMetrics(SM_YVIRTUALSCREEN),
-                                GetSystemMetrics(SM_CXVIRTUALSCREEN),
-                                GetSystemMetrics(SM_CYVIRTUALSCREEN));
+    begin
+      NSToLCLRect(NSScreen(NSScreen.screens.objectAtIndex(0)).visibleFrame
+        , NSScreenZeroHeight
+        , TRect(pvParam^));
+    end;
   else
     Result := False;
   end
@@ -1003,7 +1059,7 @@ begin
     begin
       dx := 0;
       dy := 0;
-      NSObject(Handle).lclLocalToScreen(dx, dx);
+      NSObject(Handle).lclLocalToScreen(dx, dy);
       MoveRect(ARect, dx, dy);
     end;
     Result := 1;
@@ -1073,7 +1129,7 @@ begin
   begin
     lpPoint.x := Round(x);
     // cocoa returns cursor with inverted y coordinate
-    lpPoint.y := Round(NSScreen.mainScreen.frame.size.height-y);
+    lpPoint.y := Round(NSScreenZeroHeight-y);
   end;
   //debugln('GetCursorPos='+DbgS(lpPoint));
   Result := True;
@@ -1081,13 +1137,23 @@ end;
 
 function TCocoaWidgetSet.GetMonitorInfo(hMonitor: HMONITOR; lpmi: PMonitorInfo): Boolean;
 var
-  ScreenID: NSScreen absolute hMonitor;
+  Scr0Height:  CGFloat;
+  ScreenID: NSScreen;
+  idx : NSUInteger;
 begin
   Result := (lpmi <> nil) and (lpmi^.cbSize >= SizeOf(TMonitorInfo));
   if not Result then Exit;
-  lpmi^.rcMonitor := NSRectToRect(ScreenID.frame);
-  lpmi^.rcWork := NSRectToRect(ScreenID.visibleFrame);
-  if ScreenID = NSScreen.mainScreen then
+  idx := HMonitorToIndex(hMonitor);
+  Result := (idx < NSScreen.screens.count);
+  if not Result then Exit;
+
+  Scr0Height := NSScreenZeroHeight;
+  ScreenID := NSScreen(NSScreen.screens.objectAtIndex(idx));
+  NSToLCLRect(ScreenID.frame, Scr0Height, lpmi^.rcMonitor);
+  NSToLCLRect(ScreenID.visibleFrame, Scr0Height, lpmi^.rcWork);
+  // according to the documentation the primary (0,0 coord screen)
+  // is always and index 0
+  if idx = 0 then
     lpmi^.dwFlags := MONITORINFOF_PRIMARY
   else
     lpmi^.dwFlags := 0;
@@ -1098,10 +1164,13 @@ var
   AObject: TCocoaGDIObject;
   DIB: TDIBSection;
   Width, Height, RequiredSize, i: Integer;
+  Traits: NSFontTraitMask;
 
   APen: TCocoaPen absolute AObject;
   ALogPen: PLogPen absolute Buf;
   AExtLogPen: PExtLogPen absolute Buf;
+  AFont: TCocoaFont absolute AObject;
+  ALogFont: PLogFont absolute Buf;
 begin
   Result := 0;
 
@@ -1220,7 +1289,29 @@ begin
         ALogPen^.lopnColor := APen.ColorRef;
       end;
     end;
-  end
+  end;
+  if AObject is TCocoaFont then
+  begin
+    if Buf = nil then
+      Result := SizeOf(TLogFont)
+    else
+    if BufSize >= SizeOf(TLogFont) then
+    begin
+      Result := SizeOf(TLogFont);
+      FillChar(ALogFont^, SizeOf(ALogFont^), 0);
+      ALogFont^.lfFaceName := AFont.Name;
+      ALogFont^.lfHeight := -AFont.Size; // Cocoa supports only full height (with leading) that corresponds with a negative value in WinAPI
+      Traits := NSFontManager.sharedFontManager.traitsOfFont(AFont.Font);
+      if (Traits and NSFontBoldTrait) <> 0 then
+        ALogFont^.lfWeight := FW_BOLD
+      else
+        ALogFont^.lfWeight := FW_NORMAL;
+      if (Traits and NSFontItalicTrait) <> 0 then
+        ALogFont^.lfItalic := 1
+      else
+        ALogFont^.lfItalic := 0;
+    end;
+  end;
 end;
 
 function TCocoaWidgetSet.GetParent(Handle : HWND): HWND;
@@ -1235,12 +1326,7 @@ function TCocoaWidgetSet.GetWindowRelativePosition(Handle: hwnd; var Left, Top: 
 begin
   Result := Handle <> 0;
   if Result then
-  begin
-    if TCocoaWindowContent(handle).isembedded then
-       TCocoaWindowContent(handle).lclRelativePos(Left, Top)
-    else
-       TCocoaWindowContent(handle).window.lclRelativePos(Left, Top);
-  end
+    NSObject(handle).lclRelativePos(Left, Top);
 end;
 
 function TCocoaWidgetSet.GetWindowSize(Handle: hwnd; var Width, Height: Integer): boolean;
@@ -1251,39 +1337,57 @@ begin
   Result := Handle <> 0;
   if not Result then Exit;
 
-  // Call on a window
-  lView := GetNSObjectView(NSObject(Handle));
-  if lView.isKindOfClass_(TCocoaWindowContent) then
-  begin
-    if TCocoaWindowContent(handle).isembedded then
-      r := TCocoaWindowContent(handle).lclFrame
-    else
-      r:=TCocoaWindowContent(handle).window.lclFrame;
-  end
-  // Call on any other control
-  else
-  begin
-    r := lView.lclFrame;
-  end;
+  r := NSObject(Handle).lclFrame;
   Width := R.Right - R.Left;
   Height := R.Bottom - R.Top;
 end;
 
+function TCocoaWidgetSet.InitStockFont(AFont: TObject; AStockFont: TStockFont): Boolean;
+var
+  Font: TFont absolute AFont;
+  CTFont: CTFontRef;
+  CTFontName: CFStringRef;
+  CTFontSize: CGFloat;
+  CTFontType: CTFontUIFontType;
+begin
+  Result := False;
+
+  case AStockFont of
+    sfSystem:  // stock system font
+      CTFontType := kCTFontSystemFontType;
+    sfHint:    // stock hint font
+      CTFontType := kCTFontToolTipFontType;
+    sfIcon:    // stock icon font
+      CTFontType := kCTFontViewsFontType;
+    sfMenu:     // stock menu font
+      CTFontType := kCTFontMenuItemFontType;
+  end;
+
+  CTFont :=  CTFontCreateUIFontForLanguage(CTFontType, 0, nil);
+  try
+    CTFontName := CTFontCopyFamilyName(CTFont);
+    try
+      Font.Name := CFStringToStr(CTFontName);
+      finally
+      CFRelease(CTFontName);
+      end;
+    CTFontSize := CTFontGetSize(CTFont);
+    Font.Height := -Round(CTFontSize);
+    finally
+    CFRelease(CTFont);
+    end;
+  Result := True;
+end;
+
 function TCocoaWidgetSet.HideCaret(Handle: HWND): Boolean;
 var
-  Obj: NSObject;
   lView: NSView;
 begin
-  Result := (Handle <> 0);
-  if Result then
-  begin
-    Obj := NSObject(Handle);
-    lView := GetNSObjectView(Obj);
-    if lView <> nil then
-      Result := CocoaCaret.HideCaret(lView)
-    else
-      Result := False;
-  end;
+  if (Handle = 0)
+    then lView := nil
+    else lView := NSView(Handle).lclContentView;
+
+  Result := CocoaCaret.HideCaret(lView);
 end;
 
 function TCocoaWidgetSet.InvalidateRect(aHandle: HWND; Rect: pRect; bErase: Boolean): Boolean;
@@ -1323,14 +1427,24 @@ begin
     end
     else
       Result := nil;
-  end;
+  end else
+    Result := nil;
 end;
 
 function TCocoaWidgetSet.IsWindow(handle: HWND): boolean;
+var
+  cbi : ICommonCallback;
+  obj : TObject;
 begin
   if handle <> 0 then
   begin
-    Result := NSObject(handle).lclIsHandle;
+    cbi := NSObject(handle).lclGetCallback;
+    Result := Assigned(cbi);
+    if not Result then Exit;
+
+    obj := cbi.GetCallbackObject;
+    Result :=  (obj is TLCLCommonCallback)
+      and (HWND(TLCLCommonCallback(obj).HandleFrame)=handle);
   end
   else
     Result := False;
@@ -1339,21 +1453,27 @@ end;
 function ViewFromPoint(view: NSView;Point: TPoint): HWND;
 var rect: TRect;
     p:TPoint;
+    cb: ICommonCallback;
+    cbo: TObject;
 begin
   Result:=0;
   if not assigned(view) then
      exit;
-  if view.lclIsHandle then
-      begin
-      p:=Point;
-      view.lclScreenToLocal(p.X,p.Y);
-      rect:=view.lclClientFrame;
-      if PtInRect(rect, p) then
-         Result:=HWND(view);
-      //debugln('Point:'+DbgS(p)+'  Rect:'+DbgS(rect)+' Result:'+dbgS(Result));
-      end
-  //else
-    //  debugln('No lcl');
+  cb := view.lclGetCallback;
+  if Assigned(cb) then
+  begin
+    cbo := cb.GetCallbackObject;
+    p:=Point;
+    view.lclScreenToLocal(p.X,p.Y);
+    rect:=view.lclClientFrame;
+    if PtInRect(rect, p) then
+    begin
+      if cbo is TLCLCommonCallback then
+        Result := HWND(TLCLCommonCallback(cbo).HandleFrame)
+      else
+        Result:=0;
+    end;
+  end
 end;
 
 function RecurseSubviews(view: NSView;Point: TPoint):HWND;
@@ -1361,6 +1481,7 @@ var  sv:integer;
 begin
   // first check views subview if there is a embedded view
   Result:=0;
+  if not Assigned(view) or (view.isHidden) or (not view.lclIsEnabled) then Exit;
   sv:=0;
   while (Result=0) and (sv<view.subviews.count) do
     begin
@@ -1379,32 +1500,28 @@ var
   window, windowbelowpoint: NSWindow;
   p:NSPoint;
   winnr:NSInteger;
-  pool:NSAutoReleasePool;
 begin
   Result := 0;
   if not assigned(NSApp) then
     Exit;
 
-  pool := NSAutoreleasePool.alloc.init;
   windows := NSApp.windows;
   for win := 0 to windows.count - 1 do
   begin
     window:=windows.objectAtIndex(win);
     p.x:=Point.X;
-    p.y:=window.screen.frame.size.height-Point.Y;
+    p.y:=NSScreenZeroHeight-Point.Y;
     winnr:=NSWindow.windowNumberAtPoint_belowWindowWithWindowNumber(p,0);
-    windowbelowpoint:=NSApp.windowWithWindowNumber(winnr);
+    windowbelowpoint:=NSWindow(NSApp.windowWithWindowNumber(winnr));
     if windowbelowpoint=window then
     begin
       Result:=RecurseSubviews(window.contentView, Point);
       if Result<>0 then
       begin
-        pool.release;
         exit;
       end;
     end;
   end;
-  pool.release;
 end;
 
 
@@ -1466,19 +1583,90 @@ end;
 {----------------------------- WINDOWS SCROLLING ------------------------------}
 
 function TCocoaWidgetSet.GetScrollBarSize(Handle: HWND; BarKind: Integer): integer;
+var
+  sc  : NSScrollView;
+  obj : NSObject;
 begin
-  Result:=0;
+  obj := NSObject(Handle);
+  Result := 0;
+  if not Assigned(obj) then Exit;
+
+  if obj.isKindOfClass(NSScrollView) then
+  begin
+    if (BarKind = SB_Vert) and Assigned(NSScrollView(obj).verticalScroller) then
+      Result:=round(NSScrollView(obj).verticalScroller.frame.size.width)
+    else if (BarKind = SB_Horz) and Assigned(NSScrollView(obj).horizontalScroller) then
+      Result:=round(NSScrollView(obj).verticalScroller.frame.size.height)
+    else
+      Result := Round(NSScroller.scrollerWidth);
+  end
+  else
+    Result := Round(NSScroller.scrollerWidth);
 end;
 
 function TCocoaWidgetSet.GetScrollbarVisible(Handle: HWND; SBStyle: Integer): boolean;
+var
+  obj : NSObject;
+  sc  : NSScrollView;
+  mn  : TCocoaManualScrollView;
 begin
-  Result:=False;
+  obj := NSObject(Handle);
+  Result := Assigned(obj);
+  if not Result then Exit;
+
+  if obj.isKindOfClass(TCocoaManualScrollHost) then
+    obj := TCocoaManualScrollHost(obj).documentView;
+
+  if obj.isKindOfClass(NSScrollView) then
+  begin
+    sc := NSScrollView(obj);
+    case SBStyle of
+      SB_Vert: Result := sc.hasVerticalScroller;
+      SB_Horz: Result := sc.hasHorizontalScroller;
+    else
+      Result := sc.hasHorizontalScroller and sc.hasVerticalScroller;
+    end;
+  end
+  else if obj.isKindOfClass(TCocoaManualScrollView) then
+  begin
+    mn := TCocoaManualScrollView(obj);
+    case SBStyle of
+      SB_Vert: Result := mn.hasVerticalScroller;
+      SB_Horz: Result := mn.hasHorizontalScroller;
+    else
+      Result := mn.hasHorizontalScroller and mn.hasVerticalScroller;
+    end;
+  end
+  else
+    Result := False;
 end;
 
 function TCocoaWidgetSet.GetScrollInfo(Handle: HWND; BarFlag: Integer;
   var ScrollInfo: TScrollInfo): Boolean;
+var
+  sc : NSScrollView;
+  obj : NSObject;
 begin
-  Result:=False;
+  obj := NSObject(Handle);
+  Result := Assigned(obj);
+  if not Result then Exit;
+
+  if obj.isKindOfClass(TCocoaManualScrollHost) then
+    obj := TCocoaManualScrollHost(obj).documentView;
+
+  if obj.isKindOfClass(TCocoaScrollBar) then
+    Result := CocoaScrollBarGetScrollInfo(TCocoaScrollBar(obj), ScrollInfo)
+  else
+  if obj.isKindOfClass(TCocoaManualScrollView) then
+  begin
+    if BarFlag = SB_Vert then
+      Result := CocoaScrollBarGetScrollInfo( TCocoaScrollBar(TCocoaManualScrollView(obj).verticalScroller), ScrollInfo)
+    else
+      Result := CocoaScrollBarGetScrollInfo( TCocoaScrollBar(TCocoaManualScrollView(obj).horizontalScroller), ScrollInfo);
+  end else if obj.isKindOfClass(NSScrollView) then
+    NSScrollViewGetScrollInfo(NSScrollView(obj), BarFlag, ScrollInfo)
+  else
+    Result := False;
 end;
 
 function TCocoaWidgetSet.GetStockObject(Value: Integer): THandle;
@@ -1514,6 +1702,11 @@ begin
 end;
 
 function SysColorToNSColor(nIndex: Integer): NSColor;
+const
+  ToolTipBack     = $C9FCF9;
+  ToolTipBack1010 = $EDEDED;
+  ToolTipBack1014 = $f0f0f0;
+  ToolTipBack1014Dark = $343434;
 begin
   case NIndex of
     COLOR_GRADIENTACTIVECAPTION, COLOR_ACTIVECAPTION,
@@ -1524,8 +1717,10 @@ begin
     COLOR_CAPTIONTEXT,
     COLOR_INACTIVECAPTIONTEXT:
       Result := NSColor.windowFrameTextColor;
+    COLOR_WINDOW:
+      Result := NSColor.textBackgroundColor;
     COLOR_BACKGROUND,
-    COLOR_WINDOW, COLOR_FORM:
+    COLOR_FORM:
       Result := NSColor.windowBackgroundColor;
     COLOR_MENU:
       Result := NSColor.controlBackgroundColor;
@@ -1535,7 +1730,7 @@ begin
       Result := NSColor.selectedTextBackgroundColor;
     COLOR_MENUHILIGHT:
       Result := NSColor.selectedMenuItemColor;
-    COLOR_INFOTEXT, COLOR_WINDOWTEXT:
+    COLOR_WINDOWTEXT:
       Result := NSColor.controlTextColor;
     COLOR_APPWORKSPACE:
       Result := NSColor.windowBackgroundColor;
@@ -1548,21 +1743,52 @@ begin
     COLOR_SCROLLBAR:
       Result := NSColor.scrollBarColor;
     COLOR_BTNFACE:
-      Result := NSColor.controlColor;
-    COLOR_BTNSHADOW:
-      Result := NSColor.controlShadowColor;
+      Result := NSColor.controlBackgroundColor;
+    COLOR_BTNSHADOW:  // COLOR_3DSHADOW
+      if NSAppKitVersionNumber >= NSAppKitVersionNumber10_14 then
+        Result := NSColor.controlColor.shadowWithLevel(0.5)
+      else
+        Result := NSColor.controlShadowColor;
     COLOR_BTNHIGHLIGHT:
-      Result := NSColor.controlLightHighlightColor;//controlHighlightColor has no contrast with COLOR_BTNFACE which affects TBevel. In Win32 this has value white
+      if NSAppKitVersionNumber >= NSAppKitVersionNumber10_14 then
+        Result := NSColor.controlColor.shadowWithLevel(0.0)
+      else
+        Result := NSColor.controlLightHighlightColor;//controlHighlightColor has no contrast with COLOR_BTNFACE which affects TBevel. In Win32 this has value white
     COLOR_BTNTEXT:
       Result := NSColor.controlTextColor;
     COLOR_GRAYTEXT:
       Result := NSColor.disabledControlTextColor;
     COLOR_3DDKSHADOW:
-      Result := NSColor.controlDarkShadowColor;
+      if NSAppKitVersionNumber >= NSAppKitVersionNumber10_14 then
+        Result := NSColor.controlColor.shadowWithLevel(0.75)
+      else
+        Result := NSColor.controlDarkShadowColor;
     COLOR_3DLIGHT:
-      Result := NSColor.controlHighlightColor;// makes a more consistent result (a very light gray) than controlLightHighlightColor (which is white)
+      if NSAppKitVersionNumber >= NSAppKitVersionNumber10_14 then
+        Result := NSColor.controlColor.shadowWithLevel(0.25)
+      else
+        Result := NSColor.controlHighlightColor;// makes a more consistent result (a very light gray) than controlLightHighlightColor (which is white)
+
+    // macOS doesn't provide any API to get the hint window colors.
+    // default = macosx10.4 yellow color. (See InitInternals below)
+    // it's likely the tooltip color will change in future.
+    // Thus the variable is left public, so a user of LCL
+    // would be able to initialize it properly on start
+    COLOR_INFOTEXT:
+      Result := NSColor.controlTextColor;
     COLOR_INFOBK:
-      Result := NSColor.colorWithCalibratedRed_green_blue_alpha(249 / $FF, 252 / $FF, 201 / $FF, 1);
+    begin
+      if NSAppKitVersionNumber >= NSAppKitVersionNumber10_14 then
+      begin
+        if IsPaintDark then
+          Result := ColorToNSColor(ToolTipBack1014Dark)
+        else
+          Result := ColorToNSColor(ToolTipBack1014);
+      end else if NSAppKitVersionNumber >= NSAppKitVersionNumber10_10 then
+        Result := ColorToNSColor(ToolTipBack1010)
+      else
+        Result := ColorToNSColor(ToolTipBack);
+    end;
   else
     Result := nil;
   end;
@@ -1590,26 +1816,145 @@ begin
 end;
 
 function TCocoaWidgetSet.GetSysColorBrush(nIndex: Integer): HBRUSH;
+var
+  sys : NSColor;
 begin
   if (nIndex < 0) or (nIndex > MAX_SYS_COLORS) then
   begin
     Result := 0;
     Exit;
   end;
-
   if (FSysColorBrushes[nIndex] = 0) then
-    FSysColorBrushes[nIndex] := HBrush(TCocoaBrush.Create(SysColorToNSColor(nIndex), True));
-  Result := FSysColorBrushes[nIndex]
+    FSysColorBrushes[nIndex] := HBrush(TCocoaBrush.Create(SysColorToNSColor(nIndex), True))
+  else
+  begin
+    // system wide can change the color on the fly
+    TCocoaBrush(FSysColorBrushes[nIndex]).Color := SysColorToNSColor(nIndex)
+  end;
+
+  Result := FSysColorBrushes[nIndex];
 end;
 
 function TCocoaWidgetSet.SetScrollInfo(Handle : HWND; SBStyle : Integer; ScrollInfo: TScrollInfo; bRedraw : Boolean): Integer;
+var
+  si  : TScrollInfo;
+  obj : NSObject;
+  sc  : TCocoaScrollView;
+  bar : TCocoaScrollBar;
+  f   : NSSize;
+  sz  : NSSize;
+  flg : NSUInteger;
+  hosted: Boolean;
 begin
-  Result:=0;
+  obj := NSObject(Handle);
+  Result := 0;
+  if not Assigned(obj) then Exit;
+
+  if obj.isKindOfClass(TCocoaManualScrollHost) then
+  begin
+    hosted := true;
+    obj := TCocoaManualScrollHost(obj).documentView;
+  end else
+    hosted := false;
+
+  if obj.isKindOfClass(TCocoaScrollView) then
+  begin
+    sc:=TCocoaScrollView(obj);
+    if sc.isCustomRange and (ScrollInfo.fMask and SIF_RANGE>0) then begin
+      f:=sc.frame.size;
+      sz:=NSView(sc.documentView).frame.size; // type casting is here for the compiler. for i386 it messes up types
+      flg:=sc.documentView.autoresizingMask;
+
+      if SBStyle=SB_Horz then begin
+        if ScrollInfo.nMax>f.width then begin
+          sz.width := ScrollInfo.nMax;
+          flg:=flg and not NSViewWidthSizable;
+        end else begin
+          sz.width := f.width;
+          flg:=flg or NSViewWidthSizable;
+        end;
+      end else if SBStyle=SB_Vert then begin
+        if ScrollInfo.nMax>f.height then begin
+          sz.height := ScrollInfo.nMax;
+          flg:=flg and not NSViewHeightSizable;
+        end else begin
+          sz.height := f.height;
+          flg:=flg or NSViewHeightSizable;
+        end;
+      end;
+      sc.documentView.setAutoresizingMask(flg);
+      sc.documentView.setFrameSize( sz );
+    end;
+
+    if ScrollInfo.fMask and SIF_ALL > 0 then
+      NSScrollViewSetScrollPos(NSScrollView(obj), SBStyle, ScrollInfo);
+    FillChar(si, sizeof(si), 0);
+    si.cbSize:=sizeof(si);
+    NSScrollViewGetScrollInfo(NSScrollView(obj), SBStyle, si);
+    Result:=si.nPos;
+  end else if obj.isKindOfClass(TCocoaManualScrollView) then
+  begin
+    bar:=nil;
+    if SBStyle=SB_Vert then
+      bar:= TCocoaScrollBar(TCocoaManualScrollView(obj).allocVerticalScroller(false))
+    else if SBStyle=SB_Horz then
+      bar:= TCocoaScrollBar(TCocoaManualScrollView(obj).allocHorizontalScroller(false));
+
+    if Assigned(bar) then
+    begin
+      Result := CocoaScrollBarSetScrollInfo(bar, ScrollInfo);
+      ShowScrollBar(Handle, SBStyle, bar.pageInt < bar.maxInt-bar.minInt);
+    end
+    else
+      Result := 0;
+
+    if hosted then
+      NSView(obj).lclInvalidate;
+
+  end else if obj.isKindOfClass(TCocoaScrollBar) then
+  begin
+    Result := CocoaScrollBarSetScrollInfo(TCocoaScrollBar(obj), ScrollInfo);
+  end
+  else
+    Result := 0;
 end;
 
 function TCocoaWidgetSet.ShowScrollBar(Handle: HWND; wBar: Integer; bShow: Boolean): Boolean;
+var
+  obj : NSObject;
+  sc  : TCocoaScrollView;
+  mn  : TCocoaManualScrollView;
 begin
-  Result:=False;
+  obj := NSObject(Handle);
+  Result := Assigned(obj);
+  if not Result then Exit;
+
+  if obj.isKindOfClass(TCocoaManualScrollHost) then
+    obj := TCocoaManualScrollHost(obj).documentView;
+
+  if obj.isKindOfClass(TCocoaScrollView)
+  then begin
+    Result := true;
+    sc := TCocoaScrollView(obj);
+    if wBar in [SB_Vert, SB_Both] then
+      sc.setHasVerticalScroller(bShow);
+
+    if wBar in [SB_Horz, SB_Both] then
+      sc.setHasHorizontalScroller(bShow);
+  end
+  else if obj.isKindOfClass(TCocoaManualScrollView)
+  then begin
+    mn := TCocoaManualScrollView(obj);
+
+    if wBar in [SB_Vert, SB_Both] then
+      mn.setHasVerticalScroller(bShow);
+
+    if wBar in [SB_Horz, SB_Both] then
+      mn.setHasHorizontalScroller(bShow);
+
+    Result := true;
+  end else
+    Result := false;
 end;
 
 {----------------------------------- DRAWING ----------------------------------}
@@ -1671,6 +2016,8 @@ begin
   end;
 end;
 
+{$push}
+{$rangechecks off}
 function TCocoaWidgetSet.Polygon(DC: HDC; Points: PPoint; NumPts: Integer; Winding: boolean): boolean;
 var
   ctx: TCocoaContext;
@@ -1690,21 +2037,48 @@ begin
   if Result then
     ctx.Polyline(PPointArray(Points)^, NumPts);
 end;
+{$pop}
+
+type
+  TLCLEventMessage = objcclass(NSObject)
+    handle: HWND;
+    msg: Cardinal;
+    wp: WParam;
+    lp: LParam;
+    res: LResult;
+    releaseAfterRun: Boolean;
+    procedure lclRunEvent(sender: id); message 'lclRunEvent:';
+  end;
+
+procedure TLCLEventMessage.lclRunEvent(sender: id);
+begin
+  res := NSObject(handle).lclDeliverMessage(msg, wp, lp);
+  if releaseAfterRun then self.release;
+end;
+
+function AllocLCLEventMessage(ahandle: HWND; amsg: Cardinal; awp: WParam; alp: LParam; forSend: Boolean): TLCLEventMessage;
+begin
+  Result := TLCLEventMessage.alloc.init;
+  Result.handle := ahandle;
+  Result.msg := amsg;
+  Result.wp := awp;
+  Result.lp := alp;
+  Result.releaseAfterRun := not forSend;
+end;
+
 
 function TCocoaWidgetSet.PostMessage(Handle: HWND; Msg: Cardinal;
   wParam: WParam; lParam: LParam): Boolean;
 var
-  Info: NSDictionary;
-  Event: NSEvent;
+  m: TLCLEventMessage;
 begin
   Result := Handle <> 0;
   if Result then
   begin
-    Info := PrepareUserEventInfo(Handle, Msg, WParam, LParam);
-    // if we will want a postmessage using notification center
-    // NSDistributedNotificationCenter.defaultCenter.postNotificationName_object_userInfo_deliverImmediately(NSMessageNotification, nil, Info, False);
-    Event := PrepareUserEvent(Handle, Info);
-    NSApp.postEvent_atStart(Event, False);
+    m:=AllocLCLEventMessage(Handle, Msg, wParam, lParam, false);
+    m.performSelectorOnMainThread_withObject_waitUntilDone(
+      ObjCSelector('lclRunEvent:'), nil, false
+    );
   end;
 end;
 
@@ -1784,6 +2158,14 @@ begin
   {$ENDIF}
 end;
 
+function TCocoaWidgetSet.GetDCOriginRelativeToWindow(PaintDC: HDC;
+  WindowHandle: HWND; var OriginDiff: TPoint): boolean;
+begin
+  Result:=PaintDC<>0;
+  if Result then
+    OriginDiff:=TCocoaContext(PaintDC).WindowOfs;
+end;
+
 function TCocoaWidgetSet.GetDeviceCaps(DC: HDC; Index: Integer): Integer;
 var
   ctx: TCocoaContext;
@@ -1801,7 +2183,19 @@ begin
     HORZRES:
       Result := Round(NSScreen.mainScreen.frame.size.width);
     BITSPIXEL:
-      Result := CGDisplayBitsPerPixel(CGMainDisplayID);
+      // this is based on the main screen only. Should verify what actual DC is passed.
+      // for VIEWS the typical BPP would be 32.
+      case NSScreen.mainScreen.depth of
+        NSWindowDepthTwentyfourBitRGB: //24-bit would be reported as 32
+          Result := 32;
+        NSWindowDepthSixtyfourBitRGB:
+          Result := 64;
+        NSWindowDepthOnehundredtwentyeightBitRGB:
+          Result := 128;
+      else
+        Result := 32;
+      end;
+
     PLANES:
       Result := 1;
     SIZEPALETTE:
@@ -1816,6 +2210,7 @@ begin
       Result := 0;
   else
     DebugLn('TCocoaWidgetSet.GetDeviceCaps TODO Index: ' + DbgS(Index));
+    Result := 0;
   end;
 end;
 
@@ -1835,14 +2230,48 @@ end;
 
 function TCocoaWidgetSet.GetFocus: HWND;
 var
-  Obj: NSObject;
+  Obj : NSObject;
+  win : NSWindow;
+  rsp : NSResponder;
+  view : NSView;
+  dl   : NSObject;
+  cb   : ICommonCallback;
+  cbobj : TObject;
 begin
-  Result := HWND(NSApp.keyWindow);
-  if Result <> 0 then
+  Result := 0;
+  win := NSApp.keyWindow;
+  if not Assigned(win) then Exit;
+  // assuming that that the content view of Window
+  // is the focused handle and return it, by default
+  Result := HWND(win.contentView);
+
+  rsp := win.firstResponder;
+  if not Assigned(rsp) then Exit;
+
+  // todo: The HANDLE is allocated in "WS" side, thus we should be using
+  //       "callback" object to determine, what actual NSView is the handle
+
+  if rsp.isKindOfClass(TCocoaFieldEditor) then
   begin
-    Obj := NSWindow(Result).firstResponder;
-    if Assigned(Obj) and Obj.isKindOfClass(NSView) then
-      Result := HWND(Obj);
+    // field editor is a "popup" editor over many controls
+    // the editor itself is never returned as any kind of HANDLE.
+    // The handle is the box, that's editing
+    dl := NSObject(TCocoaFieldEditor(rsp).delegate);
+    if Assigned(dl) and (dl.isKindOfClass(NSView)) and Assigned(dl.lclGetCallback) then
+      Result := HWND(dl);
+  end
+  else
+  begin
+    cb := rsp.lclGetCallback;
+    if Assigned(cb) then
+      cbobj := cb.GetCallbackObject
+    else
+      cbobj := nil;
+
+    if (cbobj is TLCLCommonCallback) then
+      Result := HWND(TLCLCommonCallback(cbobj).HandleFrame)
+    else
+      Result := 0;
   end;
 end;
 
@@ -1874,7 +2303,9 @@ const
 var
   Modifiers: NSUInteger;
 begin
-  Modifiers := NSApp.currentEvent.modifierFlags;
+  // NSApp.currentEvent.modifierFlags doesn't work before events start coming,
+  // see bug 29272 and http://lists.apple.com/archives/cocoa-dev/2010/Feb/msg00105.html
+  Modifiers := NSEvent.modifierFlags_();
   case nVirtKey of
     VK_MENU,
     VK_LMENU:
@@ -1920,6 +2351,7 @@ begin
   dc:=CheckDC(ADC);
   gdi:=CheckGDIOBJ(GDIObj);
   if not Assigned(dc) then Exit;
+  if not Assigned(gdi) then Exit;
 
   if gdi is TCocoaBrush then
   begin // select brush
@@ -1946,10 +2378,12 @@ begin
     end;
     Result := HBITMAP(TCocoaBitmapContext(dc).Bitmap);
     TCocoaBitmapContext(dc).Bitmap := TCocoaBitmap(gdi);
+  end
+  else
+  begin
+    DebugLn(SName + ' Error - Unknown Object Type ' + DbgSName(gdi));
+    Exit;
   end;
-
-  if Result<>0 then TCocoaGDIObject(Result).Release;
-  if Assigned(gdi) then gdi.AddRef;
 
   {$IFDEF VerboseWinAPI}
     DebugLn(Format('TCocoaWidgetSet.SelectObject Result: %x', [Result]));
@@ -1959,37 +2393,31 @@ end;
 function TCocoaWidgetSet.SendMessage(Handle: HWND; Msg: Cardinal;
   WParam: WParam; LParam: LParam): LResult;
 var
-  Info: NSDictionary;
-  Event: NSEvent;
+  m: TLCLEventMessage;
 begin
   if Handle <> 0 then
   begin
-    Info := PrepareUserEventInfo(Handle, Msg, WParam, LParam);
-    Event := PrepareUserEvent(Handle, Info);
-    NSApp.sendEvent(Event);
-    Result := NSNumber(Info.objectForKey(NSMessageResult)).integerValue;
-  end;
+    m:=AllocLCLEventMessage(Handle, Msg, wParam, lParam, true);
+    m.performSelectorOnMainThread_withObject_waitUntilDone(
+      ObjCSelector('lclRunEvent:'), nil, true
+    );
+    Result := m.res;
+    m.release;
+  end else
+    Result := 0;
 end;
 
 function TCocoaWidgetSet.SetActiveWindow(Handle: HWND): HWND;
 var
   Obj: NSObject;
-  lView: NSView;
 begin
   Obj := NSObject(Handle);
+  Result := 0; // should return 0, if function fails
   if Assigned(Obj) and NSApp.isActive then
   begin
-    Result := HWND(NSApp.keyWindow);
-    if Obj.isKindOfClass(NSWindow) then
-      NSwindow(Obj).makeKeyWindow
-    else
-    begin
-      lView := GetNSObjectView(Obj);
-      if lView <> nil then
-        lView.window.makeKeyWindow
-      else
-        Result := 0;
-    end;
+    Result := HWND(NSApp.keyWindow.contentView);
+    if (Handle <> 0) then
+      NSView(Handle).window.makeKeyWindow;
   end;
 end;
 
@@ -2043,7 +2471,7 @@ begin
   Result:=inherited SetCaretRespondToFocus(handle, ShowHideOnFocus);
 end;
 
-function TCocoaWidgetSet.RectVisible(dc: HDC; const ARect: TRect): Boolean;
+function TCocoaWidgetSet.RectVisible(dc: hdc; const ARect: TRect): Boolean;
 var
   ClipBox: CGRect;
   ctx : TCocoaContext;
@@ -2110,10 +2538,17 @@ begin
   Result := True;
 end;
 
+function NeedsFocusNotifcation(event: NSEvent; win: NSWindow): Boolean;
+begin
+  Result := (Assigned(win))
+      and (not Assigned(event) or (event.window <> win));
+end;
+
 function TCocoaWidgetSet.SetFocus(Handle: HWND): HWND;
 var
   Obj: NSObject;
   lView: NSView;
+  cb: ICommonCallback;
 begin
   if Handle <> 0 then
   begin
@@ -2128,15 +2563,25 @@ begin
     end
     else
     begin
-      lView := GetNSObjectView(Obj);
+      lView := obj.lclContentView;
       if lView <> nil then
       begin
         if lView.window <> nil then
         begin
           lView.window.makeKeyWindow;
-          lView.window.makeFirstResponder(lView);
-        end;
-      end;
+          if lView.window.makeFirstResponder(lView.lclContentView) then
+          begin
+            // initial focus set (right before the event loop starts)
+            if NeedsFocusNotifcation(NSApp.currentEvent, lView.window) then
+            begin
+              cb := lView.lclGetCallback;
+              if Assigned(cb) then cb.BecomeFirstResponder;
+            end;
+          end;
+        end else
+          Result := 0; // the view is on window, cannot set focus. Fail
+      end else
+        Result := 0;
     end;
   end
   else
@@ -2147,20 +2592,48 @@ function TCocoaWidgetSet.SetForegroundWindow(HWnd: HWND): boolean;
 var
   Obj: NSObject;
   lWin: NSWindow;
-  pool: NSAutoreleasePool;
 begin
   Result := HWnd <> 0;
   if Result then
   begin
-    pool := NSAutoreleasePool.alloc.init;
+    {$ifdef BOOLFIX}
+    NSApp.activateIgnoringOtherApps_(Ord(True));
+    {$else}
     NSApp.activateIgnoringOtherApps(True);
+    {$endif}
     Obj := NSObject(HWnd);
-    lWin := GetNSObjectWindow(Obj);
+    lWin := NSWindow(GetNSObjectWindow(Obj));
     if lWin <> nil then
       lWin.makeKeyAndOrderFront(NSApp)
     else
       Result := False;
-    pool.release;
+  end;
+end;
+
+function TCocoaWidgetSet.SetMenu(AWindowHandle: HWND; AMenuHandle: HMENU): Boolean;
+var
+  lWin: NSWindow;
+  frm : TCustomForm;
+begin
+  Result := False;
+
+  lWin := NSWindow(GetNSObjectWindow(NSObject(AWindowHandle)));
+
+  frm := HWNDToForm(AWindowHandle);
+  if Assigned(frm) and (csDesigning in frm.ComponentState) then begin
+    Result := true;
+    Exit;
+  end;
+  if not Assigned(frm) then Exit;
+
+  if (lWin <> nil) and lWin.isKindOfClass(TCocoaWindow) and
+     //todo: why is Menu handle checked here?
+     (frm.Menu.Handle = AMenuHandle)
+  then
+  begin
+    if lWin.isKeyWindow or lWin.isMainWindow then
+      SetMainMenu(AMenuHandle, frm.Menu);
+    Result := True;
   end;
 end;
 
@@ -2212,19 +2685,13 @@ end;
 
 function TCocoaWidgetSet.ShowCaret(Handle: HWND): Boolean;
 var
-  Obj: NSObject;
   lView: NSView;
 begin
-  Result := (Handle <> 0);
-  if Result then
-  begin
-    Obj := NSObject(Handle);
-    lView := GetNSObjectView(Obj);
-    if lView <> nil then
-      Result := CocoaCaret.ShowCaret(lView)
-    else
-      Result := False;
-  end;
+  //writeln('WinAPI. show caret ',PtrUInt(Handle));
+  if (Handle = 0) then lView := nil
+  else lView := NSView(Handle).lclContentView;
+
+  Result := CocoaCaret.ShowCaret(lView)
 end;
 
 {------------------------------------------------------------------------------
@@ -2249,9 +2716,11 @@ begin
     SM_CYVSCROLL:
       Result := Round(NSScroller.scrollerWidthForControlSize(NSRegularControlSize));
     SM_CXSCREEN,
-    SM_CXVIRTUALSCREEN: Result := Round(NSScreen.mainScreen.frame.size.width);
+    SM_CXVIRTUALSCREEN,
+    SM_CXFULLSCREEN: Result := Round(NSScreen.mainScreen.frame.size.width);
     SM_CYSCREEN,
-    SM_CYVIRTUALSCREEN: Result := Round(NSScreen.mainScreen.frame.size.height);
+    SM_CYVIRTUALSCREEN,
+    SM_CYFULLSCREEN: Result := Round(NSScreen.mainScreen.frame.size.height);
     SM_XVIRTUALSCREEN: Result := Round(NSScreen.mainScreen.frame.origin.x);
     SM_YVIRTUALSCREEN: Result := Round(NSScreen.mainScreen.frame.origin.y);
     SM_CXSMICON,
@@ -2267,10 +2736,13 @@ begin
           Result := 64 else}
           Result := 16;
       end;
+    SM_CXDRAG,SM_CYDRAG: Result := 5;
     SM_CXHTHUMB, SM_CYVTHUMB:
       Result := Round(NSScroller.scrollerWidthForControlSize(NSRegularControlSize));
     SM_SWSCROLLBARSPACING:
       Result := 0;
+    SM_LCLHasFormAlphaBlend:
+      Result := 1;
   else
     DebugLn('TCocoaWidgetSet.GetSystemMetrics TODO ', DbgS(NIndex));;
   end;
@@ -2368,6 +2840,26 @@ begin
 
   if Result = 1 then
     NSObject(Handle).lclScreenToLocal(P.X, P.Y);
+end;
+
+function TCocoaWidgetSet.ScrollWindowEx(hWnd: HWND; dx, dy: Integer; prcScroll, prcClip: PRect; hrgnUpdate: HRGN; prcUpdate: PRect; flags: UINT): Boolean;
+var
+  obj: NSOBject;
+  v : NSView;
+begin
+  obj:=NSObject(hWnd);
+  Result:=Assigned(obj) and (obj.isKindOfClass(NSView));
+  if not Result then Exit;
+
+  v:=NSView(obj).lclContentView;
+  // todo: parse the passed parameters.
+  //       the content of the window could be already prepared
+  //       thus not entire control should be invalided
+  {$ifdef BOOLFIX}
+  v.setNeedsDisplay__(Ord(true));
+  {$else}
+  v.setNeedsDisplay_(true);
+  {$endif}
 end;
 
 function TCocoaWidgetSet.SelectClipRGN(DC: hDC; RGN: HRGN): Longint;

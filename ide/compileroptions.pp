@@ -25,7 +25,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -42,11 +42,15 @@ unit CompilerOptions;
 interface
 
 uses
-  Classes, SysUtils, FileProcs, FileUtil, Laz2_XMLCfg, LazFileUtils,
-  AvgLvlTree, Laz2_DOM, LazUTF8,
-  InterfaceBase, Forms, Controls, LCLProc, ExprEval,
-  DefineTemplates, CodeToolsCfgScript, CodeToolManager, KeywordFuncLists,
-  BasicCodeTools,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  InterfaceBase, Forms, Controls,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8, Laz2_XMLCfg, Laz2_DOM, LazUtilities, LazTracer,
+  LazStringUtils,
+  // CodeTools
+  FileProcs, DefineTemplates, CodeToolsCfgScript, CodeToolManager,
+  KeywordFuncLists, BasicCodeTools, LinkScanner,
   // IDEIntf
   ProjectIntf, MacroIntf, IDEExternToolIntf, SrcEditorIntf, CompOptsIntf,
   IDEOptionsIntf,
@@ -152,6 +156,7 @@ type
   TInheritedCompilerOption = (
     icoNone,
     icoUnitPath,
+    icoNamespaces,
     icoIncludePath,
     icoObjectPath,
     icoLibraryPath,
@@ -174,6 +179,7 @@ type
     pcosNone,
     pcosBaseDir,      // the base directory for the relative paths (only auto created packages can have macros in the BaseDir)
     pcosUnitPath,     // search path for pascal units
+    pcosNamespaces,   // namespaces
     pcosIncludePath,  // search path for pascal include files
     pcosObjectPath,   // search path for .o files
     pcosLibraryPath,  // search path for libraries
@@ -201,6 +207,7 @@ const
     '',
     '',
     'UnitPath',
+    'Namespaces',
     'IncPath',
     'ObjectPath',
     'LibraryPath',
@@ -216,6 +223,7 @@ const
     '',
     '',
     'UsageUnitPath',
+    'UsageNamespaces',
     'UsageIncPath',
     'UsageObjectPath',
     'UsageLibraryPath',
@@ -231,6 +239,7 @@ const
     TParsedCompilerOptString = (
       pcosNone,
       pcosUnitPath,      // icoUnitPath,
+      pcosNamespaces,    // icoNamespaces,
       pcosIncludePath,   // icoIncludePath,
       pcosObjectPath,    // icoObjectPath,
       pcosLibraryPath,   // icoLibraryPath,
@@ -317,54 +326,33 @@ type
     ccloAddVerboseAll,  // add -va
     ccloDoNotAppendOutFileOption, // do not add -o option
     ccloAbsolutePaths,
-    ccloNoMacroParams // no search paths, no linker options, no custom options
+    ccloNoMacroParams, // no search paths, no linker options, no custom options
+    ccloAddCompilerPath
     );
   TCompilerCmdLineOptions = set of TCompilerCmdLineOption;
 
   { TCompilationToolOptions }
 
-  TCompilationToolOptions = class
+  TCompilationToolOptions = class(TLazCompilationToolOptions)
   private
-    FChangeStamp: int64;
-    FCommand: string;
-    FOnChanged: TNotifyEvent;
-    FOwner: TObject;
-    FScanForFPCMessages: boolean;
-    FScanForMakeMessages: boolean;
-    FShowAllMessages: boolean;
     FParsedCommandStamp: integer;
     FParsedCommand: string;
-    procedure SetCommand(const AValue: string);
-    procedure SetScanForFPCMessages(const AValue: boolean);
-    procedure SetScanForMakeMessages(const AValue: boolean);
-    procedure SetShowAllMessages(const AValue: boolean);
   protected
+    procedure SetCommand(AValue: string); override;
     procedure SubstituteMacros(var s: string); virtual;
   public
-    constructor Create(TheOwner: TObject); virtual;
-    procedure Clear; virtual;
     function CreateDiff(CompOpts: TCompilationToolOptions;
                         Tool: TCompilerDiffTool = nil): boolean; virtual;
-    procedure Assign(Src: TCompilationToolOptions); virtual;
+    procedure Assign(Src: TLazCompilationToolOptions); override;
     procedure LoadFromXMLConfig(XMLConfig: TXMLConfig; const Path: string;
                                 DoSwitchPathDelims: boolean); virtual;
     procedure SaveToXMLConfig(XMLConfig: TXMLConfig; const Path: string;
                               UsePathDelim: TPathDelimSwitch); virtual;
     function Execute(const WorkingDir, ToolTitle, CompileHint: string): TModalResult;
     function CreateExtTool(const WorkingDir, ToolTitle, CompileHint: string): TAbstractExternalTool;
-    property ChangeStamp: int64 read FChangeStamp;
-    procedure IncreaseChangeStamp;
-    property OnChanged: TNotifyEvent read FOnChanged write FOnChanged;
     function GetParsedCommand: string; // resolved macros
     function HasCommands: boolean; // true if there is something to execute
-  public
-    property Owner: TObject read FOwner;
-    property Command: string read FCommand write SetCommand;
-    property ScanForFPCMessages: boolean read FScanForFPCMessages write SetScanForFPCMessages;
-    property ScanForMakeMessages: boolean read FScanForMakeMessages write SetScanForMakeMessages;
-    property ShowAllMessages: boolean read FShowAllMessages write SetShowAllMessages;
   end;
-  TCompilationToolClass = class of TCompilationToolOptions;
 
   TCompilerMsgIdFlag = record
     MsgId: integer;
@@ -376,11 +364,11 @@ type
 
   TCompilerMsgIDFlagsEnumerator = class
   protected
-    FTree: TAvgLvlTree;
-    FCurrent: TAvgLvlTreeNode;
+    FTree: TAvlTree;
+    FCurrent: TAvlTreeNode;
     function GetCurrent: PCompilerMsgIdFlag; inline;
   public
-    constructor Create(Tree: TAvgLvlTree);
+    constructor Create(Tree: TAvlTree);
     function GetEnumerator: TCompilerMsgIDFlagsEnumerator; inline;
     function MoveNext: Boolean;
     property Current: PCompilerMsgIdFlag read GetCurrent;
@@ -392,8 +380,8 @@ type
   private
     FChangeStamp: int64;
     fLastSavedStamp: int64;
-    fTree: TAvgLvlTree; // tree of TCompilerMsgIdFlag
-    function FindNode(MsgId: integer): TAvgLvlTreeNode;
+    fTree: TAvlTree; // tree of TCompilerMsgIdFlag
+    function FindNode(MsgId: integer): TAvlTreeNode;
   protected
     function GetValues(MsgId: integer): TCompilerFlagValue; override;
     function GetModified: boolean; override;
@@ -425,21 +413,18 @@ type
     FStorePathDelim: TPathDelimSwitch;
     FOtherDefines: TStrings; // list of user selectable defines for custom options
     FFPCMsgFile: TFPCMsgFilePoolItem;
-
-    // other tools
-    fExecuteBefore: TCompilationToolOptions;
-    fExecuteAfter: TCompilationToolOptions;
     FCreateMakefileOnBuild: boolean;
-
-    procedure OnItemChanged(Sender: TObject);
+    function GetExecuteAfter: TCompilationToolOptions;
+    function GetExecuteBefore: TCompilationToolOptions;
     procedure SetCreateMakefileOnBuild(AValue: boolean);
   protected
-    function GetCompilerPath: String;
+    function GetCompilerPath: String; override;
     function GetBaseDirectory: string;
     function GetCustomOptions: string; override;
     function GetDebugPath: string; override;
     function GetIncludePaths: String; override;
     function GetLibraryPaths: String; override;
+    function GetNamespaces: String; override;
     function GetObjectPath: string; override;
     function GetSrcPath: string; override;
     function GetUnitOutputDir: string; override;
@@ -451,6 +436,7 @@ type
     procedure SetIncludePaths(const AValue: String); override;
     procedure SetLibraryPaths(const AValue: String); override;
     procedure SetLinkerOptions(const AValue: String); override;
+    procedure SetNamespaces(const AValue: String); override;
     procedure SetUnitPaths(const AValue: String); override;
     procedure SetUnitOutputDir(const AValue: string); override;
     procedure SetObjectPath(const AValue: string); override;
@@ -459,6 +445,7 @@ type
     procedure SetTargetCPU(const AValue: string); override;
     procedure SetTargetProc(const AValue: string); override;
     procedure SetTargetOS(const AValue: string); override;
+    procedure SetTargetFileExt(const AValue: String); override;
     procedure SetTargetFilename(const AValue: String); override;
   protected
     function GetModified: boolean; override;
@@ -467,8 +454,7 @@ type
     procedure SetDefaultMakeOptionsFlags(const AValue: TCompilerCmdLineOptions);
   public
     constructor Create(const AOwner: TObject); override;
-    constructor Create(const AOwner: TObject;
-                  const AToolClass: TCompilationToolClass);
+    constructor Create(const AOwner: TObject; const AToolClass: TLazCompilationToolClass);
     destructor Destroy; override;
     procedure Clear; virtual;
     class function GetInstance: TAbstractIDEOptions; override;
@@ -488,9 +474,9 @@ type
     procedure SetAlternativeCompile(const Command: string; ScanFPCMsgs: boolean); override;
 
     function MakeOptionsString(Flags: TCompilerCmdLineOptions): String; virtual;
-    function GetSyntaxOptionsString: string; virtual;
+    function GetSyntaxOptionsString(Kind: TPascalCompiler): string; virtual;
     function CreatePPUFilename(const SourceFileName: string): string; override;
-    function CreateTargetFilename: string; virtual;
+    function CreateTargetFilename: string; override;
     function GetTargetFileExt: string; virtual;
     function GetTargetFilePrefix: string; virtual;
     procedure GetInheritedCompilerOptions(var OptionsList: TFPList // list of TAdditionalCompilerOptions
@@ -508,9 +494,11 @@ type
     function GetEffectiveTargetOS: string; override;
     function GetEffectiveTargetCPU: string; override;
     function GetEffectiveLCLWidgetType: string; override;
+    // parsed CompilerFilename: use ParsedOpts.GetParsedValue(pcosCompilerPath)
     function GetUnitPath(RelativeToBaseDir: boolean;
                          Parsed: TCompilerOptionsParseType = coptParsed;
                          WithBaseDir: boolean = true): string; override;
+    function GetNamespacesParsed(Parsed: TCompilerOptionsParseType = coptParsed): string; override;
     function GetIncludePath(RelativeToBaseDir: boolean;
                             Parsed: TCompilerOptionsParseType = coptParsed;
                             WithBaseDir: boolean = true): string; override;
@@ -544,34 +532,37 @@ type
     function GetUnparsedPath(Option: TParsedCompilerOptString;
                              InheritedOption: TInheritedCompilerOption;
                              RelativeToBaseDir: boolean): string;
-    function ShortenPath(const SearchPath: string;
-                         MakeAlwaysRelative: boolean): string;
+    function ShortenPath(const SearchPath: string): string;
     function GetCustomOptions(Parsed: TCompilerOptionsParseType): string;
     function TrimCustomOptions(o: string): string; override;
     function GetOptionsForCTDefines: string;
-
+    // rename macro in paths and options, not in BuildMacros, not in dependencies
     procedure RenameMacro(const OldName, NewName: string;
-              ChangeConditionals: boolean); virtual; // rename macro in paths and options, not in BuildMacros, not in dependencies
+              ChangeConditionals: boolean); virtual;
+    procedure MergeToIncludePaths(const AddSearchPath: string);
+    procedure MergeToLibraryPaths(const AddSearchPath: string);
+    procedure MergeToNamespaces(const AddNamespaces: string);
+    procedure MergeToUnitPaths(const AddSearchPath: string);
+    procedure MergeToObjectPath(const AddSearchPath: string);
+    procedure MergeToSrcPath(const AddSearchPath: string);
+    procedure MergeToDebugPath(const AddSearchPath: string);
+    procedure RemoveFromUnitPaths(const RemSearchPath: string);
+    // compiler message types by id
+    function IDEMessageFlags: TCompilerMsgIDFlags; inline;
   public
     // not stored properties
     property ParsedOpts: TParsedCompilerOptions read FParsedOpts;
     property BaseDirectory: string read GetBaseDirectory write SetBaseDirectory;
     property DefaultMakeOptionsFlags: TCompilerCmdLineOptions
                  read FDefaultMakeOptionsFlags write SetDefaultMakeOptionsFlags;
-
     // stored properties
     property StorePathDelim: TPathDelimSwitch read FStorePathDelim write FStorePathDelim;
     property OtherDefines: TStrings read FOtherDefines;
-
     // compilation
-    property CompilerPath: String read GetCompilerPath write SetCompilerPath;
-    property ExecuteBefore: TCompilationToolOptions read fExecuteBefore;
-    property ExecuteAfter: TCompilationToolOptions read fExecuteAfter;
+    property ExecuteBefore: TCompilationToolOptions read GetExecuteBefore;
+    property ExecuteAfter: TCompilationToolOptions read GetExecuteAfter;
     property CreateMakefileOnBuild: boolean read FCreateMakefileOnBuild
                                             write SetCreateMakefileOnBuild;
-
-    // compiler message types by id
-    function IDEMessageFlags: TCompilerMsgIDFlags; inline;
   end;
 
   TBaseCompilerOptionsClass = class of TBaseCompilerOptions;
@@ -591,6 +582,7 @@ type
     function GetIncludePath: string; virtual;
     function GetLibraryPath: string; virtual;
     function GetLinkerOptions: string; virtual;
+    function GetNamespaces: string; virtual;
     function GetObjectPath: string; virtual;
     function GetSrcPath: string; virtual;
     function GetUnitPath: string; virtual;
@@ -599,6 +591,7 @@ type
     procedure SetIncludePath(const AValue: string); virtual;
     procedure SetLibraryPath(const AValue: string); virtual;
     procedure SetLinkerOptions(const AValue: string); virtual;
+    procedure SetNamespaces(const AValue: string); virtual;
     procedure SetObjectPath(const AValue: string); virtual;
     procedure SetSrcPath(const AValue: string); virtual;
     procedure SetUnitPath(const AValue: string); virtual;
@@ -617,6 +610,7 @@ type
   public
     property Owner: TObject read fOwner;
     property UnitPath: string read GetUnitPath write SetUnitPath;
+    property Namespaces: string read GetNamespaces write SetNamespaces;
     property IncludePath: string read GetIncludePath write SetIncludePath;
     property SrcPath: string read GetSrcPath write SetSrcPath;
     property ObjectPath: string read GetObjectPath write SetObjectPath;
@@ -744,6 +738,10 @@ begin
           InheritedOptionStrings[icoUnitPath]:=
             MergeSearchPaths(InheritedOptionStrings[icoUnitPath],
                             AddOptions.ParsedOpts.GetParsedValue(pcosUnitPath));
+          // namespaces
+          InheritedOptionStrings[icoNamespaces]:=
+            MergeSearchPaths(InheritedOptionStrings[icoNamespaces],
+                            AddOptions.ParsedOpts.GetParsedValue(pcosNamespaces));
           // include search path
           InheritedOptionStrings[icoIncludePath]:=
             MergeSearchPaths(InheritedOptionStrings[icoIncludePath],
@@ -776,6 +774,10 @@ begin
           InheritedOptionStrings[icoUnitPath]:=
             MergeSearchPaths(InheritedOptionStrings[icoUnitPath],
                           AddOptions.ParsedOpts.GetParsedPIValue(pcosUnitPath));
+          // namespaces
+          InheritedOptionStrings[icoNamespaces]:=
+            MergeSearchPaths(InheritedOptionStrings[icoNamespaces],
+                          AddOptions.ParsedOpts.GetParsedPIValue(pcosNamespaces));
           // include search path
           InheritedOptionStrings[icoIncludePath]:=
             MergeSearchPaths(InheritedOptionStrings[icoIncludePath],
@@ -811,20 +813,13 @@ begin
             CurOptions:=InheritedOptionStrings[o];
             case o of
             icoNone: ;
-            icoUnitPath,icoIncludePath,icoSrcPath,icoObjectPath,icoLibraryPath:
-              begin
-                if CurOptions<>'' then
-                  UnparsedOption:=';'+UnparsedOption;
-                CurOptions:=CurOptions+UnparsedOption;
-              end;
+            icoUnitPath,icoNamespaces,icoIncludePath,icoSrcPath,icoObjectPath,
+            icoLibraryPath:
+              CurOptions:=MergeWithDelimiter(CurOptions,UnparsedOption,';');
             icoLinkerOptions,icoCustomOptions:
-              begin
-                if CurOptions<>'' then
-                  UnparsedOption:=' '+UnparsedOption;
-                CurOptions:=CurOptions+UnparsedOption;
-              end;
+              CurOptions:=MergeWithDelimiter(CurOptions,UnparsedOption,' ');
             else
-              RaiseException('GatherInheritedOptions');
+              RaiseGDBException('GatherInheritedOptions');
             end;
             InheritedOptionStrings[o]:=CurOptions;
           end;
@@ -843,7 +838,7 @@ var
   CurLibraryPath: String;
   CurObjectPath: String;
   CurUnitPath: String;
-  CurCustomOptions: String;
+  CurCustomOptions, CurNamespaces: String;
 begin
   Result:='';
 
@@ -865,6 +860,11 @@ begin
     if (CurLibraryPath <> '') then
       Result := Result + ' ' + ConvertSearchPathToCmdLine('-Fl', CurLibraryPath);
   end;
+
+  // namespaces
+  CurNamespaces:=InheritedOptionStrings[icoNamespaces];
+  if CurNamespaces <> '' then
+    Result := Result + ' -FN'+CurNamespaces;
 
   // object path
   CurObjectPath:=InheritedOptionStrings[icoObjectPath];
@@ -907,7 +907,7 @@ var
   EndPos: LongInt;
 begin
   if Switch='' then
-    RaiseException('ConvertSearchPathToCmdLine no Switch');
+    RaiseGDBException('ConvertSearchPathToCmdLine no Switch');
   Result := '';
   if (Paths = '') then exit;
 
@@ -948,7 +948,8 @@ begin
       inc(EndPos);
     end;
     if EndPos>StartPos then begin
-      Result:=Result+' '+Switch+copy(OptionStr,StartPos,EndPos-StartPos);
+      if Result<>'' then Result:=Result+' ';
+      Result:=Result+Switch+copy(OptionStr,StartPos,EndPos-StartPos);
     end;
     StartPos:=EndPos;
   end;
@@ -1003,7 +1004,7 @@ begin
   Result:=PCompilerMsgIdFlag(FCurrent.Data);
 end;
 
-constructor TCompilerMsgIDFlagsEnumerator.Create(Tree: TAvgLvlTree);
+constructor TCompilerMsgIDFlagsEnumerator.Create(Tree: TAvlTree);
 begin
   FTree:=Tree;
 end;
@@ -1057,7 +1058,7 @@ begin
       else if CompareIdentifiers(PChar(VarName),'SrcOS2')=0 then
         SetCTCSVariableAsString(Value,GetDefaultSrcOS2ForTargetOS(GetCompiledTargetOS))
       else if CompareIdentifiers(PChar(VarName),'LCLWidgetType')=0 then
-        SetCTCSVariableAsString(Value,LCLPlatformDirNames[GetDefaultLCLWidgetType])
+        SetCTCSVariableAsString(Value,GetLCLWidgetTypeName)
       else
         ClearCTCSVariable(Value);
     end else if (CompareIdentifiers(FunctionName,'GetEnv')=0) then
@@ -1091,15 +1092,13 @@ end;
   TBaseCompilerOptions Constructor
 ------------------------------------------------------------------------------}
 constructor TBaseCompilerOptions.Create(const AOwner: TObject;
-  const AToolClass: TCompilationToolClass);
+  const AToolClass: TLazCompilationToolClass);
 begin
   inherited Create(AOwner);
   FParsedOpts := TParsedCompilerOptions.Create(Self);
   FOtherDefines := TStringList.Create;
   FExecuteBefore := AToolClass.Create(Self);
-  FExecuteBefore.OnChanged := @OnItemChanged;
   FExecuteAfter := AToolClass.Create(Self);
-  fExecuteAfter.OnChanged := @OnItemChanged;
   fBuildMacros := TIDEBuildMacros.Create(Self);
   fMessageFlags:=TCompilerMsgIDFlags.Create;
   Clear;
@@ -1156,7 +1155,7 @@ procedure TBaseCompilerOptions.SetIncludePaths(const AValue: String);
 var
   NewValue: String;
 begin
-  NewValue:=ShortenPath(AValue,false);
+  NewValue:=ShortenPath(AValue);
   if IncludePath=NewValue then exit;
   ParsedOpts.SetUnparsedValue(pcosIncludePath,NewValue);
   {$IFDEF VerboseIDEModified}
@@ -1204,7 +1203,7 @@ procedure TBaseCompilerOptions.SetSrcPath(const AValue: string);
 var
   NewValue: String;
 begin
-  NewValue:=ShortenPath(AValue,false);
+  NewValue:=ShortenPath(AValue);
   if SrcPath=NewValue then exit;
   ParsedOpts.SetUnparsedValue(pcosSrcPath,NewValue);
   {$IFDEF VerboseIDEModified}
@@ -1217,7 +1216,7 @@ procedure TBaseCompilerOptions.SetDebugPath(const AValue: string);
 var
   NewValue: String;
 begin
-  NewValue:=ShortenPath(AValue,false);
+  NewValue:=ShortenPath(AValue);
   if DebugPath=NewValue then exit;
   ParsedOpts.SetUnparsedValue(pcosDebugPath,NewValue);
   {$IFDEF VerboseIDEModified}
@@ -1268,6 +1267,16 @@ begin
   IncreaseChangeStamp;
 end;
 
+procedure TBaseCompilerOptions.SetTargetFileExt(const AValue: String);
+begin
+  if fTargetFileExt=AValue then exit;
+  fTargetFileExt:=AValue;
+  {$IFDEF VerboseIDEModified}
+  debugln(['TBaseCompilerOptions.SetTargetFileExt ',AValue]);
+  {$ENDIF}
+  IncreaseChangeStamp;
+end;
+
 procedure TBaseCompilerOptions.SetTargetFilename(const AValue: String);
 begin
   if fTargetFilename=AValue then exit;
@@ -1281,14 +1290,6 @@ end;
 function TBaseCompilerOptions.GetModified: boolean;
 begin
   Result:=(inherited GetModified) or MessageFlags.Modified;
-end;
-
-procedure TBaseCompilerOptions.OnItemChanged(Sender: TObject);
-begin
-  {$IFDEF VerboseIDEModified}
-  debugln(['TBaseCompilerOptions.OnItemChanged ',DbgSName(Sender)]);
-  {$ENDIF}
-  IncreaseChangeStamp;
 end;
 
 procedure TBaseCompilerOptions.SetCreateMakefileOnBuild(AValue: boolean);
@@ -1331,6 +1332,11 @@ begin
   Result:=ParsedOpts.Values[pcosLibraryPath].UnparsedValue;
 end;
 
+function TBaseCompilerOptions.GetNamespaces: String;
+begin
+  Result:=ParsedOpts.Values[pcosNamespaces].UnparsedValue;
+end;
+
 function TBaseCompilerOptions.GetObjectPath: string;
 begin
   Result:=ParsedOpts.Values[pcosObjectPath].UnparsedValue;
@@ -1349,6 +1355,16 @@ end;
 function TBaseCompilerOptions.GetUnitPaths: String;
 begin
   Result:=ParsedOpts.Values[pcosUnitPath].UnparsedValue;
+end;
+
+function TBaseCompilerOptions.GetExecuteAfter: TCompilationToolOptions;
+begin
+  Result:=TCompilationToolOptions(fExecuteAfter);
+end;
+
+function TBaseCompilerOptions.GetExecuteBefore: TCompilationToolOptions;
+begin
+  Result:=TCompilationToolOptions(fExecuteBefore);
 end;
 
 procedure TBaseCompilerOptions.SetBaseDirectory(AValue: string);
@@ -1379,7 +1395,7 @@ procedure TBaseCompilerOptions.SetLibraryPaths(const AValue: String);
 var
   NewValue: String;
 begin
-  NewValue:=ShortenPath(AValue,false);
+  NewValue:=ShortenPath(AValue);
   if Libraries=NewValue then exit;
   ParsedOpts.SetUnparsedValue(pcosLibraryPath,NewValue);
   {$IFDEF VerboseIDEModified}
@@ -1399,11 +1415,21 @@ begin
   IncreaseChangeStamp;
 end;
 
+procedure TBaseCompilerOptions.SetNamespaces(const AValue: String);
+begin
+  if Namespaces=AValue then exit;
+  ParsedOpts.SetUnparsedValue(pcosNamespaces,AValue);
+  {$IFDEF VerboseIDEModified}
+  debugln(['TBaseCompilerOptions.SetNamespaces ',AValue]);
+  {$ENDIF}
+  IncreaseChangeStamp;
+end;
+
 procedure TBaseCompilerOptions.SetUnitPaths(const AValue: String);
 var
   NewValue: String;
 begin
-  NewValue:=ShortenPath(AValue,false);
+  NewValue:=ShortenPath(AValue);
   if OtherUnitFiles=NewValue then exit;
   ParsedOpts.SetUnparsedValue(pcosUnitPath,NewValue);
   {$IFDEF VerboseIDEModified}
@@ -1426,7 +1452,7 @@ procedure TBaseCompilerOptions.SetObjectPath(const AValue: string);
 var
   NewValue: String;
 begin
-  NewValue:=ShortenPath(AValue,false);
+  NewValue:=ShortenPath(AValue);
   if ObjectPath=NewValue then exit;
   ParsedOpts.SetUnparsedValue(pcosObjectPath,NewValue);
   {$IFDEF VerboseIDEModified}
@@ -1521,6 +1547,7 @@ begin
 
   { Target }
   p:=Path+'Target/';
+  TargetFileExt := f(aXMLConfig.GetValue(p+'FileExt', ''));
   TargetFilename := f(aXMLConfig.GetValue(p+'Filename/Value', ''));
   TargetFilenameApplyConventions := aXMLConfig.GetValue(p+'Filename/ApplyConventions', true);
 
@@ -1534,7 +1561,7 @@ begin
   SrcPath := sp(aXMLConfig.GetValue(p+'SrcPath/Value', ''));
 
   { Conditionals }
-  FConditionals:=ConvertLineEndings(UTF8Trim(
+  FConditionals:=LineBreaksToSystemLineBreaks(UTF8Trim(
     aXMLConfig.GetValue(Path+'Conditionals/Value',DefaultConditionals),[]));
   TIDEBuildMacros(fBuildMacros).LoadFromXMLConfig(aXMLConfig,
                                        Path+'BuildMacros/',PathDelimChange);
@@ -1643,11 +1670,9 @@ begin
 
   { Messages }
   p:=Path+'Other/';
-  fShowErrors := aXMLConfig.GetValue(p+'Verbosity/ShowErrors/Value', true);
   ShowWarn := aXMLConfig.GetValue(p+'Verbosity/ShowWarn/Value', true);
   ShowNotes := aXMLConfig.GetValue(p+'Verbosity/ShowNotes/Value', true);
   ShowHints := aXMLConfig.GetValue(p+'Verbosity/ShowHints/Value', true);
-  fShowGenInfo := aXMLConfig.GetValue(p+'Verbosity/ShowGenInfo/Value', true);
   ShowLineNum := aXMLConfig.GetValue(p+'Verbosity/ShoLineNum/Value', false);
   ShowAll := aXMLConfig.GetValue(p+'Verbosity/ShowAll/Value', false);
   ShowDebugInfo := aXMLConfig.GetValue(p+'Verbosity/ShowDebugInfo/Value', false);
@@ -1656,7 +1681,6 @@ begin
   ShowCompProc := aXMLConfig.GetValue(p+'Verbosity/ShowCompProc/Value', false);
   ShowCond := aXMLConfig.GetValue(p+'Verbosity/ShowCond/Value', false);
   ShowExecInfo := aXMLConfig.GetValue(p+'Verbosity/ShowExecInfo/Value', false);
-  fShowSummary := aXMLConfig.GetValue(p+'Verbosity/ShowSummary/Value', false);
   ShowHintsForUnusedUnitsInMainSrc := aXMLConfig.GetValue(p+'Verbosity/ShowHintsForUnusedUnitsInMainSrc/Value', false);
   ShowHintsForSenderNotUsed := aXMLConfig.GetValue(p+'Verbosity/ShowHintsForSenderNotUsed/Value', false);
   WriteFPCLogo := aXMLConfig.GetValue(p+'WriteFPCLogo/Value', true);
@@ -1754,6 +1778,7 @@ begin
 
   { Target }
   p:=Path+'Target/';
+  aXMLConfig.SetDeleteValue(p+'FileExt', f(TargetFileExt),'');
   aXMLConfig.SetDeleteValue(p+'Filename/Value', f(TargetFilename),'');
   aXMLConfig.SetDeleteValue(p+'Filename/ApplyConventions', TargetFilenameApplyConventions,true);
 
@@ -1836,11 +1861,9 @@ begin
 
   { Messages }
   p:=Path+'Other/';
-  aXMLConfig.SetDeleteValue(p+'Verbosity/ShowErrors/Value', fShowErrors,true);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowWarn/Value', ShowWarn,true);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowNotes/Value', ShowNotes,true);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowHints/Value', ShowHints,true);
-  aXMLConfig.SetDeleteValue(p+'Verbosity/ShowGenInfo/Value', fShowGenInfo,true);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShoLineNum/Value', ShowLineNum,false);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowAll/Value', ShowAll,false);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowDebugInfo/Value', ShowDebugInfo,false);
@@ -1849,7 +1872,6 @@ begin
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowCompProc/Value', ShowCompProc,false);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowCond/Value', ShowCond,false);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowExecInfo/Value', ShowExecInfo,false);
-  aXMLConfig.SetDeleteValue(p+'Verbosity/ShowSummary/Value', fShowSummary,false);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowHintsForUnusedUnitsInMainSrc/Value', ShowHintsForUnusedUnitsInMainSrc,false);
   aXMLConfig.SetDeleteValue(p+'Verbosity/ShowHintsForSenderNotUsed/Value', ShowHintsForSenderNotUsed,false);
   aXMLConfig.SetDeleteValue(p+'WriteFPCLogo/Value', WriteFPCLogo,true);
@@ -1923,20 +1945,20 @@ end;
 ------------------------------------------------------------------------------}
 function TBaseCompilerOptions.CreateTargetFilename: string;
 
-  procedure AppendDefaultExt;
+  procedure AppendDefaultExt(var aFilename: string);
   var
     Ext: String;
   begin
-    if (ExtractFileName(Result)='') then exit;
+    if (ExtractFileName(aFilename)='') then exit;
     Ext:=GetTargetFileExt;
     if Ext<>'' then begin
-      Result:=Result+Ext;
-      //debugln ( 'Filename result is ',Result,' in AppendDefaultExt' );
+      aFilename:=ChangeFileExt(aFilename,Ext);
+      //debugln ( 'Filename is ',AFilename,' in AppendDefaultExt' );
       exit;
     end;
   end;
 
-  procedure PrependDefaultType;
+  procedure PrependDefaultType(var AFilename: string);
   var
     Prefix: String;
     FileName: String;
@@ -1944,24 +1966,24 @@ function TBaseCompilerOptions.CreateTargetFilename: string;
     CurTargetOS: String;
     aSrcOS: String;
   begin
-    //debugln ( 'Filename result is ',Result, ' in PrependDefaultType' );
-    if (ExtractFileName(Result)='') or
-    (CompareText(copy(ExtractFileName(Result),1,3), 'lib') = 0) then exit;
+    //debugln ( 'Filename AFilename is ',AFilename, ' in PrependDefaultType' );
+    if (ExtractFileName(AFilename)='')
+    or (CompareText(copy(ExtractFileName(AFilename),1,3), 'lib') = 0) then exit;
     Prefix:=GetTargetFilePrefix;
     if Prefix<>'' then begin
-      FileName := ExtractFileName(Result);
-      PathName := ExtractFilePath(Result);
+      FileName := ExtractFileName(AFilename);
+      PathName := ExtractFilePath(AFilename);
       //debugln ( 'Filename is ',FileName, ' in PrependDefaultType' );
       CurTargetOS:=TargetOS;
       if CurTargetOS='' then CurTargetOS:=GetCompiledTargetOS;
       aSrcOS:=GetDefaultSrcOSForTargetOS(CurTargetOS);
       if (CompareText(aSrcOS, 'unix') = 0)
       then begin
-        Result:=PathName+Prefix+LazUTF8.UTF8LowerCase(FileName);
+        AFilename:=PathName+Prefix+UTF8LowerCase(FileName);
       end else begin
-        Result:=PathName+Prefix+FileName;
+        AFilename:=PathName+Prefix+FileName;
       end;
-      //debugln ( 'Result is ',Result, ' in PrependDefaultType' );
+      //debugln ( 'AFilename is ',AFilename, ' in PrependDefaultType' );
       exit;
     end;
   end;
@@ -2011,13 +2033,15 @@ begin
   end;
   Result:=TrimFilename(Result);
   if TargetFilenameApplyConventions then begin
-    AppendDefaultExt;
-    PrependDefaultType;
+    AppendDefaultExt(Result);
+    PrependDefaultType(Result);
   end;
 end;
 
 function TBaseCompilerOptions.GetTargetFileExt: string;
 begin
+  Result:=TargetFileExt;
+  if Result<>'' then exit;
   case ExecutableType of
   cetProgram:
     Result:=GetExecutableExt(fTargetOS);
@@ -2123,7 +2147,7 @@ function TBaseCompilerOptions.GetEffectiveTargetOS: string;
 var
   Vars: TCTCfgScriptVariables;
   UnitSet: TFPCUnitSetCache;
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
 begin
   Result:='';
   Vars:=GetBuildMacroValues(Self,true);
@@ -2146,7 +2170,7 @@ function TBaseCompilerOptions.GetEffectiveTargetCPU: string;
 var
   Vars: TCTCfgScriptVariables;
   UnitSet: TFPCUnitSetCache;
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
 begin
   Result:='';
   Vars:=GetBuildMacroValues(Self,true);
@@ -2179,6 +2203,30 @@ function TBaseCompilerOptions.GetUnitPath(RelativeToBaseDir: boolean;
   Parsed: TCompilerOptionsParseType; WithBaseDir: boolean): string;
 begin
   Result:=GetPath(pcosUnitPath,icoUnitPath,RelativeToBaseDir,Parsed,WithBaseDir);
+end;
+
+function TBaseCompilerOptions.GetNamespacesParsed(Parsed: TCompilerOptionsParseType
+  ): string;
+var
+  CurNamespaces, InhNamespaces: String;
+begin
+  // this namespaces
+  case Parsed of
+  coptParsed: CurNamespaces:=ParsedOpts.GetParsedValue(pcosNamespaces);
+  coptUnparsed: CurNamespaces:=ParsedOpts.Values[pcosNamespaces].UnparsedValue;
+  coptParsedPlatformIndependent:
+               CurNamespaces:=ParsedOpts.GetParsedPIValue(pcosNamespaces);
+  else
+    RaiseGDBException('');
+  end;
+  // inherited namespaces
+  InhNamespaces:=GetInheritedOption(icoNamespaces,false,Parsed);
+
+  // concatenate
+  Result:=MergeWithDelimiter(CurNamespaces,InhNamespaces,';');
+
+  // eliminate line breaks
+  Result:=SpecialCharsToSpaces(Result,true);
 end;
 
 function TBaseCompilerOptions.GetIncludePath(RelativeToBaseDir: boolean;
@@ -2427,7 +2475,7 @@ function TBaseCompilerOptions.GetOptionsForCTDefines: string;
 
 begin
   Result:=GetCustomOptions(coptParsed);
-  Add(GetSyntaxOptionsString);
+  Add(GetSyntaxOptionsString(pcFPC));
 end;
 
 procedure TBaseCompilerOptions.RenameMacro(const OldName, NewName: string;
@@ -2448,14 +2496,49 @@ begin
   end;
 end;
 
-function TBaseCompilerOptions.ShortenPath(const SearchPath: string;
-  MakeAlwaysRelative: boolean): string;
+procedure TBaseCompilerOptions.MergeToIncludePaths(const AddSearchPath: string);
 begin
-  Result:=TrimSearchPath(SearchPath,'');
-  if MakeAlwaysRelative then
-    Result:=CreateRelativeSearchPath(Result,BaseDirectory)
-  else
-    Result:=ShortenSearchPath(Result,BaseDirectory,BaseDirectory);
+  SetIncludePaths(MergeSearchPaths(GetIncludePaths,AddSearchPath));
+end;
+
+procedure TBaseCompilerOptions.MergeToLibraryPaths(const AddSearchPath: string);
+begin
+  SetLibraryPaths(MergeSearchPaths(GetLibraryPaths,AddSearchPath));
+end;
+
+procedure TBaseCompilerOptions.MergeToNamespaces(const AddNamespaces: string);
+begin
+  SetNamespaces(MergeWithDelimiter(GetNamespacesParsed,AddNamespaces,';'));
+end;
+
+procedure TBaseCompilerOptions.MergeToUnitPaths(const AddSearchPath: string);
+begin
+  SetUnitPaths(MergeSearchPaths(GetUnitPaths,AddSearchPath));
+end;
+
+procedure TBaseCompilerOptions.MergeToObjectPath(const AddSearchPath: string);
+begin
+  SetObjectPath(MergeSearchPaths(GetObjectPath,AddSearchPath));
+end;
+
+procedure TBaseCompilerOptions.MergeToSrcPath(const AddSearchPath: string);
+begin
+  SetSrcPath(MergeSearchPaths(GetSrcPath,AddSearchPath));
+end;
+
+procedure TBaseCompilerOptions.MergeToDebugPath(const AddSearchPath: string);
+begin
+  SetDebugPath(MergeSearchPaths(GetDebugPath,AddSearchPath));
+end;
+
+procedure TBaseCompilerOptions.RemoveFromUnitPaths(const RemSearchPath: string);
+begin
+  SetUnitPaths(RemoveSearchPaths(GetUnitPaths,RemSearchPath));
+end;
+
+function TBaseCompilerOptions.ShortenPath(const SearchPath: string): string;
+begin
+  Result:=ShortenSearchPath(TrimSearchPath(SearchPath,''),BaseDirectory,BaseDirectory);
 end;
 
 {------------------------------------------------------------------------------
@@ -2470,8 +2553,8 @@ function TBaseCompilerOptions.MakeOptionsString(
 var
   switches, tempsw, quietsw, t: String;
   InhLinkerOpts: String;
-  NewTargetFilename: String;
-  NewTargetDirectory: String;
+  CurTargetFilename: String;
+  CurTargetDirectory: String;
   CurIncludePath: String;
   CurLibraryPath: String;
   CurUnitPath: String;
@@ -2489,10 +2572,11 @@ var
   CompilerFilename: String;
   DefaultTargetOS: string;
   DefaultTargetCPU: string;
-  FPCompilerFilename: String;
-  s: string;
+  RealCompilerFilename: String;
+  CurNamespaces: string;
   CurFPCMsgFile: TFPCMsgFilePoolItem;
   Quiet: Boolean;
+  Kind: TPascalCompiler;
 
   procedure EnableDisableVerbosityFlag(Enable: boolean; c: char);
   begin
@@ -2765,6 +2849,21 @@ begin
   }
   Quiet:=ConsoleVerbosity<=-3; // lazbuild -q -q, lazarus -q -q -q
 
+  CompilerFilename:=ParsedOpts.GetParsedValue(pcosCompilerPath);
+  if CompilerFilename<>'' then begin
+    RealCompilerFilename:=CompilerFilename;
+    Kind:=CodeToolBoss.GetPascalCompilerForDirectory(BaseDirectory);
+  end
+  else begin
+    // use default compiler
+    RealCompilerFilename:=EnvironmentOptions.GetParsedCompilerFilename;
+    Kind:=pcFPC;
+  end;
+
+  if ccloAddCompilerPath in Flags then
+    switches:=ConvertOptionsToCmdLine('',RealCompilerFilename);
+  //writeln('TBaseCompilerOptions.MakeOptionsString RealCompilerFilename="',RealCompilerFilename,'" switches="',switches,'"');
+
   CurTargetOS:='';
   CurTargetCPU:='';
   if not (ccloNoMacroParams in Flags) then
@@ -2778,13 +2877,8 @@ begin
   end;
   CurSrcOS:=GetDefaultSrcOSForTargetOS(CurTargetOS);
 
-  CompilerFilename:=ParsedOpts.GetParsedValue(pcosCompilerPath);
-  if IsFPCExecutable(CompilerFilename,s) then
-    FPCompilerFilename:=CompilerFilename
-  else
-    FPCompilerFilename:=EnvironmentOptions.GetParsedCompilerFilename;
-  CodeToolBoss.FPCDefinesCache.ConfigCaches.GetDefaultCompilerTarget(
-    FPCompilerFilename,'',DefaultTargetOS,DefaultTargetCPU);
+  CodeToolBoss.CompilerDefinesCache.ConfigCaches.GetDefaultCompilerTarget(
+    RealCompilerFilename,'',DefaultTargetOS,DefaultTargetCPU);
 
   { ------------------ Target --------------------- }
 
@@ -2810,7 +2904,7 @@ begin
   end;
 
   // Syntax Options
-  tempsw:=GetSyntaxOptionsString;
+  tempsw:=GetSyntaxOptionsString(Kind);
   if (tempsw <> '') then
     switches := switches + ' ' + tempsw;
 
@@ -2841,9 +2935,8 @@ begin
   if VerifyObjMethodCall then
     tempsw := tempsw + 'R';
 
-  if (tempsw <> '') then begin
+  if (tempsw <> '') then
     switches := switches + ' -C' + tempsw;
-  end;
 
   { Heap Size }
   if (HeapSize > 0) then
@@ -2864,25 +2957,28 @@ begin
     switches := switches + ' -O'+OptimizeSwitches;
 
   // uncertain
-  if (UncertainOptimizations) then
+  if UncertainOptimizations then
     Switches := Switches + ' -OoUNCERTAIN';
 
   // registers
-  if (VariablesInRegisters) then
+  if VariablesInRegisters then
     Switches := Switches + ' -OoREGVAR';
 
   { --------------- Linking Tab ------------------- }
 
   { Debugging }
   { Debug Info for GDB }
-  if (GenerateDebugInfo) then begin
+  if GenerateDebugInfo then begin
 
     dit := DebugInfoType;
     case dit of
-      dsAuto:      if (not (ccloNoMacroParams in Flags))  and (CurTargetOS='darwin') then
-                     switches += ' -gw'
-                   else
-                     switches += ' -g';
+      dsAuto:
+        if Kind=pcFPC then begin
+          if (not (ccloNoMacroParams in Flags)) and (CurTargetOS='darwin') then
+            switches += ' -gw'
+          else
+            switches += ' -g';
+        end;
       dsStabs:     switches := switches + ' -gs';
       dsDwarf2:    switches := switches + ' -gw2';
       dsDwarf2Set: switches := switches + ' -gw2 -godwarfsets';
@@ -2890,18 +2986,18 @@ begin
     end;
 
     { Line Numbers in Run-time Error Backtraces - Use LineInfo Unit }
-    if (UseLineInfoUnit) then
+    if UseLineInfoUnit then
       switches := switches + ' -gl';
 
     { Use Heaptrc Unit }
-    if (UseHeaptrc) and (not (ccloNoLinkerOpts in Flags)) then
+    if UseHeaptrc and (not (ccloNoLinkerOpts in Flags)) then
       switches := switches + ' -gh';
 
     { Generate code for Valgrind }
-    if (UseValgrind) and (not (ccloNoLinkerOpts in Flags)) then
+    if UseValgrind and (not (ccloNoLinkerOpts in Flags)) then
       switches := switches + ' -gv';
 
-    if (UseExternalDbgSyms) then
+    if UseExternalDbgSyms then
       switches := switches + ' -Xg';
 
   end
@@ -2914,15 +3010,15 @@ begin
   end;
 
   { Trash variables }
-  if (TrashVariables) then
+  if TrashVariables then
     switches := switches + ' -gt';
 
   { Generate code gprof }
-  if (GenGProfCode) then
+  if GenGProfCode then
     switches := switches + ' -pg';
 
   { Strip Symbols }
-  if (StripSymbols) and (not (ccloNoLinkerOpts in Flags)) then
+  if StripSymbols and (not (ccloNoLinkerOpts in Flags)) then
     switches := switches + ' -Xs';
 
   { Link Style
@@ -2933,7 +3029,6 @@ begin
 
   if (not (ccloNoLinkerOpts in Flags)) and LinkSmart then
     switches := switches + ' -XX';
-
 
   // additional Linker options
   if (not (ccloNoLinkerOpts in Flags))
@@ -2985,7 +3080,7 @@ begin
   EnableVerbosityFlag(ShowCond,'c');
   EnableVerbosityFlag(ShowExecInfo,'x');
 
-  if (ShowAll and not (Quiet)) or (ccloAddVerboseAll in Flags) then
+  if (ShowAll and not Quiet) or (ccloAddVerboseAll in Flags) then
     tempsw := 'a';
   tempsw := tempsw + 'bq'; // b = full file names, q = message ids
 
@@ -2994,7 +3089,7 @@ begin
   if (quietsw <> '') then
     switches := switches + ' -v' + quietsw;
 
-// -vm flags allow to enable/disable types of messages
+  // -vm flags allow to enable/disable types of messages
   // Passing a -vm ID, unknown by the current compiler will create an error
   // => check the compiler message file
   if IDEMessageFlags.Count>0 then begin
@@ -3045,6 +3140,11 @@ begin
         switches := switches + ' ' + ConvertSearchPathToCmdLine('-Fl', CurLibraryPath);
     end;
 
+    // namespaces
+    CurNamespaces:=GetNamespacesParsed(coptParsed);
+    if CurNamespaces<>'' then
+      switches := switches +' -FN'+CurNamespaces;
+
     // object path
     CurObjectPath:=GetObjectPath(not (ccloAbsolutePaths in Flags),
                                  coptParsed,false);
@@ -3061,52 +3161,60 @@ begin
     { Unit output directory }
     if (UnitOutputDirectory<>'') then begin
       CurOutputDir:=ParsedOpts.GetParsedValue(pcosOutputDir);
-      if not (ccloAbsolutePaths in Flags) then
-        CurOutputDir:=CreateRelativePath(CurOutputDir,BaseDirectory,true);
     end;
-    if CurOutputDir<>'' then
-      switches := switches + ' '+PrepareCmdLineOption('-FU'+CurOutputDir);
   end;
 
+  // output options -o, -FU, and -FE
+  //  * -o to define the target file name.
+  //  * -FU if the unit output directory is not empty
+  //  * -FE if the target file name is not in the project directory (where the lpi file is)
+  //  * if neither -FU nor -FE is passed fpc creates the ppu in the source directories
 
-  // append -o Option if neccessary
-  {   * -o to define the target file name.
-      * -FE if the target file name is not in the project directory (where the lpi file is)
-      * -FU if the unit output directory is not empty }
   CurMainSrcFile:=GetDefaultMainSourceFileName;
+  CurTargetFilename:='';
+  CurTargetDirectory:='';
   //DebugLn(['TBaseCompilerOptions.MakeOptionsString ',DbgSName(Self),' ',ccloDoNotAppendOutFileOption in Flags,' TargetFilename="',TargetFilename,'" CurMainSrcFile="',CurMainSrcFile,'" CurOutputDir="',CurOutputDir,'"']);
   if (not (ccloDoNotAppendOutFileOption in Flags))
     and (not (ccloNoMacroParams in Flags))
     and ((TargetFilename<>'') or (CurMainSrcFile<>'') or (CurOutputDir<>'')) then
   begin
-    NewTargetFilename := CreateTargetFilename;
-    if (NewTargetFilename<>'') then
+    CurTargetFilename := CreateTargetFilename;
+    if CurTargetFilename<>'' then
     begin
-      if not (ccloAbsolutePaths in Flags) then
-        NewTargetFilename := CreateRelativePath(NewTargetFilename, BaseDirectory);
-      NewTargetDirectory := ExtractFilePath(NewTargetFilename);
-      if (NewTargetDirectory <> '')
-      and (CompareFilenames(ChompPathDelim(NewTargetDirectory),ChompPathDelim(BaseDirectory))=0)
-      then begin
-        // if target file is in the base directory, do not use -FE switch
-        // Without -FE and -FU switch the compiler puts .ppu files in the source
-        // directories, which is Delphi compatible.
-        // See bug http://bugs.freepascal.org/view.php?id=15535
-        NewTargetDirectory:='';
-      end;
-      if NewTargetDirectory <> '' then
-        switches := switches + ' '+PrepareCmdLineOption('-FE' + NewTargetDirectory);
-      NewTargetFileName := ExtractFileName(NewTargetFilename);
-      if (NewTargetFilename<>'') then
-      begin
-        if (not TargetFilenameApplyConventions)
-        or (NewTargetFilename<>ChangeFileExt(ExtractFileName(CurMainSrcFile),GetTargetFileExt))
+      CurTargetDirectory := ExtractFilePath(CurTargetFilename);
+      if CurTargetDirectory<>'' then begin
+        if (CurOutputDir='') // no -FU
+        and (CompareFilenames(ChompPathDelim(CurTargetDirectory),ChompPathDelim(BaseDirectory))=0)
         then begin
-          // custom target => pass -o
-          switches := switches + ' '+PrepareCmdLineOption('-o' + NewTargetFileName);
+          // if target file is in the base directory, do not use -FE switch
+          // Without -FE and -FU switch the compiler puts .ppu files in the source
+          // directories, which is Delphi compatible.
+          // See bug http://bugs.freepascal.org/view.php?id=15535
+          CurTargetDirectory:='';
+        end else if CompareFilenames(ChompPathDelim(CurOutputDir),ChompPathDelim(CurTargetDirectory))=0 then
+        begin
+          // -FU and -FE are the same: do not add -FU
+          CurOutputDir:='';
         end;
       end;
     end;
+  end;
+
+  if CurOutputDir<>'' then begin
+    if not (ccloAbsolutePaths in Flags) then
+      CurOutputDir:=CreateRelativePath(CurOutputDir,BaseDirectory,true);
+    switches := switches + ' '+PrepareCmdLineOption('-FU' + CurOutputDir);
+  end;
+  if CurTargetDirectory <> '' then begin
+    if not (ccloAbsolutePaths in Flags) then
+      CurTargetDirectory:=CreateRelativePath(CurTargetDirectory,BaseDirectory,true);
+    switches := switches + ' '+PrepareCmdLineOption('-FE' + CurTargetDirectory);
+  end;
+  if (CurTargetFilename<>'') then begin
+    if not (ccloAbsolutePaths in Flags) then
+      CurTargetFilename := CreateRelativePath(CurTargetFilename, BaseDirectory);
+    if CurTargetFilename<>'' then
+      switches := switches + ' '+PrepareCmdLineOption('-o' + CurTargetFilename);
   end;
 
   // append custom options as last, so they can override
@@ -3122,41 +3230,13 @@ begin
   Result := switches;
 end;
 
-function TBaseCompilerOptions.GetSyntaxOptionsString: string;
+function TBaseCompilerOptions.GetSyntaxOptionsString(Kind: TPascalCompiler
+  ): string;
 var
   tempsw: String;
 begin
-  { Syntax Options
-   -S<x>  Syntax options:
-      -Sc        Support operators like C (*=,+=,/= and -=)
-      -Sa        Turn on assertions
-      -Se<x>     Error options. <x> is a combination of the following:
-         <n> : Compiler halts after the <n> errors (default is 1)
-         w : Compiler also halts after warnings
-         n : Compiler also halts after notes
-         h : Compiler also halts after hints
-      -Sg        Enable LABEL and GOTO (default in -Mtp and -Mdelphi)
-      -Sh        Use ansistrings by default instead of shortstrings
-      -Si        Turn on inlining of procedures/functions declared as "inline"
-      -Sk        Load fpcylix unit
-      -SI<x>     Set interface style to <x>
-         -SIcom     COM compatible interface (default)
-         -SIcorba   CORBA compatible interface
-      -Sm        Support macros like C (global)
-      -Ss        Constructor name must be init (destructor must be done)
-      -St        Allow static keyword in objects
-      -Sx        Enable exception keywords (default in Delphi/ObjFPC modes)
-
-   -M<x>  Set language mode to <x>
-      -Mfpc      Free Pascal dialect (default)
-      -Mobjfpc   FPC mode with Object Pascal support
-      -Mdelphi   Delphi 7 compatibility mode
-      -Mtp       TP/BP 7.0 compatibility mode
-      -Mmacpas   Macintosh Pascal dialects compatibility mode
-
-  }
   if SyntaxMode<>'' then
-    Result:='-M'+SyntaxMode
+    Result:='-M'+SyntaxMode  // -M<x>  Set language mode to <x>
   else
     Result:='';
 
@@ -3166,18 +3246,20 @@ begin
     tempsw := tempsw + 'c';
   if (IncludeAssertionCode) then
     tempsw := tempsw + 'a';
-  if (AllowLabel) then
-    tempsw := tempsw + 'g';
-  if (UseAnsiStrings) then
-    tempsw := tempsw + 'h';
-  if (CPPInline) then
-    tempsw := tempsw + 'i';
-  if (CStyleMacros) then
-    tempsw := tempsw + 'm';
-  if (InitConstructor) then
-    tempsw := tempsw + 's';
-  if (StaticKeyword) then
-    tempsw := tempsw + 't';
+  if Kind=pcFPC then begin
+    if (AllowLabel) then
+      tempsw := tempsw + 'g';
+    if (UseAnsiStrings) then
+      tempsw := tempsw + 'h';
+    if (CPPInline) then
+      tempsw := tempsw + 'i';
+    if (CStyleMacros) then
+      tempsw := tempsw + 'm';
+    if (InitConstructor) then
+      tempsw := tempsw + 's';
+    if (StaticKeyword) then
+      tempsw := tempsw + 't';
+  end;
 
   if (tempsw <> '') then begin
     if Result<>'' then
@@ -3270,11 +3352,9 @@ begin
   ExecutableType := cetProgram;
 
   // messages
-  fShowErrors := true;
   fShowWarn := true;
   fShowNotes := true;
   fShowHints := true;
-  fShowGenInfo := true;
   fShowLineNum := false;
   fShowAll := false;
   fShowDebugInfo := false;
@@ -3283,7 +3363,6 @@ begin
   fShowCompProc := false;
   fShowCond := false;
   fShowExecInfo := false;
-  fShowSummary := false;
   fShowHintsForUnusedUnitsInMainSrc := false;
   fShowHintsForSenderNotUsed := false;
   fWriteFPCLogo := true;
@@ -3384,11 +3463,9 @@ begin
   UseExternalDbgSyms := CompOpts.UseExternalDbgSyms;
 
   // Verbosity
-  fShowErrors := CompOpts.fShowErrors;
   fShowWarn := CompOpts.fShowWarn;
   fShowNotes := CompOpts.fShowNotes;
   fShowHints := CompOpts.fShowHints;
-  fShowGenInfo := CompOpts.fShowGenInfo;
   fShowLineNum := CompOpts.fShowLineNum;
   fShowAll := CompOpts.fShowAll;
   fShowDebugInfo := CompOpts.fShowDebugInfo;
@@ -3397,7 +3474,6 @@ begin
   fShowCompProc := CompOpts.fShowCompProc;
   fShowCond := CompOpts.fShowCond;
   fShowExecInfo := CompOpts.fShowExecInfo;
-  fShowSummary := CompOpts.FShowSummary;
   fShowHintsForUnusedUnitsInMainSrc := CompOpts.fShowHintsForUnusedUnitsInMainSrc;
   fShowHintsForSenderNotUsed := CompOpts.fShowHintsForSenderNotUsed;
   fWriteFPCLogo := CompOpts.fWriteFPCLogo;
@@ -3465,6 +3541,7 @@ begin
                             PathDelimSwitchToDelim[CompOpts.FStorePathDelim])) then exit;
 
   // target
+  if Done(Tool.AddDiff('TargetFileExt',fTargetFileExt,CompOpts.fTargetFileExt)) then exit;
   if Done(Tool.AddDiff('TargetFilename',fTargetFilename,CompOpts.fTargetFilename)) then exit;
   if Done(Tool.AddDiff('TargetFilenameAppplyConventions',FTargetFilenameAppplyConventions,CompOpts.FTargetFilenameAppplyConventions)) then exit;
 
@@ -3472,6 +3549,7 @@ begin
   if Tool<>nil then Tool.Path:='Paths';
   if Done(Tool.AddPathsDiff('IncludePaths',IncludePath,CompOpts.IncludePath)) then exit;
   if Done(Tool.AddPathsDiff('LibraryPaths',Libraries,CompOpts.Libraries)) then exit;
+  if Done(Tool.AddPathsDiff('Namespaces',Namespaces,CompOpts.Namespaces)) then exit;
   if Done(Tool.AddPathsDiff('UnitPaths',OtherUnitFiles,CompOpts.OtherUnitFiles)) then exit;
   if Done(Tool.AddPathsDiff('UnitOutputDir',UnitOutputDirectory,CompOpts.UnitOutputDirectory)) then exit;
   if Done(Tool.AddPathsDiff('ObjectPath',ObjectPath,CompOpts.ObjectPath)) then exit;
@@ -3535,11 +3613,9 @@ begin
 
   // verbosity
   if Tool<>nil then Tool.Path:='Verbosity';
-  if Done(Tool.AddDiff('ShowErrors',fShowErrors,CompOpts.fShowErrors)) then exit;
   if Done(Tool.AddDiff('ShowWarn',fShowWarn,CompOpts.fShowWarn)) then exit;
   if Done(Tool.AddDiff('ShowNotes',fShowNotes,CompOpts.fShowNotes)) then exit;
   if Done(Tool.AddDiff('ShowHints',fShowHints,CompOpts.fShowHints)) then exit;
-  if Done(Tool.AddDiff('ShowGenInfo',fShowGenInfo,CompOpts.fShowGenInfo)) then exit;
   if Done(Tool.AddDiff('ShowLineNum',fShowLineNum,CompOpts.fShowLineNum)) then exit;
   if Done(Tool.AddDiff('ShowAll',fShowAll,CompOpts.fShowAll)) then exit;
   if Done(Tool.AddDiff('ShowDebugInfo',fShowDebugInfo,CompOpts.fShowDebugInfo)) then exit;
@@ -3548,7 +3624,6 @@ begin
   if Done(Tool.AddDiff('ShowCompProc',fShowCompProc,CompOpts.fShowCompProc)) then exit;
   if Done(Tool.AddDiff('ShowCond',fShowCond,CompOpts.fShowCond)) then exit;
   if Done(Tool.AddDiff('ShowExecInfo',fShowExecInfo,CompOpts.fShowExecInfo)) then exit;
-  if Done(Tool.AddDiff('ShowSummary',fShowSummary,CompOpts.fShowSummary)) then exit;
   if Done(Tool.AddDiff('ShowHintsForUnusedUnitsInMainSrc',fShowHintsForUnusedUnitsInMainSrc,CompOpts.fShowHintsForUnusedUnitsInMainSrc)) then exit;
   if Done(Tool.AddDiff('ShowHintsForSenderNotUsed',fShowHintsForSenderNotUsed,CompOpts.fShowHintsForSenderNotUsed)) then exit;
   if Done(Tool.AddDiff('WriteFPCLogo',fWriteFPCLogo,CompOpts.fWriteFPCLogo)) then exit;
@@ -3580,9 +3655,10 @@ procedure TBaseCompilerOptions.SetAlternativeCompile(const Command: string;
 begin
   CompilerPath:='';
   ExecuteBefore.Command:=Command;
-  ExecuteBefore.ScanForFPCMessages:=ScanFPCMsgs;
-  ExecuteBefore.ScanForMakeMessages:=ScanFPCMsgs;
-  ExecuteBefore.ShowAllMessages:=false;
+  if ScanFPCMsgs then
+    ExecuteBefore.Parsers.Text:=SubToolFPC+LineEnding+SubToolMake
+  else
+    ExecuteBefore.Parsers.Clear;
 end;
 
 
@@ -3628,6 +3704,11 @@ begin
   Result:=FParsedOpts.Values[pcosLinkerOptions].UnparsedValue;
 end;
 
+function TAdditionalCompilerOptions.GetNamespaces: string;
+begin
+  Result:=FParsedOpts.Values[pcosNamespaces].UnparsedValue;
+end;
+
 function TAdditionalCompilerOptions.GetObjectPath: string;
 begin
   Result:=FParsedOpts.Values[pcosObjectPath].UnparsedValue;
@@ -3658,6 +3739,11 @@ begin
   ParsedOpts.SetUnparsedValue(pcosLinkerOptions,AValue);
 end;
 
+procedure TAdditionalCompilerOptions.SetNamespaces(const AValue: string);
+begin
+  ParsedOpts.SetUnparsedValue(pcosNamespaces,AValue);
+end;
+
 procedure TAdditionalCompilerOptions.SetObjectPath(const AValue: string);
 begin
   ParsedOpts.SetUnparsedValue(pcosObjectPath,AValue);
@@ -3684,6 +3770,7 @@ end;
 procedure TAdditionalCompilerOptions.Clear;
 begin
   UnitPath:='';
+  Namespaces:='';
   SrcPath:='';
   IncludePath:='';
   CustomOptions:='';
@@ -3700,6 +3787,7 @@ begin
     raise Exception.Create('TAdditionalCompilerOptions.AssignOptions: Can not copy from '+DbgSName(Source));
   Src:=TAdditionalCompilerOptions(Source);
   UnitPath:=Src.UnitPath;
+  Namespaces:=Src.Namespaces;
   IncludePath:=Src.IncludePath;
   SrcPath:=Src.SrcPath;
   ObjectPath:=Src.ObjectPath;
@@ -3723,6 +3811,7 @@ begin
   IncludePath:=f(XMLConfig.GetValue(Path+'IncludePath/Value',''));
   LibraryPath:=f(XMLConfig.GetValue(Path+'LibraryPath/Value',''));
   LinkerOptions:=f(XMLConfig.GetValue(Path+'LinkerOptions/Value',''));
+  Namespaces:=f(XMLConfig.GetValue(Path+'Namespaces/Value',''));
   ObjectPath:=f(XMLConfig.GetValue(Path+'ObjectPath/Value',''));
   UnitPath:=f(XMLConfig.GetValue(Path+'UnitPath/Value',''));
   SrcPath:=f(XMLConfig.GetValue(Path+'SrcPath/Value',''));
@@ -3741,6 +3830,7 @@ begin
   XMLConfig.SetDeleteValue(Path+'IncludePath/Value',f(IncludePath),'');
   XMLConfig.SetDeleteValue(Path+'LibraryPath/Value',f(LibraryPath),'');
   XMLConfig.SetDeleteValue(Path+'LinkerOptions/Value',f(LinkerOptions),'');
+  XMLConfig.SetDeleteValue(Path+'Namespaces/Value',Namespaces,'');
   XMLConfig.SetDeleteValue(Path+'ObjectPath/Value',f(ObjectPath),'');
   XMLConfig.SetDeleteValue(Path+'UnitPath/Value',f(UnitPath),'');
   XMLConfig.SetDeleteValue(Path+'SrcPath/Value',f(SrcPath),'');
@@ -3757,15 +3847,17 @@ end;
 function TAdditionalCompilerOptions.GetOption(AnOption: TInheritedCompilerOption
   ): string;
 begin
+  Result:='';
   case AnOption of
-  icoNone: Result:='';
-  icoUnitPath: Result:=UnitPath;
-  icoIncludePath: Result:=IncludePath;
-  icoObjectPath: Result:=ObjectPath;
-  icoLibraryPath: Result:=LibraryPath;
-  icoSrcPath: Result:=SrcPath;
-  icoLinkerOptions: Result:=LinkerOptions;
-  icoCustomOptions: Result:=CustomOptions;
+    icoNone: Result:='';
+    icoUnitPath: Result:=UnitPath;
+    icoNamespaces: Result:=Namespaces;
+    icoIncludePath: Result:=IncludePath;
+    icoObjectPath: Result:=ObjectPath;
+    icoLibraryPath: Result:=LibraryPath;
+    icoSrcPath: Result:=SrcPath;
+    icoLinkerOptions: Result:=LinkerOptions;
+    icoCustomOptions: Result:=CustomOptions;
   else
     RaiseGDBException(''); // inconsistency detected
   end;
@@ -3849,6 +3941,8 @@ begin
     Result:=MergeSearchPaths(Result,GetForcedPathDelims(Vars[VarName]));
   pcosLinkerOptions:
     Result:=MergeLinkerOptions(Result,Vars[VarName]);
+  pcosNamespaces:
+    Result:=MergeWithDelimiter(Result,Vars[VarName],';');
   pcosCustomOptions:
     begin
       Result:=MergeCustomOptions(Result,Vars[VarName]);
@@ -3963,7 +4057,7 @@ function TParsedCompilerOptions.DoParseOption(const OptionText: string;
 
 var
   s: String;
-  BaseDirectory: String;
+  BaseDirectory, h: String;
 begin
   s:=OptionText;
 
@@ -3993,6 +4087,11 @@ begin
   else if Option in ParsedCompilerFilenames then
   begin
     // make filename absolute
+    //debugln(['TParsedCompilerOptions.DoParseOption ',ParsedCompilerOptsVars[Option],' s="',s,'"']);
+    if ExtractFilePath(s)='' then begin
+      h:=FileUtil.FindDefaultExecutablePath(s,GetBaseDir);
+      if h<>'' then s:=h;
+    end;
     MakeFilenameAbsolute(s);
   end
   else if Option in ParsedCompilerDirectories then
@@ -4097,44 +4196,10 @@ end;
 
 { TCompilationToolOptions }
 
-procedure TCompilationToolOptions.SetCommand(const AValue: string);
+procedure TCompilationToolOptions.SetCommand(AValue: string);
 begin
-  if FCommand=AValue then exit;
-  FCommand:=AValue;
-  {$IFDEF VerboseIDEModified}
-  debugln(['TCompilationToolOptions.SetCommand ',AValue]);
-  {$ENDIF}
-  IncreaseChangeStamp;
-end;
-
-procedure TCompilationToolOptions.SetScanForFPCMessages(const AValue: boolean);
-begin
-  if FScanForFPCMessages=AValue then exit;
-  FScanForFPCMessages:=AValue;
-  {$IFDEF VerboseIDEModified}
-  debugln(['TCompilationToolOptions.SetScanForFPCMessages ',AValue]);
-  {$ENDIF}
-  IncreaseChangeStamp;
-end;
-
-procedure TCompilationToolOptions.SetScanForMakeMessages(const AValue: boolean);
-begin
-  if FScanForMakeMessages=AValue then exit;
-  FScanForMakeMessages:=AValue;
-  {$IFDEF VerboseIDEModified}
-  debugln(['TCompilationToolOptions.SetScanForMakeMessages ',AValue]);
-  {$ENDIF}
-  IncreaseChangeStamp;
-end;
-
-procedure TCompilationToolOptions.SetShowAllMessages(const AValue: boolean);
-begin
-  if FShowAllMessages=AValue then exit;
-  FShowAllMessages:=AValue;
-  {$IFDEF VerboseIDEModified}
-  debugln(['TCompilationToolOptions.SetShowAllMessages ',AValue]);
-  {$ENDIF}
-  IncreaseChangeStamp;
+  inherited SetCommand(AValue);
+  FParsedCommandStamp:=CTInvalidChangeStamp;
 end;
 
 procedure TCompilationToolOptions.SubstituteMacros(var s: string);
@@ -4142,50 +4207,97 @@ begin
   IDEMacros.SubstituteMacros(s);
 end;
 
-constructor TCompilationToolOptions.Create(TheOwner: TObject);
+procedure TCompilationToolOptions.Assign(Src: TLazCompilationToolOptions);
 begin
-  FOwner:=TheOwner;
-end;
-
-procedure TCompilationToolOptions.Clear;
-begin
-  Command:='';
-  ScanForFPCMessages:=false;
-  ScanForMakeMessages:=false;
-  ShowAllMessages:=false;
-end;
-
-procedure TCompilationToolOptions.Assign(Src: TCompilationToolOptions);
-begin
-  Command:=Src.Command;
-  ScanForFPCMessages:=Src.ScanForFPCMessages;
-  ScanForMakeMessages:=Src.ScanForMakeMessages;
-  ShowAllMessages:=Src.ShowAllMessages;
+  inherited Assign(Src);
+  if Src is TCompilationToolOptions then
+    Parsers.Assign(TCompilationToolOptions(Src).Parsers);
 end;
 
 procedure TCompilationToolOptions.LoadFromXMLConfig(XMLConfig: TXMLConfig;
   const Path: string; DoSwitchPathDelims: boolean);
+var
+  Params: TStrings;
+  param, cmd: String;
+  p, p2, i, j: Integer;
 begin
   //debugln(['TCompilationToolOptions.LoadFromXMLConfig ',Command,' Path=',Path,' DoSwitchPathDelims=',DoSwitchPathDelims]);
-  Command:=SwitchPathDelims(XMLConfig.GetValue(Path+'Command/Value',''),
-                            DoSwitchPathDelims);
-  ScanForFPCMessages:=XMLConfig.GetValue(Path+'ScanForFPCMsgs/Value',false);
-  ScanForMakeMessages:=XMLConfig.GetValue(Path+'ScanForMakeMsgs/Value',false);
-  ShowAllMessages:=XMLConfig.GetValue(Path+'ShowAllMessages/Value',false);
+  Command:=XMLConfig.GetValue(Path+'Command/Value','');
+  if DoSwitchPathDelims then begin
+    if (Command<>'')
+    and (PathDelim='\') then begin
+      // specialhandling on windows to not switch path delimiters in options
+      Params:=TStringList.Create;
+      try
+        SplitCmdLineParams(Command,Params);
+        cmd:=SwitchPathDelims(Params[0],True);
+        for i:=1 to Params.Count-1 do begin
+          param:=Params[i];
+          p:=-1;
+          p2:=-1;
+          for j:=1 to length(param) do
+            if p>1 then
+              break
+            else if param[j]='/' then
+              p:=j
+            else if param[j]=':' then
+              p2:=j;
+          if p=1 then
+            // param is option (the only / is at pos 1)
+            if p2<>-1 then
+              // potential filename after colon in option
+              cmd+=' '+copy(param,1,p2)+SwitchPathDelims(Copy(param,p2+1,length(param)-p2),True)
+            else
+              cmd+=' '+param
+          else
+            cmd+=' '+SwitchPathDelims(param,True);
+        end;
+        Command:=cmd;
+      finally
+        Params.Free;
+      end;
+    end else begin
+      Command:=SwitchPathDelims(Command,DoSwitchPathDelims);
+    end;
+  end;
+  LoadStringList(XMLConfig,Parsers,Path+'Parsers/');
+  if Parsers.Count=0 then begin
+    // read old format
+    HasParser[SubToolFPC]:=XMLConfig.GetValue(Path+'ScanForFPCMsgs/Value',false);
+    HasParser[SubToolMake]:=XMLConfig.GetValue(Path+'ScanForMakeMsgs/Value',false);
+    HasParser[SubToolDefault]:=XMLConfig.GetValue(Path+'ShowAllMessages/Value',false);
+  end;
 end;
 
 procedure TCompilationToolOptions.SaveToXMLConfig(XMLConfig: TXMLConfig;
   const Path: string; UsePathDelim: TPathDelimSwitch);
+var
+  i: Integer;
+  s: String;
+  NeedNewFormat: Boolean;
 begin
   //debugln(['TCompilationToolOptions.SaveToXMLConfig ',Command,' Path=',Path]);
   XMLConfig.SetDeleteValue(Path+'Command/Value',
                            SwitchPathDelims(Command,UsePathDelim),'');
-  XMLConfig.SetDeleteValue(Path+'ScanForFPCMsgs/Value',
-                           ScanForFPCMessages,false);
-  XMLConfig.SetDeleteValue(Path+'ScanForMakeMsgs/Value',
-                           ScanForMakeMessages,false);
-  XMLConfig.SetDeleteValue(Path+'ShowAllMessages/Value',
-                           ShowAllMessages,false);
+  // Parsers
+  NeedNewFormat:=false;
+  for i:=0 to Parsers.Count-1 do begin
+    s:=Parsers[i];
+    if (CompareText(s,SubToolFPC)=0)
+    or (CompareText(s,SubToolMake)=0)
+    or (CompareText(s,SubToolDefault)=0)
+    then continue;
+    NeedNewFormat:=true;
+    break;
+  end;
+  if NeedNewFormat then
+    SaveStringList(XMLConfig,Parsers,Path+'Parsers/')
+  else begin
+    // save backward compatible
+    XMLConfig.SetDeleteValue(Path+'ScanForFPCMsgs/Value', HasParser[SubToolFPC],false);
+    XMLConfig.SetDeleteValue(Path+'ScanForMakeMsgs/Value',HasParser[SubToolMake],false);
+    XMLConfig.SetDeleteValue(Path+'ShowAllMessages/Value',HasParser[SubToolDefault],false);
+  end;
 end;
 
 function TCompilationToolOptions.CreateDiff(CompOpts: TCompilationToolOptions;
@@ -4200,9 +4312,7 @@ function TCompilationToolOptions.CreateDiff(CompOpts: TCompilationToolOptions;
 begin
   Result:=false;
   if Done(Tool.AddDiff('Command',Command,CompOpts.Command)) then exit;
-  if Done(Tool.AddDiff('ScanForFPCMessages',ScanForFPCMessages,CompOpts.ScanForFPCMessages)) then exit;
-  if Done(Tool.AddDiff('ScanForMakeMessages',ScanForMakeMessages,CompOpts.ScanForMakeMessages)) then exit;
-  if Done(Tool.AddDiff('ShowAllMessages',ShowAllMessages,CompOpts.ShowAllMessages)) then exit;
+  if Done(Tool.AddStringsDiff('Parsers',Parsers,CompOpts.Parsers)) then exit;
 end;
 
 function TCompilationToolOptions.Execute(const WorkingDir, ToolTitle,
@@ -4237,6 +4347,8 @@ var
   ProgramFilename: string;
   Params: string;
   Filename: String;
+  ok: Boolean;
+  i: Integer;
 begin
   CurCommand:=GetParsedCommand;
   //debugln(['TCompilationToolOptions.CreateExtTool CurCommand=[',CurCommand,']']);
@@ -4250,22 +4362,21 @@ begin
     if Filename<>'' then ProgramFilename:=Filename;
   end;
   Result:=ExternalToolList.Add(ToolTitle);
-  Result.Hint:=CompileHint;
-  Result.Process.CurrentDirectory:=WorkingDir;
-  Result.Process.Executable:=ProgramFilename;
-  Result.CmdLineParams:=Params;
-  if ScanForFPCMessages then
-    Result.AddParsers(SubToolFPC);
-  if ScanForMakeMessages then
-    Result.AddParsers(SubToolMake);
-  if Result.ParserCount=0 then
-    Result.AddParsers(SubToolDefault);
-end;
-
-procedure TCompilationToolOptions.IncreaseChangeStamp;
-begin
-  CTIncreaseChangeStamp64(FChangeStamp);
-  if assigned(OnChanged) then OnChanged(Self);
+  ok:=false;
+  try
+    Result.Hint:=CompileHint;
+    Result.Process.CurrentDirectory:=WorkingDir;
+    Result.Process.Executable:=ProgramFilename;
+    Result.CmdLineParams:=Params;
+    for i:=0 to Parsers.Count-1 do
+      Result.AddParserByName(Parsers[i]);
+    if Result.ParserCount=0 then
+      Result.AddParsers(SubToolDefault);
+    ok:=true;
+  finally
+    if not ok then
+      FreeAndNil(Result);
+  end;
 end;
 
 function TCompilationToolOptions.GetParsedCommand: string;
@@ -4292,7 +4403,7 @@ end;
 procedure TIDEBuildMacro.SetIdentifier(const AValue: string);
 begin
   if FIdentifier=AValue then exit;
-  if (AValue='') or (not IsValidIdent(AValue)) then
+  if not IsValidIdent(AValue) then
     raise Exception.Create('TIDEBuildMacro.SetIdentifier invalid identifier: '+AValue);
   FIdentifier:=AValue;
   {$IFDEF VerboseIDEModified}
@@ -4370,10 +4481,10 @@ procedure TIDEBuildMacro.LoadFromXMLConfig(AXMLConfig: TXMLConfig;
 begin
   FIdentifier:=AXMLConfig.GetValue(Path+'Identifier/Value','');
   if not IsValidIdent(FIdentifier) then FIdentifier:='';
-  FDescription:=ConvertLineEndings(AXMLConfig.GetValue(Path+'Description/Value',''));
+  FDescription:=LineBreaksToSystemLineBreaks(AXMLConfig.GetValue(Path+'Description/Value',''));
   LoadStringList(AXMLConfig,FValues,Path+'Values/');
   LoadStringList(AXMLConfig,FValueDescriptions,Path+'ValueDescriptions/');
-  FDefaultValue:=ConvertLineEndings(AXMLConfig.GetValue(Path+'Default/Value',''));
+  FDefaultValue:=LineBreaksToSystemLineBreaks(AXMLConfig.GetValue(Path+'Default/Value',''));
 
   while ValueDescriptions.Count>Values.Count do
     ValueDescriptions.Delete(ValueDescriptions.Count-1);
@@ -4499,7 +4610,7 @@ begin
   for i:=0 to NewCount-1 do begin
     NewItem:=TIDEBuildMacro.Create;
     NewItem.LoadFromXMLConfig(AXMLConfig,Path+'Item'+IntToStr(i+1)+'/',DoSwitchPathDelims);
-    if (NewItem.Identifier<>'') and IsValidIdent(NewItem.Identifier) then
+    if IsValidIdent(NewItem.Identifier) then
       FItems.Add(NewItem)
     else
       NewItem.Free;
@@ -4567,7 +4678,7 @@ begin
   Result:=fTree.Count;
 end;
 
-function TCompilerMsgIDFlags.FindNode(MsgId: integer): TAvgLvlTreeNode;
+function TCompilerMsgIDFlags.FindNode(MsgId: integer): TAvlTreeNode;
 var
   Flag: TCompilerMsgIdFlag;
 begin
@@ -4577,7 +4688,7 @@ end;
 
 function TCompilerMsgIDFlags.GetValues(MsgId: integer): TCompilerFlagValue;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   Node:=FindNode(MsgId);
   if Node<>nil then
@@ -4602,7 +4713,7 @@ end;
 procedure TCompilerMsgIDFlags.SetValues(MsgId: integer;
   AValue: TCompilerFlagValue);
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   Flag: PCompilerMsgIdFlag;
 begin
   Node:=FindNode(MsgId);
@@ -4636,7 +4747,7 @@ end;
 
 constructor TCompilerMsgIDFlags.Create;
 begin
-  fTree:=TAvgLvlTree.Create(@CompareCompMsgIdFlag);
+  fTree:=TAvlTree.Create(@CompareCompMsgIdFlag);
 end;
 
 destructor TCompilerMsgIDFlags.Destroy;
@@ -4648,7 +4759,7 @@ end;
 
 procedure TCompilerMsgIDFlags.Clear;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   Flag: PCompilerMsgIdFlag;
 begin
   Node:=fTree.FindLowest;
@@ -4663,7 +4774,7 @@ end;
 procedure TCompilerMsgIDFlags.Assign(Source: TPersistent);
 var
   Src: TCompilerMsgIDFlags;
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   SrcFlag, Flag: PCompilerMsgIdFlag;
 begin
   if Source is TCompilerMsgIDFlags then begin
@@ -4691,8 +4802,8 @@ end;
 function TCompilerMsgIDFlags.Equals(Obj: TObject): boolean;
 var
   Other: TCompilerMsgIDFlags;
-  MyNode: TAvgLvlTreeNode;
-  OtherNode: TAvgLvlTreeNode;
+  MyNode: TAvlTreeNode;
+  OtherNode: TAvlTreeNode;
   MyFlag: PCompilerMsgIdFlag;
   OtherFlag: PCompilerMsgIdFlag;
 begin
@@ -4747,7 +4858,7 @@ end;
 function TCompilerMsgIDFlags.CreateDiff(Tool: TCompilerDiffTool;
   Other: TCompilerMsgIDFlags): boolean;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   Flag: PCompilerMsgIdFlag;
   OtherFlag: TCompilerFlagValue;
 begin

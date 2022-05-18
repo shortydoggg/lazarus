@@ -25,7 +25,7 @@ uses
   LazGtk3, LazGlib2, LazGdk3, LazGObject2, LazPango1,
   // RTL, FCL and LCL
   SysUtils, Classes, Graphics, Controls, Dialogs, ExtDlgs, LCLType,
-  FileUtil, LCLStrConsts, LCLProc, InterfaceBase,
+  LazFileUtils, LCLStrConsts, LCLProc, InterfaceBase,
   // Widgetset
   gtk3int, gtk3widgets,
   WSDialogs;
@@ -944,7 +944,7 @@ begin
     if theDialog.OnCanClose<>nil then
     begin
       CanClose:=True;
-      theDialog.OnCanClose(theDialog, CanClose);
+      theDialog.DoCanClose(CanClose);
       Result := not CanClose;
     end;
     if not Result then
@@ -966,7 +966,7 @@ function gtkDialogDestroyCB(widget: PGtkWidget; data: gPointer): GBoolean; cdecl
 begin
   Result := True;
   if (Widget=nil) then ;
-  TCommonDialog(data).UserChoice := mrAbort;
+  TCommonDialog(data).UserChoice := mrCancel;
   TCommonDialog(data).Close;
 end;
 

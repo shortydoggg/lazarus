@@ -37,6 +37,14 @@ msgstr "boleano"
 msgid "can not execute %s"
 msgstr "no se puede ejecutar %s"
 
+#: lazutilsstrconsts.lrscreatinggdbcatchableerror
+msgid "Creating gdb catchable error:"
+msgstr ""
+
+#: lazutilsstrconsts.lrserrorincode
+msgid "ERROR in code: "
+msgstr ""
+
 #: lazutilsstrconsts.lrsevalinvalidargcount
 msgid "Invalid number of function arguments"
 msgstr "Número de argumentos de función no válido"
@@ -77,6 +85,16 @@ msgstr "%s no es un vínculo simbólico"
 #: lazutilsstrconsts.lrsisnotexecutable
 msgid "%s is not executable"
 msgstr "%s no es ejecutable"
+
+#: lazutilsstrconsts.lrslistindexexceedsbounds
+msgctxt "lazutilsstrconsts.lrslistindexexceedsbounds"
+msgid "List index exceeds bounds (%d)"
+msgstr ""
+
+#: lazutilsstrconsts.lrslistmustbeempty
+msgctxt "lazutilsstrconsts.lrslistmustbeempty"
+msgid "List must be empty"
+msgstr ""
 
 #: lazutilsstrconsts.lrsmodified
 msgctxt "lazutilsstrconsts.lrsmodified"

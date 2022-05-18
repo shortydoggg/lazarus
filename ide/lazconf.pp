@@ -22,7 +22,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -46,25 +46,14 @@ interface
 {$endif}
 
 uses
-  SysUtils, Classes, InterfaceBase, FileUtil, LazFileUtils,
-  LazUTF8, lazutf8classes, LCLProc, DefineTemplates;
+  SysUtils, Classes,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8, LazUTF8Classes, LazLoggerBase,
+  // Codetools
+  DefineTemplates;
 
 const
   LazarusVersionStr = {$I version.inc};
-
-  LCLPlatformDisplayNames: array[TLCLPlatform] of string = (
-      'gtk (deprecated)',
-      'gtk 2',
-      'gtk3 (alpha)',
-      'win32/win64',
-      'wince',
-      'carbon',
-      'qt',
-      'fpGUI (alpha)',
-      'NoGUI',
-      'cocoa (alpha)',
-      'customdraw (alpha)'
-    );
 
 function CompareLazarusVersion(V1, V2: string): integer;
 
@@ -116,10 +105,6 @@ function OSLocksExecutables: boolean;
 // returns the default browser
 procedure GetDefaultBrowser(var Browser, Params: string);
 
-// LCL
-function GetDefaultLCLWidgetType: TLCLPlatform;
-function DirNameToLCLPlatform(const ADirName: string): TLCLPlatform;
-
 // Replace OnGetApplicationName, so that Application.Title
 // doesn't interfere with GetAppConfigDir and related.
 function GetLazarusApplicationName: string;
@@ -133,24 +118,7 @@ procedure AddFilenameToList(List: TStrings; const Filename: string;
   SkipEmpty: boolean = true);
 
 const
-  EmptyLine = LineEnding + LineEnding;
-  EndOfLine: shortstring = LineEnding;
-  
-const
   ExitCodeRestartLazarus = 99;
-
-var
-  // set by lazbuild.lpr and used by GetDefaultLCLWidgetType
-  BuildLCLWidgetType: TLCLPlatform =
-    {$IFDEF MSWindows}{$DEFINE WidgetSetDefined}
-    lpWin32;
-    {$ENDIF}
-    {$IFDEF darwin}{$DEFINE WidgetSetDefined}
-    lpCarbon;
-    {$ENDIF}
-    {$IFNDEF WidgetSetDefined}
-    lpGtk2;
-    {$ENDIF}
 
 implementation
 
@@ -215,21 +183,6 @@ begin
                              GetEnvironmentVariableUTF8('PATH'),PathSeparator,
                              [sffDontSearchInBasePath]);
   Result:=TrimFilename(Result);
-end;
-
-function GetDefaultLCLWidgetType: TLCLPlatform;
-begin
-  if (WidgetSet<>nil) and (WidgetSet.LCLPlatform<>lpNoGUI) then
-    Result:=WidgetSet.LCLPlatform
-  else
-    Result:=BuildLCLWidgetType;
-end;
-
-function DirNameToLCLPlatform(const ADirName: string): TLCLPlatform;
-begin
-  for Result:=Low(TLCLPlatform) to High(TLCLPlatform) do
-    if CompareText(ADirName,LCLPlatformDirNames[Result])=0 then exit;
-  Result:=lpGtk2;
 end;
 
 function CompareLazarusVersion(V1, V2: string): integer;
@@ -323,7 +276,7 @@ end;
 procedure SetPrimaryConfigPath(const NewValue: String);
 begin
   debugln('SetPrimaryConfigPath NewValue="',UTF8ToConsole(NewValue),'" -> "',UTF8ToConsole(ExpandFileNameUTF8(NewValue)),'"');
-  PrimaryConfigPath := AppendPathDelim(ExpandFileNameUTF8(NewValue));
+  PrimaryConfigPath := ChompPathDelim(ExpandFileNameUTF8(NewValue));
 end;
 
 {---------------------------------------------------------------------------
@@ -332,7 +285,7 @@ end;
 procedure SetSecondaryConfigPath(const NewValue: String);
 begin
   debugln('SetSecondaryConfigPath NewValue="',UTF8ToConsole(NewValue),'" -> "',UTF8ToConsole(ExpandFileNameUTF8(NewValue)),'"');
-  SecondaryConfigPath := AppendPathDelim(ExpandFileNameUTF8(NewValue));
+  SecondaryConfigPath := ChompPathDelim(ExpandFileNameUTF8(NewValue));
 end;
 
 {---------------------------------------------------------------------------
@@ -356,6 +309,7 @@ begin
       debugln(['WARNING: unable to copy config "',SecondaryFilename,'" to "',PrimaryFilename,'"']);
       exit;
     end;
+    InvalidateFileStateCache; // we have to invalidate cache in order FileExistsCached finds the new primary config file
   end;
 end;
 
@@ -371,6 +325,8 @@ begin
   if (CompareText(copy(TargetOS,1,3), 'win') = 0)
   or (CompareText(copy(TargetOS,1,3), 'dos') = 0) then
     Result:='.exe'
+  else if SameText(TargetOS, 'browser') or SameText(TargetOS,'nodejs') then
+    Result:='.js'
   else
     Result:='';
 end;
@@ -413,6 +369,8 @@ begin
   if TargetOS='' then
     TargetOS:=GetCompiledTargetOS;
   Result:='';
+  if SameText(TargetOS, 'browser') or SameText(TargetOS,'nodejs') then
+    exit('.js');
   SrcOS:=GetDefaultSrcOSForTargetOS(TargetOS);
   if CompareText(SrcOS, 'unix') = 0 then
     Result:='lib';

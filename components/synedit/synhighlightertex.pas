@@ -25,7 +25,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synhighlightertex.pas 47604 2015-02-06 18:25:31Z juha $
+$Id: synhighlightertex.pas 56692 2017-12-11 19:44:22Z juha $
 
 You may retrieve the latest version of this file from sproessig@bs-webdesign.de
 
@@ -212,7 +212,7 @@ end;  { SpaceProc }
 procedure TSynTeXSyn.TextProc;
 begin
   fTokenID:=tkText;
-  inc(Run,UTF8CharacterLength(@fLine[Run]));
+  inc(Run,UTF8CodepointSize(@fLine[Run]));
 end;  { TextProc }
 
 procedure TSynTeXSyn.LFProc;

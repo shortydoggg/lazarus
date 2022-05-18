@@ -8,74 +8,82 @@ Uses Controls;
 
 resourcestring
   //Main form
-  rsPoChecker = 'PO File Checker';
-  sSelectBasicTests = 'Select &Basic';
+  rsPoChecker = 'Check PO Files ...';
   sSelectAllTests = 'Select &All';
   sUnselectAllTests = '&Unselect All';
   sGUIPoFileCheckingTool = 'GUI Po-file checking tool';
   sSelectTestTypes = 'Select test types';
-  sOpenAPoFile = '&Open a po-file';
   sScanDir = 'Scan a folder';
   sRunSelectedTests = '&Run Selected Tests';
   sClearListBox = 'Clear';
   sUnselectListBox = 'Unselect all files';
   sSelectAllListBox = 'Select all files';
   sAllLanguages = 'All Languages';
-  sCannotFindMaster = 'Cannot find master po file:' + LineEnding + '%s' + LineEnding + 'for selected file' + LineEnding + '%s';
-  //sNotAProperFileName = 'Selected filename' + LineEnding + '%s' + LineEnding + 'does not seem to be a proper name for a po-file';
   sFilesNotFoundAndRemoved = 'The following non-existent files were removed from the list:' + LineEnding + '%s';
   sNoFilesLeftToCheck = 'There are no files left to check.';
   sErrorOnCreate = 'Error creating an instance of TPoFamily:' + LineEnding + '%s';
   sErrorOnCleanup = 'An unrecoverable error occurred' + LineEnding + '%s' + LineEnding + 'Please close the program';
 
-  sTotalErrors = 'Total errors found: %d';
-  sTotalWarnings = 'Total warnings found: %d';
-  sNoErrorsFound = 'No errors found';
+  sLastSearchPath = 'Last search path:';
+  sLanguage = 'Language:';
+
+  sTotalErrors = 'Total errors: %d';
+  sTotalErrorsNonFuzzy = 'Total errors: %d (formatting errors in non-fuzzy strings: %d)';
+  sTotalWarnings = 'Total warnings: %d';
+  sTotalUntranslatedStrings = 'Total untranslated strings: %s';
+  sTotalFuzzyStrings = 'Total fuzzy strings: %s';
+  sTotalTranslatedStrings = 'Total translated strings: %s (%.1f%%)';
   sCurrentTest = 'Test: %s on %s';
   sNoTestSelected = 'There are no tests selected.';
   sScanningInProgress = 'Scanning in progress, please wait ...';
 
   //Result form
   sSaveError = 'Error saving file:' + LineEnding + '%s';
-  sSaveCaption = 'Save to file';
   sResults = 'Results';
-  sCopyCaption = 'Copy to clipboard';
   sShowStatGraph = 'Show statistics graph';
+  sGeneralInfo = 'General Info';
+  sTranslationStatistics = 'Translation Statistics';
+  sDuplicateOriginalsTab = 'Duplicate Originals';
+  sCopy = '&Copy';
+  sSaveAs ='Save &As ...';
 
   //Graphical summary form
   sGrapStatFormCaption = 'Graphical summary';
-  sTranslated = 'Translated';
-  sUntranslated = 'Untranslated';
-  sFuzzy = 'Fuzzy';
-  sStatHint = '%3d Translated (%3.1f%%)' + LineEnding +
-              '%3d UnTranslated (%3.1f%%)' + LineEnding +
-              '%3d Fuzzy (%3.1f%%)' + LineEnding +
-              '%d Error(s) in Selected Tests';
-  sOpenFile = 'Open file %s in Ide Editor?';
-  sOpenFileExternal = 'Open file:' + LineEnding + '"%s"' +
-                      LineEnding + 'in external editor:' +
-                      LineEnding + '"%s"?';
+  sTranslatedStringsTotal = 'Translated strings (total: %s [%.1f%%])';
+  sUntranslatedStringsTotal = 'Untranslated strings (total: %s)';
+  sFuzzyStringsTotal = 'Fuzzy strings (total: %s)';
+  sTranslatedStrings = 'Translated strings';
+  sUntranslatedStrings = 'Untranslated strings';
+  sFuzzyStrings = 'Fuzzy strings';
+  sStatHint = 'Translated: %d (%.1f%%)' + LineEnding +
+              'Untranslated: %d (%.1f%%)' + LineEnding +
+              'Fuzzy: %d (%.1f%%)' + LineEnding +
+              'Errors in selected tests: %d';
   SOpenFail = 'Unable to open file:' + LineEnding +  '"%s"';
   SOpenFailExternal = 'Unable to open file' + LineEnding +
                       '"%s"' + LineEnding + 'in external editor' + LineEnding + '"%s"';
   sCreatingIconXofY = 'Creating icon nr. %d of %d';
+  sOpenFileInSystemPOEditor = 'Open file in system PO editor';
+  sOpenFileInExternalEditor = 'Open file in external editor';
+  sOpenFileInIDEEditor = 'Open file in IDE editor';
+  sRefreshCurrentTranslationFamily = 'Refresh current translation family';
+  sRefreshAllTranslationFamilies = 'Refresh all translation families';
+  sProcessingTranslationFamilyOf = 'Processing translation family %s of %s';
+  sProcessingTranslationFamily = 'Processing translation family...';
+  sCannotWriteFileYouCanPressRetryToRefreshThisTransl = 'Cannot write file%'
+    +'s%s%s%sYou can press "Retry" to refresh this translation family again and '
+    +'continue.';
 
   //PoFamiles
   sOriginal = 'Original';
   sTranslation = 'Translation';
   sErrorsByTest = 'Errors / warnings reported by %s for:';
-  sTranslationStatistics = 'Translation statistics per language:';
+  sFile = 'File %s';
   sCheckNumberOfItems = 'Check number of items';
   sCheckForIncompatibleFormatArguments = 'Check for incompatible format '
     +'arguments';
   sCheckMissingIdentifiers = 'Check missing identifiers';
-  sCheckForMismatchesInUntranslatedStrings = 'Check for mismatches in '
-    +'untranslated strings';
-  sCheckForDuplicateUntranslatedValues = 'Check for duplicate untranslated '
-    +'values';
-  sCheckStatistics = 'Check percentage of (un)translated and fuzzy strings';
-  //sFindAllTranslatedPoFiles = 'Find all translated po-files';
-  sIgnoreFuzzyTranslations = 'Ignore translated strings marked as "fuzzy"';
+  sCheckForMismatchesInUntranslatedStrings = 'Check for mismatches of originals';
   sIncompatibleFormatArgs = '[Line: %d] Incompatible and/or invalid format() arguments for:' ;
 
   sNrErrorsFound = 'Found %d errors.';
@@ -90,12 +98,17 @@ resourcestring
   sNrOfItemsMisMatch = 'Mismatch in number of items for master and child';
   sNrOfItemsMismatchD = '%s: %d items';
 
-  sDuplicateOriginals = 'The (untranslated) value "%s" is used for more than 1 entry:';
+  sDuplicateOriginals = 'Original value "%s" is used for more than 1 entry:';
 
   sDuplicateLineNrWithValue = '[Line %d] %s';
-  sPercTranslated = '%s: %4.1f%% translated strings.';
-  sPercUntranslated = '%s: %4.1f%% untranslated strings.';
-  sPercFuzzy = '%s: %4.1f%% fuzzy strings.';
+  sPercTranslated = '%s: %5.1f%% translated strings.';
+  sPercUntranslated = '%s: %5.1f%% untranslated strings.';
+  sPercFuzzy = '%s: %5.1f%% fuzzy strings.';
+
+  sTheFollowingOrphanedPoFileSFound = 'The following %s orphaned .po file(s) found:';
+  sTheFollowingMissingMasterPoFileSWereRemoved = 'The following %s '
+    +'missing master .po file(s) were removed from the list:';
+  sTroublesomeFiles = 'Troublesome files';
 
 const
   mrOpenEditorFile = mrNone+100;

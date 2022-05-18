@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -44,14 +44,21 @@ unit CodeToolsDefines;
 interface
 
 uses
-  Classes, SysUtils, Math, LCLIntf, Forms, Controls, Buttons, StdCtrls,
-  ComCtrls,  LCLType, ExtCtrls, Menus, LCLProc, Graphics, Dialogs, ButtonPanel,
+  Classes, SysUtils, Math,
+  // LCL
+  LCLType, LCLIntf, Forms, Controls, Buttons, StdCtrls,
+  ComCtrls, ExtCtrls, Menus, Graphics, Dialogs, ButtonPanel,
+  // LazUtils
+  LazFileUtils, LazLogger, LazStringUtils,
+  // SynEdit
   SynEdit,
+  // Codetools
   CodeToolManager, DefineTemplates,
+  // IdeIntf
   IDEWindowIntf, IDEImagesIntf, IDEDialogs,
+  // IDE
   LazarusIDEStrConsts, CodeToolsOptions, CodeToolsDefPreview, TransferMacros,
-  EditorOptions, InputFileDialog, IDEOptionDefs, LazConf, IDEProcs,
-  EditDefineTree, CompilerOptions;
+  EditorOptions, InputFileDialog, LazConf, IDEProcs, EditDefineTree, CompilerOptions;
 
 type
 
@@ -608,7 +615,7 @@ begin
     TargetOS:='';
     TargetProcessor:='';
 
-    UnitSetCache:=Boss.FPCDefinesCache.FindUnitSet(CompilerPath,
+    UnitSetCache:=Boss.CompilerDefinesCache.FindUnitSet(CompilerPath,
                                     TargetOS,TargetProcessor,'',FPCSrcDir,true);
 
     // create directory defines
@@ -717,7 +724,7 @@ begin
     if Macros<>nil then Macros.SubstituteStr(FPCSrcDir);
     DebugLn('  FPCSrcDir="',FPCSrcDir,'"');
 
-    UnitSetCache:=Boss.FPCDefinesCache.FindUnitSet(CompilerPath,
+    UnitSetCache:=Boss.CompilerDefinesCache.FindUnitSet(CompilerPath,
                                     TargetOS,TargetProcessor,'',FPCSrcDir,true);
     // create FPC Source defines
     FPCSrcTemplate:=CreateFPCSourceTemplate(UnitSetCache,CodeToolsOpts);
@@ -773,7 +780,7 @@ begin
     FileTitles[0]:=Format(lisCodeToolsDefsdirectory, [DelphiName]);
     FileDescs[0]:=Format(lisCodeToolsDefsDelphiMainDirectoryDesc, [DelphiName,
       LineEnding, DelphiName, LineEnding, IntToStr(DelphiVersion)]);
-    FileNames[0]:=SetDirSeparators(
+    FileNames[0]:=GetForcedPathDelims(
                         'C:/Programme/Borland/Delphi'+IntToStr(DelphiVersion));
     FileFlags[0]:=[iftDirectory,iftNotEmpty,iftMustExist];
     
@@ -813,14 +820,14 @@ begin
     
     FileTitles[0]:=Format(lisCodeToolsDefsprojectDirectory2, [DelphiName]);
     FileDescs[0]:=Format(lisCodeToolsDefsTheProjectDirectory, [DelphiName, LineEnding]);
-    FileNames[0]:=SetDirSeparators('C:/Programme/Borland/Delphi'
+    FileNames[0]:=GetForcedPathDelims('C:/Programme/Borland/Delphi'
                    +IntToStr(DelphiVersion)+'/YourProject');
     FileFlags[0]:=[iftDirectory,iftNotEmpty,iftMustExist];
     
     FileTitles[1]:=Format(lisCodeToolsDefsdirectory, [DelphiName]);
     FileDescs[1]:=Format(lisCodeToolsDefsDelphiMainDirectoryForProject, [DelphiName,
       LineEnding, DelphiName, LineEnding, DelphiName, LineEnding, IntToStr(DelphiVersion)]);
-    FileNames[1]:=SetDirSeparators('C:/Programme/Borland/Delphi'+IntToStr(DelphiVersion));
+    FileNames[1]:=GetForcedPathDelims('C:/Programme/Borland/Delphi'+IntToStr(DelphiVersion));
     FileFlags[1]:=[iftDirectory,iftNotEmpty,iftMustExist];
 
     EndUpdate;
@@ -866,7 +873,7 @@ begin
     FileTitles[0]:=Format(lisCodeToolsDefsdirectory, [KylixName]);
     FileDescs[0]:=Format(lisCodeToolsDefsKylixMainDirectoryDesc, [KylixName,
       LineEnding, KylixName, LineEnding, IntToStr(KylixVersion)]);
-    FileNames[0]:=SetDirSeparators('/home/'+UserName+'/kylix'+IntToStr(KylixVersion));
+    FileNames[0]:=GetForcedPathDelims('/home/'+UserName+'/kylix'+IntToStr(KylixVersion));
     FileFlags[0]:=[iftDirectory,iftNotEmpty,iftMustExist];
 
     EndUpdate;
@@ -904,7 +911,7 @@ begin
     FileTitles[0]:=Format(lisCodeToolsDefsprojectDirectory2, [KylixName]);
     FileDescs[0]:=Format(lisCodeToolsDefsTheProjectDirectory, [KylixName, LineEnding]
       );
-    FileNames[0]:=SetDirSeparators('/home/'+UserName+'/kylix'
+    FileNames[0]:=GetForcedPathDelims('/home/'+UserName+'/kylix'
                    +IntToStr(KylixVersion)+'/YourProject');
     FileFlags[0]:=[iftDirectory,iftNotEmpty,iftMustExist];
 
@@ -912,7 +919,7 @@ begin
     FileDescs[1]:=Format(lisCodeToolsDefsKylixMainDirectoryForProject, [KylixName,
       LineEnding, KylixName, LineEnding, KylixName, LineEnding, IntToStr(KylixVersion)
       ]);
-    FileNames[1]:=SetDirSeparators('/home/'+UserName+'/kylix'+IntToStr(KylixVersion));
+    FileNames[1]:=GetForcedPathDelims('/home/'+UserName+'/kylix'+IntToStr(KylixVersion));
     FileFlags[1]:=[iftDirectory,iftNotEmpty,iftMustExist];
 
     EndUpdate;
@@ -1035,9 +1042,9 @@ begin
 
   DefineActionImages[Low(TDefineAction)] := -1;
   for DefAction := Succ(Low(TDefineAction)) to High(TDefineAction) do
-    DefineActionImages[DefAction] := IDEImages.LoadImage(24, 'da_' + LowerCase(DefineActionNames[DefAction]));
+    DefineActionImages[DefAction] := IDEImages.LoadImage('da_' + LowerCase(DefineActionNames[DefAction]), 24);
 
-  AutogeneratedImage := IDEImages.LoadImage(16, 'laz_wand');
+  AutogeneratedImage := IDEImages.LoadImage('laz_wand');
 end;
 
 function TCodeToolsDefinesEditor.CreateSeperator : TMenuItem;

@@ -1,4 +1,4 @@
-{ $Id: runtestsgui.lpr 42687 2013-09-08 22:53:43Z martin $}
+{ $Id: runtestsgui.lpr 54031 2017-01-29 21:04:32Z joost $}
 { Copyright (C) 2006 Vincent Snijders
 
   This source is free software; you can redistribute it and/or modify it under
@@ -13,8 +13,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 }
 program runtestsgui;
 
@@ -23,12 +23,13 @@ program runtestsgui;
 uses
   Interfaces, Forms,
   GuiTestRunner, lazmouseandkeyinput,
-  testunits, TestLazUtils;
+  testunits, TestLazUtils, testmenuintf;
 
 begin
   Application.Title:='Run Lazarus tests';
   Application.Initialize;
   Application.CreateForm(TGuiTestRunner, TestRunner);
+  Application.CreateForm(TTestMenuIntfDlg, TestMenuIntfDlg);
   Application.Run;
 end.
 

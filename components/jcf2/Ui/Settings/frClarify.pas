@@ -30,8 +30,9 @@ unit frClarify;
 interface
 
 uses
-  Classes, StdCtrls, ExtCtrls,
-  IDEOptionsIntf;
+  Classes,
+  StdCtrls, ExtCtrls,
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -45,9 +46,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
     class function DefaultCollapseChildNodes: Boolean; override;
   end;
@@ -85,7 +86,7 @@ end;
 
 procedure TfClarify.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Clarify do
+  with FormattingSettings.Clarify do
   begin
     rgRunOnceOffs.ItemIndex := Ord(OnceOffs);
 
@@ -95,7 +96,7 @@ end;
 
 procedure TfClarify.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Clarify do
+  with FormattingSettings.Clarify do
   begin
     OnceOffs := TOnceOffsOption(rgRunOnceOffs.ItemIndex);
 
@@ -106,7 +107,7 @@ end;
 
 class function TfClarify.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 class function TfClarify.DefaultCollapseChildNodes: Boolean;

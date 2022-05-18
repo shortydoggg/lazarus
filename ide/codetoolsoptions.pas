@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -35,9 +35,17 @@ unit CodeToolsOptions;
 interface
 
 uses
-  Classes, SysUtils, LazConf, LazFileUtils, Laz2_XMLCfg, LazUTF8, LazUTF8Classes,
-  LazFileCache, LclProc, LCLType, CodeToolManager, DefineTemplates, SourceChanger,
-  IDEOptionsIntf, MacroIntf, LazarusIDEStrConsts, IDEProcs;
+  Classes, SysUtils,
+  // LazUtils
+  LazFileUtils, Laz2_XMLCfg, LazUTF8, LazUTF8Classes, LazFileCache, LazStringUtils,
+  // LCL
+  LCLProc, LCLType,
+  // CodeTools
+  CodeToolManager, DefineTemplates, SourceChanger,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, MacroIntf,
+  // IDE
+  LazConf, LazarusIDEStrConsts;
 
 const
   DefaultIndentationFilename = 'laz_indentation.pas'; // in directory GetPrimaryConfigPath
@@ -45,6 +53,9 @@ const
     '$(LazarusDir)'+PathDelim+'components'+PathDelim+'codetools'+PathDelim+'codecompletiontemplates.xml';
 
 type
+
+  TIdentComplIncludeWords = (icwDontInclude, icwIncludeFromCurrentUnit,
+    icwIncludeFromAllUnits);
 
   { TCodeToolsOptions }
 
@@ -61,11 +72,14 @@ type
 
     // General
     FAdjustTopLineDueToComment: boolean;
+    FAvoidUnnecessaryJumps: boolean;
     FIdentComplSortForHistory: boolean;
     FIdentComplSortForScope: boolean;
-    FJumpCentered: boolean;
+    FJumpSingleLinePos: integer;
+    FJumpCodeBlockPos: integer;
     FCursorBeyondEOL: boolean;
     FSkipForwardDeclarations: boolean;
+    FJumpToMethodBody: boolean;
     
     // Define Templates
     FGlobalDefineTemplates: TDefineTemplate;
@@ -82,13 +96,14 @@ type
     FForwardProcBodyInsertPolicy: TForwardProcBodyInsertPolicy;
     FKeepForwardProcOrder: boolean;
     FMethodInsertPolicy: TMethodInsertPolicy;
-    FEventMethodSection: TInsertClassSection;
+    FMethodDefaultSection: TInsertClassSection;
     FKeyWordPolicy : TWordPolicy;
     FIdentifierPolicy: TWordPolicy;
     FUpdateAllMethodSignatures: boolean;
     FUpdateMultiProcSignatures: boolean;
     FUpdateOtherProcSignaturesCase: boolean;
     FGroupLocalVariables: boolean;
+    FOverrideStringTypesWithFirstParamType: Boolean;
     FWordPolicyExceptions: TStringList;
     FDoNotSplitLineInFront: TAtomTypes;
     FDoNotSplitLineAfter: TAtomTypes;
@@ -108,6 +123,9 @@ type
     FIdentComplAddAssignOperator: Boolean;
     FIdentComplAutoStartAfterPoint: boolean;
     FIdentComplAutoUseSingleIdent: boolean;
+    FIdentComplUseContainsFilter: Boolean;
+    FIdentComplIncludeWords: TIdentComplIncludeWords;
+    FIdentComplShowIcons: Boolean;
 
     // auto indentation
     FIndentOnLineBreak: boolean;
@@ -147,11 +165,13 @@ type
     // General
     property AdjustTopLineDueToComment: boolean
       read FAdjustTopLineDueToComment write FAdjustTopLineDueToComment;
-    property JumpCentered: boolean read FJumpCentered write FJumpCentered;
+    property AvoidUnnecessaryJumps: boolean read FAvoidUnnecessaryJumps write FAvoidUnnecessaryJumps;
+    property JumpSingleLinePos: integer read FJumpSingleLinePos write FJumpSingleLinePos;
+    property JumpCodeBlockPos: integer read FJumpCodeBlockPos write FJumpCodeBlockPos;
     property CursorBeyondEOL: boolean
       read FCursorBeyondEOL write FCursorBeyondEOL;
     property SkipForwardDeclarations: boolean read FSkipForwardDeclarations write FSkipForwardDeclarations;
-
+    property JumpToMethodBody: boolean read FJumpToMethodBody write FJumpToMethodBody;
     // Define Templates
     property GlobalDefineTemplates: TDefineTemplate read FGlobalDefineTemplates;
     property DefinesEditMainSplitterTop: integer read FDefinesEditMainSplitterTop
@@ -183,14 +203,16 @@ type
       read FUpdateOtherProcSignaturesCase write FUpdateOtherProcSignaturesCase;
     property GroupLocalVariables: boolean
       read FGroupLocalVariables write FGroupLocalVariables;
+    property OverrideStringTypesWithFirstParamType: Boolean
+      read FOverrideStringTypesWithFirstParamType write FOverrideStringTypesWithFirstParamType;
     property ClassHeaderComments: boolean
       read FClassHeaderComments write FClassHeaderComments;
     property ClassImplementationComments: boolean
       read FClassImplementationComments write FClassImplementationComments;
     property MethodInsertPolicy: TMethodInsertPolicy
       read FMethodInsertPolicy write FMethodInsertPolicy;
-    property EventMethodSection: TInsertClassSection
-      read FEventMethodSection write FEventMethodSection;
+    property MethodDefaultSection: TInsertClassSection
+      read FMethodDefaultSection write FMethodDefaultSection;
     property KeyWordPolicy : TWordPolicy
       read FKeyWordPolicy write FKeyWordPolicy;
     property IdentifierPolicy: TWordPolicy
@@ -221,7 +243,7 @@ type
       read FSetPropertyVariableUseConst write SetSetPropertyVariableUseConst;
     property UsesInsertPolicy: TUsesInsertPolicy
       read FUsesInsertPolicy write FUsesInsertPolicy;
-      
+
     // identifier completion
     property IdentComplAddSemicolon: Boolean read FIdentComplAddSemicolon
                                              write FIdentComplAddSemicolon;
@@ -232,6 +254,12 @@ type
                                            write FIdentComplAutoStartAfterPoint;
     property IdentComplAutoUseSingleIdent: boolean read FIdentComplAutoUseSingleIdent
                                            write FIdentComplAutoUseSingleIdent;
+    property IdentComplUseContainsFilter: boolean read FIdentComplUseContainsFilter
+                                           write FIdentComplUseContainsFilter;
+    property IdentComplIncludeWords: TIdentComplIncludeWords read FIdentComplIncludeWords
+                                           write FIdentComplIncludeWords;
+    property IdentComplShowIcons: boolean read FIdentComplShowIcons
+                                           write FIdentComplShowIcons;
     property IdentComplAddParameterBrackets: boolean
       read FIdentComplAddParameterBrackets write FIdentComplAddParameterBrackets;
     property IdentComplReplaceIdentifier: boolean
@@ -266,14 +294,27 @@ function GetTranslatedAtomTypes(a: TAtomType): string;
 function TranslatedAtomToType(const s: string): TAtomType;
 function ReadIdentifier(const s, DefaultIdent: string): string;
 
+const
+  IdentComplIncludeWordsNames: array[TIdentComplIncludeWords] of shortstring = (
+      'No', 'FromCurrentUnit', 'FromAllUnits'
+    );
+function IdentComplIncludeWordsNamesToEnum(const s: string): TIdentComplIncludeWords;
+
 implementation
 
 {$R lazarus_indentation.res}
 
 const
-  CodeToolsOptionsVersion = 1;
+  CodeToolsOptionsVersion = 2;
   DefaultCodeToolsOptsFile = 'codetoolsoptions.xml';
   
+function IdentComplIncludeWordsNamesToEnum(const s: string): TIdentComplIncludeWords;
+begin
+  for Result:=Low(TIdentComplIncludeWords) to High(TIdentComplIncludeWords) do
+    if SysUtils.CompareText(IdentComplIncludeWordsNames[Result],s)=0 then exit;
+  Result:=icwDontInclude;
+end;
+
 function GetTranslatedAtomTypes(a: TAtomType): string;
 begin
   case a of
@@ -386,6 +427,7 @@ procedure TCodeToolsOptions.Load;
 var
   XMLConfig: TXMLConfig;
   FileVersion: integer;
+  AJumpCentered: Boolean;
   
   procedure LoadGlobalDefineTemplates;
   begin
@@ -416,13 +458,28 @@ begin
     // General
     FAdjustTopLineDueToComment:=XMLConfig.GetValue(
       'CodeToolsOptions/AdjustTopLineDueToComment/Value',true);
-    FJumpCentered:=XMLConfig.GetValue('CodeToolsOptions/JumpCentered/Value',
-      true);
+    if FileVersion<2 then
+    begin
+      AJumpCentered:=XMLConfig.GetValue('CodeToolsOptions/JumpCentered/Value',
+        true);
+      if AJumpCentered then
+        FJumpSingleLinePos := 50
+      else
+        FJumpSingleLinePos := 0;
+      FJumpCodeBlockPos := 0;
+    end else
+    begin
+      FJumpSingleLinePos:=XMLConfig.GetValue('CodeToolsOptions/JumpSingleLinePos/Value', 50);
+      FJumpCodeBlockPos:=XMLConfig.GetValue('CodeToolsOptions/JumpCodeBlockPos/Value', 0);
+    end;
+    FAvoidUnnecessaryJumps:=XMLConfig.GetValue('CodeToolsOptions/AvoidUnnecessaryJumps/Value', True);
     FCursorBeyondEOL:=XMLConfig.GetValue(
       'CodeToolsOptions/CursorBeyondEOL/Value',true);
     FSkipForwardDeclarations:=XMLConfig.GetValue(
       'CodeToolsOptions/SkipForwardDeclarations/Value',false);
-      
+    FJumpToMethodBody:=XMLConfig.GetValue(
+      'CodeToolsOptions/JumpToMethodBody/Value',false);
+
     // Define templates
     LoadGlobalDefineTemplates;
     FDefinesEditMainSplitterTop:=XMLConfig.GetValue(
@@ -457,6 +514,8 @@ begin
       'CodeToolsOptions/UpdateOtherProcSignaturesCase/Value',true);
     FGroupLocalVariables:=XMLConfig.GetValue(
       'CodeToolsOptions/GroupLocalVariables/Value',true);
+    FOverrideStringTypesWithFirstParamType:=XMLConfig.GetValue(
+      'CodeToolsOptions/OverrideStringTypesWithFirstParamType/Value',true);
     FClassHeaderComments:=XMLConfig.GetValue(
       'CodeToolsOptions/ClassHeaderComments/Value',true);
     FClassImplementationComments:=XMLConfig.GetValue(
@@ -465,9 +524,9 @@ begin
     FMethodInsertPolicy:=MethodInsertPolicyNameToPolicy(XMLConfig.GetValue(
       'CodeToolsOptions/MethodInsertPolicy/Value',
       MethodInsertPolicyNames[mipClassOrder]));
-    FEventMethodSection:=InsertClassSectionNameToSection(XMLConfig.GetValue(
-      'CodeToolsOptions/EventMethodSection/Value',
-      InsertClassSectionNames[DefaultEventMethodSection]), DefaultEventMethodSection);
+    FMethodDefaultSection:=InsertClassSectionNameToSection(XMLConfig.GetValue(
+      'CodeToolsOptions/MethodDefaultSection/Value',
+      InsertClassSectionNames[DefaultMethodDefaultSection]));
     FKeyWordPolicy:=WordPolicyNameToPolicy(XMLConfig.GetValue(
       'CodeToolsOptions/KeyWordPolicy/Value',
       WordPolicyNames[wpLowerCase]));
@@ -513,6 +572,13 @@ begin
       'CodeToolsOptions/IdentifierCompletion/AutoStartAfterPoint',true);
     FIdentComplAutoUseSingleIdent:=XMLConfig.GetValue(
       'CodeToolsOptions/IdentifierCompletion/AutoUseSingleIdent',true);
+    FIdentComplUseContainsFilter:=XMLConfig.GetValue(
+      'CodeToolsOptions/IdentifierCompletion/UseContainsFilter',true);
+    FIdentComplIncludeWords:=IdentComplIncludeWordsNamesToEnum(XMLConfig.GetValue(
+      'CodeToolsOptions/IdentifierCompletion/IncludeWords',
+      IdentComplIncludeWordsNames[icwIncludeFromAllUnits]));
+    FIdentComplShowIcons:=XMLConfig.GetValue(
+      'CodeToolsOptions/IdentifierCompletion/ShowIcons',false);
     FIdentComplAddParameterBrackets:=XMLConfig.GetValue(
       'CodeToolsOptions/IdentifierCompletion/AutoAddParameterBrackets',true);
     FIdentComplReplaceIdentifier:=XMLConfig.GetValue(
@@ -533,7 +599,7 @@ begin
       XMLConfig.GetValue('CodeToolsOptions/Indentation/OnPaste/Enabled',true);
     fIndentationFilename :=
       XMLConfig.GetValue('CodeToolsOptions/Indentation/FileName'
-      , TrimFilename(GetPrimaryConfigPath + PathDelim +DefaultIndentationFilename));
+      , TrimFilename(AppendPathDelim(GetPrimaryConfigPath)+DefaultIndentationFilename));
     FIndentContextSensitive :=
       XMLConfig.GetValue('CodeToolsOptions/Indentation/ContextSensitive',true);
 
@@ -570,13 +636,18 @@ begin
     // General
     XMLConfig.SetDeleteValue('CodeToolsOptions/AdjustTopLineDueToComment/Value',
                              FAdjustTopLineDueToComment,true);
-    XMLConfig.SetDeleteValue('CodeToolsOptions/JumpCentered/Value',
-                             FJumpCentered,true);
+    XMLConfig.SetDeleteValue('CodeToolsOptions/JumpSingleLinePos/Value',
+                             FJumpSingleLinePos,50);
+    XMLConfig.SetDeleteValue('CodeToolsOptions/JumpCodeBlockPos/Value',
+                             FJumpCodeBlockPos,0);
+    XMLConfig.SetDeleteValue('CodeToolsOptions/AvoidUnnecessaryJumps/Value',
+                             FAvoidUnnecessaryJumps,True);
     XMLConfig.SetDeleteValue('CodeToolsOptions/CursorBeyondEOL/Value',
                              FCursorBeyondEOL,true);
     XMLConfig.SetDeleteValue('CodeToolsOptions/SkipForwardDeclarations/Value',
                              FSkipForwardDeclarations,false);
-
+    XMLConfig.SetDeleteValue('CodeToolsOptions/JumpToMethodBody/Value',
+                             FJumpToMethodBody,false);
     // Define templates
     SaveGlobalDefineTemplates;
     XMLConfig.SetDeleteValue('CodeToolsOptions/DefinesEditMainSplitter/Top',
@@ -620,14 +691,17 @@ begin
       'CodeToolsOptions/GroupLocalVariables/Value',FGroupLocalVariables,
       true);
     XMLConfig.SetDeleteValue(
+      'CodeToolsOptions/OverrideStringTypesWithFirstParamType/Value',FOverrideStringTypesWithFirstParamType,
+      true);
+    XMLConfig.SetDeleteValue(
       'CodeToolsOptions/ClassImplementationComments/Value',
       FClassImplementationComments,true);
     XMLConfig.SetDeleteValue('CodeToolsOptions/MethodInsertPolicy/Value',
       MethodInsertPolicyNames[FMethodInsertPolicy],
       MethodInsertPolicyNames[mipClassOrder]);
-    XMLConfig.SetDeleteValue('CodeToolsOptions/EventMethodSection/Value',
-      InsertClassSectionNames[FEventMethodSection],
-      InsertClassSectionNames[DefaultEventMethodSection]);
+    XMLConfig.SetDeleteValue('CodeToolsOptions/MethodDefaultSection/Value',
+      InsertClassSectionNames[FMethodDefaultSection],
+      InsertClassSectionNames[DefaultMethodDefaultSection]);
     XMLConfig.SetDeleteValue('CodeToolsOptions/KeyWordPolicy/Value',
       WordPolicyNames[FKeyWordPolicy],
       WordPolicyNames[wpLowerCase]);
@@ -673,6 +747,13 @@ begin
       FIdentComplAutoStartAfterPoint,true);
     XMLConfig.SetDeleteValue('CodeToolsOptions/IdentifierCompletion/AutoUseSingleIdent',
       FIdentComplAutoUseSingleIdent,true);
+    XMLConfig.SetDeleteValue('CodeToolsOptions/IdentifierCompletion/UseContainsFilter',
+      FIdentComplUseContainsFilter,true);
+    XMLConfig.SetDeleteValue('CodeToolsOptions/IdentifierCompletion/IncludeWords',
+      IdentComplIncludeWordsNames[FIdentComplIncludeWords],
+      IdentComplIncludeWordsNames[icwIncludeFromAllUnits]);
+    XMLConfig.SetDeleteValue('CodeToolsOptions/IdentifierCompletion/ShowIcons',
+      FIdentComplShowIcons,false);
     XMLConfig.SetDeleteValue('CodeToolsOptions/IdentifierCompletion/AutoAddParameterBrackets',
       FIdentComplAddParameterBrackets,true);
     XMLConfig.SetDeleteValue('CodeToolsOptions/IdentifierCompletion/ReplaceIdentifier',
@@ -725,7 +806,7 @@ procedure TCodeToolsOptions.SetLazarusDefaultFilename;
 var
   ConfFileName: string;
 begin
-  ConfFileName:=SetDirSeparators(GetPrimaryConfigPath+'/'+DefaultCodeToolsOptsFile);
+  ConfFileName:=AppendPathDelim(GetPrimaryConfigPath)+DefaultCodeToolsOptsFile;
   CopySecondaryConfigFile(DefaultCodeToolsOptsFile);
   if (not FileExistsCached(ConfFileName)) then begin
     debugln('Looking for code tools config file:  "' + ConfFileName + '"');
@@ -766,11 +847,14 @@ begin
   begin
     // General
     FAdjustTopLineDueToComment:=CodeToolsOpts.FAdjustTopLineDueToComment;
-    FJumpCentered:=CodeToolsOpts.FJumpCentered;
+    FJumpSingleLinePos:=CodeToolsOpts.FJumpSingleLinePos;
+    FJumpCodeBlockPos:=CodeToolsOpts.FJumpCodeBlockPos;
+    FAvoidUnnecessaryJumps:=CodeToolsOpts.FAvoidUnnecessaryJumps;
     FCursorBeyondEOL:=CodeToolsOpts.FCursorBeyondEOL;
     FAddInheritedCodeToOverrideMethod:=CodeToolsOpts.AddInheritedCodeToOverrideMethod;
     FCompleteProperties:=CodeToolsOpts.CompleteProperties;
     FSkipForwardDeclarations:=CodeToolsOpts.FSkipForwardDeclarations;
+    FJumpToMethodBody:=CodeToolsOpts.FJumpToMethodBody;
 
     // define templates
     ClearGlobalDefineTemplates;
@@ -792,10 +876,11 @@ begin
     FUpdateMultiProcSignatures:=CodeToolsOpts.UpdateMultiProcSignatures;
     FUpdateOtherProcSignaturesCase:=CodeToolsOpts.UpdateOtherProcSignaturesCase;
     FGroupLocalVariables:=CodeToolsOpts.GroupLocalVariables;
+    FOverrideStringTypesWithFirstParamType:=CodeToolsOpts.OverrideStringTypesWithFirstParamType;
     FClassHeaderComments:=CodeToolsOpts.ClassHeaderComments;
     FClassImplementationComments:=CodeToolsOpts.ClassImplementationComments;
     FMethodInsertPolicy:=CodeToolsOpts.FMethodInsertPolicy;
-    FEventMethodSection:=CodeToolsOpts.FEventMethodSection;
+    FMethodDefaultSection:=CodeToolsOpts.FMethodDefaultSection;
     FKeyWordPolicy:=CodeToolsOpts.FKeyWordPolicy;
     FIdentifierPolicy:=CodeToolsOpts.FIdentifierPolicy;
     FDoNotSplitLineInFront:=CodeToolsOpts.FDoNotSplitLineInFront;
@@ -810,13 +895,15 @@ begin
     FSetPropertyVariableIsPrefix:=CodeToolsOpts.FSetPropertyVariableIsPrefix;
     FSetPropertyVariableUseConst:=CodeToolsOpts.FSetPropertyVariableUseConst;
     FUsesInsertPolicy:=CodeToolsOpts.FUsesInsertPolicy;
-    
+
     // identifier completion
     FIdentComplAddSemicolon:=CodeToolsOpts.FIdentComplAddSemicolon;
     FIdentComplAddAssignOperator:=CodeToolsOpts.FIdentComplAddAssignOperator;
     FIdentComplAddDo:=CodeToolsOpts.FIdentComplAddDo;
     FIdentComplAutoStartAfterPoint:=CodeToolsOpts.FIdentComplAutoStartAfterPoint;
     FIdentComplAutoUseSingleIdent:=CodeToolsOpts.FIdentComplAutoUseSingleIdent;
+    FIdentComplUseContainsFilter:=CodeToolsOpts.FIdentComplUseContainsFilter;
+    FIdentComplShowIcons:=CodeToolsOpts.FIdentComplShowIcons;
     FIdentComplAddParameterBrackets:=CodeToolsOpts.FIdentComplAddParameterBrackets;
     FIdentComplReplaceIdentifier:=CodeToolsOpts.FIdentComplReplaceIdentifier;
     FIdentComplJumpToError:=CodeToolsOpts.FIdentComplJumpToError;
@@ -833,7 +920,9 @@ procedure TCodeToolsOptions.Clear;
 begin
   // General
   FAdjustTopLineDueToComment:=true;
-  FJumpCentered:=true;
+  FJumpSingleLinePos:=50;
+  FJumpCodeBlockPos:=0;
+  FAvoidUnnecessaryJumps:=true;
   FCursorBeyondEOL:=true;
   
   // define templates
@@ -854,10 +943,11 @@ begin
   FUpdateMultiProcSignatures:=true;
   FUpdateOtherProcSignaturesCase:=true;
   FGroupLocalVariables:=true;
+  FOverrideStringTypesWithFirstParamType:=true;
   FClassHeaderComments:=true;
   FClassImplementationComments:=true;
   FMethodInsertPolicy:=mipClassOrder;
-  FEventMethodSection:=DefaultEventMethodSection;
+  FMethodDefaultSection:=DefaultMethodDefaultSection;
   FKeyWordPolicy:=wpLowerCase;
   FIdentifierPolicy:=wpNone;
   FDoNotSplitLineInFront:=DefaultDoNotSplitLineInFront;
@@ -872,13 +962,15 @@ begin
   FSetPropertyVariableIsPrefix:=false;
   FSetPropertyVariableUseConst:=false;
   FUsesInsertPolicy:=DefaultUsesInsertPolicy;
-  
+
   // identifier completion
   FIdentComplAddSemicolon:=true;
   FIdentComplAddAssignOperator:=true;
   FIdentComplAddDo:=true;
   FIdentComplAutoStartAfterPoint:=true;
   FIdentComplAutoUseSingleIdent:=true;
+  FIdentComplUseContainsFilter:=true;
+  FIdentComplShowIcons:=false;
   FIdentComplAddParameterBrackets:=true;
   FIdentComplReplaceIdentifier:=true;
   FIdentComplJumpToError:=true;
@@ -890,7 +982,7 @@ begin
   FIndentOnLineBreak:=true;
   FIndentOnPaste:=true;
   fIndentationFilename:=
-    TrimFilename(GetPrimaryConfigPath+PathDelim+DefaultIndentationFilename);
+    TrimFilename(AppendPathDelim(GetPrimaryConfigPath)+DefaultIndentationFilename);
   FIndentContextSensitive:=true;
 
   // code completion templates
@@ -911,11 +1003,14 @@ begin
   Result:=
     // General
         (FAdjustTopLineDueToComment=CodeToolsOpts.FAdjustTopLineDueToComment)
-    and (FJumpCentered=CodeToolsOpts.FJumpCentered)
+    and (FJumpSingleLinePos=CodeToolsOpts.FJumpSingleLinePos)
+    and (FJumpCodeBlockPos=CodeToolsOpts.FJumpCodeBlockPos)
+    and (FAvoidUnnecessaryJumps=CodeToolsOpts.FAvoidUnnecessaryJumps)
     and (FCursorBeyondEOL=CodeToolsOpts.FCursorBeyondEOL)
     and (AddInheritedCodeToOverrideMethod=CodeToolsOpts.AddInheritedCodeToOverrideMethod)
     and (CompleteProperties=CodeToolsOpts.CompleteProperties)
     and (FSkipForwardDeclarations=CodeToolsOpts.FSkipForwardDeclarations)
+    and (FJumpToMethodBody=CodeToolsOpts.FJumpToMethodBody)
     
     // define templates
     and (FGlobalDefineTemplates.IsEqual(
@@ -934,10 +1029,11 @@ begin
     and (FUpdateMultiProcSignatures=CodeToolsOpts.UpdateMultiProcSignatures)
     and (FUpdateOtherProcSignaturesCase=CodeToolsOpts.UpdateOtherProcSignaturesCase)
     and (FGroupLocalVariables=CodeToolsOpts.GroupLocalVariables)
+    and (FOverrideStringTypesWithFirstParamType=CodeToolsOpts.OverrideStringTypesWithFirstParamType)
     and (FClassHeaderComments=CodeToolsOpts.ClassHeaderComments)
     and (FClassImplementationComments=CodeToolsOpts.ClassImplementationComments)
     and (FMethodInsertPolicy=CodeToolsOpts.FMethodInsertPolicy)
-    and (FEventMethodSection=CodeToolsOpts.FEventMethodSection)
+    and (FMethodDefaultSection=CodeToolsOpts.FMethodDefaultSection)
     and (FKeyWordPolicy=CodeToolsOpts.FKeyWordPolicy)
     and (FIdentifierPolicy=CodeToolsOpts.FIdentifierPolicy)
     and (FDoNotSplitLineInFront=CodeToolsOpts.FDoNotSplitLineInFront)
@@ -959,6 +1055,8 @@ begin
     and (FIdentComplAddDo=CodeToolsOpts.FIdentComplAddDo)
     and (FIdentComplAutoStartAfterPoint=CodeToolsOpts.FIdentComplAutoStartAfterPoint)
     and (FIdentComplAutoUseSingleIdent=CodeToolsOpts.FIdentComplAutoUseSingleIdent)
+    and (FIdentComplUseContainsFilter=CodeToolsOpts.FIdentComplUseContainsFilter)
+    and (FIdentComplShowIcons=CodeToolsOpts.FIdentComplShowIcons)
     and (FIdentComplAddParameterBrackets=CodeToolsOpts.FIdentComplAddParameterBrackets)
     and (FIdentComplReplaceIdentifier=CodeToolsOpts.FIdentComplReplaceIdentifier)
     and (FIdentComplJumpToError=CodeToolsOpts.FIdentComplJumpToError)
@@ -1021,7 +1119,8 @@ begin
   begin
     // General - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     Boss.AdjustTopLineDueToComment:=AdjustTopLineDueToComment;
-    Boss.JumpCentered:=JumpCentered;
+    Boss.JumpSingleLinePos:=JumpSingleLinePos;
+    Boss.JumpCodeBlockPos:=JumpCodeBlockPos;
     Boss.CursorBeyondEOL:=CursorBeyondEOL;
     Boss.AddInheritedCodeToOverrideMethod:=AddInheritedCodeToOverrideMethod;
     Boss.CompleteProperties:=CompleteProperties;
@@ -1056,10 +1155,11 @@ begin
     Beauty.UpdateMultiProcSignatures:=UpdateMultiProcSignatures;
     Beauty.UpdateOtherProcSignaturesCase:=UpdateOtherProcSignaturesCase;
     Beauty.GroupLocalVariables:=GroupLocalVariables;
+    Beauty.OverrideStringTypesWithFirstParamType:=OverrideStringTypesWithFirstParamType;
     Beauty.ClassHeaderComments:=ClassHeaderComments;
     Beauty.ClassImplementationComments:=ClassImplementationComments;
     Beauty.MethodInsertPolicy:=MethodInsertPolicy;
-    Beauty.EventMethodSection:=EventMethodSection;
+    Beauty.MethodDefaultSection:=MethodDefaultSection;
     Beauty.KeyWordPolicy:=KeyWordPolicy;
     Beauty.IdentifierPolicy:=IdentifierPolicy;
     Beauty.SetupWordPolicyExceptions(WordPolicyExceptions);

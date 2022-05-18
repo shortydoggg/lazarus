@@ -17,8 +17,13 @@ unit IDEWindowIntf;
 interface
 
 uses
-  Math, Classes, SysUtils, LCLProc, LazConfigStorage, LazUTF8, Forms, Controls,
-  LCLIntf, IDEOptionsIntf;
+  Math, Classes, SysUtils,
+  // LCL
+  LCLProc, LCLIntf, Forms, Controls, LCLType,
+  // LazUtils
+  LazConfigStorage, LazUTF8, LazMethodList,
+  // IdeIntf
+  IDEOptionsIntf;
 
 const
   IDEWndCfgFileVersion = 2;
@@ -74,7 +79,7 @@ type
     procedure Assign(Source: TIDEDialogLayoutList);
     procedure ApplyLayout(ADialog: TControl;
                           DefaultWidth, DefaultHeight: integer;
-                          UseAsMin: boolean = true);
+                          UseAsMin: boolean = false);
     procedure ApplyLayout(ADialog: TControl);
     procedure SaveLayout(ADialog: TControl);
     procedure Clear;
@@ -110,26 +115,8 @@ type
     and similar things for an IDE window or dialog, like the source editor,
     the object inspector, the main bar or the message view.
   }
-  TIDEWindowPlacement = (
-    iwpUseWindowManagerSetting, // leave window position, where window manager
-                                //   creates the window
-    iwpDefault,                 // set window to the default position
-    iwpRestoreWindowGeometry,   // save window geometry at end and restore it
-                                //   at start
-    iwpCustomPosition,          // set window to custom position
-    iwpRestoreWindowSize        // save window size at end and restore it
-                                //   at start
-    );
-  TIDEWindowPlacements = set of TIDEWindowPlacement;
   TIDEWindowState = (iwsNormal, iwsMaximized, iwsMinimized, iwsHidden);
   TIDEWindowStates = set of TIDEWindowState;
-
-  TSimpleWindowLayoutDividerPosPlacement = (
-    iwpdDefault,      // set column/row/splitter to the default size
-    iwpdCustomSize,   // set column/row/splitter to the custom size
-    iwpdRestore,      // save column/row/splitter size on exit, and restore
-    iwpdUseWindowSetting
-  );
 
   TSimpleWindowLayoutDividerPosSizeGetter =
     function(AForm: TCustomForm; AColId: Integer; var ASize: Integer): Boolean;
@@ -145,7 +132,6 @@ type
     FDisplayName: PString;
     FId: Integer;
     FIdString: String;
-    FPlacement: TSimpleWindowLayoutDividerPosPlacement;
     FSize: integer;
     function GetDisplayName: String;
   protected
@@ -161,7 +147,6 @@ type
     property IdString: String read FIdString;
     property Id: Integer read FId;
     property DisplayName: String read GetDisplayName;
-    property Placement: TSimpleWindowLayoutDividerPosPlacement read FPlacement write FPlacement;
     property Size: integer read FSize write FSize;
     property DefaultSize: integer read FDefaultSize write FDefaultSize;
   end;
@@ -203,7 +188,6 @@ type
     FApplied: boolean;
     FFormCaption: string;
     FVisible: boolean;
-    FWindowPlacement: TIDEWindowPlacement;
     FLeft: integer;
     FTop: integer;
     FWidth: integer;
@@ -215,7 +199,6 @@ type
     FWindowState: TIDEWindowState;
     FForm: TCustomForm;
     FFormID: string;
-    FDefaultWindowPlacement: TIDEWindowPlacement;
     FDividers: TSimpleWindowLayoutDividerPosList;
     procedure SetForm(const AForm: TCustomForm);
     function GetFormCaption: string;
@@ -228,9 +211,9 @@ type
     procedure Clear;
     procedure GetCurrentPosition;
     function  Apply(const aForce: Boolean = False): Boolean;
-    procedure ApplyDivider(AForce: Boolean = False);
+    procedure ApplyDivider;
     procedure Assign(Layout: TSimpleWindowLayout); reintroduce;
-    procedure ReadCurrentDividers(AForce: Boolean = False);
+    procedure ReadCurrentDividers;
     procedure ReadCurrentCoordinates;
     procedure ReadCurrentState;
     procedure LoadFromConfig(Config: TConfigStorage; const Path: string; FileVersion: integer);
@@ -244,9 +227,6 @@ type
     property FormID: string read FFormID write FFormID;
     function FormBaseID(out SubIndex: Integer): String; // split FormID into name+number
     property FormCaption: string read GetFormCaption;
-    property WindowPlacement: TIDEWindowPlacement read fWindowPlacement write FWindowPlacement;
-    property DefaultWindowPlacement: TIDEWindowPlacement
-      read FDefaultWindowPlacement write FDefaultWindowPlacement;
     property Left: integer read FLeft write FLeft;
     property Top: integer read FTop write FTop;
     property Width: integer read FWidth write FWidth;
@@ -285,6 +265,7 @@ type
                            AMoveToVisbleMode: TLayoutMoveToVisbleMode = vmOnlyMoveOffScreenToVisible);
     procedure StoreWindowPositions;
     procedure SetDefaultPosition(const AForm: TCustomForm);
+    procedure MoveToTop(const AFormID: string);
     procedure CopyItemsFrom(SrcList: TSimpleWindowLayoutList);
     function Add(ALayout: TSimpleWindowLayout): integer;
     function CreateWindowLayout(const TheFormID: string): TSimpleWindowLayout;
@@ -303,18 +284,10 @@ type
   end;
 
 const
-  IDEWindowPlacementNames: array[TIDEWindowPlacement] of string = (
-      'UseWindowManagerSetting',
-      'Default',
-      'RestoreWindowGeometry',
-      'CustomPosition',
-      'RestoreWindowSize'
-    );
   IDEWindowStateNames: array[TIDEWindowState] of string = (
       'Normal', 'Maximized', 'Minimized', 'Hidden'
     );
 
-function StrToIDEWindowPlacement(const s: string): TIDEWindowPlacement;
 function StrToIDEWindowState(const s: string): TIDEWindowState;
 
 type
@@ -410,7 +383,6 @@ type
   TIDEWindowCreatorList = class
   private
     fItems: TFPList; // list of TIDEWindowCreator
-    FScreenMaxSizeForDefaults: TPoint;
     FSimpleLayoutStorage: TSimpleWindowLayoutList;
     FOnLayoutChanged: TMethodList;
     procedure LayoutChanged;
@@ -451,8 +423,6 @@ type
     procedure AddLayoutChangedHandler(const aEvent: TNotifyEvent);
     procedure RemoveLayoutChangedHandler(const aEvent: TNotifyEvent);
 
-    property ScreenMaxSizeForDefaults: TPoint read FScreenMaxSizeForDefaults
-                                              write FScreenMaxSizeForDefaults; // on big screens: do not span the whole screen
     function GetScreenrectForDefaults: TRect;
   end;
 
@@ -523,13 +493,6 @@ begin
     AEditorDlg.PopupParent:=LazarusIDE.GetMainBar// sets PopupMode:=pmExplicit automatically
   else
     AEditorDlg.PopupMode:=pmNone;
-end;
-
-function StrToIDEWindowPlacement(const s: string): TIDEWindowPlacement;
-begin
-  for Result:=Low(TIDEWindowPlacement) to High(TIDEWindowPlacement) do
-    if UTF8CompareText(s,IDEWindowPlacementNames[Result])=0 then exit;
-  Result:=iwpDefault;
 end;
 
 function StrToIDEWindowState(const s: string): TIDEWindowState;
@@ -883,44 +846,30 @@ begin
   FDisplayName := ADividerPos.FDisplayName;
   FId          := ADividerPos.FId;
   FIdString    := ADividerPos.FIdString;
-  FPlacement   := ADividerPos.FPlacement;
   FSize        := ADividerPos.FSize;
 end;
 
 procedure TSimpleWindowLayoutDividerPos.LoadFromConfig(Config: TConfigStorage;
   const Path: string);
-var
-  s: String;
 begin
   Clear;
   FIdString := Config.GetValue(Path+'ID', '');
   FSize := Config.GetValue(Path+'Size', -1);
-  s := Config.GetValue(Path+'Placement', 'iwpdUseWindowSetting');
-  try
-    ReadStr(s, FPlacement);
-  except
-    FPlacement := iwpdUseWindowSetting;
-  end;
 end;
 
 function TSimpleWindowLayoutDividerPos.SaveToConfig(Config: TConfigStorage;
   const Path: string): Boolean;
-var
-  s: String;
 begin
-  Result := (FSize <> -1) or (FPlacement <> iwpdUseWindowSetting);
+  Result := (FSize <> -1);
   if not Result then
     exit;
-  WriteStr(s, FPlacement);
   Config.SetDeleteValue(Path+'ID', FIdString, '');
   Config.SetDeleteValue(Path+'Size', FSize, -1);
-  Config.SetDeleteValue(Path+'Placement', s, 'iwpdUseWindowSetting');
 end;
 
 procedure TSimpleWindowLayoutDividerPos.Clear;
 begin
   FSize := FDefaultSize;
-  FPlacement := iwpdUseWindowSetting;
 end;
 
 { TIDEDialogLayout }
@@ -1040,8 +989,8 @@ begin
   ALayout:=Find(ADialog,true);
   //debugln(['TIDEDialogLayoutList.ApplyLayout ',ALayout.Name,' ',ALayout.SizeValid,' ',ALayout.Width,',',ALayout.Height]);
   if ALayout.SizeValid then begin
-    NewWidth:=ALayout.Width;
-    NewHeight:=ALayout.Height;
+    NewWidth:=ADialog.Scale96ToForm(ALayout.Width);
+    NewHeight:=ADialog.Scale96ToForm(ALayout.Height);
   end else begin
     NewWidth:=DefaultWidth;
     NewHeight:=DefaultHeight;
@@ -1064,8 +1013,8 @@ var
 begin
   if (ADialog=nil) or (Self=nil) then exit;
   ALayout:=Find(ADialog,true);
-  ALayout.Width:=ADialog.Width;
-  ALayout.Height:=ADialog.Height;
+  ALayout.Width:=ADialog.ScaleFormTo96(ADialog.Width);
+  ALayout.Height:=ADialog.ScaleFormTo96(ADialog.Height);
 end;
 
 procedure TIDEDialogLayoutList.Clear;
@@ -1186,7 +1135,6 @@ begin
   inherited Create(nil);
   FDividers := TSimpleWindowLayoutDividerPosList.Create;
   FormID := AFormID;
-  fDefaultWindowPlacement := iwpRestoreWindowGeometry;
   Clear;
   Creator := IDEWindowCreators.FindWithName(AFormID);
   if Creator <> nil then
@@ -1204,8 +1152,8 @@ procedure TSimpleWindowLayout.LoadFromConfig(Config: TConfigStorage;
   const Path: string; FileVersion: integer);
 var
   P: string;
-  DefaultValue: TIDEWindowPlacement;
 begin
+  if FileVersion=0 then ;
   // set all values to default
   Clear;
   // read settings
@@ -1214,13 +1162,6 @@ begin
   if P='' then exit;
   P:=Path+P+'/';
   FFormCaption := Config.GetValue(P+'Caption/Value', fFormID);
-  // placement
-  if FileVersion=1 then
-    DefaultValue:=iwpRestoreWindowSize
-  else
-    DefaultValue:=iwpRestoreWindowGeometry;
-  fWindowPlacement:=StrToIDEWindowPlacement(Config.GetValue(
-    P+'WindowPlacement/Value',IDEWindowPlacementNames[DefaultValue]));
   // custom position
   Left := Config.GetValue(P+'CustomPosition/Left', Left);
   Top := Config.GetValue(P+'CustomPosition/Top', Top);
@@ -1257,9 +1198,7 @@ begin
   P:=Path+P+'/';
   Config.SetDeleteValue(P+'Caption/Value',FFormCaption,'');
   // placement
-  Config.SetDeleteValue(P+'WindowPlacement/Value',
-    IDEWindowPlacementNames[fWindowPlacement],
-    IDEWindowPlacementNames[iwpRestoreWindowGeometry]);
+  Config.DeleteValue(P+'WindowPlacement/Value');
   // custom position
   Config.SetDeleteValue(P+'CustomPosition/Left', Left, 0);
   Config.SetDeleteValue(P+'CustomPosition/Top', Top, 0);
@@ -1410,7 +1349,6 @@ begin
   //debugln(['TSimpleWindowLayout.Clear ',FormID]);
   fApplied := False;
   fVisible := False;
-  fWindowPlacement:=fDefaultWindowPlacement;
   fLeft:=0;
   fTop:=0;
   fWidth:=0;
@@ -1466,20 +1404,17 @@ begin
   Assert(FFormID = Layout.FFormID);
   //IMPORTANT: do not assign FForm and FFormID!
   FVisible:=Layout.FVisible;
-  FWindowPlacement:=Layout.FWindowPlacement;
   FLeft:=Layout.FLeft;
   FTop:=Layout.FTop;
   FWidth:=Layout.FWidth;
   FHeight:=Layout.FHeight;
   FWindowState:=Layout.FWindowState;
-  FDefaultWindowPlacement:=Layout.FDefaultWindowPlacement;
   FDividers.Assign(Layout.FDividers);
 end;
 
-procedure TSimpleWindowLayout.ReadCurrentDividers(AForce: Boolean = False);
+procedure TSimpleWindowLayout.ReadCurrentDividers;
 var
   i, j: Integer;
-  f: Boolean;
   Creator: TIDEWindowCreator;
   xForm: TCustomForm;
 begin
@@ -1489,30 +1424,19 @@ begin
   if xForm = nil then exit;
   for i := 0 to FDividers.Count - 1 do begin
     if FDividers[i].FId < 0 then continue;
-    f := AForce;
-    case FDividers[i].Placement of
-      iwpdRestore:
-        f := true;
-      iwpdUseWindowSetting:
-        f := WindowPlacement in [iwpRestoreWindowGeometry, iwpRestoreWindowSize];
-    end;
-    if f then begin
-      j:=-1;
-      if Creator.OnGetDividerSize(xForm, FDividers[i].Id, j) then
-        FDividers[i].Size := j
-      else
-        FDividers[i].Size := -1; // Default / Not Changed / Unavailable
-    end;
+
+    j:=-1;
+    if Creator.OnGetDividerSize(xForm, FDividers[i].Id, j) then
+      FDividers[i].Size := j
+    else
+      FDividers[i].Size := -1; // Default / Not Changed / Unavailable
   end;
 end;
 
 procedure TSimpleWindowLayout.GetCurrentPosition;
 begin
   //debugln('TSimpleWindowLayout.GetCurrentPosition ',DbgSName(Self),' ',FormID,' ',IDEWindowPlacementNames[WindowPlacement]);
-  case WindowPlacement of
-  iwpRestoreWindowGeometry, iwpRestoreWindowSize:
-    ReadCurrentCoordinates;
-  end;
+  ReadCurrentCoordinates;
   ReadCurrentDividers;
   ReadCurrentState;
   //debugln('TSimpleWindowLayout.GetCurrentPosition ',DbgSName(Self),' ',FormID,' Width=',dbgs(Width));
@@ -1532,44 +1456,29 @@ begin
           ' ',Left,',',Top,',',Width,',',Height]);
   {$ENDIF}
 
-  case WindowPlacement of
-  iwpCustomPosition,iwpRestoreWindowGeometry:
-    begin
-      //DebugLn(['TMainIDE.OnApplyWindowLayout ',IDEWindowStateNames[WindowState]]);
-      case WindowState of
-        iwsMinimized: xForm.WindowState:=wsMinimized;
-        iwsMaximized: xForm.WindowState:=wsMaximized;
-      end;
-      Result := ValidateAndSetCoordinates(aForce);     // Adjust bounds to screen area and apply them.
-      if WindowState in [iwsMinimized, iwsMaximized] then
-        Result := True;
-    end;
-  iwpUseWindowManagerSetting:
-    Result := True;
+  //DebugLn(['TMainIDE.OnApplyWindowLayout ',IDEWindowStateNames[WindowState]]);
+  case WindowState of
+    iwsMinimized: xForm.WindowState:=wsMinimized;
+    iwsMaximized: xForm.WindowState:=wsMaximized;
   end;
+  Result := ValidateAndSetCoordinates(aForce);     // Adjust bounds to screen area and apply them.
+  if WindowState in [iwsMinimized, iwsMaximized] then
+    Result := True;
 
-  ApplyDivider(aForce);
+  ApplyDivider;
 end;
 
-procedure TSimpleWindowLayout.ApplyDivider(AForce: Boolean = False);
+procedure TSimpleWindowLayout.ApplyDivider;
 var
   i: Integer;
-  f: Boolean;
   Creator: TIDEWindowCreator;
 begin
   Creator:=IDEWindowCreators.FindWithName(FormID);
   if (Creator <> nil) and (Creator.OnSetDividerSize <> nil) then begin
     for i := 0 to FDividers.Count - 1 do begin
       if (FDividers[i].FId < 0) or (FDividers[i].Size < 0) then continue;
-      f := AForce;
-      case FDividers[i].Placement of
-        iwpdRestore, iwpdCustomSize:
-          f := true;
-        iwpdUseWindowSetting:
-          f := WindowPlacement in [iwpRestoreWindowGeometry, iwpRestoreWindowSize];
-      end;
-      if f then
-        Creator.OnSetDividerSize(Form, FDividers[i].Id, FDividers[i].Size);
+
+      Creator.OnSetDividerSize(Form, FDividers[i].Id, FDividers[i].Size);
     end;
   end;
 end;
@@ -1643,7 +1552,7 @@ begin
   while i > 0 do begin
     ID := Config.GetValue(Path+'Desktop/FormIdList/a'+IntToStr(i), '');
     //debugln(['TSimpleWindowLayoutList.LoadFromConfig ',i,' ',ID]);
-    if (ID <> '') and IsValidIdent(ID) then
+    if IsValidIdent(ID) then
     begin
       xLayoutIndex := IndexOf(ID);
       if (xLayoutIndex = -1) then
@@ -1658,6 +1567,15 @@ begin
 
   for i:=0 to Count-1 do
     Items[i].LoadFromConfig(Config,Path,FileVersion);
+end;
+
+procedure TSimpleWindowLayoutList.MoveToTop(const AFormID: string);
+var
+  I: Integer;
+begin
+  I := IndexOf(AFormID);
+  if I>=0 then
+    fItems.Move(I, fItems.Count-1);
 end;
 
 procedure TSimpleWindowLayoutList.SaveToConfig(Config: TConfigStorage; const Path: string);
@@ -2019,8 +1937,7 @@ begin
     raise Exception.Create('TIDEWindowDefaultLayout.CheckBoundValue: expected number, but '+s+' found');
 end;
 
-procedure TIDEWindowCreator.GetDefaultBounds(AForm: TCustomForm; out
-  DefBounds: TRect);
+procedure TIDEWindowCreator.GetDefaultBounds(AForm: TCustomForm; out DefBounds: TRect);
 var
   aRight: LongInt;
   aBottom: LongInt;
@@ -2034,14 +1951,14 @@ begin
 
   // left
   if Left='' then
-    DefBounds.Left:=AForm.Left
+    DefBounds.Left:=ScreenR.Left+AForm.Left
   else if Left[length(Left)]='%' then
     DefBounds.Left:=ScreenR.Left+ScreenW*StrToIntDef(copy(Left,1,length(Left)-1),0) div 100
   else
     DefBounds.Left:=ScreenR.Left+StrToIntDef(Left,0);
   // top
   if Top='' then
-    DefBounds.Top:=AForm.Top
+    DefBounds.Top:=ScreenR.Top+AForm.Top
   else if Top[length(Top)]='%' then
     DefBounds.Top:=ScreenR.Top+ScreenH*StrToIntDef(copy(Top,1,length(Top)-1),0) div 100
   else
@@ -2146,8 +2063,7 @@ end;
 
 { TIDEWindowCreatorList }
 
-function TIDEWindowCreatorList.GetItems(Index: integer
-  ): TIDEWindowCreator;
+function TIDEWindowCreatorList.GetItems(Index: integer): TIDEWindowCreator;
 begin
   Result:=TIDEWindowCreator(fItems[Index]);
 end;
@@ -2162,7 +2078,6 @@ constructor TIDEWindowCreatorList.Create;
 begin
   fItems:=TFPList.Create;
   FSimpleLayoutStorage:=TSimpleWindowLayoutList.Create(True);
-  FScreenMaxSizeForDefaults:=Point(1200,900);
   FOnLayoutChanged:=TMethodList.Create;
 end;
 
@@ -2188,21 +2103,18 @@ begin
   Result:=fItems.Count;
 end;
 
-function TIDEWindowCreatorList.Add(aLayout: TIDEWindowCreator
-  ): integer;
+function TIDEWindowCreatorList.Add(aLayout: TIDEWindowCreator): integer;
 begin
   ErrorIfFormExists(aLayout.FormName);
   Result:=fItems.Add(aLayout);
 end;
 
-procedure TIDEWindowCreatorList.AddLayoutChangedHandler(
-  const aEvent: TNotifyEvent);
+procedure TIDEWindowCreatorList.AddLayoutChangedHandler(const aEvent: TNotifyEvent);
 begin
   FOnLayoutChanged.Add(TMethod(aEvent));
 end;
 
-function TIDEWindowCreatorList.Add(aFormName: string
-  ): TIDEWindowCreator;
+function TIDEWindowCreatorList.Add(aFormName: string): TIDEWindowCreator;
 begin
   ErrorIfFormExists(aFormName);
   Result:=TIDEWindowCreator.Create(aFormName);
@@ -2302,7 +2214,7 @@ procedure TIDEWindowCreatorList.ShowForm(AForm: TCustomForm; BringToFront: boole
 var
   Layout: TSimpleWindowLayout;
 begin
-  if (AForm.Name='') or (not IsValidIdent(AForm.Name)) then
+  if not IsValidIdent(AForm.Name) then
     raise Exception.Create('TIDEWindowCreatorList.ShowForm invalid form name '+AForm.Name);
 
   // auto create a layout storage for every shown form
@@ -2399,10 +2311,10 @@ begin
   if (Result.Right-Result.Left<10)
   or (Result.Bottom-Result.Top<10) then begin
     // screen not recognized
-    Result:=Rect(0,0,Max(Screen.Width,600),Max(Screen.Height,400));
+    Result:=Rect(0,0,
+      Max(Screen.Width,MulDiv(600, Screen.PixelsPerInch, 96)),
+      Max(Screen.Height,MulDiv(400, Screen.PixelsPerInch, 96)));
   end;
-  Result.Right:=Min(Result.Right,Result.Left+IDEWindowCreators.ScreenMaxSizeForDefaults.X);
-  Result.Bottom:=Min(Result.Bottom,Result.Top+IDEWindowCreators.ScreenMaxSizeForDefaults.Y);
 end;
 
 { TIDEDockMaster }

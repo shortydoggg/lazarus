@@ -1,23 +1,33 @@
+{
+ *****************************************************************************
+  This file is part of LazUtils.
+
+  See the file COPYING.modifiedLGPL.txt, included in this distribution,
+  for details about the license.
+ *****************************************************************************
+
+  Bug list :
+
+ - Characters parts may not be well translated, for example i with accent.
+ - Encoding is ok for ASCII but is mixed up for extended characters
+
+ to do :
+
+ - multiple font loading
+ - font face cache
+ - font style
+ - text rotation
+}
 unit EasyLazFreeType;
-
-{ bug list :
-
-- Characters parts may not be well translated, for example i with accent.
-- Encoding is ok for ASCII but is mixed up for extended characters
-
-to do :
-
-- multiple font loading
-- font face cache
-- font style
-- text rotation }
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, LazFreeType, TTTypes, TTRASTER, AvgLvlTree, fpimage, Types, lazutf8;
+  Classes, SysUtils, fpimage, Laz_AVL_Tree,
+  // LazUtils                     // Note: Types must be after TTTypes for PByte.
+  LazUTF8, LazFreeType, TTRASTER, TTTypes, Types;
 
 type
   TGlyphRenderQuality = (grqMonochrome, grqLowQuality, grqHighQuality);
@@ -139,9 +149,9 @@ type
     constructor Create; virtual; abstract;
     procedure Clear; virtual; abstract;
     procedure BeginUpdate; virtual; abstract;
-    procedure AddFolder(AFolder: string); virtual; abstract;
+    procedure AddFolder(AFolder: string; AIncludeSubdirs: Boolean = false); virtual; abstract;
     procedure RemoveFolder(AFolder: string); virtual; abstract;
-    function AddFile(AFilename: string): boolean; virtual; abstract;
+    function AddFile(AFilename: string): TCustomFontCollectionItem; virtual; abstract;
     function RemoveFile(AFilename: string): boolean; virtual; abstract;
     function AddStream(AStream: TStream; AOwned: boolean): boolean; virtual; abstract;
     procedure EndUpdate; virtual; abstract;
@@ -221,7 +231,7 @@ type
     FClearType: boolean;
     FNamesArray: array of string;
     FCollection: TCustomFreeTypeFontCollection;
-    function FindGlyphNode(Index: Integer): TAvgLvlTreeNode;
+    function FindGlyphNode(Index: Integer): TAvlTreeNode;
     function GetCharIndex(AUnicodeChar: integer): integer;
     function GetDPI: integer;
     function GetFamily: string;
@@ -257,7 +267,7 @@ type
     FFaceLoaded: boolean;
     FInstance: TT_Instance;
     FInstanceCreated : boolean;
-    FGlyphTable: TAvgLvlTree;
+    FGlyphTable: TAvlTree;
     FCharMap: TT_CharMap;
     FCharmapOk, FCharmapSymbol: boolean;
     FAscentValue, FDescentValue, FLineGapValue, FLargeLineGapValue, FCapHeight: single;
@@ -476,6 +486,19 @@ begin
     raise Exception.Create('FreeType cannot be initialized');
 end;
 
+function GlyphTableOnCompare(Item1, Item2: Pointer): Integer;
+var
+   G1: TFreeTypeGlyph absolute Item1;
+   G2: TFreeTypeGlyph absolute Item2;
+begin
+  if G1.Index > G2.Index then
+    Result := 1
+  else if G1.Index < G2.Index then
+    Result := -1
+  else
+    Result := 0;
+end;
+
 { TFreeTypeRenderableFont }
 
 procedure TFreeTypeRenderableFont.DefaultWordBreakHandler(var ABefore,
@@ -516,11 +539,9 @@ var
   end;
 
 begin
+  ARemains := '';
   if AText = '' then
-  begin
-    ARemains := '';
     exit;
-  end;
   totalWidth := 0;
   pstr := @AText[1];
   left := length(AText);
@@ -536,8 +557,8 @@ begin
       exit;
     end;
 
-    charlen := UTF8CharacterLength(pstr);
-    glyphCode := UTF8CharacterToUnicode(pstr, charlen);
+    charlen := UTF8CodepointSize(pstr);
+    glyphCode := UTF8CodepointToUnicode(pstr, charlen);
     inc(pstr,charlen);
 
     glyphWidth := CharWidthFromUnicode(glyphCode);
@@ -789,7 +810,7 @@ begin
     glyphBounds.Left := IncludeFullGrainMin( glyphBounds.Left, 3);
     glyphBounds.Right := IncludeFullGrainMax( glyphBounds.Right-1, 3) + 1;
   end;
-  if not IntersectRect(Rect,Rect,glyphBounds) then exit;
+  if not IntersectRect(Rect,Rect,glyphBounds) then exit(False);
 
   case quality of
     grqMonochrome: begin
@@ -829,7 +850,8 @@ end;
 
 destructor TFreeTypeGlyph.Destroy;
 begin
-  TT_Done_Glyph(FGlyphData);
+  if FreeTypeInitialized then
+    TT_Done_Glyph(FGlyphData);
   inherited Destroy;
 end;
 
@@ -912,7 +934,7 @@ begin
     if (a[i] = 'Italic') or (a[i] = 'Oblique') then result += [ftsItalic];
 end;
 
-function TFreeTypeFont.FindGlyphNode(Index: Integer): TAvgLvlTreeNode;
+function TFreeTypeFont.FindGlyphNode(Index: Integer): TAvlTreeNode;
 var DataValue: integer;
 begin
   Result:=FGlyphTable.Root;
@@ -969,8 +991,9 @@ begin
 end;
 
 function TFreeTypeFont.GetGlyph(Index: integer): TFreeTypeGlyph;
-var node: TAvgLvlTreeNode;
-    lGlyph: TFreeTypeGlyph;
+var
+  node: TAvlTreeNode;
+  lGlyph: TFreeTypeGlyph;
 begin
   if not CheckInstance then
   begin
@@ -1138,7 +1161,8 @@ procedure TFreeTypeFont.DiscardInstance;
 begin
   if FInstanceCreated then
   begin
-    TT_Done_Instance(FInstance);
+    if FreeTypeInitialized then
+      TT_Done_Instance(FInstance);
     FInstanceCreated := false;
     FGlyphTable.FreeAndClear;
   end;
@@ -1424,7 +1448,8 @@ begin
   FCharmapOk := false;
   FPointSize := 10;
   FDPI := 96;
-  FGlyphTable := TAvgLvlTree.Create;
+  FGlyphTable := TAvlTree.Create;
+  FGlyphTable.OnCompare := @GlyphTableOnCompare;
   FHinted := true;
   FWidthFactor := 1;
   FClearType := false;
@@ -1476,7 +1501,7 @@ begin
   left := length(AText);
   while left > 0 do
   begin
-    charcode := UTF8CharacterToUnicode(pstr, charlen);
+    charcode := UTF8CodepointToUnicode(pstr, charlen);
     inc(pstr,charlen);
     dec(left,charlen);
     g := Glyph[CharIndex[charcode]];
@@ -1561,7 +1586,7 @@ begin
   left := length(AText);
   while left > 0 do
   begin
-    charcode := UTF8CharacterToUnicode(pstr, charlen);
+    charcode := UTF8CodepointToUnicode(pstr, charlen);
     inc(pstr,charlen);
     dec(left,charlen);
     g := Glyph[CharIndex[charcode]];
@@ -1625,14 +1650,18 @@ var
   resultIndex,i: integer;
   w: single;
 begin
-  if AText = '' then exit;
+  if AText = '' then
+  begin
+    setlength(result, 0);
+    exit;
+  end;
   pstr := @AText[1];
   left := length(AText);
   setlength(result, UTF8Length(AText));
   resultIndex := 0;
   while left > 0 do
   begin
-    charcode := UTF8CharacterToUnicode(pstr, charlen);
+    charcode := UTF8CodepointToUnicode(pstr, charlen);
     inc(pstr,charlen);
     dec(left,charlen);
 
@@ -1742,7 +1771,7 @@ begin
         if left <= 0 then break;
       end;
     end;
-    charcode := UTF8CharacterToUnicode(pstr, charlen);
+    charcode := UTF8CodepointToUnicode(pstr, charlen);
     inc(pstr,charlen);
     dec(left,charlen);
     g := Glyph[CharIndex[charcode]];
@@ -1755,7 +1784,6 @@ begin
         w := Advance;
     end else
       w := 0;
-    for i := 1 to charlen do
     with result[resultIndex] do
     begin
       x := curX;
@@ -1763,8 +1791,8 @@ begin
       yTop := y+yTopRel;
       yBase := y;
       yBottom := y+yBottomRel;
-      inc(resultIndex);
     end;
+    inc(resultIndex);
     curX += w;
   end;
   with result[resultIndex] do
@@ -1810,9 +1838,11 @@ var i,j: integer;
   value,value2: string;
 
 begin
-  setlength(FNamesArray, maxNameIndex+1);
+  // setlength(FNamesArray, maxNameIndex+1);
+  // wp: Move this into the "if" to avoid ignoring font files after reading defective one.
   if CheckFace then
   begin
+    setlength(FNamesArray, maxNameIndex+1);
     for i := 0 to TT_Get_Name_Count(FFace)-1 do
     begin
       if TT_Get_Name_ID(FFace, i, nrPlatformID, nrEncodingID,

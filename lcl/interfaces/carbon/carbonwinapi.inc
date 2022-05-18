@@ -2095,6 +2095,7 @@ begin
         Result := Result + (Result div 2) + 1;
       end;
     SM_CYMENU: Result := 0;
+    SM_LCLHasFormAlphaBlend: Result := 1;
   else
     DebugLn('TCarbonWidgetSet.GetSystemMetrics TODO ', DbgS(NIndex));;
   end;
@@ -2625,7 +2626,7 @@ begin
   //todo: better code?!
   obj:=TObject(Handle);
   try
-    Result:=Assigned(obj) and (obj is TCarbonWidget);
+    Result:=obj is TCarbonWidget;
   except
     Result:=False;
   end;

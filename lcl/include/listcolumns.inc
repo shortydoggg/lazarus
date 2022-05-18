@@ -1,6 +1,6 @@
 {%MainUnit ../comctrls.pp}
 
-{ $Id: listcolumns.inc 41389 2013-05-25 09:22:25Z juha $
+{ $Id: listcolumns.inc 56910 2018-01-01 20:58:03Z ondrej $
 
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -60,6 +60,14 @@ begin
   BeginUpdate;
   inherited Destroy;
   EndUpdate;
+end;
+
+procedure TListColumns.DoFinalizeWnd;
+var
+  I: Integer;
+begin
+  for I := 0 to Count-1 do
+    Items[I].GetWidth; // store real width from WS into FWidth
 end;
 
 procedure TListColumns.Update(Item: TCollectionItem);

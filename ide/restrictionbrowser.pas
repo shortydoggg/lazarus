@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,11 +30,15 @@ unit RestrictionBrowser;
 interface
 
 uses
-  Classes, SysUtils, InterfaceBase, LCLProc, Contnrs, Forms, Controls, Graphics,
-  Dialogs, StdCtrls, ComCtrls, TreeFilterEdit, ExtCtrls, Buttons,
-  IDEImagesIntf, ObjectInspector,
-  CompatibilityRestrictions, IDEOptionDefs, LazarusIDEStrConsts,
-  EnvironmentOpts, LazConf;
+  Classes, Contnrs,
+  // LCL
+  LCLPlatformDef, LCLProc, Forms, StdCtrls, ComCtrls, ExtCtrls, Buttons,
+  // LazControls
+  TreeFilterEdit,
+  // IdeIntf
+  IDEImagesIntf,
+  // IDE
+  CompatibilityRestrictions, IDEOptionDefs, LazarusIDEStrConsts;
 
 type
   { TRestrictionBrowserView }
@@ -94,12 +98,10 @@ begin
       GroupIndex := Integer(P) + 1;
       Down := True;
       AllowAllUp := True;
-      try
-        IDEImages.Images_16.GetBitmap(
-               IDEImages.LoadImage(16, 'issue_'+LCLPlatformDirNames[P]), Glyph);
-      except
+      Images := IDEImages.Images_16;
+      ImageIndex := IDEImages.LoadImage('issue_'+LCLPlatformDirNames[P]);
+      if ImageIndex<0 then
         DebugLn('Restriction Browser: Unable to load image for ' + LCLPlatformDirNames[P] + '!');
-      end;
       ShowHint := True;
       Hint := LCLPlatformDisplayNames[P];
       OnClick := @NameFilterEditChange;
@@ -175,7 +177,7 @@ begin
         with IssueTreeView.Items.AddChild(nil, Issues[I]) do
         begin
           ID := PtrInt(Issues.Objects[I]);
-          ImageIndex := IDEImages.LoadImage(16,
+          ImageIndex := IDEImages.LoadImage(
               'issue_'+LCLPlatformDirNames[FIssueList[ID].WidgetSet]);
           StateIndex := ImageIndex;
           SelectedIndex := ImageIndex;

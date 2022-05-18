@@ -4,7 +4,7 @@
                      -------------------------------------
  
  @created(Mon Jun 18th WET 2007)
- @lastmod($Date: 2013-05-24 20:30:06 +0200 (Fr, 24 Mai 2013) $)
+ @lastmod($Date: 2016-07-15 21:10:10 +0200 (Fr, 15 Jul 2016) $)
  @author(Marc Weustink <marc@@lazarus.dommelstein.net>)                       
 
  This unit contains utility functions to show the contents of graphics
@@ -128,7 +128,7 @@ begin
     kWindowCompositingAttribute or
     kWindowStandardDocumentAttributes or
 //    kWindowLiveResizeAttribute or
-    kWindowStandardHandlerAttribute,
+    kWindowStandardHandlerAttribute or kWindowFrameworkScaledAttribute,
     R, W
   );
   if W = nil then Exit;

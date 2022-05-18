@@ -22,7 +22,7 @@
   for more details.
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
 unit MyWidgetDesigner;
@@ -42,6 +42,9 @@ type
   TMyWidgetMediator = class(TDesignerMediator,IMyWidgetDesigner)
   private
     FMyForm: TMyForm;
+  protected
+    procedure Notification(AComponent: TComponent; Operation: TOperation);
+      override;
   public
     // needed by the Lazarus form editor
     class function CreateMediator(TheOwner, aForm: TComponent): TDesignerMediator;
@@ -102,6 +105,20 @@ begin
   inherited Destroy;
 end;
 
+procedure TMyWidgetMediator.Notification(AComponent: TComponent;
+  Operation: TOperation);
+begin
+  inherited Notification(AComponent, Operation);
+  if Operation=opRemove then
+  begin
+    if FMyForm=AComponent then
+    begin
+      FMyForm.Designer:=nil;
+      FMyForm:=nil;
+    end;
+  end;
+end;
+
 class function TMyWidgetMediator.CreateMediator(TheOwner, aForm: TComponent
   ): TDesignerMediator;
 var
@@ -110,6 +127,7 @@ begin
   Result:=inherited CreateMediator(TheOwner,aForm);
   Mediator:=TMyWidgetMediator(Result);
   Mediator.FMyForm:=aForm as TMyForm;
+  Mediator.FMyForm.FreeNotification(Mediator);
   Mediator.FMyForm.Designer:=Mediator;
 end;
 

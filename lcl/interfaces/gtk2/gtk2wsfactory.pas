@@ -14,9 +14,9 @@ uses
 
 
 // imglist
-function RegisterCustomImageList: Boolean;
+function RegisterCustomImageListResolution: Boolean;
 // controls
-function RegisterDragImageList: Boolean;
+function RegisterDragImageListResolution: Boolean;
 function RegisterLazAccessibleObject: Boolean;
 function RegisterControl: Boolean;
 function RegisterWinControl: Boolean;
@@ -120,20 +120,20 @@ uses
   Gtk2WSSpin,
   Gtk2WSStdCtrls,
   Gtk2WSPairSplitter,
-  Gtk2WSPrivate;
+  Gtk2WSPrivate,
+  UnityWSCtrls;
 
 // imglist
-function RegisterCustomImageList: Boolean; alias : 'WSRegisterCustomImageList';
+function RegisterCustomImageListResolution: Boolean; alias : 'WSRegisterCustomImageListResolution';
 begin
-//  RegisterWSComponent(TImageList, TGtk2WSImageList);
-//  RegisterWSComponent(TCustomImageList, TGtk2WSCustomImageList);
+//  RegisterWSComponent(TCustomImageListResolution, TGtk2WSCustomImageListResolution);
   Result := False;
 end;
 
 // controls
-function RegisterDragImageList: Boolean; alias : 'WSRegisterDragImageList';
+function RegisterDragImageListResolution: Boolean; alias : 'WSRegisterDragImageListResolution';
 begin
-  RegisterWSComponent(TDragImageList, TGtk2WSDragImageList); { GTK2 }
+  RegisterWSComponent(TDragImageListResolution, TGtk2WSDragImageListResolution); { GTK2 }
   Result := True;
 end;
 
@@ -328,7 +328,7 @@ end;
 function RegisterCustomMemo: Boolean; alias : 'WSRegisterCustomMemo';
 begin
 //  RegisterWSComponent(TMemo, TGtk2WSMemo);
-  RegisterWSComponent(TCustomMemo, TGtk2WSCustomMemo, TGtkPrivateScrolling); { GTK1 }
+  RegisterWSComponent(TCustomMemo, TGtk2WSCustomMemo, TGtk2PrivateMemo);
   RegisterWSComponent(TCustomMemo, TGtk2WSCustomMemo);
   Result := True;
 end;
@@ -460,7 +460,10 @@ end;
 
 function RegisterCustomTrayIcon: Boolean; alias : 'WSRegisterCustomTrayIcon';
 begin
-  RegisterWSComponent(TCustomTrayIcon, TGtk2WSCustomTrayIcon);
+  if UnityAppIndicatorInit then
+    RegisterWSComponent(TCustomTrayIcon, TUnityWSCustomTrayIcon)
+  else
+    RegisterWSComponent(TCustomTrayIcon, TGtk2WSCustomTrayIcon);
   Result := True;
 end;
 

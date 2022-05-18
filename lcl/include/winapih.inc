@@ -47,6 +47,7 @@ function ClientToScreen(Handle : HWND; var P : TPoint) : Boolean; {$IFDEF IF_BAS
 function CombineRgn(Dest, Src1, Src2 : HRGN; fnCombineMode : Longint) : Longint; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function CreateBitmap(Width, Height: Integer; Planes, BitCount: Longint; BitmapBits: Pointer): HBITMAP; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function CreateBrushIndirect(const LogBrush: TLogBrush): HBRUSH; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
+function CreateBrushWithRadialGradient(const LogBrush: TLogRadialGradient): HBRUSH; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function CreateCaret(Handle: HWND; Bitmap: hBitmap; width, Height: Integer): Boolean; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function CreateCompatibleBitmap(DC: HDC; Width, Height: Integer): HBITMAP; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function CreateCompatibleDC(DC: HDC): HDC; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
@@ -129,6 +130,7 @@ function GetIconInfo(AIcon: HICON; AIconInfo: PIconInfo): Boolean; {$IFDEF IF_BA
 function GetKeyState(nVirtKey: Integer): Smallint; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function GetMapMode(DC: HDC): Integer; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function GetMonitorInfo(hMonitor: HMONITOR; lpmi: PMonitorInfo): Boolean; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
+function GetDpiForMonitor(hmonitor: HMONITOR; dpiType: TMonitorDpiType; out dpiX: UINT; out dpiY: UINT): HRESULT; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function GetObject(GDIObject: HGDIOBJ; BufSize: Integer; Buf: Pointer): Integer; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
 function GetPaletteEntries(Palette: HPALETTE; StartIndex, NumEntries: UINT;
   var PaletteEntries): UINT; {$IFDEF IF_BASE_MEMBER}virtual;{$ENDIF}
@@ -337,6 +339,7 @@ function OffsetRect(var Rect: TRect; dx,dy: Integer): Boolean; inline;
 
 function PtInRect(const Rect : TRect; const Point : TPoint) : Boolean; inline;
 function PointToSmallPoint(const P : TPoint) : TSmallPoint; inline;
+function PointToSmallPointNoChecks(const P : TPoint) : TSmallPoint; inline;
 
 function RGB(R, G, B : Byte) : TColorRef; inline;
 

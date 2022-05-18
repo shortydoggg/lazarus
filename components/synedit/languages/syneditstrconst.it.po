@@ -292,6 +292,10 @@ msgstr "Preprocessore"
 msgid "Previous value"
 msgstr "Valore precedente"
 
+#: syneditstrconst.syns_attrprocedureheadername
+msgid "Procedure header name"
+msgstr ""
+
 #: syneditstrconst.syns_attrprocessinginstr
 msgid "Processing Instruction"
 msgstr "Elaborazione dell'istruzione"
@@ -483,6 +487,14 @@ msgstr "Sottolinea,sì,no"
 #: syneditstrconst.syns_emcnone
 msgid "No Action"
 msgstr "Nessuna azione"
+
+#: syneditstrconst.syns_emcoverviewguttergotomark
+msgid "Jump to Mark (Overview Gutter)"
+msgstr ""
+
+#: syneditstrconst.syns_emcoverviewgutterscrollto
+msgid "Scroll (Overview Gutter)"
+msgstr ""
 
 #: syneditstrconst.syns_emcpasteselection
 msgid "Quick Paste Selection"

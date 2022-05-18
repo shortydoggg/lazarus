@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -39,7 +39,7 @@ uses
   // codetools
   CodeToolsStrConsts, CodeCache, CodeToolManager,
   // IDEIntf
-  LazIDEIntf, IDEMsgIntf, PackageIntf, IDEExternToolIntf,
+  LazIDEIntf, IDEMsgIntf, PackageLinkIntf, PackageIntf, IDEExternToolIntf,
   // IDE
   DialogProcs, PackageDefs, Project, IDEProcs, LazarusIDEStrConsts,
   etFPCMsgParser, PackageLinks, PackageSystem, BasePkgManager;
@@ -192,7 +192,7 @@ begin
   if not IsApplicable(Msg,MissingUnit,UsedByUnit) then exit;
   DebugLn(['TQuickFixUnitNotFound_Search.Execute Unit=',MissingUnit]);
 
-  if (MissingUnit='') or (not IsValidIdent(MissingUnit)) then begin
+  if not IsValidIdent(MissingUnit) then begin
     DebugLn(['TQuickFixUnitNotFound_Search.Execute not an identifier "',dbgstr(MissingUnit),'"']);
     exit;
   end;
@@ -337,7 +337,7 @@ begin
   //DebugLn(['TFindUnitDialog.InitSearchPackages ',FSearchPackages.Text]);
 
   // add user package links
-  PkgLinks.IteratePackages(false,@OnIteratePkgLinks,[ploUser,ploGlobal]);
+  LazPackageLinks.IteratePackages(false,@OnIteratePkgLinks,[ploUser,ploGlobal]);
 
   if FSearchPackages.Count>0 then begin
     ProgressBar1.Max:=FSearchPackages.Count;
@@ -348,10 +348,10 @@ end;
 
 procedure TFindUnitDialog.OnIteratePkgLinks(APackage: TLazPackageID);
 var
-  Link: TPackageLink;
+  Link: TLazPackageLink;
 begin
-  if APackage is TPackageLink then begin
-    Link:=TPackageLink(APackage);
+  if APackage is TLazPackageLink then begin
+    Link:=TLazPackageLink(APackage);
     FSearchPackages.Add(TrimFilename(Link.GetEffectiveFilename));
   end;
 end;
@@ -365,8 +365,7 @@ begin
   OkButton.Enabled:=true;
 end;
 
-procedure TFindUnitDialog.AddRequirement(
-  Item: TMissingUnit_QuickFix_AddRequirement);
+procedure TFindUnitDialog.AddRequirement(Item: TMissingUnit_QuickFix_AddRequirement);
 var
   AProject: TProject;
   APackage: TLazPackage;
@@ -562,7 +561,7 @@ begin
             FMainOwnerName:='project';
           end;
           OwnerNode:=InfoTreeView.Items.Add(nil,'Owner: Project');
-          AddPaths(OwnerNode,'Unit search paths',AProject.ProjectDirectory,
+          AddPaths(OwnerNode,'Unit search paths',AProject.Directory,
                    AProject.CompilerOptions.GetUnitPath(true),true);
 
         end

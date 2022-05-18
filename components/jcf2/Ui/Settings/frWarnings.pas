@@ -31,7 +31,7 @@ interface
 
 uses
   StdCtrls, Classes,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -49,9 +49,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -83,7 +83,7 @@ end;
 
 procedure TfWarnings.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Clarify do
+  with FormattingSettings.Clarify do
   begin
     cbWarningsOn.Checked := Warnings;
     cbWarnUnusedParams.Checked  := WarnUnusedParams;
@@ -93,7 +93,7 @@ end;
 
 procedure TfWarnings.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Clarify do
+  with FormattingSettings.Clarify do
   begin
     Warnings := cbWarningsOn.Checked;
     WarnUnusedParams  := cbWarnUnusedParams.Checked;
@@ -104,7 +104,7 @@ end;
 
 class function TfWarnings.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 procedure TfWarnings.FrameResize(Sender: TObject);

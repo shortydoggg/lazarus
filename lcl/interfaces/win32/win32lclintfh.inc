@@ -1,5 +1,5 @@
 {%MainUnit win32int.pp}
-{ $Id: win32lclintfh.inc 51996 2016-03-19 13:35:51Z maxim $ }
+{ $Id: win32lclintfh.inc 51983 2016-03-18 16:45:35Z bart $ }
 {******************************************************************************
                  All GTK interface communication implementations.
                    Initial Revision  : Sun Nov 23 23:53:53 2003

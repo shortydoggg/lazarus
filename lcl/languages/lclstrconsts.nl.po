@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "POT-Creation-Date: \n"
-"PO-Revision-Date: 2011-10-08 14:09+0200\n"
+"PO-Revision-Date: 2017-07-16 00:52+0100\n"
 "Last-Translator: BigChimp <nowhere@example.com>\n"
 "Language-Team: LazPaint\n"
 "Language: nl\n"
@@ -10,7 +10,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Virtaal 0.7.0\n"
+"X-Generator: Poedit 1.5.4\n"
 
 #: lclstrconsts.hhshelpbrowsernotexecutable
 #, fuzzy
@@ -56,210 +56,30 @@ msgstr "Alt"
 msgid "Ctrl"
 msgstr "Ctrl"
 
-#: lclstrconsts.ifsvk_accept
-msgid "Accept"
-msgstr "Accepteer"
-
-#: lclstrconsts.ifsvk_apps
-msgid "application key"
-msgstr "toepassing sleutel"
-
-#: lclstrconsts.ifsvk_back
-msgid "Backspace"
-msgstr "Backspace"
-
-#: lclstrconsts.ifsvk_cancel
-msgctxt "lclstrconsts.ifsvk_cancel"
-msgid "Cancel"
-msgstr "Annuleren"
-
-#: lclstrconsts.ifsvk_capital
-msgid "Capital"
-msgstr "Hoofdletter"
-
-#: lclstrconsts.ifsvk_clear
-msgid "Clear"
-msgstr "Wissen"
-
 #: lclstrconsts.ifsvk_cmd
 msgid "Cmd"
-msgstr ""
-
-#: lclstrconsts.ifsvk_control
-msgid "Control"
-msgstr "Controleer"
-
-#: lclstrconsts.ifsvk_convert
-msgid "Convert"
-msgstr "Converteer"
-
-#: lclstrconsts.ifsvk_delete
-msgctxt "lclstrconsts.ifsvk_delete"
-msgid "Delete"
-msgstr "Verwijderen"
-
-#: lclstrconsts.ifsvk_down
-msgctxt "lclstrconsts.ifsvk_down"
-msgid "Down"
-msgstr "Neer"
-
-#: lclstrconsts.ifsvk_end
-msgctxt "lclstrconsts.ifsvk_end"
-msgid "End"
-msgstr "Eind"
-
-#: lclstrconsts.ifsvk_escape
-msgid "Escape"
-msgstr "Escape"
-
-#: lclstrconsts.ifsvk_execute
-msgid "Execute"
-msgstr "Uitvoeren"
-
-#: lclstrconsts.ifsvk_final
-msgid "Final"
-msgstr "Laatste"
-
-#: lclstrconsts.ifsvk_hanja
-msgid "Hanja"
-msgstr "Hanja"
+msgstr "Cmd"
 
 #: lclstrconsts.ifsvk_help
+msgctxt "lclstrconsts.ifsvk_help"
 msgid "Help"
 msgstr "Help"
 
-#: lclstrconsts.ifsvk_home
-msgctxt "lclstrconsts.ifsvk_home"
-msgid "Home"
-msgstr "Home"
-
-#: lclstrconsts.ifsvk_insert
-msgctxt "lclstrconsts.ifsvk_insert"
-msgid "Insert"
-msgstr "Invoegen"
-
-#: lclstrconsts.ifsvk_junja
-msgid "Junja"
-msgstr "Junja"
-
-#: lclstrconsts.ifsvk_kana
-msgid "Kana"
-msgstr "Kana"
-
-#: lclstrconsts.ifsvk_lbutton
-msgid "Mouse Button Left"
-msgstr "Muisknop Links"
-
-#: lclstrconsts.ifsvk_left
-msgctxt "lclstrconsts.ifsvk_left"
-msgid "Left"
-msgstr "Links"
-
-#: lclstrconsts.ifsvk_lwin
-msgid "left windows key"
-msgstr "linker windows toets"
-
-#: lclstrconsts.ifsvk_mbutton
-msgid "Mouse Button Middle"
-msgstr "Muisknop Midden"
-
-#: lclstrconsts.ifsvk_menu
-msgctxt "lclstrconsts.ifsvk_menu"
-msgid "Menu"
-msgstr "Menu"
-
 #: lclstrconsts.ifsvk_meta
 msgid "Meta"
-msgstr ""
-
-#: lclstrconsts.ifsvk_modechange
-msgid "Mode Change"
-msgstr "Mode wijziging"
-
-#: lclstrconsts.ifsvk_next
-msgctxt "lclstrconsts.ifsvk_next"
-msgid "Next"
-msgstr "Volgende"
-
-#: lclstrconsts.ifsvk_nonconvert
-msgid "Nonconvert"
-msgstr "Niet converteren"
-
-#: lclstrconsts.ifsvk_numlock
-msgid "Numlock"
-msgstr "Numlock"
-
-#: lclstrconsts.ifsvk_numpad
-msgid "Numpad %d"
-msgstr "Nummeriek deel %d"
-
-#: lclstrconsts.ifsvk_pause
-msgid "Pause key"
-msgstr "Pause toets"
-
-#: lclstrconsts.ifsvk_print
-msgid "Print"
-msgstr "Druk af"
-
-#: lclstrconsts.ifsvk_prior
-msgctxt "lclstrconsts.ifsvk_prior"
-msgid "Prior"
-msgstr "Vorige"
-
-#: lclstrconsts.ifsvk_rbutton
-msgid "Mouse Button Right"
-msgstr "Muisknop Rechts"
-
-#: lclstrconsts.ifsvk_return
-msgid "Return"
-msgstr "Return"
-
-#: lclstrconsts.ifsvk_right
-msgctxt "lclstrconsts.ifsvk_right"
-msgid "Right"
-msgstr "Rechts"
-
-#: lclstrconsts.ifsvk_rwin
-msgid "right windows key"
-msgstr "rechter windows toets"
-
-#: lclstrconsts.ifsvk_scroll
-msgid "Scroll"
-msgstr "Schuif"
-
-#: lclstrconsts.ifsvk_select
-msgid "Select"
-msgstr "Selecteer"
+msgstr "Meta"
 
 #: lclstrconsts.ifsvk_shift
 msgid "Shift"
 msgstr "Shift"
 
-#: lclstrconsts.ifsvk_snapshot
-msgid "Snapshot"
-msgstr "Snapshot"
-
-#: lclstrconsts.ifsvk_space
-msgid "Space key"
-msgstr "Spatiebalk"
-
 #: lclstrconsts.ifsvk_super
 msgid "Super"
-msgstr ""
-
-#: lclstrconsts.ifsvk_tab
-msgctxt "lclstrconsts.ifsvk_tab"
-msgid "Tab"
-msgstr "Tab"
+msgstr "Super"
 
 #: lclstrconsts.ifsvk_unknown
 msgid "Unknown"
 msgstr "Onbekend"
-
-#: lclstrconsts.ifsvk_up
-msgctxt "lclstrconsts.ifsvk_up"
-msgid "Up"
-msgstr "Omhoog"
 
 #: lclstrconsts.lislclresourcesnotfound
 msgctxt "lclstrconsts.lislclresourcesnotfound"
@@ -297,6 +117,10 @@ msgstr "Applicatie-werkruimte"
 #: lclstrconsts.rsaquacolorcaption
 msgid "Aqua"
 msgstr "Aqua"
+
+#: lclstrconsts.rsascannothaveasparent
+msgid "Class %s cannot have %s as parent."
+msgstr "Klasse %s kan niet %s als ouder hebben."
 
 #: lclstrconsts.rsbackgroundcolorcaption
 msgid "Desktop"
@@ -367,6 +191,10 @@ msgstr "Hoofdletter gevoelig"
 msgid "Control of class '%s' can't have control of class '%s' as a child"
 msgstr "Control van klasse '%s' kan control van klasse '%s' niet als kind hebben"
 
+#: lclstrconsts.rscontrolhasnoparentformorframe
+msgid "Control '%s' has no parent form or frame"
+msgstr "Control '%s' heeft geen ouder-form of frame"
+
 #: lclstrconsts.rscontrolhasnoparentwindow
 msgid "Control '%s' has no parent window"
 msgstr "Control '%s' heeft geen venster als ouder"
@@ -378,10 +206,6 @@ msgstr "'%s' is geen ouder van '%s'"
 #: lclstrconsts.rscreamcolorcaption
 msgid "Cream"
 msgstr "Cream"
-
-#: lclstrconsts.rscreatinggdbcatchableerror
-msgid "Creating gdb catchable error:"
-msgstr "Maak een fout die door gdb opgevangen kan worden"
 
 #: lclstrconsts.rscursor
 msgid "Cursor"
@@ -416,17 +240,13 @@ msgstr "Richting"
 msgid "&Directory"
 msgstr "&Map"
 
-#: lclstrconsts.rsdocking
-msgid "Docking"
-msgstr "Docking"
-
 #: lclstrconsts.rsdocopy
 msgid "Copy"
-msgstr ""
+msgstr "Kopiëren"
 
 #: lclstrconsts.rsdopaste
 msgid "Paste"
-msgstr ""
+msgstr "Plakken"
 
 #: lclstrconsts.rsduplicateiconformat
 msgid "Duplicate icon format."
@@ -448,10 +268,6 @@ msgstr "Fout"
 #: lclstrconsts.rserrorcreatingdevicecontext
 msgid "Error creating device context for %s.%s"
 msgstr "Fout tijdens het maken van een DC voor %s.%s"
-
-#: lclstrconsts.rserrorinlcl
-msgid "ERROR in LCL: "
-msgstr "FOUT in LCL"
 
 #: lclstrconsts.rserroroccurredinataddressframe
 msgid "Error occurred in %s at %sAddress %s%s Frame %s"
@@ -674,6 +490,12 @@ msgstr "--no-xshm             Maak geen gebruik van de X Shared Memory Extensie.
 msgid "--sync                Call XSynchronize (display, True) after the Xserver connection has been established. This makes debugging X protocol errors easier, because X request buffering will be disabled and X errors will be received immediately after the protocol request that generated the error has been processed by the X server."
 msgstr "--sync                Roep XSynchronize (display, True) aan na verbinding met de Xserver. Dit maakt het debuggen van X protocol fouten eenvoudiger, doordat X aanvraag buffering uitstaat en X fouten direct ontvangen worden nadat de aanvraag door de Xserver is behandeld."
 
+#: lclstrconsts.rshelp
+#, fuzzy
+msgctxt "lclstrconsts.rshelp"
+msgid "Help"
+msgstr "Help"
+
 #: lclstrconsts.rshelpalreadyregistered
 msgid "%s: Already registered"
 msgstr "%s: Al vastgelegd"
@@ -879,9 +701,25 @@ msgstr "Limoen"
 msgid "List index exceeds bounds (%d)"
 msgstr "Lijst index overschreidt grenzen (%d)"
 
-#: lclstrconsts.rslistmustbeempty
-msgid "List must be empty"
-msgstr "Lijst moet leeg zijn"
+#: lclstrconsts.rsmacosmenuhide
+msgid "Hide %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuhideothers
+msgid "Hide Others"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuquit
+msgid "Quit %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuservices
+msgid "Services"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenushowall
+msgid "Show All"
+msgstr ""
 
 #: lclstrconsts.rsmarooncolorcaption
 msgid "Maroon"
@@ -1055,9 +893,9 @@ msgstr "Portable PixMap"
 msgid "Post"
 msgstr "Versturen"
 
-#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpresscanceltok
-msgid "%s%sPress OK to ignore and risk data corruption.%sPress Cancel to kill the program."
-msgstr "%s%sDruk op Ok om te negeren, met kans op gegevensverlies.%sDruk op Cancel om het programma te stoppen."
+#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpressaborttok
+msgid "%s%sPress OK to ignore and risk data corruption.%sPress Abort to kill the program."
+msgstr "%s%sKlik OK to om te negeren en riskeer data corruptie.%sKlik Afbreken om het programma te beëindigen."
 
 #: lclstrconsts.rspriorrecordhint
 msgctxt "lclstrconsts.rspriorrecordhint"
@@ -1228,7 +1066,7 @@ msgstr "Hemelsblauw"
 
 #: lclstrconsts.rstcustomtabcontrolaccessibilitydescription
 msgid "A control with tabs"
-msgstr ""
+msgstr "Een controlmet Tabs"
 
 #: lclstrconsts.rstealcolorcaption
 msgid "Teal"
@@ -1238,6 +1076,10 @@ msgstr "Blauwachtig groen (teal)"
 msgid "Text"
 msgstr "Tekst"
 
+#: lclstrconsts.rsthebuiltinurlisreadonlychangethebaseurlinstead
+msgid "The built-in URL is read only. Change the BaseURL instead."
+msgstr ""
+
 #: lclstrconsts.rstiff
 msgid "Tagged Image File Format"
 msgstr "Tagged Image File Format"
@@ -1245,12 +1087,12 @@ msgstr "Tagged Image File Format"
 #: lclstrconsts.rstpanelaccessibilitydescription
 msgctxt "lclstrconsts.rstpanelaccessibilitydescription"
 msgid "Panel"
-msgstr ""
+msgstr "Paneel"
 
 #: lclstrconsts.rstsplitteraccessibilitydescription
 msgctxt "lclstrconsts.rstsplitteraccessibilitydescription"
 msgid "A grip to control how much size to give two parts of an area"
-msgstr ""
+msgstr "Een grijper om te bepalen hoeveel ruimte te geven aan twee delen van een oppervlakte"
 
 #: lclstrconsts.rsttreeviewaccessibilitydescription
 msgctxt "lclstrconsts.rsttreeviewaccessibilitydescription"
@@ -1335,7 +1177,11 @@ msgstr "Geel"
 
 #: lclstrconsts.scannotfocus
 msgid "Cannot focus a disabled or invisible window"
-msgstr "Kan geen focus geven aan een onzichtbaar of disabled scherm"
+msgstr "Kan geen focus geven aan een onzichtbaar of disabled venster"
+
+#: lclstrconsts.scannotsetdesigntimeppi
+msgid "Cannot set design time PPI."
+msgstr "Kan design time PPI niet zetten"
 
 #: lclstrconsts.sduplicatemenus
 msgid "Duplicate menus"
@@ -1467,10 +1313,6 @@ msgstr "Tab"
 msgctxt "lclstrconsts.smkcup"
 msgid "Up"
 msgstr "Omhoog"
-
-#: lclstrconsts.snomdiform
-msgid "No MDI form present."
-msgstr "Geen MDI formulier aanwezig"
 
 #: lclstrconsts.snotimers
 msgid "No timers available"

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,9 +30,16 @@ unit favorites_impl;
 interface
 
 uses
-  Classes, SysUtils, ToolBarIntf, IDEImagesIntf, Graphics, PackageIntf,
-  Menus, LazIDEIntf, ProjectIntf, Laz2_XMLCfg, IDEOptionsIntf,
-  IDECommands, ComCtrls, IDEMsgIntf, favoritesstr;
+  Classes, SysUtils,
+  // LCL
+  Graphics, ComCtrls, Menus, ImgList,
+  // LazUtils
+  LazFileUtils, Laz2_XMLCfg,
+  // IdeIntf
+  ToolBarIntf, IDEImagesIntf, LazIDEIntf, ProjectIntf, IDEOptionsIntf,
+  IDECommands, IDEUtils,
+  // Favorites
+  favoritesstr;
 
 type
   TFavoritesHandler = class
@@ -63,12 +70,15 @@ type
   private
     FOrigButton: TIDEToolButton;
     FOrigOnPopup: TNotifyEvent;
+    FIndex: TStringList;
+    FAddImageIndex, FRemoveImageIndex: Integer;
 
     procedure RefreshMenu(Sender: TObject);
     procedure mnuFavoriteFile(Sender: TObject);
     procedure mnuAddRemoveActiveProject(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
+    destructor Destroy; override;
     procedure DoOnAdded; override;
   end;
 
@@ -91,13 +101,24 @@ constructor TOpenFileFavToolButton.Create(aOwner: TComponent);
 begin
   inherited Create(aOwner);
 
+  FIndex := TStringList.Create;
+
   if FavHandler.FOldToolButtonClass<>nil then
     FOrigButton := FavHandler.FOldToolButtonClass.Create(Self)
   else
     FOrigButton := TIDEToolButton.Create(Self);
 end;
 
+destructor TOpenFileFavToolButton.Destroy;
+begin
+  FIndex.Free;
+
+  inherited Destroy;
+end;
+
 procedure TOpenFileFavToolButton.DoOnAdded;
+var
+  xGlyphs: TLCLGlyphs;
 begin
   inherited DoOnAdded;
 
@@ -107,6 +128,13 @@ begin
     DropdownMenu := FOrigButton.DropdownMenu
   else
     DropdownMenu := TPopupMenu.Create(Self);
+
+  if DropdownMenu.Images=nil then
+    DropdownMenu.Images := LCLGlyphs;
+  xGlyphs := DropdownMenu.Images as TLCLGlyphs;
+
+  FAddImageIndex := xGlyphs.GetImageIndex('laz_add');
+  FRemoveImageIndex := xGlyphs.GetImageIndex('laz_delete');
 
   FOrigOnPopup := DropdownMenu.OnPopup;
   DropdownMenu.OnPopup := @RefreshMenu;
@@ -137,7 +165,7 @@ end;
 procedure TOpenFileFavToolButton.RefreshMenu(Sender: TObject);
 var
   xM, xSep: TMenuItem;
-  xFavoriteFile: string;
+  xFavoriteFile, xExt: string;
   xMI, xAddToFav: TFileNameMenuItem;
   xProj: TLazProject;
   xMIndex: Integer;
@@ -154,6 +182,10 @@ begin
     xMI.FileName := xFavoriteFile;
     xMI.Caption := xFavoriteFile;
     xMI.OnClick := @mnuFavoriteFile;
+    xExt := ExtractFileExt(xFavoriteFile);
+    if SameFileName(xExt, '.lpi') or SameFileName(xExt, '.lpr') then
+      xMI.ImageIndex := LoadProjectIconIntoImages(xFavoriteFile, DropdownMenu.Images, FIndex);
+
     xM.Insert(xMIndex, xMI);
     Inc(xMIndex);
   end;
@@ -164,9 +196,14 @@ begin
     xAddToFav := TFileNameMenuItem.Create(Self);
     xAddToFav.FileName := xProj.ProjectInfoFile;
     if not FavHandler.IsInFavoriteProjects(xProj.ProjectInfoFile) then
-      xAddToFav.Caption := Format(sAddToFavoritesS, [xProj.ProjectInfoFile])
-    else
+    begin
+      xAddToFav.Caption := Format(sAddToFavoritesS, [xProj.ProjectInfoFile]);
+      xAddToFav.ImageIndex := FAddImageIndex;
+    end else
+    begin
       xAddToFav.Caption := Format(sRemoveFromFavoritesS, [xProj.ProjectInfoFile]);
+      xAddToFav.ImageIndex := FRemoveImageIndex;
+    end;
     xAddToFav.OnClick := @mnuAddRemoveActiveProject;
     xM.Insert(xMIndex, xAddToFav);
     Inc(xMIndex);
@@ -193,7 +230,7 @@ begin
   FFavoriteProjects.Duplicates := dupIgnore;
   FFavoriteProjects.CaseSensitive := False;
   FFavoriteProjects.Sorted := True;
-  FConfig := TXMLConfig.Create(IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath)+'favorites.xml');
+  FConfig := TXMLConfig.Create(AppendPathDelim(LazarusIDE.GetPrimaryConfigPath)+'favorites.xml');
   LoadFromConfig;
 
   xToolButton := IDEToolButtonCategories.FindItemByCommand(ecOpen);

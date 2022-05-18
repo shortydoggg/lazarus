@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.5.4\n"
+"X-Generator: Poedit 1.8.7.1\n"
 
 #: lazutilsstrconsts.lrsadirectorycomponentindoesnotexistorisadanglingsyml
 msgctxt "lazutilsstrconsts.lrsadirectorycomponentindoesnotexistorisadanglingsyml"
@@ -38,6 +38,14 @@ msgstr "logikai"
 #: lazutilsstrconsts.lrscannotexecute
 msgid "can not execute %s"
 msgstr "nem futtatható: %s"
+
+#: lazutilsstrconsts.lrscreatinggdbcatchableerror
+msgid "Creating gdb catchable error:"
+msgstr "A gdb által észlelhető hiba létrehozása:"
+
+#: lazutilsstrconsts.lrserrorincode
+msgid "ERROR in code: "
+msgstr "HIBA a kódban: "
 
 #: lazutilsstrconsts.lrsevalinvalidargcount
 msgid "Invalid number of function arguments"
@@ -79,6 +87,16 @@ msgstr "A(z) \"%s\" nem szimbolikus hivatkozás"
 #: lazutilsstrconsts.lrsisnotexecutable
 msgid "%s is not executable"
 msgstr "A(z) %s nem futtatható"
+
+#: lazutilsstrconsts.lrslistindexexceedsbounds
+msgctxt "lazutilsstrconsts.lrslistindexexceedsbounds"
+msgid "List index exceeds bounds (%d)"
+msgstr "A lista indexe a határon kívülre esik (%d)"
+
+#: lazutilsstrconsts.lrslistmustbeempty
+msgctxt "lazutilsstrconsts.lrslistmustbeempty"
+msgid "List must be empty"
+msgstr "A listának üresnek kell lennie"
 
 #: lazutilsstrconsts.lrsmodified
 msgctxt "lazutilsstrconsts.lrsmodified"

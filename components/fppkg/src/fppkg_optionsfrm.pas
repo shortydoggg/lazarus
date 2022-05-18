@@ -25,7 +25,7 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 unit fppkg_optionsfrm;
 
@@ -166,14 +166,15 @@ begin
   PkgColumnCount := 0;
 
   AddPkgColumn('Name', True);
-  AddPkgColumn('Installed', True);
-  AddPkgColumn('Available', True);
-  AddPkgColumn('Description', True);
-  AddPkgColumn('State', False);
+  AddPkgColumn('State', True);
+  AddPkgColumn('Version', True);
+  AddPkgColumn('Info', True);
+
+  AddPkgColumn('Description', False);
   AddPkgColumn('Keywords', False);
   AddPkgColumn('Category', False);
   AddPkgColumn('Support', False);
-  AddPkgColumn('Author', False);
+{  AddPkgColumn('Author', False);
   AddPkgColumn('License', False);
   AddPkgColumn('HomepageURL', False);
   AddPkgColumn('DownloadURL', False);
@@ -181,7 +182,7 @@ begin
   AddPkgColumn('Email', False);
   AddPkgColumn('OS', False);
   AddPkgColumn('CPU', False);
-
+}
   Verbosity := DefaultLogLevels;
 end;
 
@@ -236,16 +237,16 @@ begin
   Caption := rsFppkgOptions;
 
   //global
-  AddListItem(GlobalListView, rsRemoteMirrorsURL, GlobalOptions.RemoteMirrorsURL);
-  AddListItem(GlobalListView, rsRemoteRepository, GlobalOptions.RemoteRepository);
-  AddListItem(GlobalListView, rsLocalRepository, GlobalOptions.LocalRepository);
-  AddListItem(GlobalListView, rsBuildDirectory, GlobalOptions.BuildDir);
-  AddListItem(GlobalListView, rsArchivesDirectory, GlobalOptions.ArchivesDir);
-  AddListItem(GlobalListView, rsCompilerConfigDirectory, GlobalOptions.CompilerConfigDir);
-  AddListItem(GlobalListView, rsDefaultCompilerConfig, GlobalOptions.DefaultCompilerConfig);
-  AddListItem(GlobalListView, rsFpmakeCompilerConfig, GlobalOptions.FPMakeCompilerConfig);
-  AddListItem(GlobalListView, rsDownloader, GlobalOptions.Downloader);
-  AddListItem(GlobalListView, rsCustomFpmakeOptions, GlobalOptions.CustomFPMakeOptions);
+{  AddListItem(GlobalListView, rsRemoteMirrorsURL, GlobalOptions.GlobalSection.RemoteMirrorsURL);
+  AddListItem(GlobalListView, rsRemoteRepository, GlobalOptions.GlobalSection.RemoteRepository);
+  AddListItem(GlobalListView, rsLocalRepository, GlobalOptions.GlobalSection.LocalRepository);
+  AddListItem(GlobalListView, rsBuildDirectory, GlobalOptions.GlobalSection.BuildDir);
+  AddListItem(GlobalListView, rsArchivesDirectory, GlobalOptions.GlobalSection.ArchivesDir);
+  AddListItem(GlobalListView, rsCompilerConfigDirectory, GlobalOptions.GlobalSection.CompilerConfigDir);
+  AddListItem(GlobalListView, rsDefaultCompilerConfig, GlobalOptions.GlobalSection.CompilerConfig);
+  AddListItem(GlobalListView, rsFpmakeCompilerConfig, GlobalOptions.GlobalSection.FPMakeCompilerConfig);
+  AddListItem(GlobalListView, rsDownloader, GlobalOptions.GlobalSection.Downloader);
+  AddListItem(GlobalListView, rsCustomFpmakeOptions, GlobalOptions.GlobalSection.CustomFPMakeOptions);
 
   //compiler
   AddListItem(CompilerListView, rsCompiler, CompilerOptions.Compiler);
@@ -256,10 +257,10 @@ begin
   AddListItem(CompilerListView, rsGlobalInstallDir, CompilerOptions.GlobalInstallDir);
   AddListItem(CompilerListView, rsLocalInstallDir, CompilerOptions.LocalInstallDir);
   AddListItem(CompilerListView, rsOptions, CompilerOptions.Options.DelimitedText);
-
+ }
   //fpmake
   // Load FPMake compiler config, this is normally the same config as above
-  AddListItem(FPMakeListView, rsCompiler, FPMakeCompilerOptions.Compiler);
+{  AddListItem(FPMakeListView, rsCompiler, FPMakeCompilerOptions.Compiler);
   AddListItem(FPMakeListView, rsCompilerTarget, FPMakeCompilerOptions.CompilerTarget);
   AddListItem(FPMakeListView, rsCompilerVersion, FPMakeCompilerOptions.CompilerVersion);
   AddListItem(FPMakeListView, rsGlobalPrefix, FPMakeCompilerOptions.GlobalPrefix);
@@ -267,7 +268,7 @@ begin
   AddListItem(FPMakeListView, rsGlobalInstallDir, FPMakeCompilerOptions.GlobalInstallDir);
   AddListItem(FPMakeListView, rsLocalInstallDir, FPMakeCompilerOptions.LocalInstallDir);
   AddListItem(FPMakeListView, rsOptions, FPMakeCompilerOptions.Options.DelimitedText);
-
+ }
   FPMakePageControl.ActivePage := ConfigTabSheet;
 end;
 
@@ -278,21 +279,12 @@ begin
   //setup verbosity
   with VerbosityCheckGroup do
   begin
-    {$IF FPC_FULLVERSION > 20602}
     Checked[Items.IndexOf('Error')] := llError in LazPkgOptions.Verbosity;
     Checked[Items.IndexOf('Warning')] := llWarning in LazPkgOptions.Verbosity;
     Checked[Items.IndexOf('Info')] := llInfo in LazPkgOptions.Verbosity;
     Checked[Items.IndexOf('Commands')] := llCommands in LazPkgOptions.Verbosity;
     Checked[Items.IndexOf('Debug')] := llDebug in LazPkgOptions.Verbosity;
-    Checked[Items.IndexOf('Progress')] := llProgres in LazPkgOptions.Verbosity;
-    {$ELSE}
-    Checked[Items.IndexOf('Error')] := vlError in LazPkgOptions.Verbosity;
-    Checked[Items.IndexOf('Warning')] := vlWarning in LazPkgOptions.Verbosity;
-    Checked[Items.IndexOf('Info')] := vlInfo in LazPkgOptions.Verbosity;
-    Checked[Items.IndexOf('Commands')] := vlCommands in LazPkgOptions.Verbosity;
-    Checked[Items.IndexOf('Debug')] := vlDebug in LazPkgOptions.Verbosity;
-    Checked[Items.IndexOf('Progress')] := vlProgres in LazPkgOptions.Verbosity;
-    {$ENDIF}
+    Checked[Items.IndexOf('Progress')] := llProgress in LazPkgOptions.Verbosity;
   end;
 end;
 
@@ -304,7 +296,6 @@ begin
   LazPkgOptions.Verbosity := [];
   with VerbosityCheckGroup do
   begin
-    {$IF FPC_FULLVERSION > 20602}
     if Checked[Items.IndexOf('Error')] then
       LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [llError];
     if Checked[Items.IndexOf('Warning')] then
@@ -316,21 +307,7 @@ begin
     if Checked[Items.IndexOf('Debug')] then
       LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [llDebug];
     if Checked[Items.IndexOf('Progress')] then
-      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [llProgres];
-    {$ELSE}
-    if Checked[Items.IndexOf('Error')] then
-      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [vlError];
-    if Checked[Items.IndexOf('Warning')] then
-      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [vlWarning];
-    if Checked[Items.IndexOf('Info')] then
-      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [vlInfo];
-    if Checked[Items.IndexOf('Commands')] then
-      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [vlCommands];
-    if Checked[Items.IndexOf('Debug')] then
-      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [vlDebug];
-    if Checked[Items.IndexOf('Progress')] then
-      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [vlProgres];
-    {$ENDIF}
+      LazPkgOptions.Verbosity := LazPkgOptions.Verbosity + [llProgress];
   end;
 
   Close;

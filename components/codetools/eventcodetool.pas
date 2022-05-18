@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -43,10 +43,13 @@ uses
   {$IFDEF MEM_CHECK}
   MemCheck,
   {$ENDIF}
-  Classes, SysUtils, TypInfo, FileProcs, LazFileUtils, CodeToolsStrConsts,
-  CodeTree, CodeCache, PascalParserTool, CodeCompletionTool, KeywordFuncLists,
-  BasicCodeTools, LinkScanner, AVL_Tree, CodeToolsStructs,
-  SourceChanger, FindDeclarationTool, ChangeDeclarationTool;
+  Classes, SysUtils, TypInfo, Laz_AVL_Tree,
+  // LazUtils
+  LazFileUtils,
+  // Codetools
+  FileProcs, CodeToolsStrConsts, CodeTree, CodeCache, PascalParserTool,
+  CodeCompletionTool, KeywordFuncLists, BasicCodeTools, LinkScanner,
+  CodeToolsStructs, SourceChanger, FindDeclarationTool, ChangeDeclarationTool;
 
 type
   { TEventsCodeTool }
@@ -72,8 +75,7 @@ type
         TypeData: PTypeData; const Proc: TGetStrProc): boolean;
     function GetCompatiblePublishedMethods(ClassNode: TCodeTreeNode;
         TypeData: PTypeData; const Proc: TGetStrProc): boolean;
-    function PublishedMethodExists(const AClassName: string;
-        const AMethodName: string;
+    function PublishedMethodExists(const AClassName, AMethodName: string;
         PropInstance: TPersistent; const PropName: string;
         out MethodIsCompatible, MethodIsPublished, IdentIsMethod: boolean
         ): boolean;
@@ -87,7 +89,7 @@ type
         ): boolean;
     function JumpToPublishedMethodBody(const AClassName,
         AMethodName: string;
-        out NewPos: TCodeXYPosition; out NewTopLine: integer;
+        out NewPos: TCodeXYPosition; out NewTopLine,BlockTopLine,BlockBottomLine: integer;
         ErrorOnNotFound: boolean = false): boolean;
     function RenamePublishedMethod(const AClassName, AOldMethodName,
         NewMethodName: string; SourceChangeCache: TSourceChangeCache): boolean;
@@ -101,14 +103,16 @@ type
         SourceChangeCache: TSourceChangeCache;
         UseTypeInfoForParameters: boolean = false;
         Section: TPascalClassSection = pcsPublished;
-        const CallAncestorMethod: string = ''): boolean;
+        const CallAncestorMethod: string = '';
+        AddOverride: boolean = false): boolean;
     function CreateMethod(ClassNode: TCodeTreeNode;
         const AMethodName: string;
         ATypeInfo: PTypeInfo; const APropertyUnitName, APropertyPath: string;
         SourceChangeCache: TSourceChangeCache;
         UseTypeInfoForParameters: boolean = false;
         Section: TPascalClassSection = pcsPublished;
-        const CallAncestorMethod: string = ''): boolean;
+        const CallAncestorMethod: string = '';
+        AddOverride: boolean = false): boolean;
 
     function FindClassOfInstance(Instance: TObject;
         out FindContext: TFindContext; ExceptionOnNotFound: boolean): boolean;
@@ -195,8 +199,7 @@ begin
     ParamString:='';
     for i:=0 to ParamCount-1 do begin
       // read ParamFlags
-      // ToDo: check this: SizeOf(TParamFlags) is 4, but the data is only 1 byte
-      Len:=1; // typinfo.pp comment is wrong: SizeOf(TParamFlags)
+      Len:={$IF FPC_FULLVERSION>=30000}SizeOf(TParamFlags){$ELSE}1{$ENDIF};
       ParamType.Flags:=[];
       Move(TypeData^.ParamList[Offset],ParamType.Flags,Len);
       inc(Offset,Len);
@@ -362,8 +365,8 @@ begin
   end;
 end;
 
-function TEventsCodeTool.PublishedMethodExists(const AClassName: string;
-  const AMethodName: string; PropInstance: TPersistent; const PropName: string;
+function TEventsCodeTool.PublishedMethodExists(const AClassName, AMethodName: string;
+  PropInstance: TPersistent; const PropName: string;
   out MethodIsCompatible, MethodIsPublished, IdentIsMethod: boolean): boolean;
 var
   FoundContext: TFindContext;
@@ -526,7 +529,7 @@ var
 
   procedure RaiseTypeNotFound;
   begin
-    RaiseException('type '+ATypeInfo^.Name+' not found, because tool is '+dbgsname(Tool));
+    RaiseException(20170421201954,'type '+ATypeInfo^.Name+' not found, because tool is '+dbgsname(Tool));
   end;
   
 var
@@ -554,20 +557,24 @@ begin
     ContextNode:=FindImplementationNode;
     if ContextNode=nil then
       ContextNode:=FindMainBeginEndNode;
+    if ContextNode=nil then
+      ContextNode:=FindInterfaceNode;
     if ContextNode=nil then begin
       MoveCursorToNodeStart(Tree.Root);
-      RaiseException(Format(ctsIdentifierNotFound,[GetIdentifier(@TypeName[1])]));
+      RaiseExceptionFmt(20170421202000,ctsIdentifierNotFound,[GetIdentifier(@TypeName[1])]);
     end;
     Params:=TFindDeclarationParams.Create(Self,ContextNode);
     try
       Params.SetIdentifier(Self,@TypeName[1],nil);
       Params.Flags:=[fdfExceptionOnNotFound,fdfSearchInParentNodes];
-      //DebugLn(['TEventsCodeTool.FindMethodTypeInfo TypeName=',TypeName,' MainFilename=',MainFilename]);
+      {$IFDEF VerboseMethodPropEdit}
+      DebugLn(['TEventsCodeTool.FindMethodTypeInfo TypeName=',TypeName,' MainFilename=',MainFilename,' ContextNode=',ContextNode.DescAsString]);
+      {$ENDIF}
       FindIdentifierInContext(Params);
       // find proc node
       if Params.NewNode.Desc<>ctnTypeDefinition then begin
         Params.NewCodeTool.MoveCursorToNodeStart(Params.NewNode);
-        Params.NewCodeTool.RaiseException(ctsMethodTypeDefinitionNotFound);
+        Params.NewCodeTool.RaiseException(20170421202006,ctsMethodTypeDefinitionNotFound);
       end;
       TypeContext:=CreateFindContext(Params);
     finally
@@ -579,12 +586,12 @@ begin
       Result:=TypeContext.Tool.FindBaseTypeOfNode(Params,TypeContext.Node);
       if Result.Node=nil then begin
         TypeContext.Tool.MoveCursorToNodeStart(TypeContext.Node);
-        TypeContext.Tool.RaiseException(ctsMethodTypeDefinitionNotFound);
+        TypeContext.Tool.RaiseException(20170421202013,ctsMethodTypeDefinitionNotFound);
       end;
-      if Result.Node.Desc<>ctnProcedureType then begin
+      if not (Result.Node.Desc in AllProcTypes) then begin
         TypeContext.Tool.MoveCursorToNodeStart(TypeContext.Node);
-        TypeContext.Tool.RaiseException(Format(ctsExpectedAMethodTypeButFound, [
-          Result.Node.DescAsString]));
+        TypeContext.Tool.RaiseExceptionFmt(20170421202019,ctsExpectedAMethodTypeButFound, [
+          Result.Node.DescAsString]);
       end;
     finally
       Params.Free;
@@ -594,8 +601,8 @@ begin
   end;
 end;
 
-function TEventsCodeTool.PublishedMethodExists(const AClassName,
-  AMethodName: string; TypeData: PTypeData;
+function TEventsCodeTool.PublishedMethodExists(const AClassName, AMethodName: string;
+  TypeData: PTypeData;
   out MethodIsCompatible, MethodIsPublished, IdentIsMethod: boolean): boolean;
 var ClassNode: TCodeTreeNode;
 begin
@@ -690,14 +697,15 @@ begin
 end;
 
 function TEventsCodeTool.JumpToPublishedMethodBody(const AClassName,
-  AMethodName: string; out NewPos: TCodeXYPosition; out NewTopLine: integer;
-  ErrorOnNotFound: boolean): boolean;
+  AMethodName: string; out NewPos: TCodeXYPosition; out NewTopLine,
+  BlockTopLine, BlockBottomLine: integer; ErrorOnNotFound: boolean): boolean;
 var
   ANode: TCodeTreeNode;
   ClassNode: TCodeTreeNode;
   AFindContext: TFindContext;
   SrcTool: TEventsCodeTool;
   SrcClassName: String;
+  Caret: TCodeXYPosition;
 begin
   Result:=false;
   ActivateGlobalWriteLock;
@@ -716,21 +724,32 @@ begin
     SrcTool:=TEventsCodeTool(AFindContext.Tool);
     ClassNode:=AFindContext.Node.Parent.Parent;
     if not (ClassNode.Desc in [ctnClass,ctnObjCClass]) then begin
-      if ErrorOnNotFound then
-        RaiseExceptionFmt('method "%s" not found in class "%s" (%s) in %s', [AClassName,AMethodName,ClassNode.DescAsString,SrcTool.MainFilename]);
       DebugLn(['TEventsCodeTool.JumpToPublishedMethodBody method found in non class: ',AClassName,'.',AMethodName,' in ',SrcTool.MainFilename,' Node=',ClassNode.DescAsString]);
+      if ErrorOnNotFound then
+        RaiseExceptionFmt(20170421202025,'method "%s" not found in class "%s" (%s) in %s',
+          [AClassName,AMethodName,ClassNode.DescAsString,SrcTool.MainFilename]);
       exit;
     end;
     SrcClassName:=SrcTool.ExtractClassName(ClassNode,true);
-    ANode:=SrcTool.FindMethodNodeInImplementation(
-                                             SrcClassName,AMethodName,false);
+    ANode:=SrcTool.FindMethodNodeInImplementation(SrcClassName,AMethodName,true);
     if ANode=nil then begin
+      DebugLn(['TEventsCodeTool.JumpToPublishedMethodBody method body not found ',SrcClassName,'.',AMethodName,' in ',SrcTool.MainFilename]);
       if ErrorOnNotFound then
-        RaiseExceptionFmt('implementation of method "%s.%s" in %s', [AClassName,AMethodName,SrcTool.MainFilename]);
-      DebugLn(['TEventsCodeTool.JumpToPublishedMethodBody method not found ',SrcClassName,'.',AMethodName,' in ',SrcTool.MainFilename]);
+        RaiseExceptionFmt(20170421202044,'implementation of method "%s.%s" in %s', [AClassName,AMethodName,SrcTool.MainFilename]);
       exit;
     end;
-    Result:=SrcTool.FindJumpPointInProcNode(ANode,NewPos,NewTopLine);
+    Result:=SrcTool.FindJumpPointInProcNode(ANode,NewPos,NewTopLine, BlockTopLine, BlockBottomLine);
+    if Result then
+    begin
+      if CleanPosToCaret(ANode.StartPos, Caret) then
+        BlockTopLine := Caret.Y
+      else
+        BlockTopLine := NewPos.Y;
+      if CleanPosToCaret(ANode.EndPos, Caret) then
+        BlockBottomLine := Caret.Y
+      else
+        BlockBottomLine := NewPos.Y;
+    end;
   finally
     DeactivateGlobalWriteLock;
   end;
@@ -758,28 +777,28 @@ var ProcNode, ProcHeadNode: TCodeTreeNode;
 begin
   Result:=false;
   if (ClassNode=nil) or not (ClassNode.Desc in [ctnClass,ctnObjCClass]) then
-    RaiseException('Invalid class node');
+    RaiseException(20170421202048,'Invalid class node');
   if (AOldMethodName='') then
-    RaiseException('Invalid AOldMethodName="'+AOldMethodName+'"');
+    RaiseException(20170421202051,'Invalid AOldMethodName="'+AOldMethodName+'"');
   if (NewMethodName='') then
-    RaiseException('Invalid NewMethodName="'+NewMethodName+'"');
+    RaiseException(20170421202054,'Invalid NewMethodName="'+NewMethodName+'"');
   if (SourceChangeCache=nil) or (Scanner=nil) then
-    RaiseException('Invalid SourceChangeCache or Scanner');
+    RaiseException(20170421202056,'Invalid SourceChangeCache or Scanner');
   SourceChangeCache.MainScanner:=Scanner;
   // rename in class
   ProcNode:=FindIdentifierNodeInClass(ClassNode,@AOldMethodName[1]);
   if (ProcNode=nil) then begin
     MoveCursorToNodeStart(ClassNode);
-    RaiseExceptionFmt(ctsOldMethodNotFound,[AOldMethodName]);
+    RaiseExceptionFmt(20170421202101,ctsOldMethodNotFound,[AOldMethodName]);
   end;
   if (ProcNode.Desc<>ctnProcedure) then begin
     MoveCursorToNodeStart(ProcNode);
-    RaiseExceptionFmt(ctsOldMethodNotFound,[AOldMethodName]);
+    RaiseExceptionFmt(20170421202103,ctsOldMethodNotFound,[AOldMethodName]);
   end;
   ProcHeadNode:=ProcNode.FirstChild;
   if ProcHeadNode=nil then begin
     MoveCursorToNodeStart(ProcNode);
-    RaiseException('Invalid proc header');
+    RaiseException(20170421202106,'Invalid proc header');
   end;
   NameStart:=ProcHeadNode.StartPos;
   NameEnd:=NameStart;
@@ -789,7 +808,7 @@ begin
       NewMethodName)
   then begin
     MoveCursorToNodeStart(ProcHeadNode);
-    RaiseException('Unable to rename method declaration');
+    RaiseException(20170421202109,'Unable to rename method declaration');
   end;
   // main goal achieved
   Result:=true;
@@ -811,13 +830,11 @@ begin
   Result:=SourceChangeCache.Apply;
 end;
 
-function TEventsCodeTool.CreateMethod(const AClassName,
-  AMethodName: string; ATypeInfo: PTypeInfo;
-  const APropertyUnitName, APropertyPath: string;
-  SourceChangeCache: TSourceChangeCache;
-  UseTypeInfoForParameters: boolean;
-  Section: TPascalClassSection;
-  const CallAncestorMethod: string): boolean;
+function TEventsCodeTool.CreateMethod(const AClassName, AMethodName: string;
+  ATypeInfo: PTypeInfo; const APropertyUnitName, APropertyPath: string;
+  SourceChangeCache: TSourceChangeCache; UseTypeInfoForParameters: boolean;
+  Section: TPascalClassSection; const CallAncestorMethod: string;
+  AddOverride: boolean): boolean;
 var AClassNode: TCodeTreeNode;
 begin
   Result:=false;
@@ -826,15 +843,14 @@ begin
   Result:=CreateMethod(AClassNode,AMethodName,ATypeInfo,
                        APropertyUnitName,APropertyPath,
                        SourceChangeCache,UseTypeInfoForParameters,Section,
-                       CallAncestorMethod);
+                       CallAncestorMethod,AddOverride);
 end;
 
 function TEventsCodeTool.CreateMethod(ClassNode: TCodeTreeNode;
-  const AMethodName: string; ATypeInfo: PTypeInfo;
-  const APropertyUnitName, APropertyPath: string;
-  SourceChangeCache: TSourceChangeCache; UseTypeInfoForParameters: boolean;
-  Section: TPascalClassSection;
-  const CallAncestorMethod: string): boolean;
+  const AMethodName: string; ATypeInfo: PTypeInfo; const APropertyUnitName,
+  APropertyPath: string; SourceChangeCache: TSourceChangeCache;
+  UseTypeInfoForParameters: boolean; Section: TPascalClassSection;
+  const CallAncestorMethod: string; AddOverride: boolean): boolean;
 
   procedure AddNeededUnits(const AFindContext: TFindContext);
   var
@@ -844,13 +860,18 @@ function TEventsCodeTool.CreateMethod(ClassNode: TCodeTreeNode;
     Node: TCodeTreeNode;
     ParamNode: TCodeTreeNode;
   begin
+    Node:=AFindContext.Node;
     MethodUnitName:=AFindContext.Tool.GetSourceName(false);
     AddNeededUnitToMainUsesSection(PChar(MethodUnitName));
 
     // search every parameter type and collect units
     if not (AFindContext.Tool is TCodeCompletionCodeTool) then exit;
-    if not (AFindContext.Node.Desc in [ctnProcedureType,ctnProcedure]) then exit;
-    ProcHeadNode:=AFindContext.Node.FirstChild;
+    if Node.Desc=ctnReferenceTo then begin
+      Node:=Node.FirstChild;
+      if Node=nil then exit;
+    end;
+    if not (Node.Desc in [ctnProcedureType,ctnProcedure]) then exit;
+    ProcHeadNode:=Node.FirstChild;
     if (ProcHeadNode=nil) or (ProcHeadNode.Desc<>ctnProcedureHead) then exit;
     if ProcHeadNode.FirstChild=nil then
       AFindContext.Tool.BuildSubTreeForProcHead(ProcHeadNode);
@@ -874,6 +895,9 @@ function TEventsCodeTool.CreateMethod(ClassNode: TCodeTreeNode;
     Result:=false;
     if APropertyPath<>'' then begin
       // find unit of property
+      {$IFDEF VerboseMethodPropEdit}
+      debugln(['FindPropertyType APropertyPath="',APropertyPath,'"']);
+      {$ENDIF}
       Tool:=nil;
       FindContext:=CleanFindContext;
       if APropertyUnitName='' then begin
@@ -889,14 +913,23 @@ function TEventsCodeTool.CreateMethod(ClassNode: TCodeTreeNode;
         DebugLn(['FindPropertyType FindDeclarationOfPropertyPath failed: ',Tool.MainFilename,' APropertyPath=',APropertyPath]);
         exit;
       end;
+      {$IFDEF VerboseMethodPropEdit}
+      debugln(['FindPropertyType SUCCESS Tool=',Tool.MainFilename,' Found APropertyPath="',APropertyPath,'" Found=',FindContextToString(FindContext)]);
+      {$ENDIF}
       if FindContext.Node.Desc<>ctnProperty then
-        FindContext.Tool.RaiseException(
+        FindContext.Tool.RaiseException(20170421202114,
           APropertyPath+' is not a property.'
           +' See '+FindContext.Tool.MainFilename
           +' '+FindContext.Tool.CleanPosToStr(FindContext.Node.StartPos));
       // find type
+      {$IFDEF VerboseMethodPropEdit}
+      debugln(['FindPropertyType ATypeInfo^.Name=',ATypeInfo^.Name]);
+      {$ENDIF}
       FindContext:=(FindContext.Tool as TEventsCodeTool)
                                               .FindMethodTypeInfo(ATypeInfo,'');
+      {$IFDEF VerboseMethodPropEdit}
+      debugln(['FindPropertyType SUCCESS Found MethodTypeInfo="',FindContextToString(FindContext),'"']);
+      {$ENDIF}
     end else
       FindContext:=FindMethodTypeInfo(ATypeInfo,APropertyUnitName);
     Result:=true;
@@ -914,9 +947,19 @@ begin
   Result:=false;
   try
     if (ClassNode=nil) or (not (ClassNode.Desc in [ctnClass,ctnObjCClass])) or (AMethodName='')
-    or (ATypeInfo=nil) or (SourceChangeCache=nil) or (Scanner=nil) then exit;
-    {$IFDEF CTDEBUG}
-    DebugLn(['[TEventsCodeTool.CreateMethod] A AMethodName="',AMethodName,'" in "',MainFilename,'" UseTypeInfoForParameters=',UseTypeInfoForParameters]);
+    or (ATypeInfo=nil) or (SourceChangeCache=nil) or (Scanner=nil) then begin
+      debugln(['TEventsCodeTool.CreateMethod failed, missing parameter']);
+      exit;
+    end;
+    if CallAncestorMethod<>'' then
+      AddOverride:=true;
+    {$IFDEF VerboseMethodPropEdit}
+    DebugLn(['[TEventsCodeTool.CreateMethod] A AMethodName="',AMethodName,'" in "',MainFilename,'"',
+      ' APropertyUnitName="',APropertyUnitName,'"',
+      ' APropertyPath="',APropertyPath,'"',
+      ' UseTypeInfoForParameters=',UseTypeInfoForParameters,
+      ' CallAncestorMethod="',CallAncestorMethod,'"',
+      ' AddOverride=',AddOverride]);
     {$ENDIF}
     // initialize class for code completion
     CodeCompleteClassNode:=ClassNode;
@@ -925,23 +968,34 @@ begin
     if UseTypeInfoForParameters then begin
       // do not lookup the declaration in the source, use RTTI instead
       ATypeData:=GetTypeData(ATypeInfo);
-      if ATypeData=nil then exit(false);
+      if ATypeData=nil then begin
+        {$IFDEF VerboseMethodPropEdit}
+        DebugLn('ERROR: [TEventsCodeTool.CreateMethod] GetTypeData failed');
+        {$ENDIF}
+        exit;
+      end;
       CleanMethodDefinition:=UpperCaseStr(AMethodName)
                          +MethodTypeDataToStr(ATypeData,
                          [phpWithoutClassName, phpWithoutName, phpInUpperCase]);
     end else begin
       // search typeinfo in source
-      if not FindPropertyType(FindContext) then exit;
+      if not FindPropertyType(FindContext) then begin
+        {$IFDEF VerboseMethodPropEdit}
+        DebugLn('ERROR: [TEventsCodeTool.CreateMethod] FindPropertyType failed');
+        {$ENDIF}
+        exit;
+      end;
       AddNeededUnits(FindContext);
       CleanMethodDefinition:=UpperCaseStr(AMethodName)
              +FindContext.Tool.ExtractProcHead(FindContext.Node,
                          [phpWithoutClassName, phpWithoutName, phpInUpperCase]);
     end;
-    if not ProcExistsInCodeCompleteClass(CleanMethodDefinition) then begin
-      {$IFDEF CTDEBUG}
+    if not ProcExistsInCodeCompleteClass(CleanMethodDefinition,not AddOverride)
+    then begin
+      // insert method definition into class
+      {$IFDEF VerboseMethodPropEdit}
       DebugLn('[TEventsCodeTool.CreateMethod] insert method definition to class');
       {$ENDIF}
-      // insert method definition into class
       InsertCall:='';
       if CompareTextIgnoringSpace(CallAncestorMethod,'inherited',false)=0 then
         InsertCall:=CallAncestorMethod+';';
@@ -971,7 +1025,7 @@ begin
                      phpWithoutParamTypes]));
         end;
       end;
-      {$IFDEF CTDEBUG}
+      {$IFDEF VerboseMethodPropEdit}
       DebugLn('[TEventsCodeTool.CreateMethod] MethodDefinition="',MethodDefinition,'"');
       {$ENDIF}
       if Section in [pcsPublished,pcsPublic] then
@@ -998,20 +1052,20 @@ begin
       AddClassInsertion(CleanMethodDefinition, MethodDefinition, AMethodName,
                         NewSection,nil,ProcBody);
     end;
-    {$IFDEF CTDEBUG}
+    {$IFDEF VerboseMethodPropEdit}
     DebugLn('[TEventsCodeTool.CreateMethod] invoke class completion');
     {$ENDIF}
     if not InsertAllNewClassParts then
-      RaiseException(ctsErrorDuringInsertingNewClassParts);
+      RaiseException(20170421202116,ctsErrorDuringInsertingNewClassParts);
     if not CreateMissingClassProcBodies(false) then
-      RaiseException(ctsErrorDuringCreationOfNewProcBodies);
+      RaiseException(20170421202118,ctsErrorDuringCreationOfNewProcBodies);
     if not InsertAllNewUnitsToMainUsesSection then
-      RaiseException(ctsErrorDuringInsertingNewUsesSection);
+      RaiseException(20170421202120,ctsErrorDuringInsertingNewUsesSection);
 
     // apply the changes
     if not SourceChangeCache.Apply then
-      RaiseException(ctsUnableToApplyChanges);
-    {$IFDEF CTDEBUG}
+      RaiseException(20170421202122,ctsUnableToApplyChanges);
+    {$IFDEF VerboseMethodPropEdit}
     DebugLn('[TEventsCodeTool.CreateMethod] END');
     {$ENDIF}
     Result:=true;
@@ -1027,14 +1081,13 @@ var
 
   procedure RaiseClassNotFound;
   begin
-    RaiseExceptionFmt(ctsClassSNotFound, [AClassName]);
+    RaiseExceptionFmt(20170421202124,ctsClassSNotFound, [AClassName]);
   end;
 
 var
   Node: TCodeTreeNode;
   AUnitName: String;
-  UsesNode: TCodeTreeNode;
-  Params: TFindDeclarationParams;
+  Tool: TFindDeclarationTool;
 begin
   Result:=false;
   //debugln(['TEventsCodeTool.FindClassOfInstance START']);
@@ -1042,7 +1095,9 @@ begin
   AClassName:=Instance.ClassName;
   if AClassName='' then exit;
   AUnitName:=Instance.UnitName;
-  //debugln(['TEventsCodeTool.FindClassOfInstance Unit=',ExtractFileNameOnly(MainFilename),' Class=',AClassName,' Instance.Unit=',AUnitName]);
+  {$IFDEF VerboseMethodPropEdit}
+  debugln(['TEventsCodeTool.FindClassOfInstance Unit=',ExtractFileNameOnly(MainFilename),' Class=',AClassName,' Instance.Unit=',AUnitName]);
+  {$ENDIF}
   if (AUnitName='')
   or (CompareIdentifiers(PChar(ExtractFileNameOnly(MainFilename)),
     PChar(AUnitName))=0)
@@ -1059,40 +1114,27 @@ begin
     FindContext.Tool:=Self;
     exit(true);
   end;
-  // search in used units
-  UsesNode:=FindMainUsesNode;
-  if UsesNode=nil then begin
-    debugln(['TEventsCodeTool.FindClassOfInstance no main uses section found']);
+
+  // find unit
+  // Note: when a component was loaded by an ancestor, its class may not
+  //       be in the uses section of the current unit
+  Tool:=FindCodeToolForUsedUnit(AUnitName,'',ExceptionOnNotFound);
+  if Tool=nil then exit(false);
+
+  // find class
+  Node:=Tool.FindDeclarationNodeInInterface(AClassName,true);
+  // check if it is a class
+  if (Node=nil)
+  or (not (Node.Desc in [ctnTypeDefinition,ctnGenericType]))
+  or (Node.LastChild=nil)
+  or (not (Node.LastChild.Desc in AllClassObjects)) then begin
+    debugln(['TEventsCodeTool.FindClassOfInstance found node is not a class: ',Node.DescAsString]);
     if ExceptionOnNotFound then RaiseClassNotFound;
     exit;
   end;
-  Params:=TFindDeclarationParams.Create;
-  try
-    Params.ContextNode:=UsesNode;
-    Params.Flags:=[fdfSearchInParentNodes, fdfSearchInAncestors];
-    if ExceptionOnNotFound then Include(Params.Flags,fdfExceptionOnNotFound);
-    Params.SetIdentifier(Self,PChar(AClassName),nil);
-    if not FindIdentifierInContext(Params) then begin
-      debugln(['TEventsCodeTool.FindClassOfInstance FindIdentifierInContext failed']);
-      if ExceptionOnNotFound then RaiseClassNotFound;
-      exit;
-    end;
-    // check if it is a class
-    Node:=Params.NewNode;
-    if (Node=nil)
-    or (not (Node.Desc in [ctnTypeDefinition,ctnGenericType]))
-    or (Node.LastChild=nil)
-    or (not (Node.LastChild.Desc in AllClassObjects)) then begin
-      debugln(['TEventsCodeTool.FindClassOfInstance found node is not a class: ',Node.DescAsString]);
-      if ExceptionOnNotFound then RaiseClassNotFound;
-      exit;
-    end;
-    FindContext.Node:=Node.LastChild;
-    FindContext.Tool:=Params.NewCodeTool;
-    Result:=true;
-  finally
-    Params.Free;
-  end;
+  FindContext.Node:=Node.LastChild;
+  FindContext.Tool:=Tool;
+  Result:=true;
 end;
 
 function TEventsCodeTool.FindTypeOfInstanceProperty(Instance: TPersistent;
@@ -1131,14 +1173,14 @@ begin
     if ExceptionOnNotFound then Include(Params.Flags,fdfExceptionOnNotFound);
     Params.SetIdentifier(Self,PChar(PropName),nil);
     if not AClassContext.Tool.FindIdentifierInContext(Params) then begin
-      RaiseException('property not found '+DbgSName(Instance)+'.'+PropName);
+      RaiseException(20170421202129,'property not found '+DbgSName(Instance)+'.'+PropName);
       exit;
     end;
     if Params.NewNode=nil then exit;
     PropNode:=Params.NewNode;
     if PropNode.Desc<>ctnProperty then begin
       debugln(['TEventsCodeTool.FindTypeOfPropertyInfo identifier ',DbgSName(Instance)+'.'+PropName,' is not property, found ',PropNode.DescAsString]);
-      RaiseException('identifier is not a property: '+DbgSName(Instance)+'.'+PropName);
+      RaiseException(20170421202135,'identifier is not a property: '+DbgSName(Instance)+'.'+PropName);
     end;
     // search base type of property
     TypeContext:=Params.NewCodeTool.FindBaseTypeOfNode(Params,PropNode);
@@ -1165,7 +1207,7 @@ begin
         exit;
     end else begin
       if not FindTypeOfInstanceProperty(Instance,PropName,TypeContext,true) then exit;
-      if TypeContext.Node.Desc<>ctnProcedureType then begin
+      if not (TypeContext.Node.Desc in AllProcTypes) then begin
         debugln(['TEventsCodeTool.CreateExprListFromPropertyInfo property '+DbgSName(Instance)+'.'+PropName+' is not method: ',TypeContext.Node.DescAsString]);
         exit;
       end;
@@ -1395,7 +1437,9 @@ begin
   BuildTree(lsrImplementationStart);
   //debugln(['TEventsCodeTool.GetCompatiblePublishedMethods START']);
   ClassNode:=FindClassNodeInInterface(AClassName,true,false,true);
-  //debugln(['TEventsCodeTool.GetCompatiblePublishedMethods classnode=',ClassNode.DescAsString]);
+  {$IFDEF VerboseMethodPropEdit}
+  debugln(['TEventsCodeTool.GetCompatiblePublishedMethods ClassName="',AClassName,'" PropInstance=',DbgSName(PropInstance),' PropName="',PropName,'" classnode=',ClassNode.DescAsString]);
+  {$ENDIF}
   // create type list of property
   SearchedExprList:=nil;
   SearchedCompatibilityList:=nil;
@@ -1403,7 +1447,9 @@ begin
   Params:=TFindDeclarationParams.Create;
   try
     SearchedExprList:=CreateExprListFromInstanceProperty(PropInstance,PropName);
-    //debugln(['TEventsCodeTool.GetCompatiblePublishedMethods ExprList=',SearchedExprList.AsString]);
+    {$IFDEF VerboseMethodPropEdit}
+    debugln(['TEventsCodeTool.GetCompatiblePublishedMethods ExprList=',SearchedExprList.AsString]);
+    {$ENDIF}
     fGatheredCompatibleMethods:=TAVLTree.Create(@CompareIdentifierPtrs);
     // create compatibility list
     CompListSize:=SizeOf(TTypeCompatibility)*SearchedExprList.Count;
@@ -1413,7 +1459,7 @@ begin
     Params.ContextNode:=ClassNode;
     Params.Flags:=[fdfCollect,fdfSearchInAncestors];
     Params.SetIdentifier(Self,nil,@CollectPublishedMethods);
-    {$IFDEF CTDEBUG}
+    {$IFDEF VerboseMethodPropEdit}
     DebugLn('[TEventsCodeTool.GetCompatiblePublishedMethods] Searching ...');
     {$ENDIF}
     FindIdentifierInContext(Params);

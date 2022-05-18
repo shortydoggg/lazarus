@@ -1,4 +1,4 @@
-{ $Id: graphutil.pp 49592 2015-08-03 23:06:27Z juha $ }
+{ $Id: graphutil.pp 53711 2016-12-17 22:58:08Z juha $ }
 {
  /***************************************************************************
                                 graphtype.pp
@@ -21,7 +21,8 @@ unit GraphUtil;
 interface
 
 uses
-  Types, Graphics, GraphType, Math, LCLType, LCLIntf;
+  Types, Math,
+  Graphics, GraphType, LCLType, LCLIntf;
 
 function ColorToGray(const AColor: TColor): Byte;
 procedure ColorToHLS(const AColor: TColor; out H, L, S: Byte);

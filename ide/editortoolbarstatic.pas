@@ -14,7 +14,7 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
 unit EditorToolbarStatic;
@@ -24,9 +24,15 @@ unit EditorToolbarStatic;
 interface
 
 uses
-  SysUtils, Classes, fgl, ComCtrls, Controls, LCLProc, Menus,
-  IDEImagesIntf, SrcEditorIntf, BaseIDEIntf,
-  LazarusIDEStrConsts, LazConfigStorage, Laz2_XMLCfg, ToolbarConfig;
+  SysUtils, Classes, fgl,
+  // LCL
+  ComCtrls, Controls, LCLProc, Menus,
+  // LazUtils
+  LazConfigStorage, Laz2_XMLCfg,
+  // IdeIntf
+  BaseIDEIntf, IDEImagesIntf, SrcEditorIntf,
+  // IDE
+  LazarusIDEStrConsts, ToolbarConfig;
 
 type
 
@@ -204,7 +210,7 @@ begin
   // Toolbar must be created with Align = alTop, then initial positioning of buttons is correct.
   FToolBar := TToolbar.Create(FWindow);
   FToolBar.Parent   := FWindow;
-  FToolBar.Height   := 26;
+  FToolBar.AutoSize := True;
   FToolBar.Align    := alTop;
   FToolBar.Flat     := True;
   FToolBar.Images   := IDEImages.Images_16;
@@ -215,10 +221,13 @@ begin
   CfgItem := TMenuItem.Create(xPM);
   xPM.Items.Add(CfgItem);
   CfgItem.Caption     := lisConfigureEditorToolbar;
-  CfgItem.ImageIndex  := IDEImages.LoadImage(16, 'preferences');
+  CfgItem.ImageIndex  := IDEImages.LoadImage('preferences');
   CfgItem.OnClick     := @FCollection.DoConfigureEditorToolbar;
 
   FToolBar.PopupMenu  := xPM;
+
+  if FWindow.PixelsPerInch<>96 then
+    FToolBar.AutoAdjustLayout(lapAutoAdjustForDPI, 96, FWindow.PixelsPerInch, 0, 0);
 end;
 
 destructor TEditorToolbar.Destroy;

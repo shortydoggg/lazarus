@@ -22,8 +22,6 @@
 uses
   Classes, SysUtils,Printers,LCLType,{Forms,}Windows;//,dialogs;
 
-const
-  UseUnicode: Boolean = True;  //Determined at runtime
 
 Type
   THandleType = (htNone, htIC, htDC);
@@ -46,6 +44,8 @@ Type
     function GetDefaultPrinter: string;
     procedure DoBeginDoc; override;
     procedure DoNewPage; override;
+    procedure DoBeginPage; override;
+    procedure DoEndPage; override;
     procedure DoEndDoc(aAborded : Boolean); override;
     procedure DoAbort; override;
 
@@ -85,7 +85,7 @@ Type
   public
     constructor Create; override;
     
-    function Write(const Buffer; Count:Integer; var Written: Integer): Boolean; override;
+    function Write(const Buffer; Count:Integer; out Written: Integer): Boolean; override;
 
     //Warning not portable functions here
     procedure AdvancedProperties;

@@ -1,4 +1,4 @@
-{  $Id: addfiletoapackagedlg.pas 51712 2016-02-26 13:13:16Z mattias $  }
+{  $Id: addfiletoapackagedlg.pas 54524 2017-04-05 08:34:48Z juha $  }
 {
  /***************************************************************************
                          addfiletoapackagedlg.pas
@@ -22,7 +22,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -39,11 +39,15 @@ unit AddFileToAPackageDlg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, ExtCtrls, StdCtrls,
-  Dialogs, AVL_Tree, FileUtil, LazFileUtils, ButtonPanel,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  Forms, Controls, StdCtrls, Dialogs, ButtonPanel,
+  // LazUtils
+  FileUtil, LazFileUtils,
+  // IdeIntf
   IDEWindowIntf, PackageIntf, IDEHelpIntf,
-  LazarusIDEStrConsts, IDEProcs,
-  PackageDefs, PackageSystem;
+  // IDE
+  LazarusIDEStrConsts, PackageDefs, PackageSystem;
 
 type
 

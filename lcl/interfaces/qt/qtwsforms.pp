@@ -1,4 +1,4 @@
-{ $Id: qtwsforms.pp 51530 2016-02-06 15:15:51Z maxim $}
+{ $Id: qtwsforms.pp 60289 2019-02-02 18:44:59Z mattias $}
 {
  *****************************************************************************
  *                               QtWSForms.pp                                * 
@@ -49,6 +49,8 @@ type
 
   TQtWSCustomFrame = class(TWSCustomFrame)
   published
+    class function CreateHandle(const AWinControl: TWinControl; const AParams: TCreateParams): TLCLIntfHandle; override;
+    class procedure ScrollBy(const AWinControl: TWinControl; DeltaX, DeltaY: integer); override;
   end;
 
   { TQtWSFrame }
@@ -112,6 +114,7 @@ type
   TQtWSHintWindow = class(TWSHintWindow)
   published
     class function CreateHandle(const AWinControl: TWinControl; const AParams: TCreateParams): TLCLIntfHandle; override;
+    class procedure ShowHide(const AWinControl: TWinControl); override;
   end;
 
   { TQtWSScreen }
@@ -130,8 +133,45 @@ type
 implementation
 
 uses qtint, LCLIntf
-  {$IFDEF VerboseQtResize}, LCLProc{$ENDIF}
+  {$IF DEFINED(VerboseQtResize) OR DEFINED(DEBUGQTUSEACCURATEFRAME)}, LCLProc{$ENDIF}
   ;
+
+{ TQtWSCustomFrame }
+
+class function TQtWSCustomFrame.CreateHandle(const AWinControl: TWinControl;
+  const AParams: TCreateParams): TLCLIntfHandle;
+var
+  QtFrame: TQtMainWindow;
+begin
+  if IsFormDesign(AWinControl) or (csDesigning in AWinControl.ComponentState) then
+    QtFrame := TQtDesignWidget.Create(AWinControl, AParams)
+  else
+    QtFrame := TQtMainWindow.Create(AWinControl, AParams);
+  QtFrame.setWindowFlags(QtWindow or QtFramelessWindowHint);
+  QtFrame.AttachEvents;
+  {$IFDEF QTSCROLLABLEFORMS}
+  if Assigned(QtFrame.ScrollArea) then
+    QtFrame.ScrollArea.AttachEvents;
+  {$ENDIF}
+  QtFrame.MenuBar.AttachEvents;
+  Result := TLCLIntfHandle(QtFrame);
+end;
+
+class procedure TQtWSCustomFrame.ScrollBy(const AWinControl: TWinControl;
+  DeltaX, DeltaY: integer);
+{$IFDEF QTSCROLLABLEFORMS}
+var
+  Widget: TQtMainWindow;
+{$ENDIF}
+begin
+  {$IFDEF QTSCROLLABLEFORMS}
+  if not WSCheckHandleAllocated(AWinControl, 'ScrollBy') then
+    Exit;
+  Widget := TQtMainWindow(AWinControl.Handle);
+  if Assigned(Widget.ScrollArea) then
+    Widget.ScrollArea.scroll(DeltaX, DeltaY);
+  {$ENDIF}
+end;
 
 {------------------------------------------------------------------------------
   Method: TQtWSCustomForm.CreateHandle
@@ -168,8 +208,7 @@ begin
   QtMainWindow.QtFormBorderStyle := Ord(AForm.BorderStyle);
   QtMainWindow.QtFormStyle := Ord(AForm.FormStyle);
 
-  Str := GetUtf8String(AWinControl.Caption);
-
+  Str := AWinControl{%H-}.Caption;
   QtMainWindow.SetWindowTitle(@Str);
 
   if not (csDesigning in AForm.ComponentState) then
@@ -199,6 +238,11 @@ begin
   {$IFDEF HASX11}
   if (QtVersionMajor = 4) and (QtVersionMinor >= 6) then
     QCoreApplication_setAttribute(QtAA_ImmediateWidgetCreation, False);
+  {$ENDIF}
+
+  {$IFDEF QtUseAccurateFrame}
+  if QtMainWindow.IsFramedWidget then
+    QtMainWindow.FrameMargins := QtWidgetSet.WSFrameMargins;
   {$ENDIF}
 
   // Sets Various Events
@@ -385,6 +429,7 @@ var
   W: QWidgetH;
   {$ENDIF}
   Flags: Cardinal;
+  ACustomForm: TCustomForm;
 
   function ShowNonModalOverModal: Boolean;
   var
@@ -426,15 +471,20 @@ begin
   if not WSCheckHandleAllocated(AWinControl, 'ShowHide') then
     Exit;
 
+  ACustomForm := TCustomForm(AWinControl);
   Widget := TQtMainWindow(AWinControl.Handle);
+
+  {issue #34982}
+  if AWinControl.HandleObjectShouldBeVisible and Application.Terminated then
+    exit;
 
   if AWinControl.HandleObjectShouldBeVisible then
   begin
-    if fsModal in TForm(AWinControl).FormState then
+    if fsModal in ACustomForm.FormState then
     begin
       {$ifdef MSWINDOWS}
       // qt doesn't modal windows as QtTool.see issue #18709
-      if (TForm(AWinControl).BorderStyle in [bsToolWindow, bsSizeToolWin]) then
+      if (ACustomForm.BorderStyle in [bsToolWindow, bsSizeToolWin]) then
         QWidget_setWindowFlags(Widget.Widget, QtDialog);
       if QApplication_activeModalWidget <> nil then
         QWidget_setParent(Widget.Widget, QApplication_activeModalWidget);
@@ -461,33 +511,34 @@ begin
             end;
           end;
         end;
-        QWidget_setParent(Widget.Widget, W);
+        if GetEnvironmentVariable('XDG_CURRENT_DESKTOP') = '' then
+          QWidget_setParent(Widget.Widget, W);
       end else
         QWidget_setParent(Widget.Widget, QApplication_desktop());
       {$endif}
 
-      if TCustomForm(AWinControl).BorderStyle <> bsNone then
+      if ACustomForm.BorderStyle <> bsNone then
       begin
         QWidget_setWindowFlags(Widget.Widget, QtDialog or
           {$ifdef darwin}
           QtWindowSystemMenuHint or
           {$endif}
-          GetQtBorderIcons(TCustomForm(AWinControl).BorderStyle,
-            TCustomForm(AWinControl).BorderIcons));
+          GetQtBorderIcons(ACustomForm.BorderStyle,
+            ACustomForm.BorderIcons));
       end;
 
       Widget.setWindowModality(QtApplicationModal);
     end;
 
-    if TForm(AWinControl).FormStyle = fsMDIChild then
+    if ACustomForm.FormStyle = fsMDIChild then
     begin
       {MDI windows have to be resized , since titlebar is included into widget geometry !}
       if not (csDesigning in AWinControl.ComponentState)
         and not Widget.isMaximized then
       begin
         QWidget_contentsRect(Widget.Widget, @R);
-        R.Right := TForm(AWinControl).Width + R.Left;
-        R.Bottom := TForm(AWinControl).Height + R.Top;
+        R.Right := ACustomForm.Width + R.Left;
+        R.Bottom := ACustomForm.Height + R.Top;
         R.Left := Widget.MdiChildCount * 10;
         R.Top := Widget.MdiChildCount * 10;
         Widget.move(R.Left, R.Top);
@@ -495,14 +546,14 @@ begin
       end;
     end;
 
-    if (TForm(AWinControl).FormStyle <> fsMDIChild) or
+    if (ACustomForm.FormStyle <> fsMDIChild) or
       (csDesigning in AWinControl.ComponentState) then
     begin
       if (csDesigning in AWinControl.ComponentState) and
-        (TCustomForm(AWinControl).WindowState = wsMaximized) then
+        (ACustomForm.WindowState = wsMaximized) then
         Widget.setWindowState(LCLToQtWindowState[wsNormal])
       else
-        Widget.setWindowState(LCLToQtWindowState[TCustomForm(AWinControl).WindowState]);
+        Widget.setWindowState(LCLToQtWindowState[ACustomForm.WindowState]);
     end;
   end;
 
@@ -513,7 +564,7 @@ begin
     // issue #12459
     else
     if AWinControl.HandleObjectShouldBeVisible
-      and (TCustomForm(AWinControl).FormStyle in fsAllStayOnTop) then
+      and (ACustomForm.FormStyle in fsAllStayOnTop) then
     begin
       Flags := Widget.windowFlags;
       if (Flags and QtWindowStaysOnTopHint = 0) then
@@ -522,14 +573,14 @@ begin
         Widget.setWindowFlags(Flags);
       end;
       if not Assigned(AWinControl.Parent) and
-        not (fsModal in TForm(AWinControl).FormState) and
-        (TForm(AWinControl).FormStyle <> fsMDIChild) and
+        not (fsModal in ACustomForm.FormState) and
+        (ACustomForm.FormStyle <> fsMDIChild) and
         (QApplication_activeModalWidget() <> nil) then
           TQtMainWindow(Widget).setRealPopupParent(
             QApplication_activeModalWidget());
     end else
     begin
-      if (TCustomForm(AWinControl).FormStyle in fsAllStayOnTop) then
+      if (ACustomForm.FormStyle in fsAllStayOnTop) then
       begin
         if not (csDestroying in AWinControl.ComponentState) then
         begin
@@ -541,11 +592,11 @@ begin
       {$IFDEF HASX11}
       // issue #26018
       if AWinControl.HandleObjectShouldBeVisible and
-        not (TCustomForm(AWinControl).FormStyle in fsAllStayOnTop) and
-        not (fsModal in TCustomForm(AWinControl).FormState) and
-        (TCustomForm(AWinControl).FormStyle <> fsMDIChild) then
+        not (ACustomForm.FormStyle in fsAllStayOnTop) and
+        not (fsModal in ACustomForm.FormState) and
+        (ACustomForm.FormStyle <> fsMDIChild) then
       begin
-        APopupParent := TCustomForm(AWinControl).GetRealPopupParent;
+        APopupParent := ACustomForm.GetRealPopupParent;
         if (APopupParent <> nil) then
         begin
           Widget.setParent(TQtWidget(APopupParent.Handle).Widget);
@@ -561,26 +612,29 @@ begin
   Widget.EndUpdate;
 
   {$IFDEF HASX11}
+  if AWinControl.HandleObjectShouldBeVisible then
+    QCoreApplication_processEvents(QEventLoopAllEvents);
 
   if (Application.TaskBarBehavior = tbSingleButton) or
-    (TForm(AWinControl).ShowInTaskBar <> stDefault) then
-      SetShowInTaskbar(TForm(AWinControl), TForm(AWinControl).ShowInTaskBar);
+    (ACustomForm.ShowInTaskBar <> stDefault) then
+      SetShowInTaskbar(ACustomForm, ACustomForm.ShowInTaskBar);
 
   if AWinControl.HandleObjectShouldBeVisible and
-    not (csDesigning in TForm(AWinControl).ComponentState) and
-        (TForm(AWinControl).FormStyle <> fsMDIChild) then
+    not (csDesigning in ACustomForm.ComponentState) and
+        (ACustomForm.FormStyle <> fsMDIChild) then
   begin
-    if (fsModal in TForm(AWinControl).FormState) then
+    if (fsModal in ACustomForm.FormState) then
     begin
       if (Application.TaskBarBehavior <> tbSingleButton) then
       begin
         SetSkipX11Taskbar(Widget.Widget, True);
         Widget.setShowInTaskBar(False);
       end;
-      if (QtWidgetSet.WindowManagerName = 'metacity') then
-        X11Raise(QWidget_winID(Widget.Widget));
+      if (ACustomForm.BorderStyle <> bsNone) and
+        (QtWidgetSet.WindowManagerName = 'metacity') then
+          X11Raise(QWidget_winID(Widget.Widget));
     end else
-    if (TForm(AWinControl).FormStyle = fsSplash) then
+    if (ACustomForm.FormStyle = fsSplash) then
     begin
       QWidget_repaint(Widget.GetContainerWidget);
       QCoreApplication_processEvents(QEventLoopExcludeUserInputEvents);
@@ -944,26 +998,38 @@ var
   ASize: TSize;
 begin
   Result := False;
-  if AWinControl.HandleAllocated and
-     TQtMainWindow(AWinControl.Handle).testAttribute(QtWA_PendingResizeEvent) then
+  if AWinControl.HandleAllocated then
   begin
-    if Assigned(TCustomForm(AWinControl).Menu) then
+    {$IFDEF QTUSEACCURATEFRAME}
+    if TQtMainWindow(AWinControl.Handle).IsFramedWidget then
     begin
-      AWin := TQtMainWindow(AWinControl.Handle);
-      if Assigned(AWin.MenuBar) then
+      AClientRect := TQtMainWindow(AWinControl.Handle).getClientBounds;
+      {$IFDEF DEBUGQTUSEACCURATEFRAME}
+      DebugLn(Format('******TQtWSCustomForm.GetDefaultClientRect(%s): %s LCL l %d t %d w %d h %d',[dbgsName(AWinControl), dbgs(AClientRect), ALeft, ATop, aWidth, AHeight]));
+      {$ENDIF}
+      Result := True;
+    end else
+    {$ENDIF}
+    if TQtMainWindow(AWinControl.Handle).testAttribute(QtWA_PendingResizeEvent) then
+    begin
+      if Assigned(TCustomForm(AWinControl).Menu) then
       begin
-        AWin.MenuBar.sizeHint(@ASize);
-        // geometry isn't updated yet
-        if ASize.cy < 10 then
-          ASize.cy := 0;
-        // we must use real geometry, and then exclude menubar height.
-        aClientRect := AWin.getGeometry;
-        OffsetRect(aClientRect, -aClientRect.Left, -aClientRect.Top);
-        dec(AClientRect.Bottom, ASize.cy);
-        {$IFDEF VerboseQtResize}
-        DebugLn('TQtWSCustomForm.getDefaultClientRect ',dbgsName(AWinControl),' ',dbgs(AWin.getClientBounds),' mnuBarHeight ',dbgs(AWin.MenuBar.getHeight),' ASize=',dbgs(ASize),' FINAL=',dbgs(AClientRect));
-        {$ENDIF}
-        Result := True;
+        AWin := TQtMainWindow(AWinControl.Handle);
+        if Assigned(AWin.MenuBar) then
+        begin
+          AWin.MenuBar.sizeHint(@ASize);
+          // geometry isn't updated yet
+          if ASize.cy < 10 then
+            ASize.cy := 0;
+          // we must use real geometry, and then exclude menubar height.
+          aClientRect := AWin.getGeometry;
+          OffsetRect(aClientRect, -aClientRect.Left, -aClientRect.Top);
+          dec(AClientRect.Bottom, ASize.cy);
+          {$IFDEF VerboseQtResize}
+          DebugLn('TQtWSCustomForm.getDefaultClientRect ',dbgsName(AWinControl),' ',dbgs(AWin.getClientBounds),' mnuBarHeight ',dbgs(AWin.MenuBar.getHeight),' ASize=',dbgs(ASize),' FINAL=',dbgs(AClientRect));
+          {$ENDIF}
+          Result := True;
+        end;
       end;
     end;
   end;
@@ -992,6 +1058,20 @@ begin
   // Sets Various Events
   QtMainWindow.AttachEvents;
   Result := TLCLIntfHandle(QtMainWindow);
+end;
+
+class procedure TQtWSHintWindow.ShowHide(const AWinControl: TWinControl);
+var
+  AWidget: TQtHintWindow;
+begin
+  if not WSCheckHandleAllocated(AWinControl, 'ShowHide') then
+    Exit;
+
+  AWidget := TQtHintWindow(AWinControl.Handle);
+
+  AWidget.BeginUpdate;
+  AWidget.setVisible(AWinControl.HandleObjectShouldBeVisible);
+  AWidget.EndUpdate;
 end;
 
 end.

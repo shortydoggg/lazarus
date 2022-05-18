@@ -18,12 +18,19 @@ interface
 
 uses
   Classes, SysUtils,
-  FileProcs, LazFileUtils,
+  // LCL
   LCLProc, Controls, StdCtrls, Forms, Buttons, ExtCtrls, Dialogs, ButtonPanel,
+  // Codetools
+  FileProcs,
+  // LazUtils
+  LazFileUtils,
+  // SynEdit
   SynEditTypes, SynEdit,
+  // IdeIntf
   MacroIntf, IDEWindowIntf, SrcEditorIntf, IDEHelpIntf, IDEDialogs,
-  LazarusIDEStrConsts, InputHistory, EditorOptions, Project, IDEProcs,
-  SearchFrm, SearchResultView;
+  // IDE
+  LazarusIDEStrConsts, InputHistory, InputhistoryWithSearchOpt, EditorOptions, Project,
+  IDEProcs, SearchFrm, SearchResultView;
 
 type
   { TLazFindInFilesDialog }
@@ -153,8 +160,7 @@ begin
   StoreIDEFileDialog(SelectDirectoryDialog);
 end;
 
-procedure TLazFindInFilesDialog.FormClose(Sender: TObject;
-  var CloseAction: TCloseAction);
+procedure TLazFindInFilesDialog.FormClose(Sender: TObject; var CloseAction: TCloseAction);
 begin
   IDEDialogLayoutList.SaveLayout(Self);
 end;
@@ -204,22 +210,25 @@ end;
 
 procedure TLazFindInFilesDialog.OKButtonClick(Sender : TObject);
 var
-  Dir: String;
+  Directories, Dir: String;
   p: Integer;
 begin
   if (WhereRadioGroup.ItemIndex=ItemIndDirectories) then
   begin
-    Dir:=GetResolvedDirectories;
+    Directories:=GetResolvedDirectories;
     p:=1;
-    Dir:=GetNextDirectoryInSearchPath(Dir,p);
-    if not DirectoryExistsUTF8(Dir) then
-    begin
-      IDEMessageDialog(lisEnvOptDlgDirectoryNotFound,
-                 Format(dlgSeachDirectoryNotFound,[Dir]),
-                 mtWarning, [mbOk]);
-      ModalResult:=mrNone;
-    end;
-  end
+    repeat
+      Dir:=GetNextDirectoryInSearchPath(Directories,p);
+      if (Dir<>'') and not DirectoryExistsUTF8(Dir) then
+      begin
+        IDEMessageDialog(lisEnvOptDlgDirectoryNotFound,
+                   Format(dlgSeachDirectoryNotFound,[Dir]),
+                   mtWarning, [mbOk]);
+        ModalResult:=mrNone;
+        Break;
+      end;
+    until Dir='';
+  end;
 end;
 
 procedure TLazFindInFilesDialog.ReplaceCheckBoxChange(Sender: TObject);
@@ -302,7 +311,7 @@ function TLazFindInFilesDialog.GetBaseDirectory: string;
 begin
   Result:='';
   if Project1<>nil then
-    Result:=Project1.ProjectDirectory;
+    Result:=Project1.Directory;
   if Result='' then
     Result:=GetCurrentDirUTF8;
 end;
@@ -365,7 +374,8 @@ begin
   // show last used file masks
   AssignToComboBox(FileMaskComboBox, InputHistories.FindInFilesMaskHistory);
   Options := InputHistories.FindInFilesSearchOptions;
-  SynSearchOptions := InputHistories.FindOptions * SharedOptions;//share basic options with FindReplaceDlg
+  //share basic options with FindReplaceDlg
+  SynSearchOptions := InputHistoriesSO.FindOptions[False] * SharedOptions;
 end;
 
 procedure TLazFindInFilesDialog.SaveHistory;
@@ -380,7 +390,9 @@ begin
     InputHistories.AddToFindInFilesPathHistory(Dir);
   InputHistories.AddToFindInFilesMaskHistory(FileMaskComboBox.Text);
   InputHistories.FindInFilesSearchOptions:=Options;
-  InputHistories.FindOptions := InputHistories.FindOptions - SharedOptions + (SynSearchOptions*SharedOptions);//share basic options with FindReplaceDlg
+  //share basic options with FindReplaceDlg
+  InputHistoriesSO.FindOptions[False] := InputHistoriesSO.FindOptions[False] - SharedOptions
+                                              + (SynSearchOptions*SharedOptions);
   InputHistories.Save;
 end;
 

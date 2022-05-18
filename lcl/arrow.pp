@@ -59,6 +59,7 @@ type
     property BorderSpacing;
     property Color;
     property Constraints;
+    property Enabled;
     property Hint;
     property OnChangeBounds;
     property OnClick;
@@ -75,6 +76,9 @@ type
     property OnMouseWheel;
     property OnMouseWheelDown;
     property OnMouseWheelUp;
+    property OnMouseWheelHorz;
+    property OnMouseWheelLeft;
+    property OnMouseWheelRight;
     property OnPaint;
     property OnResize;
     property OnStartDrag;

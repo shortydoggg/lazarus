@@ -158,6 +158,10 @@ begin
 
   EndFormUpdate; // the BeginFormUpdate is in CreateNew
   inherited AfterConstruction;
+
+  if Application.Scaled and Scaled and (Monitor.PixelsPerInch<>PixelsPerInch) then
+    AutoAdjustLayout(lapAutoAdjustForDPI, PixelsPerInch, Monitor.PixelsPerInch,
+      Width, MulDiv(Width, Monitor.PixelsPerInch, PixelsPerInch));
 end;
 
 {------------------------------------------------------------------------------
@@ -497,6 +501,20 @@ begin
   { If the the form is about to show, calculate its metrics }
   if (not Showing) and Visible and ([csDestroying, csDesigning] * ComponentState = []) then
     MoveToDefaultPosition;
+end;
+
+procedure TCustomForm.AutoScale;
+begin
+  if not Scaled then
+  begin
+    Scaled := True; // will execute AutoScale
+    Exit;
+  end;
+
+  if Application.Scaled and (PixelsPerInch<>Monitor.PixelsPerInch) then
+    AutoAdjustLayout(lapAutoAdjustForDPI, PixelsPerInch, Monitor.PixelsPerInch,
+      MulDiv(Width, Monitor.PixelsPerInch, PixelsPerInch),
+      MulDiv(Height, Monitor.PixelsPerInch, PixelsPerInch));
 end;
 
 {------------------------------------------------------------------------------
@@ -874,18 +892,11 @@ begin
 end;
 
 procedure TCustomForm.UpdateShowInTaskBar;
-var
-  Value: TShowInTaskBar;
 begin
   if (Assigned(Application) and (Application.MainForm = Self)) or
      (not HandleAllocated) or Assigned(Parent) or
      (FormStyle = fsMDIChild) or not Showing then Exit;
-  Value := GetEffectiveShowInTaskBar;
-  if FRealizedShowInTaskBar <> Value then
-  begin
-    FRealizedShowInTaskBar := Value;
-    TWSCustomFormClass(WidgetSetClass).SetShowInTaskbar(Self, Value);
-  end;
+  TWSCustomFormClass(WidgetSetClass).SetShowInTaskbar(Self, GetEffectiveShowInTaskBar);
 end;
 
 class procedure TCustomForm.WSRegisterClass;
@@ -1148,7 +1159,7 @@ begin
     begin
       if (State = wsMinimized) and (Application.MainForm = Self) and
          (WidgetSet.GetLCLCapability(lcNeedMininimizeAppWithMainForm) <> LCL_CAPABILITY_NO) then
-          Application.Minimize;
+        Application.Minimize;
       if (OldState = wsMinimized) and (Application.MainForm = Self) and
          (WidgetSet.GetLCLCapability(lcNeedMininimizeAppWithMainForm) <> LCL_CAPABILITY_NO) then
         Application.Restore;
@@ -1197,6 +1208,8 @@ begin
 end;
 
 procedure TCustomForm.SetParent(NewParent: TWinControl);
+var
+  ParentForm: TCustomForm;
 begin
   if Parent = NewParent then exit;
   DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomForm.SetParent'){$ENDIF};
@@ -1205,12 +1218,22 @@ begin
     inherited SetParent(NewParent);
     if (Parent = nil) and Visible then
       HandleNeeded;
+
+    if Parent <> nil then
+    begin
+      ParentForm := GetParentForm(Self);
+      if Application.Scaled and (ParentForm<>nil) and ParentForm.Scaled
+      and (ParentForm.PixelsPerInch<>PixelsPerInch) then
+        AutoAdjustLayout(lapAutoAdjustForDPI, PixelsPerInch, ParentForm.PixelsPerInch, 0, 0);
+    end;
   finally
     EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomForm.SetParent'){$ENDIF};
   end;
 end;
 
 procedure TCustomForm.MoveToDefaultPosition;
+var
+  RealWidth, RealHeight: Integer;
 
   procedure MoveToDefaultMonitor(var X, Y: Integer);
   var
@@ -1220,7 +1243,7 @@ procedure TCustomForm.MoveToDefaultPosition;
     // delphi compatibility: if no main form then DefaultMonitor has no effect
     if Application.MainForm = nil then Exit;
     // find the monitor of the center of the form (the boundaries might be on another monitor)
-    Source := Screen.MonitorFromRect(Rect(X,Y,X+Width,Y+Height));
+    Source := Screen.MonitorFromRect(Rect(X,Y,X+RealWidth,Y+RealHeight));
     case DefaultMonitor of
       dmDesktop:
         Target := Source; // no need to move
@@ -1244,21 +1267,24 @@ procedure TCustomForm.MoveToDefaultPosition;
       Y := (Y - Source.Top) + ABounds.Top;
 
       // check that we are still in the desired monitor
-      if X + Width > ABounds.Right then
-        X := ABounds.Right - Width;
+      if X + RealWidth > ABounds.Right then
+        X := ABounds.Right - RealWidth;
       if X < ABounds.Left then
         X := ABounds.Left;
 
-      if Y + Height > ABounds.Bottom then
-        Y := ABounds.Bottom - Height;
+      if Y + RealHeight > ABounds.Bottom then
+        Y := ABounds.Bottom - RealHeight;
       if Y < ABounds.Top then
         Y := ABounds.Top;
     end
-    else
+    else // poWorkAreaCenter, poScreenCenter
     begin
-      ABounds := Target.BoundsRect;
-      X := (ABounds.Left + ABounds.Right - Width) div 2;
-      Y := (ABounds.Top + ABounds.Bottom - Height) div 2;
+      if Position = poWorkAreaCenter then
+        ABounds := Target.WorkareaRect
+      else
+        ABounds := Target.BoundsRect;
+      X := (ABounds.Left + ABounds.Right - RealWidth) div 2;
+      Y := (ABounds.Top + ABounds.Bottom - RealHeight) div 2;
     end;
   end;
 
@@ -1266,6 +1292,8 @@ var
   X, Y: integer;
   p: TPosition;
   AForm: TCustomForm;
+  RealRect, AFormRealRect: TRect;
+  AFormRealWidth, AFormRealHeight: Integer;
 begin
   if (Parent <> nil) or (ParentWindow <> 0) then exit;
 
@@ -1274,6 +1302,15 @@ begin
   // first make sure X and Y are assigned
   X := Left;
   Y := Top;
+  if HandleAllocated and (GetWindowRect(Handle, RealRect) <> 0) then
+  begin // success
+    RealWidth := RealRect.Right-RealRect.Left;
+    RealHeight := RealRect.Bottom-RealRect.Top;
+  end else
+  begin // error
+    RealWidth := Width;
+    RealHeight := Height;
+  end;
 
   p := Position;
   if (Position = poMainFormCenter) and (Application.Mainform=nil) then
@@ -1281,13 +1318,18 @@ begin
   case P of
     poDesktopCenter:
       begin
-        X := Screen.DesktopLeft + (Screen.DesktopWidth - Width) div 2;
-        Y := Screen.DesktopTop +(Screen.DesktopHeight - Height) div 2;
+        X := Screen.DesktopLeft + (Screen.DesktopWidth - RealWidth) div 2;
+        Y := Screen.DesktopTop +(Screen.DesktopHeight - RealHeight) div 2;
       end;
     poScreenCenter:
       begin
-        X := (Screen.Width - Width) div 2;
-        Y := (Screen.Height - Height) div 2;
+        X := (Screen.Width - RealWidth) div 2;
+        Y := (Screen.Height - RealHeight) div 2;
+      end;
+    poWorkAreaCenter:
+      begin
+        X := Screen.WorkAreaLeft + (Screen.WorkAreaWidth - RealWidth) div 2;
+        Y := Screen.WorkAreaTop + (Screen.WorkAreaHeight - RealHeight) div 2;
       end;
     poMainFormCenter,
     poOwnerFormCenter:
@@ -1300,12 +1342,21 @@ begin
         begin
           if FormStyle = fsMDIChild then
           begin
-            X := (AForm.ClientWidth - Width) div 2;
-            Y := (AForm.ClientHeight - Height) div 2;
+            X := (AForm.ClientWidth - RealWidth) div 2;
+            Y := (AForm.ClientHeight - RealHeight) div 2;
           end else
           begin
-            X := ((AForm.Width - Width) div 2) + AForm.Left;
-            Y := ((AForm.Height - Height) div 2) + AForm.Top;
+            if AForm.HandleAllocated and (GetWindowRect(AForm.Handle, AFormRealRect) <> 0) then
+            begin // success
+              AFormRealWidth := AFormRealRect.Right-AFormRealRect.Left;
+              AFormRealHeight := AFormRealRect.Bottom-AFormRealRect.Top;
+            end else
+            begin // error
+              AFormRealWidth := AForm.Width;
+              AFormRealHeight := AForm.Height;
+            end;
+            X := ((AFormRealWidth - RealWidth) div 2) + AForm.Left;
+            Y := ((AFormRealHeight - RealHeight) div 2) + AForm.Top;
           end;
         end;
       end;
@@ -1313,7 +1364,7 @@ begin
   // get current widgetset position
   if (p in [poDefault, poDefaultPosOnly]) and HandleAllocated then
     GetWindowRelativePosition(Handle,X,Y);
-  if (Position in [poScreenCenter, poMainFormCenter, poOwnerFormCenter]) then
+  if (Position in [poScreenCenter, poMainFormCenter, poOwnerFormCenter, poWorkAreaCenter]) then
     MoveToDefaultMonitor(X, Y);
   SetBounds(X, Y, Width, Height);
 end;
@@ -1668,7 +1719,7 @@ procedure TCustomForm.UpdateActions;
     i: Integer;
     CurControl: TControl;
   begin
-    if not Container.Showing then exit;
+    if not Container.Showing or (csDesigning in Container.ComponentState) then exit;
     //DebugLn(['RecursiveInitiate ',DbgSName(Container)]);
     for i := 0 to Container.ControlCount - 1 do begin
       CurControl := Container.Controls[i];
@@ -1826,6 +1877,20 @@ begin
   WindowState := prevWindowState;
 end;
 
+procedure TCustomForm.SetScaled(const AScaled: Boolean);
+var
+  OldScaled: Boolean;
+begin
+  if Scaled=AScaled then
+    Exit;
+
+  OldScaled := Scaled;
+  inherited SetScaled(AScaled);
+  if not OldScaled and Scaled
+  and (ComponentState * [csDesigning, csLoading] = []) then // not in designtime and not when loading
+    AutoScale;
+end;
+
 {------------------------------------------------------------------------------
        TCustomForm SetActiveControl
 ------------------------------------------------------------------------------}
@@ -1840,10 +1905,16 @@ begin
        (GetParentForm(AWinControl) <> Self) or
        not ((csLoading in ComponentState) or AWinControl.CanFocus) then
     begin
-      DebugLn('TCustomForm.SetActiveControl ',DbgSName(Self),' AWinControl=',DbgSName(AWinControl),' GetParentForm(AWinControl)=',
-              DbgSName(GetParentForm(AWinControl)),' csLoading=',dbgs(csLoading in ComponentState),' AWinControl.CanFocus=',
-              dbgs((AWinControl<>nil) and AWinControl.CanFocus),' IsControlVisible=',dbgs((AWinControl<>nil) and AWinControl.IsControlVisible),
-              ' Enabled=',dbgs((AWinControl<>nil) and AWinControl.Enabled));
+      DebugLn(['TCustomForm.SetActiveControl ',DbgSName(Self),' AWinControl=',DbgSName(AWinControl),' GetParentForm(AWinControl)=',
+              DbgSName(GetParentForm(AWinControl)),'=Self=',GetParentForm(AWinControl) = Self,
+              ' csLoading=',csLoading in ComponentState,
+              ' AWinControl.CanFocus=',AWinControl.CanFocus,
+              ' IsControlVisible=',AWinControl.IsControlVisible,
+              ' Enabled=',AWinControl.Enabled]);
+      while AWinControl<>nil do begin
+        debugln(['  ',DbgSName(AWinControl),' IsControlVisible=',AWinControl.IsControlVisible,' Enabled=',AWinControl.Enabled,' CanFocus=',AWinControl.CanFocus]);
+        AWinControl:=AWinControl.Parent;
+      end;
       {$IFDEF VerboseFocus}
       RaiseGDBException(SCannotFocus);
       {$ELSE}
@@ -1856,6 +1927,8 @@ begin
   Debugln(['TCustomForm.SetActiveControl ',DbgSName(Self),' FActive=',DbgS(FActive),' OldActiveControl=',DbgSName(FActiveControl),' NewActiveControl=',DbgSName(AWinControl)]);
   {$ENDIF}
   FActiveControl := AWinControl;
+  if (FActiveControl<>nil) and (FActiveControl<>Self) and not (FActiveControl is TCustomForm) then
+    FLastActiveControl := FActiveControl;
   if Assigned(FActiveControl) then FreeNotification(FActiveControl);
   if ([csLoading, csDestroying] * ComponentState = []) then
   begin
@@ -1981,12 +2054,7 @@ begin
     begin
       Include(FFormState, fsCreating);
       try
-        if not InitResourceComponent(Self, TForm) then
-          if RequireDerivedFormResource then
-            raise EResNotFound.CreateFmt(
-              rsFormResourceSNotFoundForResourcelessFormsCreateNew, [ClassName])
-          else
-            DebugLn(Format(rsFormResourceSNotFoundForResourcelessFormsCreateNew, [ClassName]));
+        ProcessResource;
       finally
         Exclude(FFormState, fsCreating);
       end;
@@ -1994,6 +2062,16 @@ begin
   finally
     GlobalNameSpace.EndWrite;
   end;
+end;
+
+procedure TCustomForm.ProcessResource;
+begin
+  if not InitResourceComponent(Self, TForm) then
+    if RequireDerivedFormResource then
+      raise EResNotFound.CreateFmt(
+        rsFormResourceSNotFoundForResourcelessFormsCreateNew, [ClassName])
+    else
+      DebugLn(Format(rsFormResourceSNotFoundForResourcelessFormsCreateNew, [ClassName]));
 end;
 
 {------------------------------------------------------------------------------
@@ -2011,7 +2089,11 @@ begin
   FShowInTaskbar := stDefault;
   FAlphaBlend := False;
   FAlphaBlendValue := 255;
-  FDesignTimeDPI := 96;
+  case Application.DoubleBuffered of
+    adbDefault: FDoubleBuffered := TWSCustomFormClass(WidgetSetClass).GetDefaultDoubleBuffered;
+    adbTrue: FDoubleBuffered := True;
+    adbFalse: FDoubleBuffered := False;
+  end;
   // set border style before handle is allocated
   if not (fsBorderStyleChanged in FFormState) then
     FFormBorderStyle:= bsSizeable;
@@ -2095,7 +2177,7 @@ begin
   begin
     if CloseQuery then
     begin
-      // IsMainForm flag set if we are closeing MainForm or its parent
+      // IsMainForm flag set if we are closing MainForm or its parent
       IsMainForm := (Application.MainForm = Self) or (Self.IsParentOf(Application.MainForm));
       // Prepare default close action
       if FormStyle = fsMDIChild then
@@ -2196,6 +2278,38 @@ begin
   Message.Result:= 0;
 end;
 
+procedure TCustomForm.WMDPIChanged(var Msg: TLMessage);
+var
+  NewDpi, I, L: integer;
+begin
+  if Parent=nil then
+  begin
+    NewDpi := hi(Cardinal(Msg.wParam));
+    if Application.Scaled and Scaled and (NewDpi<>PixelsPerInch) then
+    begin
+      { Problem (Windows): if the form is shown the first time on a secondary monitor
+        with a different DPI settings, the WM_DPICHANGED message is sent within
+        UpdateBounds when BoundsLockCount>0 which means the bounds are not scaled.
+        We force to update the bounds. See issue 32162.
+        (A better solution is welcome.)
+      }
+      I := -1;
+      while BoundsLockCount>0 do
+      begin
+        EndUpdateBounds;
+        Inc(I);
+      end;
+      try
+        AutoAdjustLayout(lapAutoAdjustForDPI, PixelsPerInch, NewDpi,
+          Width, MulDiv(Width, NewDpi, PixelsPerInch));
+      finally
+        for L := 0 to I do
+          BeginUpdateBounds;
+      end;
+    end;
+  end;
+end;
+
 {------------------------------------------------------------------------------
        TCustomForm Method Hide
 ------------------------------------------------------------------------------}
@@ -2209,6 +2323,10 @@ end;
 ------------------------------------------------------------------------------}
 procedure TCustomForm.Show;
 begin
+  if Application.Scaled and Scaled and (Monitor.PixelsPerInch<>PixelsPerInch) then
+    AutoAdjustLayout(lapAutoAdjustForDPI, PixelsPerInch, Monitor.PixelsPerInch,
+      Width, MulDiv(Width, Monitor.PixelsPerInch, PixelsPerInch));
+
   Visible := True;
   BringToFront;
 end;
@@ -2268,38 +2386,24 @@ begin
   Result := IsForm and (Icon <> nil);
 end;
 
-function TCustomForm.GetPixelsPerInch: Longint;
+function TCustomForm.GetMonitor: TMonitor;
 var
   ParentForm: TCustomForm;
-  DC: HDC;
 begin
-  if FPixelsPerInch = 0 then
+  if Assigned(Parent) then
   begin
-    if Assigned(Parent) then
-    begin
-      ParentForm := GetParentForm(Self);
-      if Assigned(ParentForm) then
-        FPixelsPerInch := ParentForm.PixelsPerInch;
-    end;
-
-    if FPixelsPerInch <= 0 then
-    begin
-      if HandleAllocated then
-      begin
-        DC := GetDC(Handle);
-        FPixelsPerInch := GetDeviceCaps(DC, LOGPIXELSX);
-        ReleaseDC(Handle, DC);
-      end
-      else
-        FPixelsPerInch := Screen.PixelsPerInch;
-    end;
+    ParentForm := GetParentForm(Self);
+    if Assigned(ParentForm) then
+      Result := ParentForm.Monitor
+    else
+      Result := nil;
+  end else
+  begin
+    if HandleAllocated then
+      Result := Screen.MonitorFromWindow(Handle, mdNearest)
+    else
+      Result := Screen.MonitorFromPoint(point(Left,Top));
   end;
-  Result := FPixelsPerInch;
-end;
-
-function TCustomForm.GetMonitor: TMonitor;
-begin
-  Result := Screen.MonitorFromWindow(Handle, mdNearest);
 end;
 
 {------------------------------------------------------------------------------
@@ -2409,6 +2513,8 @@ begin
         debugln(['TCustomForm.SetFocusedControl ',DbgSName(Self),' OldActiveControl=',DbgSName(FActiveControl),' New=',DbgSName(Control)]);
         {$ENDIF}
         FActiveControl := Control;
+        if (FActiveControl<>nil) and not (FActiveControl is TCustomForm) then
+          FLastActiveControl := FActiveControl;
         if Assigned(FActiveControl) then
           FreeNotification(FActiveControl);
       end;
@@ -2596,8 +2702,6 @@ begin
   FFormState := FFormState - [fsBorderStyleChanged, fsFormStyleChanged];
   inherited CreateWnd;
 
-  FPixelsPerInch := 0;
-
   //DebugLn('Trace:[TCustomForm.CreateWnd] FMenu.HandleNeeded');
   UpdateMenu;
 
@@ -2678,7 +2782,7 @@ begin
   {$IF defined(CHECK_POSITION) or defined(VerboseFormUpdateShowing) or defined(VerboseShowing)}
   DebugLn(['[TCustomForm.UpdateShowing] START ',DbgSName(Self),' Pos=',Left,',',Top,' Visible=',Visible,' Showing=',Showing]);
   {$ENDIF}
-  // If the the form is about to show, calculate its metrics
+  // If the form is about to show, calculate its metrics
   if Visible and (not (csDestroying in ComponentState)) then
   begin
     if not (csDesigning in ComponentState) then

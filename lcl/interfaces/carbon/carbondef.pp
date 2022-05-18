@@ -3,7 +3,7 @@
                     -----------------------------------------
 
  @created(Wed Aug 26st WET 2005)
- @lastmod($Date: 2013-05-24 20:30:06 +0200 (Fr, 24 Mai 2013) $)
+ @lastmod($Date: 2018-09-08 22:04:47 +0200 (Sa, 08 Sep 2018) $)
  @author(Marc Weustink <marc@@lazarus.dommelstein.net>)
 
  This unit contains type & const definitions needed in the Carbon <-> LCL interface
@@ -29,9 +29,13 @@ interface
 uses
   // libs
   MacOSAll,
-  // wdgetset
-  WSLCLClasses, Classes, SysUtils, Controls, LCLType, LCLProc, Graphics, Contnrs,
-  AVL_Tree, LMessages, LCLMessageGlue;
+  Classes, SysUtils, Controls,
+  Laz_AVL_Tree,
+  // lcl
+  LCLType, LCLProc, Graphics, Contnrs, LMessages, LCLMessageGlue,
+  LazLoggerBase,
+  // widgetset
+  WSLCLClasses;
 
 var
   LAZARUS_FOURCC: FourCharCode;    // = 'Laz ';
@@ -74,6 +78,7 @@ type
     function GetContent: ControlRef; virtual; abstract;
     procedure UpdateLCLClientRect; virtual;
   public
+    FPopupWin: WindowRef;
     FNeedFree: Boolean;
     procedure BeginEventProc;
     procedure EndEventProc;
@@ -348,7 +353,11 @@ function RegisterObjectEventHandler(AHandler: TCarbonObjectEventHandlerProc): Ev
 var
   Node: TUPPAVLTreeNode;
 begin
-  if UPPTree = nil then UPPTree := TAVLTree.Create;
+  if UPPTree = nil then
+  begin
+    UPPTree := TAVLTree.Create;
+    UPPTree.NodeClass:=TUPPAVLTreeNode;
+  end;
 
   Node := TUPPAVLTreeNode(UPPTree.Find(AHandler));
   if Node = nil then
@@ -373,7 +382,11 @@ function RegisterEventHandler(AHandler: TCarbonEventHandlerProc): EventHandlerUP
 var
   Node: TUPPAVLTreeNode;
 begin
-  if UPPTree = nil then UPPTree := TAVLTree.Create;
+  if UPPTree = nil then
+  begin
+    UPPTree := TAVLTree.Create;
+    UPPTree.NodeClass:=TUPPAVLTreeNode;
+  end;
 
   Node := TUPPAVLTreeNode(UPPTree.Find(AHandler));
   if Node = nil then

@@ -30,6 +30,7 @@ unit BuildTokenList;
  This is the lexical analysis phase of the parsing
 
  2014.11.02 ~bk Added lexing of binary constants (ex. -> const a=%101001;)
+ 2017.05.17 ~pktv Added lexing of octal constants (ex. -> const a=&777;)
 }
 
 {$I JcfGlobal.inc}
@@ -42,21 +43,23 @@ uses
 
 type
 
+  { TBuildTokenList }
+
   TBuildTokenList = class(TObject)
   private
     { property implementation }
-    fsSourceCode: WideString;
+    fsSourceCode: String;
     fsFileName: string;
 
     { woker procs }
     fiCurrentIndex: integer;
 
-    procedure SetSourceCode(const Value: WideString);
+    procedure SetSourceCode(const Value: String);
 
-    function Current: WideChar;
-    function CurrentChars(const piCount: integer): WideString;
-    function ForwardChar(const piOffset: integer): WideChar;
-    function ForwardChars(const piOffset, piCount: integer): WideString;
+    function Current: Char;
+    function CurrentChars(const piCount: integer): String;
+    function ForwardChar(const piOffset: integer): Char;
+    function ForwardChars(const piOffset, piCount: integer): String;
     procedure Consume(const piCount: integer = 1);
     function EndOfFile: boolean;
     function EndOfFileAfter(const piChars: integer): boolean;
@@ -70,11 +73,12 @@ type
 
     function TryWhiteSpace(const pcToken: TSourceToken): boolean;
     function TryLiteralString(const pcToken: TSourceToken;
-      const pcDelimiter: WideChar): boolean;
+      const pcDelimiter: Char): boolean;
 
     function TryNumber(const pcToken: TSourceToken): boolean;
     function TryHexNumber(const pcToken: TSourceToken): boolean;
     function TryBinNumber(const pcToken: TSourceToken): boolean; // ~bk 14.11.01
+    function TryOctNumber(const pcToken: TSourceToken): boolean; // ~pktv 17.05.19
 
     function TryDots(const pcToken: TSourceToken): boolean;
 
@@ -95,7 +99,7 @@ type
 
     function BuildTokenList: TSourceTokenList;
 
-    property SourceCode: WideString read fsSourceCode write SetSourceCode;
+    property SourceCode: String read fsSourceCode write SetSourceCode;
     property FileName: string read fsFileName write fsFileName;
   end;
 
@@ -106,14 +110,13 @@ uses
   Forms, SysUtils,
   { local }
   JcfStringUtils, JcfSystemUtils,
-  JcfUnicode,
   JcfRegistrySettings;
 
 const
-  CurlyLeft = widechar(123);
-  CurlyRight = widechar(125);
+  CurlyLeft = '{'; //widechar(123);
+  CurlyRight = '}'; //widechar(125);
 
-function CheckMultiByte(const pcChar: widechar): boolean;
+function CheckMultiByte(const pcChar: char): boolean;
 begin
   Result := False;
   if GetRegSettings.CheckMultiByteChars then
@@ -133,7 +136,7 @@ begin
   inherited;
 end;
 
-procedure TBuildTokenList.SetSourceCode(const Value: WideString);
+procedure TBuildTokenList.SetSourceCode(const Value: String);
 begin
   fsSourceCode := Value;
   // reset the index
@@ -171,6 +174,8 @@ var
     if TryHexNumber(lcNewToken) then
       exit;
     if TryBinNumber(lcNewToken) then // ~bk 2014.11.01
+      exit;
+    if TryOctNumber(lcNewToken) then // ~pktv 2017.05.19
       exit;
 
     if TryDots(lcNewToken) then
@@ -267,7 +272,7 @@ var
   lNestedDepth: integer;
   procedure MoveToCommentEnd;
   var
-    lForwardChar:widechar;
+    lForwardChar: char;
   begin
     { comment is ended by (close-curly AND lNestedDepth=0) or by EOF (bad source) }
     while True do
@@ -333,7 +338,7 @@ var
         continue;
       end;
 
-      if WideCharIsReturn(ForwardChar(liCommentLength)) then
+      if CharIsReturn(ForwardChar(liCommentLength)) then
         break;
 
       inc(liCommentLength);
@@ -364,10 +369,10 @@ end;
 
 function TBuildTokenList.TryReturn(const pcToken: TSourceToken): boolean;
 var
-  chNext: WideChar;
+  chNext: Char;
 begin
   Result := False;
-  if not WideCharIsReturn(Current) then
+  if not CharIsReturn(Current) then
     exit;
 
   Result := True;
@@ -380,7 +385,7 @@ begin
   { concat the next return char if it is not the same
     This will recognise <cr><lf> or <lf><cr>, but not <cr><cr> }
   chNext := Current;
-  if WideCharIsReturn(chNext) and (chNext <> pcToken.SourceCode[1]) then
+  if CharIsReturn(chNext) and (chNext <> pcToken.SourceCode[1]) then
   begin
     pcToken.SourceCode := pcToken.SourceCode + chNext;
     Consume;
@@ -389,7 +394,7 @@ end;
 
 { complexities like 'Hello'#32'World' and #$12'Foo' are assemlbed in the parser }
 function TBuildTokenList.TryLiteralString(const pcToken: TSourceToken;
-  const pcDelimiter: WideChar): boolean;
+  const pcDelimiter: Char): boolean;
 begin
   Result := False;
 
@@ -404,7 +409,7 @@ begin
     repeat
       if Current = #0 then
         break;
-      if WideCharIsReturn(Current) then
+      if CharIsReturn(Current) then
         Raise Exception.Create('Unterminated string: ' + pcToken.SourceCode);
 
       { two quotes in a row are still part of the string }
@@ -442,14 +447,14 @@ function TBuildTokenList.TryWord(const pcToken: TSourceToken): boolean;
 begin
   Result := False;
 
-  if not WideCharIsWordChar(Current) then
+  if not CharIsWordChar(Current) then
     exit;
 
   pcToken.SourceCode := Current;
   Consume;
 
   { concat any subsequent word chars }
-  while WideCharIsWordChar(Current) or WideCharIsDigit(Current) do
+  while CharIsWordChar(Current) or CharIsDigit(Current) do
   begin
     pcToken.SourceCode := pcToken.SourceCode + Current;
     Consume;
@@ -466,7 +471,7 @@ end;
 function TBuildTokenList.TryWhiteSpace(const pcToken: TSourceToken): boolean;
 begin
   Result := False;
-  if not WideCharIsWhiteSpaceNoReturn(Current) then
+  if not CharIsWhiteSpaceNoReturn(Current) then
     exit;
 
   pcToken.TokenType  := ttWhiteSpace;
@@ -474,7 +479,7 @@ begin
   Consume;
 
   { concat any subsequent return chars }
-  while WideCharIsWhiteSpaceNoReturn(Current) do
+  while CharIsWhiteSpaceNoReturn(Current) do
   begin
     pcToken.SourceCode := pcToken.SourceCode + Current;
     Consume;
@@ -485,7 +490,7 @@ end;
 
 function TBuildTokenList.TryAssign(const pcToken: TSourceToken): boolean;
 var
-  TwoChars: WideString;
+  TwoChars: String;
 begin
   Result := False;
 
@@ -532,7 +537,7 @@ begin
     and -.3 is not legal at all }
 
   { first one must be a digit }
-  if not WideCharIsDigit(Current) then
+  if not CharIsDigit(Current) then
     exit;
 
   if (Current = '.') or (Current = '-') then
@@ -551,7 +556,7 @@ begin
     ie one dat = decimal
     two dots = end of number
   }
-  while WideCharIsDigit(Current) or (Current = '.') do
+  while CharIsDigit(Current) or (Current = '.') do
   begin
     // have we got to the dot?
     if (Current = '.') then
@@ -573,21 +578,21 @@ begin
   { scientific notation suffix, eg 3e2 = 30, 2.1e-3 = 0.0021 }
 
   { check for a trailing 'e' }
-  if WideCharInSet(Current, ['e', 'E']) then
+  if CharInSet(Current, ['e', 'E']) then
   begin
     // sci notation mode
     pcToken.SourceCode := pcToken.SourceCode + Current;
     Consume;
 
     // can be a minus or plus here
-    if WideCharInSet(Current, ['-', '+']) then
+    if CharInSet(Current, ['-', '+']) then
     begin
       pcToken.SourceCode := pcToken.SourceCode + Current;
       Consume;
     end;
 
     { exponent must be integer }
-    while WideCharIsDigit(Current) do
+    while CharIsDigit(Current) do
     begin
       pcToken.SourceCode := pcToken.SourceCode + Current;
       Consume;
@@ -615,7 +620,7 @@ begin
   lbHasDecimalSep := False;
 
   { concat any subsequent number chars }
-  while WideCharIsHexDigitDot(Current) do
+  while CharIsHexDigitDot(Current) do
   begin
     // have we got to the dot?
     if (Current = '.') then
@@ -651,7 +656,37 @@ begin
   Consume;
 
   { concat any subsequent binary chars }
-  while WideCharIsBinDigit(Current) do
+  while CharIsBinDigit(Current) do
+  begin
+    pcToken.SourceCode := pcToken.SourceCode + Current;
+    Consume;
+  end;
+
+  Result := True;
+end;
+
+{ ~pktb 2017.05.19 - Oct numbers are prefixed with & }
+function TBuildTokenList.TryOctNumber(const pcToken: TSourceToken): boolean;
+function CharIsOctDigit(const c: Char): Boolean;
+const
+  OctDigits: set of AnsiChar = [
+    '0', '1', '2', '3', '4', '5', '6', '7'];
+begin
+  Result := (c in OctDigits);
+end;
+begin
+  Result := False;
+
+  { starts with a & }
+  if Current <> '&' then
+    exit;
+
+  pcToken.TokenType  := ttNumber;
+  pcToken.SourceCode := Current;
+  Consume;
+
+  { concat any subsequent binary chars }
+  while CharIsOctDigit(Current) do
   begin
     pcToken.SourceCode := pcToken.SourceCode + Current;
     Consume;
@@ -688,7 +723,7 @@ end;
 function TBuildTokenList.TryPunctuation(const pcToken: TSourceToken): boolean;
 
 
-  function FollowsPunctuation(const chLast, ch: WideChar): boolean;
+  function FollowsPunctuation(const chLast, ch: Char): boolean;
   const
     { These have meanings on thier own and should not be recognised as part of the punc.
      e.g '=(' is not a punctation symbol, but 2 of them ( for e.g. in const a=(3);
@@ -709,16 +744,16 @@ function TBuildTokenList.TryPunctuation(const pcToken: TSourceToken): boolean;
   begin
     Result := False;
 
-    if WideCharInSet(chLast, UnitaryPunctuation) or WideCharInSet(ch, UnitaryPunctuation) then
+    if CharInSet(chLast, UnitaryPunctuation) or CharInSet(ch, UnitaryPunctuation) then
       exit;
 
-    if WideCharInSet(chLast, SingleChars) then
+    if CharInSet(chLast, SingleChars) then
       exit;
 
     { '<' or '<' can only be followed by '<', '>' or '='.
      Beware of "if x<-1"
      }
-    if WideCharInSet(chLast, ['<', '>']) and not WideCharInSet(ch, ['<', '>', '=']) then
+    if CharInSet(chLast, ['<', '>']) and not CharInSet(ch, ['<', '>', '=']) then
       exit;
 
     // ':' can be followed by '=' only
@@ -738,17 +773,17 @@ function TBuildTokenList.TryPunctuation(const pcToken: TSourceToken): boolean;
       exit;
 
 
-    Result := WideCharIsPuncChar(ch);
+    Result := CharIsPuncChar(ch);
   end;
 
 var
   leWordType:  TWordType;
   leTokenType: TTokenType;
-  lcLast:      WideChar;
+  lcLast:      Char;
 begin
   Result := False;
 
-  if not WideCharIsPuncChar(Current) then
+  if not CharIsPuncChar(Current) then
     exit;
 
   pcToken.TokenType := ttPunctuation;
@@ -819,22 +854,22 @@ begin
   Result := lcList;
 end;
 
-function TBuildTokenList.Current: WideChar;
+function TBuildTokenList.Current: Char;
 begin
   Result := fsSourceCode[fiCurrentIndex];
 end;
 
-function TBuildTokenList.CurrentChars(const piCount: integer): WideString;
+function TBuildTokenList.CurrentChars(const piCount: integer): String;
 begin
   Result := Copy(fsSourceCode, fiCurrentIndex, piCount);
 end;
 
-function TBuildTokenList.ForwardChar(const piOffset: integer): WideChar;
+function TBuildTokenList.ForwardChar(const piOffset: integer): Char;
 begin
   Result := fsSourceCode[fiCurrentIndex + piOffset];
 end;
 
-function TBuildTokenList.ForwardChars(const piOffset, piCount: integer): WideString;
+function TBuildTokenList.ForwardChars(const piOffset, piCount: integer): String;
 begin
   Result := Copy(fsSourceCode, fiCurrentIndex + piOffset, piCount);
 end;

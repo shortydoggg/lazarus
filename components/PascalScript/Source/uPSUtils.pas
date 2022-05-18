@@ -877,7 +877,7 @@ begin
     Dec(FCount);
     {only move if we aren't deleting the last element}
     if Nr < FCount then
-    Move(FData[Nr + 1], FData[Nr], (FCount - Nr) * PointerSize);
+      Move(FData[Nr + 1], FData[Nr], (FCount - Nr) * PointerSize);
 {$IFNDEF PS_NOSMARTLIST}
     Inc(FCheckCount);
     if FCheckCount > FMaxCheckCount then Recreate;
@@ -1000,6 +1000,7 @@ procedure TPSStringList.Clear;
 begin
   while List.Count > 0 do Delete(Pred(List.Count));
 end;
+
 
 constructor TPSStringList.Create;
 begin

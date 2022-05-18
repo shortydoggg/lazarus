@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -53,15 +53,18 @@ unit etQuickFixes;
 interface
 
 uses
-  Classes, SysUtils,
-  LazLogger, AvgLvlTree, LazFileUtils, LazUTF8,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
   Menus, Dialogs, Controls,
-  CodeToolManager, CodeCache, CodeTree, CodeAtom, BasicCodeTools,
-  KeywordFuncLists,
+  // LazUtils
+  LazLoggerBase, AvgLvlTree, LazFileUtils, LazUTF8,
+  // Codetools
+  CodeToolManager, CodeCache, CodeTree, CodeAtom, BasicCodeTools, KeywordFuncLists,
+  // IdeIntf
   IDEExternToolIntf, IDEMsgIntf, LazIDEIntf, IDEDialogs, MenuIntf,
   ProjectIntf, PackageIntf, CompOptsIntf,
-  LazarusIDEStrConsts,
-  etFPCMsgParser, AbstractsMethodsDlg, QFInitLocalVarDlg;
+  // IDE
+  LazarusIDEStrConsts, etFPCMsgParser, AbstractsMethodsDlg, QFInitLocalVarDlg;
 
 type
 
@@ -92,7 +95,7 @@ type
     procedure QuickFix({%H-}Fixes: TMsgQuickFixes; Msg: TMessageLine); override;
   end;
 
-  { TQuickFixUnitNotFound_Remove }
+  { TQuickFixUnitNotFound_Remove, also "unit not used" }
 
   TQuickFixUnitNotFound_Remove = class(TMsgQuickFix)
   public
@@ -140,6 +143,24 @@ type
   public
     function IsApplicable(Msg: TMessageLine; out ToolData: TIDEExternalToolData;
       out IDETool: TObject): boolean;
+    procedure CreateMenuItems(Fixes: TMsgQuickFixes); override;
+    procedure QuickFix({%H-}Fixes: TMsgQuickFixes; Msg: TMessageLine); override;
+  end;
+
+  { TQuickFix_HideWithCompilerDirective - hide with compiler directive $warn <id> off }
+
+  TQuickFix_HideWithCompilerDirective = class(TMsgQuickFix)
+  public
+    function IsApplicable(Msg: TMessageLine; out MsgID: integer;
+      out Tool: TCodeTool): boolean;
+    procedure CreateMenuItems(Fixes: TMsgQuickFixes); override;
+    procedure QuickFix({%H-}Fixes: TMsgQuickFixes; Msg: TMessageLine); override;
+  end;
+
+  { TQuickFixInheritedMethodIsHidden_AddModifier - add proc modifier 'overload' or 'reintroduce' }
+
+  TQuickFixInheritedMethodIsHidden_AddModifier = class(TMsgQuickFix)
+    function IsApplicable(Msg: TMessageLine; out MsgID: integer): boolean;
     procedure CreateMenuItems(Fixes: TMsgQuickFixes); override;
     procedure QuickFix({%H-}Fixes: TMsgQuickFixes; Msg: TMessageLine); override;
   end;
@@ -227,7 +248,7 @@ begin
   CleanPos:=0;
   Node:=nil;
   Filename:=TrimFilename(Msg.GetFullFilename);
-  if not FilenameIsAbsolute(Filename) then exit;
+  if (not FilenameIsAbsolute(Filename)) and (not (mlfTestBuildFile in Msg.Flags)) then exit;
   Code:=CodeToolBoss.LoadFile(Filename,true,false);
   if Code=nil then exit;
   CodeToolBoss.Explore(Code,Tool,false);
@@ -256,7 +277,7 @@ begin
     Tool.ReadNextAtom;
   Identifier:=Tool.GetAtom;
   CleanPos:=Tool.CurPos.StartPos;
-  Result:=(Identifier<>'') and IsValidIdent(Identifier);
+  Result:=IsValidIdent(Identifier);
 end;
 
 function GetMsgSrcPosOfThisIdentifier(Msg: TMessageLine; const Identifier: string;
@@ -267,6 +288,172 @@ var
 begin
   Result:=GetMsgSrcPosOfIdentifier(Msg,CurIdentifier,Code,Tool,CleanPos,Node)
      and (CompareIdentifiers(PChar(CurIdentifier),PChar(Identifier))=0);
+end;
+
+{ TQuickFixInheritedMethodIsHidden_AddModifier }
+
+function TQuickFixInheritedMethodIsHidden_AddModifier.IsApplicable(
+  Msg: TMessageLine; out MsgID: integer): boolean;
+var
+  Value1, Value2: string;
+begin
+  Result:=false;
+  MsgID:=0;
+  if (not Msg.HasSourcePosition) then exit;
+  if IDEFPCParser.MsgLineIsId(Msg,3057,Value1,Value2) then begin
+    // An inherited method is hidden by "$1;"
+    MsgID:=3057;
+    Result:=true
+  end
+  else if (Msg.SubTool=SubToolPas2js) and (Msg.MsgID=3021) then begin
+    // function hides identifier at "$1". Use overload or reintroduce
+    MsgID:=3021;
+    Result:=true;
+  end
+  else if (Msg.SubTool=SubToolPas2js) and (Msg.MsgID=3077) then begin
+    // Method "$1" hides method of base type "$2" at $3
+    MsgID:=3077;
+    Result:=true;
+  end;
+end;
+
+procedure TQuickFixInheritedMethodIsHidden_AddModifier.CreateMenuItems(
+  Fixes: TMsgQuickFixes);
+var
+  i, MsgID: Integer;
+  Msg: TMessageLine;
+begin
+  for i:=0 to Fixes.LineCount-1 do begin
+    Msg:=Fixes.Lines[i];
+    if not IsApplicable(Msg,MsgID) then continue;
+    if ((Msg.SubTool=SubToolFPC) and (MsgID=3057))
+    or ((Msg.SubTool=SubToolPas2js) and (MsgID=3077)) then
+      Fixes.AddMenuItem(Self, Msg, lisAddModifierOverride, 3);
+    Fixes.AddMenuItem(Self,Msg,lisAddModifierOverload,1);
+    Fixes.AddMenuItem(Self,Msg,lisAddModifierReintroduce,2);
+  end;
+end;
+
+procedure TQuickFixInheritedMethodIsHidden_AddModifier.QuickFix(
+  Fixes: TMsgQuickFixes; Msg: TMessageLine);
+var
+  MsgID: integer;
+  Code: TCodeBuffer;
+  OldChange: Boolean;
+  aModifier: String;
+begin
+  if not IsApplicable(Msg,MsgID) then begin
+    debugln(['TQuickFixInheritedMethodIsHidden_AddOverload.QuickFix invalid message ',Msg.Msg]);
+    exit;
+  end;
+
+  if not LazarusIDE.BeginCodeTools then begin
+    DebugLn(['TQuickFixInheritedMethodIsHidden_AddOverload failed because IDE busy']);
+    exit;
+  end;
+
+  Code:=CodeToolBoss.LoadFile(Msg.GetFullFilename,true,false);
+  if Code=nil then exit;
+
+  OldChange:=LazarusIDE.OpenEditorsOnCodeToolChange;
+  LazarusIDE.OpenEditorsOnCodeToolChange:=true;
+  try
+    case Fixes.CurrentCommand.Tag of
+    2: aModifier:='reintroduce';
+    3: aModifier:='override';
+    else aModifier:='overload';
+    end;
+
+    if not CodeToolBoss.AddProcModifier(Code,Msg.Column,Msg.Line,aModifier) then
+    begin
+      DebugLn(['TQuickFixInheritedMethodIsHidden_AddOverload AddProcModifier failed']);
+      LazarusIDE.DoJumpToCodeToolBossError;
+      exit;
+    end;
+
+    // success
+    Msg.MarkFixed;
+  finally
+    LazarusIDE.OpenEditorsOnCodeToolChange:=OldChange;
+  end;
+end;
+
+{ TQuickFix_HideWithCompilerDirective }
+
+function TQuickFix_HideWithCompilerDirective.IsApplicable(Msg: TMessageLine;
+  out MsgID: integer; out Tool: TCodeTool): boolean;
+var
+  CleanPos: integer;
+  Node: TCodeTreeNode;
+  Code: TCodeBuffer;
+begin
+  Result:=false;
+  MsgID:=0;
+  Tool:=nil;
+  if (Msg.Urgency>=mluError)
+  or ((Msg.SubTool<>SubToolFPC) and (Msg.SubTool<>SubToolPas2js))
+  or (Msg.MsgID=0)
+  then exit;
+  MsgID:=Msg.MsgID;
+  GetMsgCodetoolPos(Msg,Code,Tool,CleanPos,Node);
+  Result:=(Tool<>nil);
+end;
+
+procedure TQuickFix_HideWithCompilerDirective.CreateMenuItems(
+  Fixes: TMsgQuickFixes);
+var
+  i, MsgID: Integer;
+  Msg: TMessageLine;
+  Tool: TCodeTool;
+  aCaption: String;
+begin
+  for i:=0 to Fixes.LineCount-1 do begin
+    Msg:=Fixes.Lines[i];
+    if not IsApplicable(Msg,MsgID,Tool) then continue;
+    aCaption:=Format(lisHideMessageByInsertingWarnOffToUnit, [IntToStr(MsgID),
+      ExtractFilename(Tool.MainFilename)]);
+    Fixes.AddMenuItem(Self,Msg,aCaption);
+  end;
+end;
+
+procedure TQuickFix_HideWithCompilerDirective.QuickFix(Fixes: TMsgQuickFixes;
+  Msg: TMessageLine);
+var
+  MsgID: integer;
+  Tool: TCodeTool;
+  Code: TCodeBuffer;
+  Comment: String;
+  OldChange: Boolean;
+begin
+  if not IsApplicable(Msg,MsgID,Tool) then exit;
+
+  if not LazarusIDE.BeginCodeTools then begin
+    DebugLn(['TQuickFix_HideWithCompilerDirective failed because IDE busy']);
+    exit;
+  end;
+
+  Code:=CodeToolBoss.LoadFile(Tool.MainFilename,true,false);
+  if Code=nil then begin
+    debugln(['TQuickFix_HideWithCompilerDirective.QuickFix LoadFile failed: ',Tool.MainFilename]);
+    exit;
+  end;
+
+  OldChange:=LazarusIDE.OpenEditorsOnCodeToolChange;
+  LazarusIDE.OpenEditorsOnCodeToolChange:=true;
+  try
+    Comment:=' : '+TIDEFPCParser.GetFPCMsgPattern(Msg);
+    if not CodeToolBoss.AddUnitWarnDirective(Code,IntToStr(MsgID),Comment,false) then
+    begin
+      DebugLn(['TQuickFix_HideWithCompilerDirective CodeToolBoss.AddUnitWarnDirective failed']);
+      LazarusIDE.DoJumpToCodeToolBossError;
+      exit;
+    end;
+  finally
+    LazarusIDE.OpenEditorsOnCodeToolChange:=OldChange;
+  end;
+
+  // success
+  Msg.MarkFixed;
 end;
 
 { TQuickFixLocalVarNotInitialized_AddAssignment }
@@ -280,7 +467,8 @@ var
   Code: TCodeBuffer;
 begin
   Result:=false;
-  if (Msg=nil) or (Msg.SubTool<>SubToolFPC) or (Msg.MsgID<1)
+  if (Msg=nil) or (Msg.MsgID<1)
+  or ((Msg.SubTool<>SubToolFPC) and (Msg.SubTool<>SubToolPas2js))
   or (not Msg.HasSourcePosition) then exit;
 
   // Check: Local variable "$1" does not seem to be initialized
@@ -421,7 +609,7 @@ begin
   ToolData:=nil;
   IDETool:=nil;
   if (Msg.Urgency>=mluError)
-  or (Msg.SubTool<>SubToolFPC)
+  or ((Msg.SubTool<>SubToolFPC) and (Msg.SubTool<>SubToolPas2js))
   or (Msg.MsgID=0)
   then exit;
   ToolData:=Msg.GetToolData;
@@ -487,7 +675,7 @@ begin
     CurMsg:=Msg.Lines[i];
     if (CurMsg.MsgID<>Msg.MsgID)
     or (CurMsg.Urgency>=mluError)
-    or (CurMsg.SubTool<>SubToolFPC)
+    or ((CurMsg.SubTool<>SubToolFPC) and (CurMsg.SubTool<>SubToolPas2js))
     then continue;
     CurMsg.MarkFixed;
   end;
@@ -506,7 +694,10 @@ var
 begin
   Result:=false;
   // Check: Local variable "$1" not used
-  if not TIDEFPCParser.MsgLineIsId(Msg,5025,Identifier,Dummy) then
+  if IDEFPCParser.MsgLineIsId(Msg,5025,Identifier,Dummy)
+  or IDEPas2jsParser.MsgLineIsId(Msg,5025,Identifier,Dummy) then
+    // ok
+  else
     exit;
   if not Msg.HasSourcePosition or not IsValidIdent(Identifier) then exit;
 
@@ -542,6 +733,7 @@ procedure TQuickFixLocalVariableNotUsed_Remove.QuickFix(Fixes: TMsgQuickFixes;
 var
   Identifier: String;
   Code: TCodeBuffer;
+  OldChange: Boolean;
 begin
   if not IsApplicable(Msg,Identifier) then exit;
 
@@ -553,11 +745,17 @@ begin
   Code:=CodeToolBoss.LoadFile(Msg.GetFullFilename,true,false);
   if Code=nil then exit;
 
-  if not CodeToolBoss.RemoveIdentifierDefinition(Code,Msg.Column,Msg.Line) then
-  begin
-    DebugLn(['TQuickFixLocalVariableNotUsed_Remove remove failed']);
-    LazarusIDE.DoJumpToCodeToolBossError;
-    exit;
+  OldChange:=LazarusIDE.OpenEditorsOnCodeToolChange;
+  LazarusIDE.OpenEditorsOnCodeToolChange:=true;
+  try
+    if not CodeToolBoss.RemoveIdentifierDefinition(Code,Msg.Column,Msg.Line) then
+    begin
+      DebugLn(['TQuickFixLocalVariableNotUsed_Remove remove failed']);
+      LazarusIDE.DoJumpToCodeToolBossError;
+      exit;
+    end;
+  finally
+    LazarusIDE.OpenEditorsOnCodeToolChange:=OldChange;
   end;
 
   // message fixed
@@ -578,10 +776,12 @@ var
 begin
   Result:=false;
   if (not Msg.HasSourcePosition) then exit;
-  if IDEFPCParser.MsgLineIsId(Msg,4046,aClassname,Dummy) then begin
+  if IDEFPCParser.MsgLineIsId(Msg,4046,aClassname,Dummy)
+  or IDEPas2jsParser.MsgLineIsId(Msg,4046,aClassname,Dummy) then begin
     // Constructing a class "$1" with abstract method "$2"
     Result:=true;
-  end else if IDEFPCParser.MsgLineIsId(Msg,5042,MissingMethod,Dummy) then begin
+  end else if IDEFPCParser.MsgLineIsId(Msg,5042,MissingMethod,Dummy)
+  or IDEFPCParser.MsgLineIsId(Msg,5042,MissingMethod,Dummy) then begin
     // No matching implementation for interface method "$1" found
     // The position is on the 'class' keyword
     // The MissingMethod is 'interfacename.procname'
@@ -667,12 +867,23 @@ function TQuickFixUnitNotFound_Remove.IsApplicable(Msg: TMessageLine; out
 begin
   Result:=false;
   if Msg=nil then exit;
-  if (Msg.SubTool<>SubToolFPC)
-  or (not Msg.HasSourcePosition)
-  or ((Msg.MsgID<>5023) // Unit "$1" not used in $2
-  and (Msg.MsgID<>FPCMsgIDCantFindUnitUsedBy) // Can't find unit $1 used by $2
-  and (Msg.MsgID<>10023)) // Unit $1 was not found but $2 exists
-  then exit;
+  if (Msg.SubTool=SubToolFPC) then begin
+    if Msg.HasSourcePosition
+    and ((Msg.MsgID=5023) // Unit "$1" not used in $2
+      or (Msg.MsgID=FPCMsgIDCantFindUnitUsedBy) // Can't find unit $1 used by $2
+      or (Msg.MsgID=10023)) // Unit $1 was not found but $2 exists
+    then
+      // ok
+    else exit;
+  end else if (Msg.SubTool=SubToolPas2js) then begin
+    if Msg.HasSourcePosition
+    and ((Msg.MsgID=5023) // Unit "$1" not used in $2
+      or (Msg.MsgID=3073)) // Can't find unit $1
+    then
+      // ok
+    else exit;
+  end else
+    exit;
 
   MissingUnitName:=Msg.Attribute[FPCMsgAttrMissingUnit];
   UsedByUnit:=Msg.Attribute[FPCMsgAttrUsedByUnit];
@@ -705,6 +916,7 @@ var
   MissingUnitName: string;
   SrcUnitName: string;
   Code: TCodeBuffer;
+  OldChange: Boolean;
 begin
   if not IsApplicable(Msg,MissingUnitName,SrcUnitName) then begin
     debugln(['TQuickFixUnitNotFound_Remove.QuickFix invalid message ',Msg.Msg]);
@@ -719,15 +931,21 @@ begin
   Code:=CodeToolBoss.LoadFile(Msg.GetFullFilename,true,false);
   if Code=nil then exit;
 
-  if not CodeToolBoss.RemoveUnitFromAllUsesSections(Code,MissingUnitName) then
-  begin
-    DebugLn(['TQuickFixUnitNotFound_Remove RemoveUnitFromAllUsesSections failed']);
-    LazarusIDE.DoJumpToCodeToolBossError;
-    exit;
-  end;
+  OldChange:=LazarusIDE.OpenEditorsOnCodeToolChange;
+  LazarusIDE.OpenEditorsOnCodeToolChange:=true;
+  try
+    if not CodeToolBoss.RemoveUnitFromAllUsesSections(Code,MissingUnitName) then
+    begin
+      DebugLn(['TQuickFixUnitNotFound_Remove RemoveUnitFromAllUsesSections failed']);
+      LazarusIDE.DoJumpToCodeToolBossError;
+      exit;
+    end;
 
-  // success
-  Msg.MarkFixed;
+    // success
+    Msg.MarkFixed;
+  finally
+    LazarusIDE.OpenEditorsOnCodeToolChange:=OldChange;
+  end;
 end;
 
 { TQuickFixIdentifierNotFoundAddLocal }
@@ -744,7 +962,10 @@ begin
   Result:=false;
   Identifier:='';
   // check: identifier not found "$1"
-  if not IDEFPCParser.MsgLineIsId(Msg,5000,Identifier,Dummy) then
+  if IDEFPCParser.MsgLineIsId(Msg,5000,Identifier,Dummy)
+  or IDEPas2jsParser.MsgLineIsId(Msg,3001,Identifier,Dummy) then
+    // ok
+  else
     exit;
   if not Msg.HasSourcePosition or not IsValidIdent(Identifier) then exit;
 
@@ -784,6 +1005,7 @@ var
   NewX: integer;
   NewY: integer;
   NewTopLine: integer;
+  OldChange: Boolean;
 begin
   if not IsApplicable(Msg,Identifier) then exit;
 
@@ -795,11 +1017,17 @@ begin
   Code:=CodeToolBoss.LoadFile(Msg.GetFullFilename,true,false);
   if Code=nil then exit;
 
-  if not CodeToolBoss.CreateVariableForIdentifier(Code,Msg.Column,Msg.Line,-1,
-             NewCode,NewX,NewY,NewTopLine)
-  then begin
-    LazarusIDE.DoJumpToCodeToolBossError;
-    exit;
+  OldChange:=LazarusIDE.OpenEditorsOnCodeToolChange;
+  LazarusIDE.OpenEditorsOnCodeToolChange:=true;
+  try
+    if not CodeToolBoss.CreateVariableForIdentifier(Code,Msg.Column,Msg.Line,-1,
+               NewCode,NewX,NewY,NewTopLine,False)
+    then begin
+      LazarusIDE.DoJumpToCodeToolBossError;
+      exit;
+    end;
+  finally
+    LazarusIDE.OpenEditorsOnCodeToolChange:=OldChange;
   end;
 
   // success
@@ -842,11 +1070,14 @@ var
   end;
 
 var
-  Tree: TAvgLvlTree;
-  Node: TAvgLvlTreeNode;
+  Tree: TAvlTree;
+  Node: TAvlTreeNode;
   i: Integer;
+  OldChange: Boolean;
 begin
-  Tree:=TAvgLvlTree.Create(@CompareMsgLinesSrcPos);
+  OldChange:=LazarusIDE.OpenEditorsOnCodeToolChange;
+  LazarusIDE.OpenEditorsOnCodeToolChange:=true;
+  Tree:=TAvlTree.Create(@CompareMsgLinesSrcPos);
   try
     // get all messages to hide and sort them for position
     if Msg=nil then begin
@@ -873,6 +1104,7 @@ begin
       Node:=Node.Precessor;
     end;
   finally
+    LazarusIDE.OpenEditorsOnCodeToolChange:=OldChange;
     Tree.Free;
   end;
 end;
@@ -881,7 +1113,7 @@ function TQuickFix_HideWithIDEDirective.IsApplicable(Msg: TMessageLine): boolean
 begin
   Result:=false;
   if (Msg.Urgency>=mluError)
-  or (Msg.SubTool<>SubToolFPC)
+  or ((Msg.SubTool<>SubToolFPC) and (Msg.SubTool<>SubToolPas2js))
   or (not Msg.HasSourcePosition)
   or (mlfHiddenByIDEDirective in Msg.Flags)
   then exit;
@@ -947,6 +1179,8 @@ begin
   Cmd:=Sender as TIDEMenuCommand;
   Info:=TMenuItemInfo(fMenuItemToInfo[Cmd]);
   if Info=nil then exit;
+  FCurrentSender:=Sender;
+  FCurrentCommand:=Cmd;
   try
     Info.Fix.QuickFix(Self,Info.Msg);
   finally
@@ -960,6 +1194,8 @@ begin
       for i:=0 to ListsMsgLines.Count-1 do
         TMessageLines(ListsMsgLines[i]).ApplyFixedMarks;
     finally
+      FCurrentSender:=nil;
+      FCurrentCommand:=nil;
       ListsMsgLines.Free;
     end;
   end;
@@ -980,9 +1216,11 @@ begin
   IDEQuickFixes.RegisterQuickFix(TQuickFixUnitNotFound_Remove.Create);
   IDEQuickFixes.RegisterQuickFix(TQuickFixClassWithAbstractMethods.Create);
   IDEQuickFixes.RegisterQuickFix(TQuickFixSrcPathOfPkgContains_OpenPkg.Create);
+  IDEQuickFixes.RegisterQuickFix(TQuickFixInheritedMethodIsHidden_AddModifier.Create);
 
   // add as last (no fix, just hide message)
   IDEQuickFixes.RegisterQuickFix(TQuickFix_HideWithIDEDirective.Create);
+  IDEQuickFixes.RegisterQuickFix(TQuickFix_HideWithCompilerDirective.Create);
   IDEQuickFixes.RegisterQuickFix(TQuickFix_HideWithCompilerOption.Create);
 end;
 

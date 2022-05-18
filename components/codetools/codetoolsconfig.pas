@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -83,7 +83,7 @@ type
 
   TCodeToolsOptions = class
   private
-    FConfigCaches: TFPCTargetConfigCaches;
+    FConfigCaches: TPCTargetConfigCaches;
     FFPCOptions: string;
     FFPCPath: string;
     FFPCSrcDir: string;
@@ -138,7 +138,7 @@ type
     property FPCUnitPath: string read FFPCUnitPath write SetFPCUnitPath;
     property PPUExt: string read FPPUExt write SetPPUExt;
     property SourceCaches: TFPCSourceCaches read FSourceCaches;
-    property ConfigCaches: TFPCTargetConfigCaches read FConfigCaches;
+    property ConfigCaches: TPCTargetConfigCaches read FConfigCaches;
     property UnitLinkListValid: boolean read FUnitLinkListValid write SetUnitLinkListValid;
     property UnitLinkList: string read FUnitLinkList write SetUnitLinkList;
 
@@ -277,7 +277,7 @@ constructor TCodeToolsOptions.Create;
 begin
   FPPUExt:='.ppu';
   FLCLWidgetType:='gtk2';
-  FConfigCaches:=TFPCTargetConfigCaches.Create(nil);
+  FConfigCaches:=TPCTargetConfigCaches.Create(nil);
   FSourceCaches:=TFPCSourceCaches.Create(nil);
 end;
 

@@ -60,17 +60,14 @@ uses
 constructor TTabToSpace.Create;
 begin
   inherited;
-  fsSpaces    := StrRepeat(NativeSpace, FormatSettings.Spaces.SpacesPerTab);
+  fsSpaces    := StrRepeat(NativeSpace, FormattingSettings.Spaces.SpacesPerTab);
   FormatFlags := FormatFlags + [eAddSpace, eRemoveSpace];
 end;
 
 function TTabToSpace.EnabledVisitSourceToken(const pcNode: TObject): Boolean;
-const
-  // this is needed in Delphi 2007
-  TabChar: WideChar = WideChar(NativeTab);
 var
   lcSourceToken, lcNextToken: TSourceToken;
-  ls: WideString;
+  ls: String;
 begin
   Result := False;
   lcSourceToken := TSourceToken(pcNode);
@@ -94,13 +91,13 @@ begin
     end;
   end;
 
-  ls := WideStringReplace(ls, TabChar, fsSpaces, [rfReplaceAll]);
+  ls := StringReplace(ls, NativeTab, fsSpaces, [rfReplaceAll]);
   lcSourceToken.SourceCode := ls;
 end;
 
 function TTabToSpace.IsIncludedInSettings: boolean;
 begin
-  Result := FormatSettings.Spaces.TabsToSpaces;
+  Result := FormattingSettings.Spaces.TabsToSpaces;
 end;
 
 end.

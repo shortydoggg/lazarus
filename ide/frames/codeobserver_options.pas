@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,8 +25,13 @@ unit codeobserver_options;
 interface
 
 uses
-  Classes, Graphics, SysUtils, FileUtil, Forms,
-  IDEOptionsIntf, LazarusIDEStrConsts, CodeExplOpts, ExtCtrls, Spin, StdCtrls;
+  Classes, SysUtils,
+  // LCL
+  Forms, Graphics, ExtCtrls, Spin, StdCtrls,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  LazarusIDEStrConsts, CodeExplOpts;
 
 type
 
@@ -138,17 +143,23 @@ var
 
 begin
   CodeObsCategoriesCheckGroup.Caption := lisCEShowCodeObserver;
-  for g := Low(g) to High(g) do begin
-    FGroupCheckBoxes[g] := AddCheckBox(GroupName(g) + ':');
-    with FGroupCheckBoxes[g] do begin
-      AllowGrayed := true;
-      State := cbGrayed;
-      Font.Style := [fsItalic];
+  CodeObsCategoriesCheckGroup.OnItemClick := nil;
+  try
+    for g := Low(g) to High(g) do begin
+      FGroupCheckBoxes[g] := AddCheckBox(GroupName(g) + ':');
+      with FGroupCheckBoxes[g] do begin
+        AllowGrayed := true;
+        State := cbGrayed;
+        Font.Style := [fsItalic];
+      end;
+      for c := Low(c) to High(c) do
+        if c in GroupCategories[g] then
+          FCategoryCheckBoxes[c] :=
+            AddCheckBox('   ' + CodeExplorerLocalizedString(c));
     end;
-    for c := Low(c) to High(c) do
-      if c in GroupCategories[g] then
-        FCategoryCheckBoxes[c] :=
-          AddCheckBox('   ' + CodeExplorerLocalizedString(c));
+  finally
+    CodeObsCategoriesCheckGroup.OnItemClick :=
+      @CodeObsCategoriesCheckGroupItemClick;
   end;
 
   LongProcLineCountLabel.Caption := lisCELongProcLineCount;

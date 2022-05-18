@@ -136,6 +136,77 @@ var
   {$ENDIF}
   dx, dy: integer;
   APalette: QPaletteH;
+  W: WideString;
+
+  procedure DrawSplitterInternal;
+  var
+    lx, ly, d, lt, i: Integer;
+    r1: TRect;
+    AQtColor: QColorH;
+    ADarkColor, ALightColor: TQColor;
+    APalette: QPaletteH;
+    NumDots: integer;
+    APen: QPenH;
+  begin
+    r1 := ARect;
+    NumDots := 10;
+    APalette := QPalette_create;
+    try
+      QStyleOption_palette(opt, APalette);
+      AQtColor := QColor_create(QBrush_color(QPalette_background(APalette)));
+
+      QColor_darker(AQtColor, @ADarkColor);
+      QColor_lighter(AQtColor, @ALightColor);
+
+      if StyleState and QStyleState_Horizontal = 0 then
+      begin
+        if (r1.Right - r1.Left) <= (NumDots * 2) then
+          NumDots := (r1.Right - r1.Left) div 2;
+        lx := ((r1.Right - r1.Left) div 2) - (NumDots * 2);
+        d := (r1.Bottom - r1.Top - 2) div 2;
+        lt := r1.Top + d + 1;
+        APen := QPen_create(QPainter_pen(Context.Widget));
+        for i := 0 to NumDots - 1 do
+        begin
+          QPen_setColor(APen, PQColor(@ALightColor));
+          QPainter_setPen(Context.Widget, APen);
+          QPainter_drawPoint(Context.Widget, lx, lt);
+          QPen_setColor(APen, PQColor(@ADarkColor));
+          QPainter_setPen(Context.Widget, APen);
+          QPainter_drawPoint(Context.Widget, lx + 1, lt);
+          QPainter_drawPoint(Context.Widget, lx, lt + 1);
+          QPainter_drawPoint(Context.Widget, lx + 1, lt + 1);
+          lx := lx + 4;
+        end;
+        QPen_destroy(APen);
+      end else
+      begin
+        if (r1.Bottom - r1.Top) <= (NumDots * 2) then
+          NumDots := (r1.Bottom - r1.Top) div 2;
+        ly := ((r1.Bottom - r1.Top) div 2) + (NumDots * 2);
+        d := (r1.Right - r1.Left - 2) div 2;
+        lt := r1.Left + d + 1;
+        APen := QPen_create(QPainter_pen(Context.Widget));
+        for i := 0 to NumDots - 1 do
+        begin
+          QPen_setColor(APen, PQColor(@ALightColor));
+          QPainter_setPen(Context.Widget, APen);
+          QPainter_drawPoint(Context.Widget, lt, ly);
+          QPen_setColor(APen, PQColor(@ADarkColor));
+          QPainter_setPen(Context.Widget, APen);
+          QPainter_drawPoint(Context.Widget, lt + 1, ly);
+          QPainter_drawPoint(Context.Widget, lt, ly + 1);
+          QPainter_drawPoint(Context.Widget, lt + 1, ly + 1);
+          ly := ly - 4;
+        end;
+        QPen_destroy(APen);
+      end;
+    finally
+      QPalette_destroy(APalette);
+      QColor_destroy(AQtColor);
+    end;
+  end;
+
 begin
   if (Context <> nil) and not IsRectEmpty(R) then
   begin
@@ -228,8 +299,9 @@ begin
               HP_HEADERITEMRIGHT: Position := QStyleOptionHeaderEnd;
             end;
 
-            // fix for oxygen weird drawing of header sections. issue #23143
-            if (GetStyleName = 'oxygen') and (Position = QStyleOptionHeaderMiddle) then
+            W := GetStyleName;
+            // fix for oxygen and breeze weird drawing of header sections. issue #23143
+            if ((W = 'oxygen') or (W = 'breeze')) and (Position = QStyleOptionHeaderMiddle) then
             begin
               // see if this is needed (in case of fixedRows in grids)
               // if (ARect.Left > 0) or ((ARect.Left = 0) and (ARect.Top = 0)) then
@@ -262,8 +334,16 @@ begin
           OffsetRect(ARect, -dx, -dy);
           QStyleOption_setRect(opt, @ARect);
 
-          QStyle_drawControl(Style, Element.ControlElement, opt, Context.Widget, Context.Parent);
+          // issue #27182 qt does not implement splitter grabber in some themes.
+          if (Element.ControlElement = QStyleCE_Splitter) and
+            ( (GetStyleName = 'windows') or (GetStyleName = 'breeze')
+              {$IFDEF MSWINDOWS} or true {$ENDIF}) then
+            drawSplitterInternal
+          else
+            QStyle_drawControl(Style, Element.ControlElement, opt, Context.Widget, Context.Parent);
+
           Context.translate(-dx, -dy);
+
           QStyleOption_Destroy(opt);
         end;
         qdvComplexControl:
@@ -305,8 +385,12 @@ begin
             QStyleCC_TitleBar, QStyleCC_MdiControls:
             begin
               opt := QStyleOptionTitleBar_create();
-              QStyleOptionTitleBar_setTitleBarFlags(QStyleOptionTitleBarH(opt),
-                QtWindow or QtWindowSystemMenuHint);
+              if Element.SubControls = QStyleSC_TitleBarLabel then
+                QStyleOptionTitleBar_setTitleBarFlags(QStyleOptionTitleBarH(opt),
+                  QtWindow or QtWindowTitleHint)
+              else
+                QStyleOptionTitleBar_setTitleBarFlags(QStyleOptionTitleBarH(opt),
+                  QtWindow or QtWindowSystemMenuHint);
               // workaround: qt has own minds about position of requested part -
               // but we need a way to draw it at our position
               Context.translate(ARect.Left, ARect.Top);
@@ -490,7 +574,7 @@ begin
   case Details.Element of
     teToolTip:
       begin
-        W := GetUTF8String(S);
+        W := {%H-}S;
         Context.save;
         AOldMode := Context.SetBkMode(TRANSPARENT);
         try
@@ -534,7 +618,7 @@ begin
             exit;
           end;
 
-          W := GetUTF8String(S);
+          W := {%H-}S;
           Context.save;
           try
             Context.SetBkMode(TRANSPARENT);
@@ -582,7 +666,7 @@ begin
 
     else
     begin // default text drawing for all !
-      W := GetUTF8String(S);
+      W := {%H-}S;
       Context.save;
       AOldMode := Context.SetBkMode(TRANSPARENT);
       if Context.Parent <> nil then
@@ -749,7 +833,8 @@ begin
   end;
   if (Details.Element = teWindow) then
   begin
-    if Details.Part in [WP_FRAMELEFT,
+    if Details.Part in [WP_SMALLCAPTION,
+          WP_FRAMELEFT,
           WP_FRAMERIGHT,
           WP_FRAMEBOTTOM,
           WP_SMALLFRAMELEFT,
@@ -781,14 +866,30 @@ begin
       end;
     teRebar :
       if Details.Part in [RP_GRIPPER, RP_GRIPPERVERT] then
-        Result := Size(-1, -1);
+        Result := Size(-1, -1)
+      else
+        Result := inherited;
     teTreeView:
-      if Details.Part in [TVP_GLYPH, TVP_HOTGLYPH] then
       begin
         Result := inherited;
-        inc(Result.cx);
-        inc(Result.cy);
+        if Details.Part in [TVP_GLYPH, TVP_HOTGLYPH] then
+        begin
+          inc(Result.cx);
+          inc(Result.cy);
+        end;
       end;
+    teToolBar:
+      if (Details.Part = TP_DROPDOWNBUTTON) or (Details.Part = TP_SPLITBUTTONDROPDOWN) then
+      begin
+        Result.cy := -1;
+        Result.cx := QStyle_pixelMetric(Style, QStylePM_MenuButtonIndicator, nil, nil);
+      end else
+        Result := inherited;
+    teHeader:
+      if Details.Part = HP_HEADERSORTARROW then
+        Result := Size(-1, -1) // not yet supported
+      else
+        Result := inherited;
     else
       Result := inherited;
   end;
@@ -920,7 +1021,9 @@ begin
           Result.ComplexControl := QStyleCC_ComboBox;
           Result.SubControls := QStyleSC_ComboBoxArrow;
           if Details.Part = CP_DROPDOWNBUTTONLEFT then
-            Result.Features := Ord(QtRightToLeft);
+            Result.Features := Ord(QtRightToLeft)
+          else
+            Result.Features := 0;
         end else
         if not (Details.Part = CP_READONLY) then
         begin
@@ -1023,6 +1126,7 @@ begin
             exit;
           end;
 
+          WP_SMALLCAPTION: Result.SubControls := QStyleSC_TitleBarLabel;
           WP_SYSBUTTON: Result.SubControls := QStyleSC_TitleBarSysMenu;
           WP_MINBUTTON: Result.SubControls := QStyleSC_TitleBarMinButton;
           WP_MAXBUTTON: Result.SubControls := QStyleSC_TitleBarMaxButton;

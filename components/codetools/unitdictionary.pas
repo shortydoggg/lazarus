@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,8 +30,12 @@ unit UnitDictionary;
 interface
 
 uses
-  Classes, SysUtils, AVL_Tree, BasicCodeTools, FileProcs, LazFileUtils,
-  CodeToolsStructs, FindDeclarationCache, CodeToolManager, CodeCache;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LazUtils
+  LazFileUtils, AvgLvlTree,
+  // Codetools
+  BasicCodeTools, FileProcs, CodeToolsStructs, FindDeclarationCache,
+  CodeToolManager, CodeCache;
 
 const
   // Version 2: added unit and group use count
@@ -396,14 +400,10 @@ begin
   if UnitsByFilename.Count<>UnitsByName.Count then
     e('UnitsByFilename.Count<>UnitsByName.Count');
 
-  if UnitGroupsByFilename.ConsistencyCheck<>0 then
-    e('UnitGroupsByFilename.ConsistencyCheck<>0');
-  if UnitGroupsByName.ConsistencyCheck<>0 then
-    e('UnitGroupsByName.ConsistencyCheck<>0');
-  if UnitsByName.ConsistencyCheck<>0 then
-    e('UnitsByName.ConsistencyCheck<>0');
-  if UnitsByFilename.ConsistencyCheck<>0 then
-    e('UnitsByFilename.ConsistencyCheck<>0');
+  UnitGroupsByFilename.ConsistencyCheck;
+  UnitGroupsByName.ConsistencyCheck;
+  UnitsByName.ConsistencyCheck;
+  UnitsByFilename.ConsistencyCheck;
   IdentifiersCount:=0;
 
   // check UnitsByName
@@ -419,8 +419,7 @@ begin
       e('unit '+CurUnit.Name+' in FUnitsByName not in FUnitsByFilename');
     if CurUnit.Groups.Count=0 then
       e('unit '+CurUnit.Name+' has not group');
-    if CurUnit.Groups.ConsistencyCheck<>0 then
-      e('unit '+CurUnit.Name+' UnitGroups.ConsistencyCheck<>0');
+    CurUnit.Groups.ConsistencyCheck;
     if (LastUnit<>nil)
     and (CompareFilenames(LastUnit.Filename,CurUnit.Filename)=0) then
       e('unit '+CurUnit.Name+' exists twice: '+CurUnit.Filename);
@@ -480,8 +479,7 @@ begin
       e('group '+Group.Name+' without filename');
     if AVLFindPointer(FUnitGroupsByFilename,Group)=nil then
       e('group '+Group.Name+' in FUnitGroupsByName not in FUnitGroupsByFilename');
-    if Group.Units.ConsistencyCheck<>0 then
-      e('group '+Group.Name+' Group.Units.ConsistencyCheck<>0');
+    Group.Units.ConsistencyCheck;
     if (LastGroup<>nil)
     and (CompareFilenames(LastGroup.Filename,Group.Filename)=0) then
       e('group '+Group.Name+' exists twice: '+Group.Filename);

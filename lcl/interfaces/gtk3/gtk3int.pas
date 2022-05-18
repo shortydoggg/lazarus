@@ -25,11 +25,13 @@ uses
   BaseUnix, Unix,
   {$ENDIF}
   SysUtils, Classes, types,
-  InterfaceBase, Translations,
-  Controls, Forms, FPImage, Graphics, GraphUtil, GraphType, LCLProc, LazUTF8,
-  LCLStrConsts, LCLType, LMessages,
+  // LazUtils
+  LazUTF8, Translations, IntegerList,
+  // LCL
+  LCLPlatformDef, InterfaceBase, LCLProc, LCLStrConsts, LCLType, LMessages,
+  Controls, Forms, FPImage, Graphics, GraphUtil, GraphType, IntfGraphics,
   LazGtk3, LazGdk3, LazGlib2, LazGObject2, LazCairo1, LazPango1, LazPangoCairo1, LazGio2,
-  LazGdkPixbuf2, gtk3widgets, gtk3objects, gtk3procs, IntfGraphics;
+  LazGdkPixbuf2, gtk3widgets, gtk3objects, gtk3procs;
 
 type
 
@@ -78,6 +80,8 @@ type
     FStockDefaultDC: HDC;
     FSysColorBrushes: array[0..MAX_SYS_COLORS] of HBRUSH;
     FGlobalCursor: HCursor;
+    FThemeName: string;
+    FCSSTheme: TStringList;
   public
     function CreateDCForWidget(AWidget: PGtkWidget; AWindow: PGdkWindow; cr: Pcairo_t): HDC;
     procedure AddWindow(AWindow: PGtkWindow);
@@ -86,7 +90,10 @@ type
     procedure ProcessChildSignal;
     procedure PrepareSynchronize({%H-}AObject: TObject);
     {$ENDIF}
-
+    procedure LoadCSSTheme;
+    procedure ClearCSSTheme;
+    function GetCSSTheme(AList: TStrings): boolean;
+    function GetThemeName: string;
     procedure InitStockItems;
     procedure FreeStockItems;
     function CreateDefaultFont: HFONT;

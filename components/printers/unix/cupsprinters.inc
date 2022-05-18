@@ -96,7 +96,7 @@ begin
 end;
 
 //write count bytes from buffer to raw mode stream
-function TCUPSPrinter.Write(const Buffer; Count: Integer; var Written: Integer
+function TCUPSPrinter.Write(const Buffer; Count: Integer; out Written: Integer
   ): Boolean;
 begin
   result := False;
@@ -945,6 +945,12 @@ begin
       DeleteFileUTF8(FOutputFilename);
     end;
   end;
+end;
+
+procedure TCUPSPrinter.DoNewPage;
+begin
+  // just to flag that we want the old 'newpage' pagination way
+  // instead of the new 'beginpage/endpage'
 end;
 
 procedure TCUPSPrinter.DoResetPrintersList;

@@ -258,6 +258,145 @@ msgstr "Třída Objektu \"%s\" nenalezena"
 msgid "Confirm"
 msgstr "Potvrdit"
 
+#: lr_const.scrosseditoraverage
+msgid "Average"
+msgstr ""
+
+#: lr_const.scrosseditorblue
+msgid "Blue"
+msgstr ""
+
+#: lr_const.scrosseditorbluewhite
+msgid "Blue and White"
+msgstr ""
+
+#: lr_const.scrosseditorcaption
+msgid "Cross tab editor"
+msgstr ""
+
+#: lr_const.scrosseditorcount
+msgid "Count"
+msgstr ""
+
+#: lr_const.scrosseditorcyan
+msgid "Cyan"
+msgstr ""
+
+#: lr_const.scrosseditorgray
+msgid "Gray"
+msgstr ""
+
+#: lr_const.scrosseditorgreen
+msgid "Green"
+msgstr ""
+
+#: lr_const.scrosseditorgreenorange
+msgid "Green and Orange"
+msgstr ""
+
+#: lr_const.scrosseditormax
+msgid "Max"
+msgstr ""
+
+#: lr_const.scrosseditormin
+msgid "Min"
+msgstr ""
+
+#: lr_const.scrosseditornone
+#, fuzzy
+#| msgid "None"
+msgctxt "lr_const.scrosseditornone"
+msgid "None"
+msgstr "Není"
+
+#: lr_const.scrosseditororange
+msgid "Orange"
+msgstr ""
+
+#: lr_const.scrosseditorshowcolheader
+msgid "Show column header"
+msgstr ""
+
+#: lr_const.scrosseditorshowcoltotal
+msgid "Show column total"
+msgstr ""
+
+#: lr_const.scrosseditorshowcorner1
+msgid "Show corner 1"
+msgstr ""
+
+#: lr_const.scrosseditorshowcorner2
+msgid "Show corner 2"
+msgstr ""
+
+#: lr_const.scrosseditorshowgrantotal
+msgid "Show grand total"
+msgstr ""
+
+#: lr_const.scrosseditorshowrowheader
+msgid "Show row header"
+msgstr ""
+
+#: lr_const.scrosseditorshowrowtotal
+msgid "Show row total"
+msgstr ""
+
+#: lr_const.scrosseditorshowtitle
+msgid "Show title"
+msgstr ""
+
+#: lr_const.scrosseditorsource
+msgid "Source data"
+msgstr ""
+
+#: lr_const.scrosseditorstructure
+msgid "Cross-tab structure"
+msgstr ""
+
+#: lr_const.scrosseditorstyle
+msgid "Select style"
+msgstr ""
+
+#: lr_const.scrosseditorsum
+msgid "Sum"
+msgstr ""
+
+#: lr_const.scrosseditorwhite
+msgid "White"
+msgstr ""
+
+#: lr_const.scrosstabcoltitle
+msgid "Col title"
+msgstr ""
+
+#: lr_const.scrosstabcoltotal
+msgid "Col total"
+msgstr ""
+
+#: lr_const.scrosstabdata
+msgid "Data"
+msgstr ""
+
+#: lr_const.scrosstabgrantotal
+msgid "Grand total"
+msgstr ""
+
+#: lr_const.scrosstabrowtitle
+msgid "Row title"
+msgstr ""
+
+#: lr_const.scrosstabrowtotal
+msgid "Row total"
+msgstr ""
+
+#: lr_const.scrosstabtotalchcell
+msgid "Total CH cell"
+msgstr ""
+
+#: lr_const.scrosstabtotalrhcell
+msgid "Total RH cell"
+msgstr ""
+
 #: lr_const.scsvfile
 msgid "CSV File"
 msgstr "CSV Soubor"
@@ -265,6 +404,16 @@ msgstr "CSV Soubor"
 #: lr_const.scurmemo
 msgid "Memo:"
 msgstr "Memo:"
+
+#: lr_const.sdatainspfields
+msgid "Fields"
+msgstr ""
+
+#: lr_const.sdatainspvariables
+#, fuzzy
+msgctxt "lr_const.sdatainspvariables"
+msgid "Variables"
+msgstr "Proměnné"
 
 #: lr_const.sdateformat1
 #, fuzzy
@@ -333,6 +482,10 @@ msgstr "FORMATTEXT(<Maska>, <Textový řetězec>)/Aplikuje <Maska> na zadaný <T
 #: lr_const.sdescriptionfrac
 msgid "FRAC(<Value>)/Returns the fractional part of floating point <Value>."
 msgstr "FRAC(<Hodnota>)/Vrací desetinnou část destinného čísla <Hodnota>."
+
+#: lr_const.sdescriptionif
+msgid "IF(<expression>, <Value1>, <Value2>)/Returns <Value1>, if <expression> is true; otherwise returns <Value2>."
+msgstr ""
 
 #: lr_const.sdescriptioninc
 msgid "INC(<Value>)/Increment <Value>."
@@ -483,6 +636,10 @@ msgstr "Mřížka"
 #: lr_const.sdesoptionsforminch
 msgid "&Inches"
 msgstr "Palce"
+
+#: lr_const.sdesoptionsforminplace
+msgid "Use inplace editor"
+msgstr ""
 
 #: lr_const.sdesoptionsformmm
 msgid "&MM"
@@ -638,6 +795,54 @@ msgstr "Proměnná"
 #: lr_const.seditorformword
 msgid "&Word wrap"
 msgstr "Zalamování řádků"
+
+#: lr_const.serrexpectedassign
+msgid "Expected \":=\""
+msgstr ""
+
+#: lr_const.serrexpectedclosingbracket1
+msgid "Expected \")\""
+msgstr ""
+
+#: lr_const.serrexpectedclosingbracket2
+msgid "Expected \"]\""
+msgstr ""
+
+#: lr_const.serrexpectedcomma
+msgid "Expected \",\" or \")\""
+msgstr ""
+
+#: lr_const.serrexpecteddo
+msgid "Expected \"do\""
+msgstr ""
+
+#: lr_const.serrexpectedend
+msgid "Expected \";\" or \"end\""
+msgstr ""
+
+#: lr_const.serrexpectedthen
+msgid "Expected \"then\""
+msgstr ""
+
+#: lr_const.serrexpecteduntil
+msgid "Expected \";\" or \"until\""
+msgstr ""
+
+#: lr_const.serrlabelgoto
+msgid "Label in goto must be a number"
+msgstr ""
+
+#: lr_const.serrline
+msgid "Line"
+msgstr ""
+
+#: lr_const.serrneeddo
+msgid "Need \"do\" here"
+msgstr ""
+
+#: lr_const.serrneedto
+msgid "Need \"to\" here"
+msgstr ""
 
 #: lr_const.serror
 msgid "Error"
@@ -1450,6 +1655,10 @@ msgstr "Vložit objekt grafu"
 msgid "Insert CheckBox object"
 msgstr "Vložit objekt zaškrtávacího pole"
 
+#: lr_const.sinscrosstab
+msgid "Insert Cross-tab object"
+msgstr ""
+
 #: lr_const.sinsert
 msgid "Insert"
 msgstr "Vložit"
@@ -1524,6 +1733,10 @@ msgstr "\"%s\" není validní název proměnné."
 msgid "Keep aspect ratio"
 msgstr "Dodržet poměr stran"
 
+#: lr_const.skeepchild
+msgid "Keep child together with parent"
+msgstr ""
+
 #: lr_const.slazformfile
 msgid "LazReport form"
 msgstr "LazReport form"
@@ -1557,6 +1770,14 @@ msgstr "Ne"
 msgctxt "lr_const.snotassigned"
 msgid "[None]"
 msgstr "[žádný]"
+
+#: lr_const.snovalidexportfilenamewassupplied
+msgid "No valid export filename was supplied"
+msgstr ""
+
+#: lr_const.snovalidfilterclasswassupplied
+msgid "No valid filterclass was supplied"
+msgstr ""
 
 #: lr_const.sobjectinspector
 msgid "Object inspector"
@@ -2304,6 +2525,14 @@ msgstr "Zobrazit na všech stránkách"
 msgid "Report file"
 msgstr "Soubor reportu"
 
+#: lr_const.sreportcorruptoldknowversion
+msgid "This report is corrupt, it probably needs \"LRE_OLDV%d_FRF_READ\"=true"
+msgstr ""
+
+#: lr_const.sreportcorruptunknownversion
+msgid "This report is corrupt, frVersion=%d"
+msgstr ""
+
 #: lr_const.sreportcreatedate
 msgid "Report creation date"
 msgstr "Datum vytvoření reportu"
@@ -2569,6 +2798,7 @@ msgid "Variable format ..."
 msgstr "Formát proměnné ..."
 
 #: lr_const.svarformcapt
+msgctxt "lr_const.svarformcapt"
 msgid "Variables"
 msgstr "Proměnné"
 

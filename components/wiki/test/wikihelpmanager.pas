@@ -14,8 +14,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 }
 unit WikiHelpManager;
@@ -27,8 +27,14 @@ unit WikiHelpManager;
 interface
 
 uses
-  Classes, SysUtils, math, LazFileUtils, LazLogger, LazDbgLog, LazUTF8,
-  laz2_DOM, CodeToolsStructs, BasicCodeTools, KeywordFuncLists, MTProcs,
+  Classes, SysUtils, math,
+  // LazUtils
+  LazFileUtils, LazLogger, LazDbgLog, LazUTF8, laz2_DOM, AvgLvlTree,
+  // CodeTools
+  BasicCodeTools, KeywordFuncLists,
+  //
+  MTProcs,
+  // Wiki
   Wiki2HTMLConvert, Wiki2XHTMLConvert, WikiFormat, WikiParser;
 
 type
@@ -341,7 +347,7 @@ begin
             //debugln(['TextToHTMLSnipped phrase "',Phrase,'" found at ',LoTxtP-PChar(LoTxt)]);
             CurPhraseP:=PChar(Phrase);
             while (CurPhraseP^<>#0) do begin
-              l:=UTF8CharacterLength(CurPhraseP);
+              l:=UTF8CodepointSize(CurPhraseP);
               inc(LoTxtP,l);
               inc(CurPhraseP,l);
               BoldP^+=1;
@@ -350,7 +356,7 @@ begin
             continue;
           end;
         end;
-        inc(LoTxtP,UTF8CharacterLength(LoTxtP));
+        inc(LoTxtP,UTF8CodepointSize(LoTxtP));
         inc(BoldP);
       end;
     end;
@@ -361,7 +367,7 @@ begin
     BoldP:=Bold;
     while LoTxtP^<>#0 do begin
       dbgout([' ',dbgstr(LoTxtP^),':',BoldP^]);
-      inc(LoTxtP,UTF8CharacterLength(LoTxtP));
+      inc(LoTxtP,UTF8CodepointSize(LoTxtP));
       inc(BoldP);
     end;
     debugln;
@@ -441,7 +447,7 @@ begin
         ReplaceSubstring(Result,i,1,'&gt;');
         inc(i,length('&gt;'));
       end else
-        inc(i,UTF8CharacterLength(@Result[i]));
+        inc(i,UTF8CodepointSize(@Result[i]));
       inc(BoldP);
     end;
     if IsBold then
@@ -1242,7 +1248,9 @@ var
   StartTime: TDateTime;
   EndTime: TDateTime;
 begin
+  {$IF FPC_FULLVERSION<30000}
   CurrentThread:=Self;
+  {$ENDIF}
   try
     Files:=nil;
     try
@@ -1293,7 +1301,9 @@ begin
     end;
   finally
     Scanned;
+    {$IF FPC_FULLVERSION<30000}
     CurrentThread:=nil;
+    {$ENDIF}
   end;
 end;
 

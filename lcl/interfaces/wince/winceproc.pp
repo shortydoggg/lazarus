@@ -561,9 +561,7 @@ end;
 procedure FillRawImageDescription(const ABitmapInfo: Windows.TBitmap; out ADesc: TRawImageDescription);
 begin
   ADesc.Init;
-
   ADesc.Format := ricfRGBA;
-
   ADesc.Depth := ABitmapInfo.bmBitsPixel;             // used bits per pixel
   ADesc.Width := ABitmapInfo.bmWidth;
   ADesc.Height := ABitmapInfo.bmHeight;
@@ -793,16 +791,14 @@ var
   TM: TextMetric;
   DC: HDC;
   Handle: HWND;
-  TheWinControl: TWinControl;
+  TheWinControl: TWinControl absolute Sender;
   ARect: TRect;
-  Ignore: Integer;
 begin
   Result:=false;
   if (Sender = nil) or (not (Sender is TWinControl)) then exit;
-  TheWinControl:=TWinControl(Sender);
-  FillChar(ORect, SizeOf(ORect), 0);
   if not TheWinControl.HandleAllocated then exit;
   Handle := TheWinControl.Handle;
+  FillChar(ORect, SizeOf(ORect), 0);
   if TheWinControl is TScrollingWinControl then
     with TScrollingWinControl(TheWinControl) do
     begin
@@ -1246,6 +1242,7 @@ begin
       else Result := Wince_5;
     end;
     6: Result := Wince_6;
+    7: Result := wince_7;
     end;
   end;
 end;

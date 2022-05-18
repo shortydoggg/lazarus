@@ -340,8 +340,6 @@ begin
   until (DbgFormatID=0);
   Windows.CloseClipboard;
   {$ENDIF}
-  if FormatID=PredefinedClipboardFormat(pcfDelphiBitmap)
-    then FormatID := CF_BITMAP;
   if (FormatID=0) or (Stream=nil) or
     not Windows.IsClipboardFormatAvailable(FormatID) then exit;
 
@@ -1302,8 +1300,13 @@ begin
   Rec.LParam := LParam;
   Rec.CallBack := CallBack;
   LFW.lfFaceName := UTF8ToUTF16(FontName);
+  {$if fpc_fullversion < 30101}
   Result := LongInt(Windows.EnumFontFamiliesExW(DC,
     LFW, windows.FontEnumExProc(@EnumExProcRedirW), Windows.LParam(@Rec), Flags));
+  {$else}
+  Result := LongInt(Windows.EnumFontFamiliesExW(DC,
+     LFW, windows.FontEnumExProcW(@EnumExProcRedirW), Windows.LParam(@Rec), Flags));
+  {$ifend}
 end;
 
 (*{------------------------------------------------------------------------------

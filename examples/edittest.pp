@@ -25,7 +25,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -77,8 +77,8 @@ begin
   with FEdit
   do begin
     Parent := Self;
-		Width := 300;
-		Height := 200;
+    Width := 300;
+    Height := 200;
     Gutter.Color := clBtnface;
     Gutter.LineNumberPart.Visible := True;
     Color := clWindow;
@@ -93,8 +93,8 @@ begin
   begin
     Parent := Self;
     Top := 208;
-		Width := 300;
-		Height := 25;
+    Width := 300;
+    Height := 25;
     Visible := True;
     Font.Name := 'courier';
     Font.Size := 12;

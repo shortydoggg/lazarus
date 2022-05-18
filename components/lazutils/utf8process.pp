@@ -1,18 +1,12 @@
 {
- /***************************************************************************
-                               UTF8Process.pp
-                               ---------------
-                   Initial Revision  : Tue Dec 06 09:00:00 CET 2005
-
-
- ***************************************************************************/
-
  *****************************************************************************
-  This file is part of the Lazarus Component Library (LCL)
+  This file is part of LazUtils.
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
  *****************************************************************************
+
+ Initial Revision  : Tue Dec 06 09:00:00 CET 2005
 }
 
 unit UTF8Process;
@@ -68,6 +62,7 @@ type
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     procedure Execute; override;
+    procedure ParseCmdLine(const CmdLine: string; ReadBackslash: boolean = false);
   published
     property ApplicationName: string read FApplicationNameUTF8 write SetApplicationNameUTF8;
     property CommandLine: string read FCommandLineUTF8 write SetCommandLineUTF8;
@@ -94,12 +89,18 @@ type
     procedure SetProcessID(aProcessID : Integer);
   public
     procedure Execute; override;
+    procedure ParseCmdLine(const CmdLine: string; ReadBackslash: boolean = false);
   end;
   {$ENDIF}
 
   {$IFDEF UseTProcessAlias}
 type
+
+  { TProcessUTF8 }
+
   TProcessUTF8 = class(TProcess)
+  public
+    procedure ParseCmdLine(const CmdLine: string; ReadBackslash: boolean = false);
   end;
   {$ENDIF}
 
@@ -167,7 +168,11 @@ begin
   mib[0] := CTL_HW;
   mib[1] := HW_NCPU;
   len := sizeof(t);
+  {$if FPC_FULLVERSION >= 30101}
+  fpsysctl(@mib, 2, @t, @len, Nil, 0);
+  {$else}
   fpsysctl(pchar(@mib), 2, @t, @len, Nil, 0);
+  {$endif}
   Result:=t;
 end;
 {$ELSEIF defined(linux)}
@@ -354,7 +359,11 @@ end;
 Const
   PriorityConstants : Array [TProcessPriority] of Cardinal =
                       (HIGH_PRIORITY_CLASS,IDLE_PRIORITY_CLASS,
-                       NORMAL_PRIORITY_CLASS,REALTIME_PRIORITY_CLASS);
+                       NORMAL_PRIORITY_CLASS,REALTIME_PRIORITY_CLASS
+                       {$if (FPC_FULLVERSION >= 30200) and not defined(WinCE)}
+                       ,BELOW_NORMAL_PRIORITY_CLASS,ABOVE_NORMAL_PRIORITY_CLASS
+                       {$endif}
+                       );
 
 function WStrAsUniquePWideChar(var s: UnicodeString): PWideChar; inline;
 begin
@@ -532,10 +541,18 @@ end;
 type
   TProcessClassTemplate = class(TComponent)
   private
+    {$if fpc_fullversion < 30101}
     {%H-}FProcessOptions : TProcessOptions;
     {%H-}FStartupOptions : TStartupOptions;
     FProcessID : Integer;
     {%H-}FTerminalProgram: String;
+    {$else}
+    {%H-}FOnRunCommandEvent: TOnRunCommandEvent;
+    {%H-}FProcessOptions : TProcessOptions;
+    FRunCommandSleepTime: Integer;
+    {%H-}FStartupOptions : TStartupOptions;
+    FProcessID : Integer;
+    {$ifend}
     {%H-}FThreadID : Integer;
     FProcessHandle : Thandle;
     FThreadHandle : Thandle;
@@ -659,5 +676,31 @@ begin
     WaitOnExit;
 end;
 {$ENDIF}
+
+procedure TProcessUTF8.ParseCmdLine(const CmdLine: string;
+  ReadBackslash: boolean);
+var
+  List: TStringList;
+begin
+  List:=TStringList.Create;
+  try
+    SplitCmdLineParams(
+      {$IFDEF UseOldTProcess}
+      SysToUTF8(CmdLine),
+      {$ELSE}
+      CmdLine,
+      {$ENDIF}
+      List,ReadBackslash);
+    if List.Count>0 then begin
+      Executable:=List[0];
+      List.Delete(0);
+    end else begin
+      Executable:='';
+    end;
+    Parameters.Assign(List);
+  finally
+    List.Free;
+  end;
+end;
 
 end.

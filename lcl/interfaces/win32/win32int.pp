@@ -1,4 +1,4 @@
-{ $Id: win32int.pp 53358 2016-11-12 12:58:55Z maxim $ }
+{ $Id: win32int.pp 56879 2017-12-30 18:43:08Z michl $ }
 {
  /***************************************************************************
                          WIN32INT.pp  -  Win32Interface Object
@@ -29,12 +29,17 @@ interface
 }
 uses
   Windows, // keep as first
-  ActiveX, Classes,
-  Translations, ComCtrls, Controls, Buttons,
-  LCLIntf, LclProc, LazUTF8, LCLType, LMessages,
-  Forms, Dialogs, GraphMath, GraphType, InterfaceBase,
-  StdCtrls, SysUtils, Win32Def, Graphics, Menus, CommCtrl,
-  MultiMon, Themes{, Win32Debug};
+  Classes, SysUtils, RtlConsts, ActiveX, MultiMon, CommCtrl,
+  {$IF FPC_FULLVERSION>=30000}
+  character,
+  {$ENDIF}
+  // LCL
+  LCLPlatformDef, InterfaceBase, LCLIntf, LclProc, LCLType, LMessages,
+  Controls, Buttons, Forms, Dialogs, GraphMath, GraphType, StdCtrls,
+  Graphics, Menus, ComCtrls, Themes, Win32Def, Spin,
+  // LazUtils
+  LazUTF8, Translations;
+  {, Win32Debug}
 
 const
   // standard windows cursors
@@ -117,6 +122,7 @@ type
     // Assoc. windowproc also acts as handler for popup menus
     FAppHandle,
     FDockWndHandle: HWND;
+    FAppMinimizing: Boolean;
     FCommonControlsVersion: DWord;
 
     FMetrics: TNonClientMetrics;
@@ -147,6 +153,8 @@ type
     function CreateThemeServices: TThemeServices; override;
     function GetAppHandle: THandle; override;
     procedure SetAppHandle(const AValue: THandle); override;
+
+    property AppMinimizing: Boolean read FAppMinimizing; // true if application is minimizing itself
   public
     { Creates a callback of Lazarus message Msg for Sender }
     procedure SetCallback(Msg: LongInt; Sender: TObject); virtual;
@@ -199,6 +207,8 @@ type
     property CommonControlsVersion: DWord read FCommonControlsVersion;
     property OnAsyncSocketMsg: TSocketEvent read FOnAsyncSocketMsg write FOnAsyncSocketMsg;
     property DotsPatternBitmap: HBitmap read GetDotsPatternBitmap;
+    property Metrics: TNonClientMetrics read FMetrics;
+    property MetricsFailed: Boolean read FMetricsFailed;
   end;
 
   {$I win32listslh.inc}
@@ -265,10 +275,8 @@ type
   end;
 
 var
-  MouseDownCount: Integer;
-  MouseDownTime: QWord;
-  MouseDownPos: TPoint;
-  MouseDownWindow: HWND = 0;
+  LastMouse: TLastMouseInfo;
+  LastMouseTracking: TControl = nil;
   ComboBoxHandleSizeWindow: HWND = 0;
   IgnoreNextCharWindow: HWND = 0;  // ignore next WM_(SYS)CHAR message
   IgnoreKeyUp: Boolean = True; // ignore KeyUp after application start; issue #30836
@@ -282,26 +290,56 @@ var
   MessageStackDepth: string = '';
 {$endif}
 
+// Multi Dpi support (not yet in FCL); ToDo: move to FCL
+type
+  TGetDpiForMonitor = function(hmonitor: HMONITOR; dpiType: TMonitorDpiType; out dpiX: UINT; out dpiY: UINT): HRESULT; stdcall;
+var
+  GetDpiForMonitor: TGetDpiForMonitor;
+  g_pfnGetDpiForMonitor: TGetDpiForMonitor = nil;
+  g_fShellScalingInitDone: Boolean = False;
+
+function InitShellScalingStubs: Boolean;
+var
+  hShcore: Windows.HMODULE;
+begin
+  if not g_fShellScalingInitDone then
+  begin
+    hShcore := GetModuleHandle('Shcore');
+    if hShcore<>0 then
+      Pointer(g_pfnGetDpiForMonitor) := GetProcAddress(hShcore, 'GetDpiForMonitor')
+    else
+      Pointer(g_pfnGetDpiForMonitor) := nil;
+
+    g_fShellScalingInitDone := True;
+  end;
+
+  Result := (Pointer(g_pfnGetDpiForMonitor)<>nil) and (@g_pfnGetDpiForMonitor <> nil);
+end;
+
+function xGetDpiForMonitor(hmonitor: HMONITOR; dpiType: TMonitorDpiType;
+  out dpiX: UINT; out dpiY: UINT): HRESULT; stdcall;
+begin
+  if InitShellScalingStubs then
+    Exit(g_pfnGetDpiForMonitor(hmonitor, dpiType, dpiX, dpiY));
+
+  dpiX := 0;
+  dpiY := 0;
+  Result := S_FALSE;
+end;
+
 {$I win32listsl.inc}
 {$I win32callback.inc}
 {$I win32object.inc}
 {$I win32winapi.inc}
 {$I win32lclintf.inc}
 
-const
-  W95_MENUITEMINFO_SIZE = 44;
-  
+
 initialization
-  { initialize mousedownclick to far before double click time }
-  if GetTickCount > 5000 then
-    MouseDownTime := GetTickCount - 5000
-  else
-    MouseDownTime := 0;
+  Pointer(GetDpiForMonitor) := @xGetDpiForMonitor;
+
   SystemCharSetIsUTF8:=true;
 
-  if (Win32MajorVersion = 4) and (Win32MinorVersion = 0)
-  then MMenuItemInfoSize := W95_MENUITEMINFO_SIZE
-  else MMenuItemInfoSize := sizeof(MENUITEMINFO);
+  MMenuItemInfoSize := sizeof(MENUITEMINFO);
   
   // Vista with classic theme is buggy with Windows.SetPixel() 
   // http://bugs.freepascal.org/view.php?id=15822

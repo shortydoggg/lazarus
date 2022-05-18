@@ -1,16 +1,16 @@
 object FppkgForm: TFppkgForm
-  Left = 506
-  Height = 600
-  Top = 208
+  Left = 2344
+  Height = 674
+  Top = 270
   Width = 800
   Caption = 'FppkgForm'
-  ClientHeight = 573
+  ClientHeight = 646
   ClientWidth = 800
   Menu = MainMenu
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   Position = poScreenCenter
-  LCLVersion = '1.1'
+  LCLVersion = '1.9.0.0'
   object ToolBar: TToolBar
     Left = 0
     Height = 56
@@ -20,6 +20,7 @@ object FppkgForm: TFppkgForm
     ButtonWidth = 32
     Caption = 'ToolBar'
     Images = ToolbarImages
+    ParentFont = False
     ParentShowHint = False
     ShowCaptions = True
     ShowHint = True
@@ -33,7 +34,7 @@ object FppkgForm: TFppkgForm
       OnClick = UpdateButtonClick
     end
     object BuildButton: TToolButton
-      Left = 56
+      Left = 55
       Hint = 'Build package'
       Top = 2
       Caption = 'Build'
@@ -57,7 +58,7 @@ object FppkgForm: TFppkgForm
       OnClick = InstallButtonClick
     end
     object CleanButton: TToolButton
-      Left = 200
+      Left = 202
       Hint = 'Clean package'
       Top = 2
       Caption = 'Clean'
@@ -65,15 +66,16 @@ object FppkgForm: TFppkgForm
       OnClick = CleanButtonClick
     end
     object ArchiveButton: TToolButton
-      Left = 244
+      Left = 246
       Hint = 'Create archive of package'
       Top = 2
       Caption = 'Archive'
       ImageIndex = 3
       OnClick = ArchiveButtonClick
+      Visible = False
     end
     object DownloadButton: TToolButton
-      Left = 299
+      Left = 301
       Hint = 'Download package'
       Top = 2
       Caption = 'Download'
@@ -81,30 +83,32 @@ object FppkgForm: TFppkgForm
       OnClick = DownloadButtonClick
     end
     object FixBrokenButton: TToolButton
-      Left = 369
+      Left = 373
       Top = 2
       Caption = 'Fix broken'
       ImageIndex = 7
       OnClick = FixBrokenButtonClick
     end
     object SearchPanel: TPanel
-      Left = 441
+      Left = 511
       Height = 50
       Top = 2
       Width = 170
       BevelOuter = bvNone
       ClientHeight = 50
       ClientWidth = 170
+      ParentFont = False
       TabOrder = 0
       object SearchLabel: TLabel
         Left = 6
-        Height = 17
+        Height = 20
         Top = 6
         Width = 158
         Align = alTop
         BorderSpacing.Around = 6
         Caption = 'Search'
         ParentColor = False
+        ParentFont = False
       end
       object SearchEdit: TEdit
         AnchorSideLeft.Control = SearchPanel
@@ -112,12 +116,13 @@ object FppkgForm: TFppkgForm
         AnchorSideTop.Side = asrBottom
         AnchorSideRight.Control = SearchButton
         Left = 6
-        Height = 25
-        Top = 29
+        Height = 37
+        Top = 32
         Width = 135
         Anchors = [akTop, akLeft, akRight]
         BorderSpacing.Around = 6
         OnKeyUp = SearchEditKeyUp
+        ParentFont = False
         TabOrder = 0
       end
       object SearchButton: TSpeedButton
@@ -128,7 +133,7 @@ object FppkgForm: TFppkgForm
         Left = 147
         Height = 22
         Hint = 'Search for keywords'
-        Top = 29
+        Top = 32
         Width = 23
         Anchors = [akTop, akRight]
         Glyph.Data = {
@@ -168,22 +173,32 @@ object FppkgForm: TFppkgForm
           FF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00FFFFFF00
         }
         OnClick = SearchButtonClick
+        ParentFont = False
       end
+    end
+    object UninstallButton: TToolButton
+      Left = 447
+      Top = 2
+      Caption = 'Uninstall'
+      ImageIndex = 5
+      OnClick = UninstallButtonClick
     end
   end
   object Panel: TPanel
     Left = 0
-    Height = 517
+    Height = 618
     Top = 56
     Width = 800
     Align = alClient
     BevelOuter = bvNone
-    ClientHeight = 517
+    ClientHeight = 618
     ClientWidth = 800
+    ParentFont = False
     TabOrder = 1
+    OnClick = PanelClick
     object PackageListView: TListView
       Left = 175
-      Height = 400
+      Height = 501
       Top = 0
       Width = 625
       Align = alClient
@@ -208,12 +223,15 @@ object FppkgForm: TFppkgForm
         item
           AutoSize = True
           Caption = 'Description'
-          Width = 100
+          Width = 460
         end>
       MultiSelect = True
+      ParentFont = False
+      ParentShowHint = False
       PopupMenu = PackagePopupMenu
       ReadOnly = True
       RowSelect = True
+      ShowHint = True
       SmallImages = PackageSupportImages
       SortType = stText
       TabOrder = 0
@@ -222,17 +240,18 @@ object FppkgForm: TFppkgForm
     end
     object FilterPanel: TPanel
       Left = 0
-      Height = 400
+      Height = 501
       Top = 0
       Width = 170
       Align = alLeft
       BevelOuter = bvNone
-      ClientHeight = 400
+      ClientHeight = 501
       ClientWidth = 170
+      ParentFont = False
       TabOrder = 1
       object SupportCheckGroup: TCheckGroup
         Left = 6
-        Height = 99
+        Height = 105
         Hint = 'Filter packages on support level'
         Top = 6
         Width = 158
@@ -251,14 +270,15 @@ object FppkgForm: TFppkgForm
         ChildSizing.ShrinkVertical = crsScaleChilds
         ChildSizing.Layout = cclLeftToRightThenTopToBottom
         ChildSizing.ControlsPerLine = 1
-        ClientHeight = 78
-        ClientWidth = 150
+        ClientHeight = 84
+        ClientWidth = 156
         Items.Strings = (
           'Freepascal'
           'Lazarus'
           'Community'
         )
         OnItemClick = SupportCheckGroupItemClick
+        ParentFont = False
         ParentShowHint = False
         ShowHint = True
         TabOrder = 0
@@ -268,44 +288,48 @@ object FppkgForm: TFppkgForm
       end
       object CategoriesLabel: TLabel
         Left = 6
-        Height = 17
-        Top = 111
+        Height = 20
+        Top = 117
         Width = 158
         Align = alTop
         BorderSpacing.Around = 6
         Caption = 'Categories:'
         ParentColor = False
+        ParentFont = False
       end
       object CategoryCheckListBox: TCheckListBox
         Left = 6
-        Height = 260
-        Top = 134
+        Height = 352
+        Top = 143
         Width = 158
         Align = alClient
         BorderSpacing.Around = 6
         ItemHeight = 0
         OnClickCheck = CategoryCheckListBoxClickCheck
+        ParentFont = False
         TabOrder = 1
+        TopIndex = -1
       end
     end
     object VertSplitter: TSplitter
       Left = 170
-      Height = 400
+      Height = 501
       Top = 0
       Width = 5
     end
     object StatusBar1: TStatusBar
       Left = 0
       Height = 22
-      Top = 495
+      Top = 596
       Width = 800
       Panels = <>
+      ParentFont = False
     end
     object Splitter1: TSplitter
       Cursor = crVSplit
       Left = 0
       Height = 5
-      Top = 400
+      Top = 501
       Width = 800
       Align = alBottom
       ResizeAnchor = akBottom
@@ -313,9 +337,10 @@ object FppkgForm: TFppkgForm
     object OutputMemo: TMemo
       Left = 0
       Height = 90
-      Top = 405
+      Top = 506
       Width = 800
       Align = alBottom
+      ParentFont = False
       ReadOnly = True
       ScrollBars = ssAutoBoth
       TabOrder = 5
@@ -324,8 +349,8 @@ object FppkgForm: TFppkgForm
   object ToolbarImages: TImageList
     Height = 32
     Width = 32
-    left = 328
-    top = 176
+    Left = 328
+    Top = 176
     Bitmap = {
       4C69080000002000000020000000000000000000000000000000000000000000
       0000000000000000000000000000000000000000000000000000000000000000
@@ -1355,8 +1380,8 @@ object FppkgForm: TFppkgForm
     }
   end
   object MainMenu: TMainMenu
-    left = 216
-    top = 176
+    Left = 216
+    Top = 176
     object miFile: TMenuItem
       Caption = '&File'
       object miExit: TMenuItem
@@ -1387,8 +1412,8 @@ object FppkgForm: TFppkgForm
     end
   end
   object PackageSupportImages: TImageList
-    left = 328
-    top = 232
+    Left = 328
+    Top = 232
     Bitmap = {
       4C69020000001000000010000000000000000000000000000000000000000000
       000000000000653E2F8C663E2EEB663F30E96643358300000000000000000000
@@ -1458,8 +1483,8 @@ object FppkgForm: TFppkgForm
     }
   end
   object PackagePopupMenu: TPopupMenu
-    left = 216
-    top = 232
+    Left = 216
+    Top = 232
     object miShowDetails: TMenuItem
       Caption = 'Show details'
       OnClick = PackageListViewDblClick

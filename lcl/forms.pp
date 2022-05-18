@@ -32,10 +32,15 @@ interface
 {$DEFINE HasDefaultValues}
 
 uses
-  Classes, SysUtils, Types, TypInfo, Math, Maps, LCLVersion, InterfaceBase,
-  LCLStrConsts, LCLType, LCLProc, LCLIntf, LazFileUtils, LazUTF8,
+  // RTL + FCL
+  Classes, SysUtils, Types, TypInfo, Math, CustApp,
+  // LCL
+  LCLStrConsts, LCLType, LCLProc, LCLIntf, LCLVersion, LCLClasses, InterfaceBase,
   LResources, GraphType, Graphics, Menus, LMessages, CustomTimer, ActnList,
-  ClipBrd, CustApp, HelpIntfs, LCLClasses, Controls, ImgList, Themes
+  ClipBrd, HelpIntfs, Controls, ImgList, Themes,
+  // LazUtils
+  LazFileUtils, LazUTF8, Maps, IntegerList, LazMethodList, LazLoggerBase,
+  LazUtilities, UITypes
   {$ifndef wince},gettext{$endif}// remove ifdefs when gettext is fixed and a new fpc is released
   ;
 
@@ -57,7 +62,8 @@ type
     poScreenCenter,    // center form on screen (depends on DefaultMonitor)
     poDesktopCenter,   // center form on desktop (total of all screens)
     poMainFormCenter,  // center form on main form (depends on DefaultMonitor)
-    poOwnerFormCenter  // center form on owner form (depends on DefaultMonitor)
+    poOwnerFormCenter, // center form on owner form (depends on DefaultMonitor)
+    poWorkAreaCenter   // center form on working area (depends on DefaultMonitor)
     );
 
   TWindowState = (wsNormal, wsMinimized, wsMaximized, wsFullScreen);
@@ -130,6 +136,7 @@ type
     property Kind: TScrollBarKind read FKind;
     function GetOtherScrollBar: TControlScrollBar;
     property Size: integer read GetSize stored False;
+    function ControlSize: integer; // return for vertical scrollbar the control width
     function ClientSize: integer; // return for vertical scrollbar the clientwidth
     function ClientSizeWithBar: integer; // return for vertical scrollbar the clientwidth with the bar, even if Visible=false
     function ClientSizeWithoutBar: integer; // return for vertical scrollbar the clientwidth without the bar, even if Visible=true
@@ -166,7 +173,6 @@ type
     procedure WMSize(var Message: TLMSize); message LM_Size;
     procedure WMHScroll(var Message : TLMHScroll); message LM_HScroll;
     procedure WMVScroll(var Message : TLMVScroll); message LM_VScroll;
-    procedure WMMouseWheel(var Message: TLMMouseEvent); message LM_MOUSEWHEEL;
     procedure ComputeScrollbars; virtual;
     procedure SetAutoScroll(Value: Boolean); virtual;
     procedure Loaded; override;
@@ -176,6 +182,8 @@ type
   public
     constructor Create(TheOwner : TComponent); override;
     destructor Destroy; override;
+    function ScreenToClient(const APoint: TPoint): TPoint; override;
+    function ClientToScreen(const APoint: TPoint): TPoint; override;
     procedure UpdateScrollbars;
     class function GetControlClassDefaultSize: TSize; override;
     procedure ScrollBy(DeltaX, DeltaY: Integer); override;
@@ -213,6 +221,7 @@ type
     property Enabled;
     property Color nodefault;
     property Font;
+    property ParentBackground default False;
     property ParentBiDiMode;
     property ParentColor;
     property ParentFont;
@@ -243,6 +252,9 @@ type
     property OnMouseWheel;
     property OnMouseWheelDown;
     property OnMouseWheelUp;
+    property OnMouseWheelHorz;
+    property OnMouseWheelLeft;
+    property OnMouseWheelRight;
     property OnResize;
     property OnStartDock;
     property OnStartDrag;
@@ -250,10 +262,34 @@ type
     property OnPaint;
   end;
 
+  TCustomDesignControl = class(TScrollingWinControl)
+  private
+    FScaled: Boolean;
+    FDesignTimePPI: Integer;
+    FPixelsPerInch: Integer;
+
+    procedure SetDesignTimePPI(const ADesignTimePPI: Integer);
+  protected
+    procedure SetScaled(const AScaled: Boolean); virtual;
+
+    procedure DoAutoAdjustLayout(const AMode: TLayoutAdjustmentPolicy;
+      const AXProportion, AYProportion: Double); override;
+    procedure Loaded; override;
+  public
+    constructor Create(TheOwner: TComponent); override;
+
+    procedure AutoAdjustLayout(AMode: TLayoutAdjustmentPolicy; const AFromPPI,
+      AToPPI, AOldFormWidth, ANewFormWidth: Integer); override;
+  public
+    property DesignTimePPI: Integer read FDesignTimePPI write SetDesignTimePPI default 96;
+    property PixelsPerInch: Integer read FPixelsPerInch write FPixelsPerInch stored False;
+    property Scaled: Boolean read FScaled write SetScaled default True;
+  end;
+
 
   { TCustomFrame }
 
-  TCustomFrame = class(TScrollingWinControl)
+  TCustomFrame = class(TCustomDesignControl)
   private
     procedure AddActionList(ActionList: TCustomActionList);
     procedure RemoveActionList(ActionList: TCustomActionList);
@@ -298,6 +334,7 @@ type
     property ClientWidth;
     property Color nodefault;
     property Constraints;
+    property DesignTimePPI;
     property DockSite;
     property DragCursor;
     property DragKind;
@@ -326,6 +363,9 @@ type
     property OnMouseWheel;
     property OnMouseWheelDown;
     property OnMouseWheelUp;
+    property OnMouseWheelHorz;
+    property OnMouseWheelLeft;
+    property OnMouseWheelRight;
     property OnResize;
     property OnStartDock;
     property OnStartDrag;
@@ -335,6 +375,7 @@ type
     property ParentFont;
     property ParentShowHint;
     property PopupMenu;
+    property Scaled;
     property ShowHint;
     property TabOrder;
     property TabStop;
@@ -372,8 +413,8 @@ type
     );
   TFormState = set of TFormStateType;
 
-  TModalResult = low(Integer)..high(Integer);
-  PModalResult = ^TModalResult;
+  TModalResult = UITypes.TModalResult;
+  PModalResult = ^UITypes.TModalResult;
 
   TFormHandlerType = (
     fhtFirstShow,
@@ -401,7 +442,7 @@ type
   TModalDialogFinished = procedure (Sender: TObject; AResult: Integer) of object;
 
 
-  TCustomForm = class(TScrollingWinControl)
+  TCustomForm = class(TCustomDesignControl)
   private
     FActive: Boolean;
     FActiveControl: TWinControl;
@@ -427,6 +468,7 @@ type
     FKeyPreview: Boolean;
     FMenu: TMainMenu;
     FModalResult: TModalResult;
+    FLastActiveControl: TWinControl;
     FLastFocusedControl: TWinControl;
     FOldBorderStyle: TFormBorderStyle;
     FOnActivate: TNotifyEvent;
@@ -441,20 +483,16 @@ type
     FOnShortcut: TShortCutEvent;
     FOnShow: TNotifyEvent;
     FOnWindowStateChange: TNotifyEvent;
-    FPixelsPerInch: Longint;
     FPosition: TPosition;
-    FRealizedShowInTaskBar: TShowInTaskbar;
     FRestoredLeft: integer;
     FRestoredTop: integer;
     FRestoredWidth: integer;
     FRestoredHeight: integer;
     FShowInTaskbar: TShowInTaskbar;
     FWindowState: TWindowState;
-    FDesignTimeDPI: Integer;
     function GetClientHandle: HWND;
     function GetEffectiveShowInTaskBar: TShowInTaskBar;
     function GetMonitor: TMonitor;
-    function GetPixelsPerInch: Longint;
     function IsAutoScrollStored: Boolean;
     function IsForm: Boolean;
     function IsIconStored: Boolean;
@@ -507,6 +545,7 @@ type
     procedure CMActivate(var Message: TLMessage); message CM_ACTIVATE;
     procedure CMDeactivate(var Message: TLMessage); message CM_DEACTIVATE;
     procedure CMShowingChanged(var Message: TLMessage); message CM_SHOWINGCHANGED;
+    procedure WMDPIChanged(var Msg: TLMessage); message LM_DPICHANGED;
   protected
     FActionLists: TList; // keep this TList for Delphi compatibility
     FFormBorderStyle: TFormBorderStyle;
@@ -555,8 +594,10 @@ type
     procedure DoAutoSize; override;
     procedure SetAutoSize(Value: Boolean); override;
     procedure SetAutoScroll(Value: Boolean); override;
+    procedure SetScaled(const AScaled: Boolean); override;
     procedure DoAddActionList(List: TCustomActionList);
     procedure DoRemoveActionList(List: TCustomActionList);
+    procedure ProcessResource;virtual;
   protected
     // drag and dock
     procedure BeginAutoDrag; override;
@@ -632,7 +673,8 @@ type
     function ActiveMDIChild: TCustomForm; virtual;
     function GetMDIChildren(AIndex: Integer): TCustomForm; virtual;
     function MDIChildCount: Integer; virtual;
-
+  public
+    procedure AutoScale; // set scaled to True and AutoAdjustLayout to current monitor PPI
   public
     // drag and dock
     procedure Dock(NewDockSite: TWinControl; ARect: TRect); override;
@@ -656,7 +698,7 @@ type
     property DefaultMonitor: TDefaultMonitor read FDefaultMonitor
       write FDefaultMonitor default dmActiveForm;
     property Designer: TIDesigner read FDesigner write FDesigner;
-    property DesignTimeDPI: Integer read FDesignTimeDPI write FDesignTimeDPI;
+    property EffectiveShowInTaskBar: TShowInTaskBar read GetEffectiveShowInTaskBar;
     property FormState: TFormState read FFormState;
     property FormStyle: TFormStyle read FFormStyle write SetFormStyle
                                    default fsNormal;
@@ -667,6 +709,7 @@ type
     property Menu : TMainMenu read FMenu write SetMenu;
     property ModalResult : TModalResult read FModalResult write SetModalResult;
     property Monitor: TMonitor read GetMonitor;
+    property LastActiveControl: TWinControl read FLastActiveControl;
     property PopupMode: TPopupMode read FPopupMode write SetPopupMode default pmNone;
     property PopupParent: TCustomForm read FPopupParent write SetPopupParent;
 
@@ -687,7 +730,6 @@ type
     property OnWindowStateChange: TNotifyEvent
                          read FOnWindowStateChange write FOnWindowStateChange;
     property ParentFont default False;
-    property PixelsPerInch: Longint read GetPixelsPerInch write FPixelsPerInch stored False;
     property Position: TPosition read FPosition write SetPosition default poDesigned;
     property RestoredLeft: integer read FRestoredLeft;
     property RestoredTop: integer read FRestoredTop;
@@ -748,7 +790,9 @@ type
     property Color;
     property Constraints;
     property DefaultMonitor;
+    property DesignTimePPI;
     property DockSite;
+    property DoubleBuffered;
     property DragKind;
     property DragMode;
     property Enabled;
@@ -763,6 +807,7 @@ type
     property OnClick;
     property OnClose;
     property OnCloseQuery;
+    property OnConstrainedResize;
     property OnContextPopup;
     property OnCreate;
     property OnDblClick;
@@ -788,6 +833,9 @@ type
     property OnMouseWheel;
     property OnMouseWheelDown;
     property OnMouseWheelUp;
+    property OnMouseWheelHorz;
+    property OnMouseWheelLeft;
+    property OnMouseWheelRight;
     property OnPaint;
     property OnResize;
     property OnShortCut;
@@ -798,6 +846,7 @@ type
     property OnUTF8KeyPress;
     property OnWindowStateChange;
     property ParentBiDiMode;
+    property ParentDoubleBuffered;
     property ParentFont;
     property PixelsPerInch;
     property PopupMenu;
@@ -809,6 +858,7 @@ type
     property ShowInTaskBar;
     property UseDockManager;
     property LCLVersion: string read FLCLVersion write FLCLVersion stored LCLVersionIsStored;
+    property Scaled;
     property Visible;
     property WindowState;
   end;
@@ -847,7 +897,8 @@ type
     FAutoHide: Boolean;
     FAutoHideTimer: TCustomTimer;
     FHideInterval: Integer;
-    procedure AdjustBoundsForMonitor;
+    procedure AdjustBoundsForMonitor(KeepWidth: Boolean = True;
+      KeepHeight: Boolean = True);
     function GetDrawTextFlags: Cardinal;
     procedure SetAutoHide(Value : Boolean);
     procedure AutoHideHint(Sender : TObject);
@@ -860,7 +911,15 @@ type
     procedure DoShowWindow; override;
     procedure UpdateRegion;
     procedure SetColor(Value: TColor); override;
-    function UseThemes: Boolean;
+    function UseBGThemes: Boolean;
+    function UseFGThemes: Boolean;
+    procedure Paint; override;
+  private class var
+    FSysHintFont: TFont;
+  protected
+    class function SysHintFont: TFont;
+  public
+    class destructor Destroy;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -871,15 +930,18 @@ type
                                AData: pointer); virtual;
     function CalcHintRect(MaxWidth: Integer; const AHint: String;
                           AData: pointer): TRect; virtual;
-    function OffsetHintRect(NewPos: TPoint; dy: Integer = 15): Boolean;
+    function OffsetHintRect(AOffset: TPoint; dy: Integer = 15;
+      KeepWidth: Boolean = True; KeepHeight: Boolean = True): Boolean;
     procedure InitializeWnd; override;
     function IsHintMsg(Msg: TMsg): Boolean; virtual;
     procedure ReleaseHandle;
-    procedure Paint; override;
     procedure SetBounds(ALeft, ATop, AWidth, AHeight: integer); override;
     class function GetControlClassDefaultSize: TSize; override;
   public
     property OnMouseDown;  // Public access may be needed.
+    property OnMouseUp;
+    property OnMouseMove;
+    property OnMouseLeave;
     property Alignment: TAlignment read FAlignment write FAlignment;
     property HintRect: TRect read FHintRect write FHintRect;
     property HintRectAdjust: TRect read FHintRect write SetHintRectAdjust;
@@ -911,6 +973,7 @@ type
     function GetInfo(out Info: TMonitorInfo): Boolean; {inline; fpc bug - compilation error with inline}
     function GetLeft: Integer;
     function GetHeight: Integer;
+    function GetPixelsPerInch: Integer;
     function GetTop: Integer;
     function GetWidth: Integer;
     function GetBoundsRect: TRect;
@@ -926,6 +989,7 @@ type
     property BoundsRect: TRect read GetBoundsRect;
     property WorkareaRect: TRect read GetWorkareaRect;
     property Primary: Boolean read GetPrimary;
+    property PixelsPerInch: Integer read GetPixelsPerInch;
   end;
 
   { TMonitorList }
@@ -1023,6 +1087,8 @@ type
     procedure SetIconFont(const AValue: TFont);
     procedure SetMenuFont(const AValue: TFont);
     procedure SetSystemFont(const AValue: TFont);
+    function UpdatedMonitor(AHandle: HMONITOR; ADefault: TMonitorDefaultTo;
+      AErrorMsg: string): TMonitor;
     procedure UpdateLastActive;
     procedure RestoreLastActive;
     procedure AddHandler(HandlerType: TScreenNotification;
@@ -1174,7 +1240,6 @@ type
   TApplicationFlag = (
     AppWaiting,
     AppIdleEndSent,
-    AppHandlingException,
     AppNoExceptionMessages,
     AppActive, // application has focus
     AppDestroying,
@@ -1261,6 +1326,11 @@ type
                     // Some Linux window managers do not support it. For example Cinnamon.
   );
 
+  TApplicationDoubleBuffered = ( // what Forms.DoubleBuffered with ParentDoubleBuffered=True will gain when created
+    adbDefault, // widgetset dependent (LCLWin32: True unless in remote desktop connection; other WSs: False)
+    adbFalse,   // False
+    adbTrue);   // True
+
   { TApplication }
 
   TApplication = class(TCustomApplication)
@@ -1271,6 +1341,7 @@ type
     FComponentsToRelease: TFPList;
     FComponentsReleasing: TFPList;
     FCreatingForm: TForm;// currently created form (CreateForm), candidate for MainForm
+    FDoubleBuffered: TApplicationDoubleBuffered;
     FExceptionDialog: TApplicationExceptionDlg;
     FExtendedKeysSupport: Boolean;
     FFindGlobalComponentEnabled: boolean;
@@ -1293,16 +1364,18 @@ type
     FMainFormOnTaskBar: Boolean;
     FModalLevel: Integer;
     FMoveFormFocusToChildren: Boolean;
+    FOnCircularException: TExceptionEvent;
     FOnGetMainFormHandle: TGetHandleEvent;
     FOnMessageDialogFinished: TModalDialogFinished;
     FOnModalBegin: TNotifyEvent;
     FOnModalEnd: TNotifyEvent;
+    FScaled: Boolean;
     FShowButtonGlyphs: TApplicationShowGlyphs;
     FShowMenuGlyphs: TApplicationShowGlyphs;
     FSmallIconHandle: HICON;
     FIdleLockCount: Integer;
     FLastKeyDownSender: TWinControl;
-    FLastKeyDownKey: Word;
+    FLastKeyDownKeys: TWordList;
     FLastKeyDownShift: TShiftState;
     FMainForm : TForm;
     FMouseControl: TControl;
@@ -1337,10 +1410,12 @@ type
     FTaskBarBehavior: TTaskBarBehavior;
     FUpdateFormatSettings: Boolean;
     FRemoveStayOnTopCounter: Integer;
+    FExceptionCounter: Byte;
     procedure DoOnIdleEnd;
     function GetActive: boolean;
     function GetCurrentHelpFile: string;
     function GetExename: String;
+    function GetHandle: THandle;
     function GetMainFormHandle: HWND;
     function GetTitle: string;
     procedure FreeIconHandles;
@@ -1355,6 +1430,7 @@ type
     procedure UpdateMouseControl(NewMouseControl: TControl);
     procedure UpdateMouseHint(CurrentControl: TControl);
     procedure SetCaptureExceptions(const AValue: boolean);
+    procedure SetHandle(const AHandle: THandle);
     procedure SetHint(const AValue: string);
     procedure SetHintColor(const AValue: TColor);
     procedure SetIcon(AValue: TIcon);
@@ -1510,12 +1586,14 @@ type
     property BidiMode: TBiDiMode read FBidiMode write SetBidiMode;
     property CaptureExceptions: boolean read FCaptureExceptions
                                         write SetCaptureExceptions;
+    property DoubleBuffered: TApplicationDoubleBuffered read FDoubleBuffered write FDoubleBuffered default adbDefault; platform;
     property ExtendedKeysSupport: Boolean read FExtendedKeysSupport write FExtendedKeysSupport; // See VK_LSHIFT in LCLType for more details
     property ExceptionDialog: TApplicationExceptionDlg read FExceptionDialog write FExceptionDialog;
     property FindGlobalComponentEnabled: boolean read FFindGlobalComponentEnabled
                                                write FFindGlobalComponentEnabled;
     property Flags: TApplicationFlags read FFlags write SetFlags;
     //property HelpSystem : IHelpSystem read FHelpSystem;
+    property Handle: THandle read GetHandle write SetHandle; platform;
     property Hint: string read FHint write SetHint;
     property HintColor: TColor read FHintColor write SetHintColor;
     property HintHidePause: Integer read FHintHidePause write FHintHidePause;
@@ -1555,11 +1633,13 @@ type
     property OnShowHint: TShowHintEvent read FOnShowHint write FOnShowHint;
     property OnUserInput: TOnUserInputEvent read FOnUserInput write FOnUserInput;
     property OnDestroy: TNotifyEvent read FOnDestroy write FOnDestroy;
+    property OnCircularException: TExceptionEvent read FOnCircularException write FOnCircularException;
     property ShowButtonGlyphs: TApplicationShowGlyphs read FShowButtonGlyphs write SetShowButtonGlyphs default sbgAlways;
     property ShowMenuGlyphs: TApplicationShowGlyphs read FShowMenuGlyphs write SetShowMenuGlyphs default sbgAlways;
     property ShowHint: Boolean read FShowHint write SetShowHint;
     property ShowMainForm: Boolean read FShowMainForm write FShowMainForm default True;
     property Title: String read GetTitle write SetTitle;
+    property Scaled: Boolean read FScaled write FScaled;
   end;
 
 const
@@ -1691,6 +1771,7 @@ type
   public
     function IsDesignMsg(Sender: TControl; var Message: TLMessage): Boolean;
       virtual; abstract;
+    procedure UTF8KeyPress(var UTF8Key: TUTF8Char); virtual; abstract;
     procedure Modified; virtual; abstract;
     procedure Notification(AComponent: TComponent;
       Operation: TOperation); virtual; abstract;
@@ -1722,6 +1803,7 @@ type
 
 function KeysToShiftState(Keys: PtrUInt): TShiftState;
 function KeyDataToShiftState(KeyData: PtrInt): TShiftState;
+function KeyboardStateToShiftState: TShiftState;
 function ShiftStateToKeys(ShiftState: TShiftState): PtrUInt;
 
 function WindowStateToStr(const State: TWindowState): string;
@@ -1737,8 +1819,7 @@ function SaveFocusState: TFocusState;
 procedure RestoreFocusState(FocusState: TFocusState);
 
 type
-  TGetDesignerFormEvent =
-    function(APersistent: TPersistent): TCustomForm of object;
+  TGetDesignerFormEvent = function(APersistent: TPersistent): TCustomForm of object;
   TIsFormDesignFunction = function(AForm: TWinControl): boolean;
 
 var
@@ -1746,10 +1827,14 @@ var
   IsFormDesign: TIsFormDesignFunction = nil;
 
 function GetParentForm(Control: TControl; TopForm: Boolean = True): TCustomForm;
+function GetDesignerForm(Control: TControl): TCustomForm;
 function GetFirstParentForm(Control:TControl): TCustomForm;
+function GetTopFormSkipNonDocked(Control: TControl): TCustomForm;
 function ValidParentForm(Control: TControl; TopForm: Boolean = True): TCustomForm;
 function GetDesignerForm(APersistent: TPersistent): TCustomForm;
 function FindRootDesigner(APersistent: TPersistent): TIDesigner;
+function GetParentDesignControl(Control: TControl): TCustomDesignControl;
+function NeedParentDesignControl(Control: TControl): TCustomDesignControl;
 
 function IsAccel(VK: word; const Str: string): Boolean;
 procedure NotifyApplicationUserInput(Target: TControl; Msg: Cardinal);
@@ -1767,8 +1852,7 @@ var
   RequireDerivedFormResource: Boolean = False;
 
 type
-  TMessageBoxFunction =
-    function(Text, Caption : PChar; Flags : Longint) : Integer;
+  TMessageBoxFunction = function(Text, Caption : PChar; Flags : Longint) : Integer;
 var
   MessageBoxFunction: TMessageBoxFunction = nil;
 
@@ -1871,8 +1955,22 @@ begin
   if Keys and MK_MButton <> 0 then Include(Result, ssMiddle);
   if Keys and MK_XBUTTON1 <> 0 then Include(Result, ssExtra1);
   if Keys and MK_XBUTTON2 <> 0 then Include(Result, ssExtra2);
+  if Keys and MK_DOUBLECLICK <> 0 then Include(Result, ssDouble);
+  if Keys and MK_TRIPLECLICK <> 0 then Include(Result, ssTriple);
+  if Keys and MK_QUADCLICK <> 0 then Include(Result, ssQuad);
+
   if GetKeyState(VK_MENU) < 0 then Include(Result, ssAlt);
   if (GetKeyState(VK_LWIN) < 0) or (GetKeyState(VK_RWIN) < 0) then Include(Result, ssMeta);
+end;
+
+function KeyboardStateToShiftState: TShiftState;
+begin
+  Result := [];
+  if GetKeyState(VK_SHIFT) < 0 then Include(Result, ssShift);
+  if GetKeyState(VK_CONTROL) < 0 then Include(Result, ssCtrl);
+  if GetKeyState(VK_MENU) < 0 then Include(Result, ssAlt);
+  if (GetKeyState(VK_LWIN) < 0) or
+     (GetKeyState(VK_RWIN) < 0) then Include(Result, ssMeta);
 end;
 
 function KeyDataToShiftState(KeyData: PtrInt): TShiftState;
@@ -1890,6 +1988,9 @@ begin
   if ssMiddle in ShiftState then Result := Result or MK_MBUTTON;
   if ssExtra1 in ShiftState then Result := Result or MK_XBUTTON1;
   if ssExtra2 in ShiftState then Result := Result or MK_XBUTTON2;
+  if ssDouble in ShiftState then Result := Result or MK_DOUBLECLICK;
+  if ssTriple in ShiftState then Result := Result or MK_TRIPLECLICK;
+  if ssQuad   in ShiftState then Result := Result or MK_QUADCLICK;
 end;
 
 function WindowStateToStr(const State: TWindowState): string;
@@ -1935,6 +2036,54 @@ begin
     Result := TCustomForm(Control)
   else
     Result := nil;
+end;
+
+//------------------------------------------------------------------------------
+function GetParentDesignControl(Control: TControl): TCustomDesignControl;
+begin
+  while (Control <> nil) and (Control.Parent <> nil) do
+    Control := Control.Parent;
+
+  if Control is TCustomDesignControl then
+    Result := TCustomDesignControl(Control)
+  else
+    Result := nil;
+end;
+
+//------------------------------------------------------------------------------
+function NeedParentDesignControl(Control: TControl): TCustomDesignControl;
+begin
+  Result := GetParentDesignControl(Control);
+  if Result=nil then
+    raise EInvalidOperation.CreateFmt(rsControlHasNoParentFormOrFrame, [Control.Name]);
+end;
+
+//------------------------------------------------------------------------------
+function GetDesignerForm(Control: TControl): TCustomForm;
+begin
+  // find the topmost parent form with designer
+
+  Result := nil;
+  while Control<>nil do
+  begin
+    if (Control is TCustomForm) and (TCustomForm(Control).Designer<>nil) then
+      Result := TCustomForm(Control);
+    Control := Control.Parent;
+  end;
+end;
+
+function GetTopFormSkipNonDocked(Control: TControl): TCustomForm;
+var
+  aForm: TCustomForm;
+begin
+  Result:=GetParentForm(Control, False);
+  if Result=nil then exit;
+  if Result.DockSite or Result.UseDockManager then exit;
+  repeat
+    aForm:=GetParentForm(Result.Parent,false);
+    if (aForm=nil) or aForm.DockSite or aForm.UseDockManager then exit;
+    Result:=aForm;
+  until false;
 end;
 
 //------------------------------------------------------------------------------
@@ -2096,6 +2245,7 @@ end;
 {$I controlscrollbar.inc}
 {$I scrollingwincontrol.inc}
 {$I scrollbox.inc}
+{$I customdesigncontrol.inc}
 {$I customframe.inc}
 {$I customform.inc}
 {$I customdockform.inc}
@@ -2109,12 +2259,17 @@ end;
 //==============================================================================
 
 procedure ImageDrawEvent(AImageList: TPersistent; ACanvas: TPersistent;
-                     AX, AY, AIndex: Integer; ADrawEffect: TGraphicsDrawEffect);
+                     AX, AY, AIndex: Integer; ADrawEffect: TGraphicsDrawEffect;
+                     AImageWidth: Integer; ARefControl: TPersistent);
 var
   ImageList: TCustomImageList absolute AImageList;
   Canvas: TCanvas absolute ACanvas;
+  RefControl: TControl absolute ARefControl;
 begin
-  ImageList.Draw(Canvas,AX,AY,AIndex,ADrawEffect);
+  if (RefControl<>nil) and ImageList.Scaled then
+    ImageList.DrawForControl(Canvas,AX,AY,AIndex,AImageWidth,RefControl,ADrawEffect)
+  else
+    ImageList.Draw(Canvas,AX,AY,AIndex,ADrawEffect)
 end;
 
 function IsFormDesignFunction(AForm: TWinControl): boolean;
@@ -2137,7 +2292,6 @@ initialization
   IsFormDesign := @IsFormDesignFunction;
   Screen:=TScreen.Create(nil);
   Application:=TApplication.Create(nil);
-
 finalization
   //DebugLn('forms.pp - finalization section');
   LCLProc.OwnerFormDesignerModifiedProc:=nil;

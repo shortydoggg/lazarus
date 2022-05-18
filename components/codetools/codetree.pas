@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -42,8 +42,11 @@ uses
   {$IFDEF MEM_CHECK}
   MemCheck,
   {$ENDIF}
-  Classes, SysUtils, FileProcs, CodeToolsStructs, BasicCodeTools,
-  AVL_Tree, LazDbgLog;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LazUtils
+  LazDbgLog,
+  // Codetools
+  FileProcs, CodeToolsStructs, BasicCodeTools;
 
 //-----------------------------------------------------------------------------
 
@@ -55,7 +58,7 @@ const
   // CodeTreeNodeDescriptors
   ctnNone               = 0;
 
-  ctnProgram            = 1;
+  ctnProgram            = 1; // children are ctnSrcName, ctnUsesSection
   ctnPackage            = 2;
   ctnLibrary            = 3;
   ctnUnit               = 4;
@@ -71,7 +74,7 @@ const
   ctnResStrSection      = 13;
   ctnLabelSection       = 14;
   ctnPropertySection    = 15;
-  ctnUsesSection        = 16; // child nodes are ctnUseUnit
+  ctnUsesSection        = 16; // child nodes are ctnUseUnit, parent is ctnInterface,ctnImplementation,ctnProgram,ctnPackage,ctnLibrary
   ctnRequiresSection    = 17;
   ctnContainsSection    = 18; // child nodes are ctnUseUnit
   ctnExportsSection     = 19;
@@ -80,10 +83,11 @@ const
   ctnVarDefinition      = 21;
   ctnConstDefinition    = 22;
   ctnGlobalProperty     = 23;
-  ctnUseUnit            = 24; // StartPos=unit, EndPos=unitname+inFilename, children ctnUseUnitNamespace, ctnUseUnitClearName
-  ctnVarArgs            = 25;
-  ctnUseUnitNamespace   = 26; // <namespace>.clearname.pas
-  ctnUseUnitClearName   = 27; // namespace.<clearname>.pas
+  ctnVarArgs            = 24;
+  ctnSrcName            = 25; // children are ctnIdentifier
+  ctnUseUnit            = 26; // StartPos=unit, EndPos=unitname+inFilename, children ctnUseUnitNamespace, ctnUseUnitClearName, parent ctnUsesSection
+  ctnUseUnitNamespace   = 27; // <namespace>.clearname.pas, parent ctnUseUnit
+  ctnUseUnitClearName   = 28; // namespace.<clearname>.pas, parent ctnUseUnit
 
   ctnClass              = 30;
   ctnClassInterface     = 31;
@@ -133,20 +137,17 @@ const
   ctnTypeType           = 83;
   ctnFileType           = 84;
   ctnPointerType        = 85;
-  ctnClassOfType        = 86;
+  ctnClassOfType        = 86; // 1st child = ctnIdentifier
   ctnVariantType        = 87;
-  ctnSpecialize         = 88; // 1st child = ctnSpecializeType, 2nd child = ctnSpecializeParams
-  ctnSpecializeType     = 89; // parent = ctnSpecialize
-  ctnSpecializeParams   = 90; // list of ctnSpecializeParam, parent = ctnSpecialize
-  ctnSpecializeParam    = 91; // parent = ctnSpecializeParams
-  ctnGenericType        = 92;// 1st child = ctnGenericName, 2nd child = ctnGenericParams, 3th child = type
-  ctnGenericName        = 93; // parent = ctnGenericType
-  ctnGenericParams      = 94; // parent = ctnGenericType, children = ctnGenericParameter
-  ctnGenericParameter   = 95; // can has a child ctnGenericConstraint
-  ctnGenericConstraint  = 96; // parent = ctnGenericParameter
-  ctnReferenceTo        = 97; // 1st child = ctnProcedure
-  ctnConstant           = 98;
-  ctnHintModifier       = 99; // deprecated, platform, unimplemented, library, experimental
+  ctnGenericType        = 88;// 1st child = ctnGenericName, 2nd child = ctnGenericParams, 3th child = type
+  ctnGenericName        = 89; // parent = ctnGenericType
+  ctnGenericParams      = 90; // parent = ctnGenericType, children = ctnGenericParameter
+  ctnGenericParameter   = 91; // can has a child ctnGenericConstraint
+  ctnGenericConstraint  = 92; // parent = ctnGenericParameter
+  ctnSpecialize         = 93; // 1st child = ctnSpecializeType, 2nd child = ctnSpecializeParams, in mode ObjFPC it starts at keyword 'specialize'
+  ctnSpecializeType     = 94; // parent = ctnSpecialize
+  ctnSpecializeParams   = 95; // list of ctnSpecializeParam, parent = ctnSpecialize
+  ctnSpecializeParam    = 96; // parent = ctnSpecializeParams
 
   ctnBeginBlock         =100;
   ctnAsmBlock           =101;
@@ -156,6 +157,15 @@ const
   ctnOnBlock            =112;// childs: ctnOnIdentifier+ctnOnStatement, or ctnVarDefinition(with child ctnIdentifier)+ctnOnStatement
   ctnOnIdentifier       =113;// e.g. 'on Exception', Note: on E:Exception creates a ctnVarDefinition
   ctnOnStatement        =114;
+  ctnParamsRound        =115;
+
+  ctnReferenceTo        =120; // 1st child = ctnProcedureType
+  ctnConstant           =121;
+  ctnHintModifier       =122; // deprecated, platform, unimplemented, library, experimental
+  ctnAttribute          =123; // children are ctnAttribParam
+  ctnAttribParam        =124; // 1st child: ctnIdentifier, optional 2nd: ctnParamsRound
+
+  ctnUser               =1000; // user constants start here
 
   // combined values
   AllSourceTypes =
@@ -189,9 +199,11 @@ const
      [ctnGenericType,ctnSpecialize,
       ctnIdentifier,ctnOpenArrayType,ctnRangedArrayType,
       ctnRecordCase,ctnRecordVariant,
-      ctnProcedureType,ctnSetType,ctnRangeType,ctnEnumerationType,
+      ctnProcedureType,ctnReferenceTo,
+      ctnSetType,ctnRangeType,ctnEnumerationType,
       ctnEnumIdentifier,ctnLabel,ctnTypeType,ctnFileType,ctnPointerType,
       ctnClassOfType,ctnVariantType,ctnConstant];
+  AllProcTypes = [ctnProcedureType,ctnReferenceTo];
   AllPascalStatements = [ctnBeginBlock,ctnWithStatement,ctnWithVariable,
                          ctnOnBlock,ctnOnIdentifier,ctnOnStatement,
                          ctnInitialization,ctnFinalization];
@@ -220,13 +232,41 @@ const
 type
   // Procedure Specifiers
   TProcedureSpecifier = (
-    psSTDCALL, psREGISTER, psPOPSTACK, psVIRTUAL, psABSTRACT, psDYNAMIC,
-    psOVERLOAD, psOVERRIDE, psREINTRODUCE, psCDECL, psINLINE, psMESSAGE,
-    psEXTERNAL, psFORWARD, psPASCAL, psASSEMBLER, psSAVEREGISTERS,
-    psFAR, psNEAR, psFINAL, psSTATIC, psMWPASCAL, psNOSTACKFRAME,
-    psDEPRECATED, psDISPID, psPLATFORM, psSAFECALL, psUNIMPLEMENTED,
-    psEXPERIMENTAL, psLIBRARY, psENUMERATOR, psVARARGS,
-    psEdgedBracket);
+    psStdCall,
+    psRegister,
+    psPopStack,
+    psVirtual,
+    psAbstract,
+    psDynamic,
+    psOverload,
+    psOverride,
+    psReintroduce,
+    psCDecl,
+    psInline,
+    psMessage,
+    psExternal,
+    psForward,
+    psPascal,
+    psAssembler,
+    psSaveRegisters,
+    psFar,
+    psNear,
+    psFinal,
+    psStatic,
+    psMWPascal,
+    psNoStackframe,
+    psDeprecated,
+    psDispID,
+    psPlatform,
+    psSafeCall,
+    psUnimplemented,
+    psExperimental,
+    psLibrary,
+    psEnumerator,
+    psVarargs,
+    psVectorCall,
+    psEdgedBracket
+    );
   TAllProcedureSpecifiers = set of TProcedureSpecifier;
 
 const
@@ -236,7 +276,7 @@ const
       'EXTERNAL', 'FORWARD', 'PASCAL', 'ASSEMBLER', 'SAVEREGISTERS',
       'FAR', 'NEAR', 'FINAL', 'STATIC', 'MWPASCAL', 'NOSTACKFRAME',
       'DEPRECATED', 'DISPID', 'PLATFORM', 'SAFECALL', 'UNIMPLEMENTED',
-      'EXPERIMENTAL', 'LIBRARY', 'ENUMERATOR', 'VARARGS',
+      'EXPERIMENTAL', 'LIBRARY', 'ENUMERATOR', 'VARARGS', 'VECTORCALL',
       '['
     );
 
@@ -263,7 +303,7 @@ type
     function HasParentOfType(ParentDesc: TCodeTreeNodeDesc): boolean;
     function HasAsRoot(RootNode: TCodeTreeNode): boolean;
     function GetNodeOfType(ADesc: TCodeTreeNodeDesc): TCodeTreeNode;
-    function GetNodeOfTypes(Descriptors: array of TCodeTreeNodeDesc): TCodeTreeNode;
+    function GetNodeOfTypes(const Descriptors: array of TCodeTreeNodeDesc): TCodeTreeNode;
     function GetTopMostNodeOfType(ADesc: TCodeTreeNodeDesc): TCodeTreeNode;
     function GetFindContextParent: TCodeTreeNode;
     function GetLevel: integer;
@@ -284,6 +324,7 @@ type
   public
     Root: TCodeTreeNode;
     property NodeCount: integer read FNodeCount;
+    procedure RemoveNode(ANode: TCodeTreeNode);
     procedure DeleteNode(ANode: TCodeTreeNode);
     procedure AddNodeAsLastChild(ParentNode, ANode: TCodeTreeNode);
     procedure AddNodeInFrontOf(NextBrotherNode, ANode: TCodeTreeNode);
@@ -306,7 +347,7 @@ type
   public
     Node: TCodeTreeNode;
     Txt: string;
-    ExtTxt1, ExtTxt2, ExtTxt3: string;
+    ExtTxt1, ExtTxt2, ExtTxt3, ExtTxt4: string;
     Position: integer;
     Data: Pointer;
     Flags: cardinal;
@@ -402,8 +443,10 @@ begin
   ctnPackage: Result:='Package';
   ctnLibrary: Result:='Library';
   ctnUnit: Result:='Unit';
+  ctnSrcName: Result:='SourceName';
+  ctnUseUnit: Result:='use unit';
   ctnUseUnitNamespace: Result:='Namespace';
-  ctnUseUnitClearName: Result:='Unit name without namespace';
+  ctnUseUnitClearName: Result:='Use unit name';
   ctnInterface: Result:='Interface Section';
   ctnImplementation: Result:='Implementation';
   ctnInitialization: Result:='Initialization';
@@ -424,7 +467,6 @@ begin
   ctnVarDefinition: Result:='Var';
   ctnConstDefinition: Result:='Const';
   ctnGlobalProperty: Result:='Global Property';
-  ctnUseUnit: Result:='use unit';
   ctnVarArgs: Result:='VarArgs';
 
   ctnProperty: Result:='Property'; // can start with 'class property'
@@ -457,16 +499,19 @@ begin
   ctnGenericParams: Result:='Generic Type Params';
   ctnGenericParameter: Result:='Generic Type Parameter';
   ctnGenericConstraint: Result:='Generic Type Parameter Constraint';
-  ctnReferenceTo: Result:='Reference To';
-  ctnConstant: Result:='Constant';
-  ctnHintModifier: Result:='Hint Modifier';
 
   ctnWithVariable: Result:='With Variable';
   ctnWithStatement: Result:='With Statement';
   ctnOnBlock: Result:='On Block';
   ctnOnIdentifier: Result:='On Identifier';
   ctnOnStatement: Result:='On Statement';
+  ctnParamsRound: Result:='Params()';
 
+  ctnReferenceTo: Result:='Reference To';
+  ctnConstant: Result:='Constant';
+  ctnHintModifier: Result:='Hint Modifier';
+  ctnAttribute: Result:='Attribute';
+  ctnAttribParam: Result:='Attribute Param';
   else
     Result:='invalid descriptor ('+IntToStr(Desc)+')';
   end;
@@ -830,7 +875,7 @@ begin
     Result:=Result.Parent;
 end;
 
-function TCodeTreeNode.GetNodeOfTypes(Descriptors: array of TCodeTreeNodeDesc
+function TCodeTreeNode.GetNodeOfTypes(const Descriptors: array of TCodeTreeNodeDesc
   ): TCodeTreeNode;
 var
   i: Integer;
@@ -934,11 +979,10 @@ begin
     DeleteNode(Root);
 end;
 
-procedure TCodeTree.DeleteNode(ANode: TCodeTreeNode);
+procedure TCodeTree.RemoveNode(ANode: TCodeTreeNode);
 begin
   if ANode=nil then exit;
   if ANode=Root then Root:=ANode.NextBrother;
-  while (ANode.FirstChild<>nil) do DeleteNode(ANode.FirstChild);
   with ANode do begin
     if (Parent<>nil) then begin
       if (Parent.FirstChild=ANode) then
@@ -953,6 +997,12 @@ begin
     PriorBrother:=nil;
   end;
   dec(FNodeCount);
+end;
+
+procedure TCodeTree.DeleteNode(ANode: TCodeTreeNode);
+begin
+  while (ANode.FirstChild<>nil) do DeleteNode(ANode.FirstChild);
+  RemoveNode(ANode);
   ANode.Clear; // clear to spot dangling pointers early
   ANode.Free;
 end;
@@ -1078,6 +1128,7 @@ begin
   ExtTxt1:='';
   ExtTxt2:='';
   ExtTxt3:='';
+  ExtTxt4:='';
   Node:=nil;
   Position:=-1;
   Data:=nil;
@@ -1103,7 +1154,7 @@ begin
     DbgOut('Node=',NodeDescriptionAsString(Node.Desc))
   else
     DbgOut('Node=nil');
-  DbgOut(' Position=',dbgs(Position),' Txt="'+Txt+'" ExtTxt1="'+ExtTxt1+'" ExtTxt2="'+ExtTxt2+'" ExtTxt3="'+ExtTxt3+'"');
+  DbgOut(' Position=',dbgs(Position),' Txt="'+Txt+'" ExtTxt1="'+ExtTxt1+'" ExtTxt2="'+ExtTxt2+'" ExtTxt3="'+ExtTxt3+'" ExtTxt4="'+ExtTxt4+'"');
   debugln;
 end;
 
@@ -1113,7 +1164,8 @@ begin
     +MemSizeString(Txt)
     +MemSizeString(ExtTxt1)
     +MemSizeString(ExtTxt2)
-    +MemSizeString(ExtTxt3);
+    +MemSizeString(ExtTxt3)
+    +MemSizeString(ExtTxt4);
 end;
 
 end.

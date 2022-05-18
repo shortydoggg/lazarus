@@ -6,10 +6,10 @@ msgstr ""
 "Project-Id-Version: \n"
 "POT-Creation-Date: \n"
 "PO-Revision-Date: \n"
-"Last-Translator: Yann Mérignac <yann.merignac@laposte.net>\n"
-"Language-Team: Vasseur Gilles <gillesvasseur58@gmail.com>\n"
+"Last-Translator: Vasseur Gilles <gillesvasseur58@gmail.com>\n"
+"Language-Team: http://lazarus.developpez.com/\n"
 "Language: fr\n"
-"X-Generator: Poedit 1.8.6\n"
+"X-Generator: Poedit 2.1.1\n"
 
 #: syneditstrconst.syns_attrannotation
 msgid "Annotation"
@@ -197,7 +197,7 @@ msgstr "Clé"
 
 #: syneditstrconst.syns_attrlabel
 msgid "Label"
-msgstr "Etiquette"
+msgstr "Étiquette"
 
 #: syneditstrconst.syns_attrlineadded
 msgid "Diff Added line"
@@ -290,6 +290,10 @@ msgstr "Préprocesseur"
 #: syneditstrconst.syns_attrprevvalue
 msgid "Previous value"
 msgstr "Valeur précédente"
+
+#: syneditstrconst.syns_attrprocedureheadername
+msgid "Procedure header name"
+msgstr "Nom de l'en-tête de procédure"
 
 #: syneditstrconst.syns_attrprocessinginstr
 msgid "Processing Instruction"
@@ -481,7 +485,15 @@ msgstr "Souligné, oui, non"
 
 #: syneditstrconst.syns_emcnone
 msgid "No Action"
-msgstr "Pas daction"
+msgstr "Pas d'action"
+
+#: syneditstrconst.syns_emcoverviewguttergotomark
+msgid "Jump to Mark (Overview Gutter)"
+msgstr "Sauter à la marque (aperçu gouttière)"
+
+#: syneditstrconst.syns_emcoverviewgutterscrollto
+msgid "Scroll (Overview Gutter)"
+msgstr "Défilement (aperçu gouttière)"
 
 #: syneditstrconst.syns_emcpasteselection
 msgid "Quick Paste Selection"
@@ -525,7 +537,7 @@ msgstr "Déplacer la sélection"
 
 #: syneditstrconst.syns_emcstartdragmove_opt
 msgid "\"Caret on up if not dragged\",yes,no"
-msgstr "Curseur sur place s'il n'est pas déplacé : oui, non"
+msgstr "\"Curseur sur place s'il n'est pas déplacé\",oui,non"
 
 #: syneditstrconst.syns_emcstartlineselections
 msgid "Line Selection"
@@ -573,7 +585,7 @@ msgstr "Roulette défilement vers le haut"
 
 #: syneditstrconst.syns_emcwheelscroll_opt
 msgid "Speed,\"System settings\",Lines,Pages,\"Pages (less one line)\""
-msgstr "Vitesse, \"Paramètres du système\", Lignes, Pages, \"Pages (moins une ligne)\""
+msgstr "Vitesse,\"Paramètres du système\", Lignes, Pages,\"Pages (moins une ligne)\""
 
 #: syneditstrconst.syns_emcwheelvertscrolldown
 msgid "Wheel scroll down (Vertical)"

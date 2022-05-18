@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -121,9 +121,9 @@ begin
 
     TargetOS:=BuildBoss.GetTargetOS;
     TargetCPU:=BuildBoss.GetTargetCPU;
-    CompilerFilename:=LazarusIDE.GetFPCompilerFilename;
+    CompilerFilename:=LazarusIDE.GetCompilerFilename;
     FPCSrcDir:=EnvironmentOptions.GetParsedFPCSourceDirectory; // needs FPCVer macro
-    UnitSetCache:=CodeToolBoss.FPCDefinesCache.FindUnitSet(
+    UnitSetCache:=CodeToolBoss.CompilerDefinesCache.FindUnitSet(
       CompilerFilename,TargetOS,TargetCPU,'',FPCSrcDir,true);
     GatherFPCExecutable(UnitSetCache,sl);
 
@@ -139,7 +139,7 @@ var
   TargetCPU: String;
   CompilerFilename: String;
   CompilerOptions: String;
-  Cfg: TFPCTargetConfigCache;
+  Cfg: TPCTargetConfigCache;
   Params: String;
   ExtraOptions: String;
   sl, List: TStringList;
@@ -152,7 +152,7 @@ begin
   List:=nil;
   try
     sl.Add('The IDE asks the compiler with the following command for the real OS/CPU:');
-    CompilerFilename:=LazarusIDE.GetFPCompilerFilename;
+    CompilerFilename:=LazarusIDE.GetCompilerFilename;
     CompilerOptions:='';
     if Project1<>nil then
     begin
@@ -167,10 +167,10 @@ begin
     begin
       sl.Add('ERROR: design time event (lihtGetFPCFrontEndParams) failed to extend fpc front end parameters: "'+CompilerOptions+'"');
     end;
-    Cfg:=CodeToolBoss.FPCDefinesCache.ConfigCaches.Find(
+    Cfg:=CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
                         CompilerFilename,CompilerOptions,'','',true);
     // fpc -i
-    ExtraOptions:=Cfg.GetFPCInfoCmdLineOptions(CodeToolBoss.FPCDefinesCache.ExtraOptions);
+    ExtraOptions:=Cfg.GetFPCInfoCmdLineOptions(CodeToolBoss.CompilerDefinesCache.ExtraOptions);
     Params:=Trim('-iTOTP '+ExtraOptions);
     WorkDir:=GetCurrentDirUTF8;
     sl.Add(CompilerFilename+' '+Params);
@@ -188,13 +188,13 @@ begin
     // fpc -va
     TargetOS:=BuildBoss.GetTargetOS;
     TargetCPU:=BuildBoss.GetTargetCPU;
-    Cfg:=CodeToolBoss.FPCDefinesCache.ConfigCaches.Find(
+    Cfg:=CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
                         CompilerFilename,CompilerOptions,TargetOS,TargetCPU,true);
-    TestFilename:=CodeToolBoss.FPCDefinesCache.TestFilename;
+    TestFilename:=CodeToolBoss.CompilerDefinesCache.TestFilename;
     Filename:=ExtractFileName(TestFilename);
     WorkDir:=ExtractFilePath(TestFilename);
     sl.Add('The IDE asks the compiler with the following command for paths and macros:');
-    ExtraOptions:=Cfg.GetFPCInfoCmdLineOptions(CodeToolBoss.FPCDefinesCache.ExtraOptions);
+    ExtraOptions:=Cfg.GetFPCInfoCmdLineOptions(CodeToolBoss.CompilerDefinesCache.ExtraOptions);
     Params:=Trim('-va '+ExtraOptions)+' '+Filename;
     sl.Add(CompilerFilename+' '+Params);
     sl.Add('Working directory: '+WorkDir);
@@ -274,7 +274,7 @@ begin
   sl.Add('Project:');
   if Project1<>nil then begin
     sl.Add('lpi='+Project1.ProjectInfoFile);
-    sl.Add('Directory='+Project1.ProjectDirectory);
+    sl.Add('Directory='+Project1.Directory);
     sl.Add('TargetOS='+Project1.CompilerOptions.TargetOS);
     sl.Add('TargetCPU='+Project1.CompilerOptions.TargetCPU);
     sl.Add('CompilerFilename='+Project1.CompilerOptions.CompilerPath);
@@ -296,9 +296,9 @@ end;
 procedure TIDEFPCInfoDialog.GatherFPCExecutable(UnitSetCache: TFPCUnitSetCache;
   sl: TStrings);
 var
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
   i: Integer;
-  CfgFileItem: TFPCConfigFileState;
+  CfgFileItem: TPCConfigFileState;
   HasCfgs: Boolean;
   SrcCache: TFPCSourceCache;
   AFilename: string;
@@ -315,7 +315,7 @@ begin
       sl.Add('RealCompilerDate='+DateTimeToStr(FileDateToDateTimeDef(CfgCache.RealCompilerDate)));
       sl.Add('RealTargetOS='+CfgCache.RealTargetOS);
       sl.Add('RealTargetCPU='+CfgCache.RealTargetCPU);
-      sl.Add('RealCompilerInPath='+CfgCache.RealCompilerInPath);
+      sl.Add('RealCompilerInPath='+CfgCache.RealTargetCPUCompiler);
       sl.Add('Version='+CfgCache.FullVersion);
       HasCfgs:=false;
       if CfgCache.ConfigFiles<>nil then begin
@@ -338,7 +338,15 @@ begin
       if CfgCache.Undefines<>nil then begin
         sl.Add(CfgCache.Undefines.AsText);
       end;
-      sl.Add('UnitPaths:');
+      sl.Add('Include Paths:');
+      if CfgCache.IncludePaths<>nil then begin
+        sl.AddStrings(CfgCache.IncludePaths);
+      end;
+      sl.Add('Unit Scopes:');
+      if CfgCache.UnitScopes<>nil then begin
+        sl.AddStrings(CfgCache.UnitScopes);
+      end;
+      sl.Add('Unit Paths:');
       if CfgCache.UnitPaths<>nil then begin
         sl.AddStrings(CfgCache.UnitPaths);
       end;

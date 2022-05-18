@@ -14,7 +14,7 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 unit SynPropertyEditObjectList;
 
@@ -199,8 +199,6 @@ end;
 function TSynKeyCommandPropertyEditor.GetAttributes: TPropertyAttributes;
 begin
   Result := [paMultiSelect, paValueList, paRevertable];
-  if GetDefaultOrdValue <> NoDefaultValue then
-    Result := Result + [paHasDefaultValue];
 end;
 
 function TSynKeyCommandPropertyEditor.OrdValueToVisualValue(OrdValue: longint): string;
@@ -233,8 +231,6 @@ end;
 function TSynMouseCommandPropertyEditor.GetAttributes: TPropertyAttributes;
 begin
   Result := [paMultiSelect, paValueList, paRevertable];
-  if GetDefaultOrdValue <> NoDefaultValue then
-    Result := Result + [paHasDefaultValue];
 end;
 
 function TSynMouseCommandPropertyEditor.OrdValueToVisualValue(OrdValue: longint): string;
@@ -354,10 +350,10 @@ begin
   DeleteButton.Caption := oiColEditDelete;
   MoveUpButton.Caption := oiColEditUp;
   MoveDownButton.Caption := oiColEditDown;
-  AddButton.ImageIndex := IDEImages.LoadImage(16, 'laz_add');
-  DeleteButton.ImageIndex := IDEImages.LoadImage(16, 'laz_delete');
-  MoveUpButton.ImageIndex := IDEImages.LoadImage(16, 'arrow_up');
-  MoveDownButton.ImageIndex := IDEImages.LoadImage(16, 'arrow_down');
+  AddButton.ImageIndex := IDEImages.LoadImage('laz_add');
+  DeleteButton.ImageIndex := IDEImages.LoadImage('laz_delete');
+  MoveUpButton.ImageIndex := IDEImages.LoadImage('arrow_up');
+  MoveDownButton.ImageIndex := IDEImages.LoadImage('arrow_down');
 end;
 
 procedure TSynObjectPartListPropertyEditorForm.FormDestroy(Sender: TObject);

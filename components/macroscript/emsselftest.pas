@@ -9,9 +9,9 @@ interface
 {$ENDIF}
 
 uses
-  Classes, SysUtils, SynEdit, SynEditTypes, SynEditKeyCmds, LazLoggerBase,
+  Classes, SysUtils, SynEdit, LazLoggerBase,
   IDECommands, EMScriptClasses, EMScriptMacro, Clipbrd, Dialogs, Controls,
-  uPSCompiler, uPSRuntime, uPSUtils, uPSDebugger, uPSR_std, uPSC_std;
+  uPSCompiler, uPSRuntime, uPSUtils;
 
 type
 
@@ -56,7 +56,7 @@ type TPoint2 = record x,y,a,b,c: Longint; end;
 {%region RegisterSelfTests}
 
 var
-  TestResultA: integer;
+  {%H-}TestResultA: integer;
   TestResultInt1, TestResultInt2: integer;
   TestInputInt1, TestInputInt2: integer;
   TestResultBool1, TestResultBool2: boolean;
@@ -443,6 +443,7 @@ begin
   Exec := TEMSTPSTestExec.Create;
 end;
 
+type THackTEMSEditorMacro = class(TEMSEditorMacro) end;
 function DoSelfTest: Boolean;
 var
   m: TEMSEditorMacro;
@@ -457,17 +458,17 @@ var
   procedure AssertEQ(Msg: String; Exp, Got: String); overload;
   begin
     if not(Got = Exp) then
-      raise TEMScriptSelfTestException.Create(Format('%s [Exp: "%s" / Got: "%s"]', [Msg, Exp, Got]));
+      raise TEMScriptSelfTestException.Create(Format('%s [Exp: "%s" / Got: "%s" / Info: %s / SynTxt: %s]', [Msg, Exp, Got, dbgs(m.IsInvalid) + ' ' + THackTEMSEditorMacro(m).GetErrorMsg, syn.Text]));
   end;
   procedure AssertEQ(Msg: String; Exp, Got: Integer); overload;
   begin
     if not(Got = Exp) then
-      raise TEMScriptSelfTestException.Create(Format('%s [Exp: %d / Got: %d]', [Msg, Exp, Got]));
+      raise TEMScriptSelfTestException.Create(Format('%s [Exp: %d / Got: %d / Info: %s / SynTxt: %s]', [Msg, Exp, Got, dbgs(m.IsInvalid) + ' ' + THackTEMSEditorMacro(m).GetErrorMsg, syn.Text]));
   end;
   procedure AssertEQ(Msg: String; Exp, Got: Boolean); overload;
   begin
     if not(Got = Exp) then
-      raise TEMScriptSelfTestException.Create(Format('%s [Exp: %s / Got: %s]', [Msg, dbgs(Exp), dbgs(Got)]));
+      raise TEMScriptSelfTestException.Create(Format('%s [Exp: %s / Got: %s / Info: %s / SynTxt: %s]', [Msg, dbgs(Exp), dbgs(Got), dbgs(m.IsInvalid) + ' ' + THackTEMSEditorMacro(m).GetErrorMsg, syn.Text]));
   end;
 
   procedure TestInt(Msg, AText: String; Exp: Integer);

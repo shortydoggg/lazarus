@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,11 +25,18 @@ unit debugger_general_options;
 interface
 
 uses
-  Classes, SysUtils, TypInfo, Forms, Controls, StdCtrls,
-  ExtCtrls, Buttons, Dialogs, LCLProc, FileUtil, LazFileUtils, LazFileCache, PropEdits,
-  ObjectInspector, TransferMacros, LazarusIDEStrConsts, IDEOptionsIntf, IDEUtils,
-  DbgIntfDebuggerBase, PathEditorDlg, InputHistory, IDEProcs, DialogProcs,
-  EnvironmentOpts, BaseDebugManager, Debugger;
+  Classes, SysUtils, TypInfo,
+  // LCL
+  Forms, Controls, StdCtrls, ExtCtrls, Buttons, Dialogs, LCLProc,
+  // LazUtils
+  FileUtil, LazFileUtils, LazFileCache,
+  // DebuggerIntf
+  DbgIntfDebuggerBase,
+  // IdeIntf
+  PropEdits, ObjectInspector, IDEOptionsIntf, IDEOptEditorIntf, IDEUtils,
+  // IDE
+  TransferMacros, LazarusIDEStrConsts, PathEditorDlg, IDEProcs, DialogProcs,
+  InputHistory, EnvironmentOpts, BaseDebugManager, Debugger;
 
 type
 
@@ -38,8 +45,8 @@ type
   TDebuggerGeneralOptionsFrame = class(TAbstractIDEOptionsEditor)
     cmbDebuggerPath: TComboBox;
     cmbDebuggerType: TComboBox;
-    cmdOpenAdditionalPath: TSpeedButton;
-    cmdOpenDebuggerPath: TSpeedButton;
+    cmdOpenAdditionalPath: TButton;
+    cmdOpenDebuggerPath: TButton;
     gbAdditionalSearchPath: TGroupBox;
     gbDebuggerSpecific: TGroupBox;
     gbDebuggerType: TGroupBox;
@@ -90,7 +97,7 @@ procedure TDebuggerGeneralOptionsFrame.cmdOpenAdditionalPathClick(
   Sender: TObject);
 begin
   PathEditorDialog.Path:=txtAdditionalPath.Text;
-  PathEditorDialog.Templates:=SetDirSeparators(
+  PathEditorDialog.Templates:=GetForcedPathDelims(
         '$(LazarusDir)/include/$(TargetOS)'
       +';$(FPCSrcDir)/rtl/inc/'
       +';$(FPCSrcDir)/rtl/$(SrcOS)'
@@ -159,6 +166,7 @@ begin
   // IMPORTANT if more items are added the indexes must be updated here!
   gcbDebuggerGeneralOptions.Checked[0] := EnvironmentOptions.DebuggerShowStopMessage;
   gcbDebuggerGeneralOptions.Checked[1] := EnvironmentOptions.DebuggerResetAfterRun;
+  gcbDebuggerGeneralOptions.Checked[2] := EnvironmentOptions.DebuggerAutoCloseAsm;
 end;
 
 procedure TDebuggerGeneralOptionsFrame.FetchDebuggerSpecificOptions;
@@ -326,6 +334,7 @@ begin
   gcbDebuggerGeneralOptions.Caption := lisDebugOptionsFrmDebuggerGeneralOptions;
   gcbDebuggerGeneralOptions.Items.Add(lisDebugOptionsFrmShowMessageOnStop);
   gcbDebuggerGeneralOptions.Items.Add(lisDebugOptionsFrmResetDebuggerOnEachRun);
+  gcbDebuggerGeneralOptions.Items.Add(lisDebugOptionsFrmAutoCloseAsm);
   gbDebuggerSpecific.Caption := lisDebugOptionsFrmDebuggerSpecific;
 end;
 
@@ -357,6 +366,7 @@ begin
     // IMPORTANT if more items are added the indexes must be updated here!
     DebuggerShowStopMessage := gcbDebuggerGeneralOptions.Checked[0];
     DebuggerResetAfterRun := gcbDebuggerGeneralOptions.Checked[1];
+    DebuggerAutoCloseAsm := gcbDebuggerGeneralOptions.Checked[2];
 
     for i := 0 to FCurrentDebPropertiesList.Count - 1 do
       SaveDebuggerProperties(FCurrentDebPropertiesList[i],

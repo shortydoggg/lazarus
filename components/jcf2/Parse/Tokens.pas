@@ -191,6 +191,8 @@ type
     ttGeneric,
     ttCVar,
     ttNostackframe,
+    ttNested,
+    ttVectorcall,
     // used in asm
     ttOffset,
     ttPtr,
@@ -364,12 +366,12 @@ const
     ttOverload, ttReintroduce,
     ttDeprecated, ttLibrary, ttPlatform, ttExperimental, ttUnimplemented,
     ttStatic, ttFinal, ttVarArgs, ttUnsafe, ttEnumerator, ttNostackframe, ttInterrupt,
-    ttPublic];
+    ttPublic, ttVectorcall];
 
   ClassDirectives: TTokenTypeSet =
     [ttPrivate, ttProtected, ttPublic, ttPublished, ttAutomated, ttStrict];
   HintDirectives: TTokenTypeSet  = [ttDeprecated, ttLibrary, ttPlatform,
-                                    ttExperimental, ttUnimplemented];
+                                    ttExperimental, ttUnimplemented, ttStatic];
 
   AllDirectives: TTokenTypeSet =
   [ttAbsolute, ttExternal, ttPascal, ttSafecall,
@@ -380,7 +382,7 @@ const
     ttNear, ttReadOnly, ttDynamic, ttNoDefault, ttRegister,
     ttExport, ttOverride, ttOverload, ttResident, ttLocal,
     ttImplements, ttReintroduce,
-    ttLibrary, ttPlatform, ttStatic, ttFinal, ttVarArgs, ttCVar];    
+    ttLibrary, ttPlatform, ttStatic, ttFinal, ttVarArgs, ttCVar, ttVectorcall];    
 
   ProcedureWords: TTokenTypeSet = [ttProcedure, ttFunction, ttConstructor, ttDestructor, ttOperator];
 
@@ -477,8 +479,8 @@ type
 const
   PREPROC_BLOCK_END = [ppElseIf, ppElse, ppEndIf, ppIfEnd];
 
-procedure GetPreprocessorSymbolData(const psSourceCode: WideString;
-  var peSymbolType: TPreProcessorSymbolType; var psText: WideString);
+procedure GetPreprocessorSymbolData(const psSourceCode: String;
+  var peSymbolType: TPreProcessorSymbolType; var psText: String);
 
 function PreProcSymbolTypeToString(const peSymbolType: TPreProcessorSymbolType): string;
 function PreProcSymbolTypeSetToString(
@@ -493,8 +495,7 @@ uses
 {$ENDIF}
   SysUtils,
   { local }
-  JcfStringUtils,
-  JcfUnicode;
+  JcfStringUtils;
 
 { the majority of these tokens have a fixed textual representation
   e.g. ':=', 'if'.
@@ -582,6 +583,7 @@ begin
   AddKeyword('array', wtReservedWord, ttArray);
   AddKeyword('asm', wtReservedWord, ttAsm);
   AddKeyword('begin', wtReservedWord, ttBegin);
+  AddKeyword('bitpacked', wtReservedWord, ttPacked);
   AddKeyword('case', wtReservedWord, ttCase);
   AddKeyword('class', wtReservedWord, ttClass);
   AddKeyword('const', wtReservedWord, ttConst);
@@ -682,12 +684,14 @@ begin
   AddKeyword('resident', wtReservedWordDirective, ttResident);
   AddKeyword('local', wtReservedWordDirective, ttLocal);
   AddKeyword('generic', wtReservedWordDirective, ttGeneric);
+  AddKeyword('vectorcall', wtReservedWordDirective, ttVectorcall);
 
   AddKeyword('implements', wtReservedWordDirective, ttImplements);
   AddKeyword('reintroduce', wtReservedWordDirective, ttReintroduce);
 
   AddKeyword('cvar', wtReservedWordDirective, ttCVar);
   AddKeyword('nostackframe', wtReservedWordDirective, ttNostackframe);
+  AddKeyword('nested', wtReservedWordDirective, ttNested);
 
   // asm
   AddKeyword('offset', wtReservedWordDirective, ttOffset);
@@ -1077,8 +1081,8 @@ const
 
 
 { given a token, identify the preprocessor symbol and the text after it }
-procedure GetPreprocessorSymbolData(const psSourceCode: WideString;
-  var peSymbolType: TPreProcessorSymbolType; var psText: WideString);
+procedure GetPreprocessorSymbolData(const psSourceCode: String;
+  var peSymbolType: TPreProcessorSymbolType; var psText: String);
 var
   leLoop:    TPreProcessorSymbolType;
   liItemLen: integer;
@@ -1093,7 +1097,7 @@ begin
 
     liItemLen := Length(PreProcessorSymbolData[leLoop]);
     if AnsiSameText(StrLeft(psSourceCode, liItemLen), PreProcessorSymbolData[leLoop]) and
-      ( not WideCharIsAlpha(psSourceCode[liItemLen + 1])) then
+      ( not CharIsAlpha(psSourceCode[liItemLen + 1])) then
     begin
       peSymbolType := leLoop;
       break;

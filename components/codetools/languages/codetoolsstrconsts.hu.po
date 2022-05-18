@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.5.4\n"
+"X-Generator: Poedit 1.8.7.1\n"
 
 #: codetoolsstrconsts.crsbracketnotfound
 msgid "bracket ) not found"
@@ -57,7 +57,7 @@ msgstr "%s %s nélkül"
 
 #: codetoolsstrconsts.ctsbasetypeofnotfound
 msgid "base type of \"%s\" not found"
-msgstr "a(z) \"%s\" alaptípus nem található"
+msgstr "a(z) \"%s\" alaptípusa nem található"
 
 #: codetoolsstrconsts.ctsbeginatwithoutend
 msgid "begin at %s without end"
@@ -79,6 +79,10 @@ msgstr "a %s zárójel nem található"
 msgid "bracket open expected, but %s found"
 msgstr "nyitó zárójel az elvárt, de %s található"
 
+#: codetoolsstrconsts.ctscannotaddaunittotheimplementationbecauseonlyaunith
+msgid "cannot add a unit to the implementation, because only a unit has one"
+msgstr "nem lehet unit-ot hozzáadni az \"implementation\" szakaszhoz, mert az csak a unit-oknak van"
+
 #: codetoolsstrconsts.ctscharacterconstantoutofrange
 msgid "character constant out of range"
 msgstr "a karakterkonstans a tartományon kívülre esik"
@@ -98,6 +102,10 @@ msgstr "osztálycsomópont szülő csomópont nélkül"
 #: codetoolsstrconsts.ctsclassnotfound
 msgid "class \"%s\" not found"
 msgstr "Az osztály nem található: \"%s\""
+
+#: codetoolsstrconsts.ctsclassnotfound2
+msgid "class not found \"%s\""
+msgstr "az osztály nem található: \"%s\""
 
 #: codetoolsstrconsts.ctsclassofdefinitionnotresolved
 msgid "\"class of\" definition not resolved: %s"
@@ -139,13 +147,9 @@ msgstr "Állandó"
 msgid "Converter Directory"
 msgstr "Átalakító könyvtára"
 
-#: codetoolsstrconsts.ctscpudirectory
-msgid "CPU directory"
-msgstr "CPU könyvtár"
-
 #: codetoolsstrconsts.ctscursorposoutsideofcode
 msgid "cursor pos outside of code"
-msgstr "a kurzor poziciója a kódon kívülre esik"
+msgstr "a beszúrási jel pozíciója a kódon kívülre esik"
 
 #: codetoolsstrconsts.ctscustomcomponentsdirectory
 msgid "Custom Components Directory"
@@ -219,29 +223,9 @@ msgstr "LCL definiálása"
 msgid "Define LCLwidgetset, e.g. LCLgtk"
 msgstr "LCLwidgetset definiálása, pl. LCLgtk"
 
-#: codetoolsstrconsts.ctsdefinemacrocarbon1
-msgid "Define macro carbon1"
-msgstr "Carbon1 makró definiálása"
-
-#: codetoolsstrconsts.ctsdefinemacrogtk1
-msgid "Define macro gtk1"
-msgstr "Gtk1 makró definiálása"
-
-#: codetoolsstrconsts.ctsdefinemacrogtk2
-msgid "Define macro gtk2"
-msgstr "Gtk2 makró definiálása"
-
 #: codetoolsstrconsts.ctsdefinemacroname
 msgid "Define Macro %s"
 msgstr "%s makró definiálása"
-
-#: codetoolsstrconsts.ctsdefinemacroqt1
-msgid "Define macro qt1"
-msgstr "Qt1 makró definiálása"
-
-#: codetoolsstrconsts.ctsdefinemacrowince1
-msgid "Define macro wince1"
-msgstr "Wince1 makró definiálása"
 
 #: codetoolsstrconsts.ctsdefineprocessortype
 msgid "Define processor type"
@@ -254,18 +238,6 @@ msgstr "Definíciók a Lazarus források számára"
 #: codetoolsstrconsts.ctsdesignerdirectory
 msgid "Designer Directory"
 msgstr "Tervező könyvtára"
-
-#: codetoolsstrconsts.ctsdesignerunitsdirectory
-msgid "Designer Units"
-msgstr "Tervező unit-jai"
-
-#: codetoolsstrconsts.ctsdircomponentdoesnotexistsorisdanglingsymlink
-msgid "a directory component in %s does not exist or is a dangling symlink"
-msgstr "a(z) %s könyvtárkomponense nem létezik vagy döglött szimbolikus hivatkozás"
-
-#: codetoolsstrconsts.ctsdircomponentisnotdir
-msgid "a directory component in %s is not a directory"
-msgstr "a(z) %s könyvtárkomponense nem egy könyvtár"
 
 #: codetoolsstrconsts.ctsdispidparameterexpectedbutatomfound
 msgid "dispid parameter expected, but %s found"
@@ -331,10 +303,6 @@ msgstr "hiba a direktíva kifejezésben"
 msgid "error in paramlist"
 msgstr "hiba a paraméterlistában"
 
-#: codetoolsstrconsts.ctsexecuteaccessdeniedforfile
-msgid "execute access denied for %s"
-msgstr "a(z) %s futási engedélye megtagadva"
-
 #: codetoolsstrconsts.ctsexpected
 msgid "\"%s\" expected"
 msgstr "\"%s\" az elvárt"
@@ -370,10 +338,6 @@ msgstr "az exports rész csak függvénytárakban van engedélyezve"
 #: codetoolsstrconsts.ctsexprtypemustbeclassorrecord
 msgid "expression type must be class or record type"
 msgstr "a kifejezésnek osztály vagy rekord típusúnak kell lenni"
-
-#: codetoolsstrconsts.ctsfilehascircularsymlink
-msgid "%s has a circular symbolic link"
-msgstr "a(z) %s körkörös szimbolikus hivatkozást tartalmaz"
 
 #: codetoolsstrconsts.ctsfileisreadonly
 msgid "file is read only"
@@ -421,10 +385,6 @@ msgstr "nem található GetEnumerator függvény ezen osztályban"
 msgid "generic identifier"
 msgstr "általánosítható típus (generic) azonosító"
 
-#: codetoolsstrconsts.ctsgtk2intfdirectory
-msgid "gtk2 interface directory"
-msgstr "gtk2 felület könyvtára"
-
 #: codetoolsstrconsts.ctshaserror
 msgid "HasError"
 msgstr "Hibás"
@@ -436,10 +396,6 @@ msgstr "A \"helper\" nem következhet %s után"
 #: codetoolsstrconsts.ctsidedirectory
 msgid "IDE Directory"
 msgstr "IDE könyvtára"
-
-#: codetoolsstrconsts.ctsideintfdirectory
-msgid "IDEIntf Directory"
-msgstr "IDEIntf könyvtára"
 
 #: codetoolsstrconsts.ctsidentexpectedbutatomfound
 msgid "identifier expected, but %s found"
@@ -541,17 +497,9 @@ msgstr "Telepítési könyvtár"
 msgid "Installer directories"
 msgstr "Telepítő könyvtárai"
 
-#: codetoolsstrconsts.ctsinsufficientmemory
-msgid "insufficient memory"
-msgstr "kevés a memória"
-
 #: codetoolsstrconsts.ctsinterfacesectionnotfound
 msgid "interface section not found"
 msgstr "felület szakasz nem található"
-
-#: codetoolsstrconsts.ctsintfdirectory
-msgid "interface directory"
-msgstr "felület könyvtára"
 
 #: codetoolsstrconsts.ctsinvalidclassname
 msgid "invalid class name=\"%s\""
@@ -577,6 +525,10 @@ msgstr "érvénytelen mód kapcsoló: %s"
 msgid "invalid operator %s"
 msgstr "érvénytelen művelet: %s"
 
+#: codetoolsstrconsts.ctsinvalidpositionforinsertionofstatements
+msgid "invalid position for insertion of statements"
+msgstr "az adott pozícióba nem lehet állományokat beszúrni"
+
 #: codetoolsstrconsts.ctsinvalidsubrange
 msgid "invalid subrange"
 msgstr "érvénytelen tartomány"
@@ -592,10 +544,6 @@ msgstr "érvénytelen változónév: \"%s\""
 #: codetoolsstrconsts.ctsinvalidvariabletype
 msgid "invalid variable type \"%s\""
 msgstr "érvénytelen változótípus: \"%s\""
-
-#: codetoolsstrconsts.ctsjitformdirectory
-msgid "JITForm Directory"
-msgstr "JITForm könyvtára"
 
 #: codetoolsstrconsts.ctskeyword
 msgid "keyword"
@@ -616,6 +564,10 @@ msgstr "a Lazarus fő könyvtára"
 #: codetoolsstrconsts.ctslazarussources
 msgid "Lazarus Sources"
 msgstr "Lazarus források"
+
+#: codetoolsstrconsts.ctsmethodhasnodeclaration
+msgid "method \"%s\" has no declaration"
+msgstr "a metódus nincs deklarálva: \"%s\""
 
 #: codetoolsstrconsts.ctsmethodname
 msgid "method name"
@@ -667,7 +619,7 @@ msgstr "új eljárástest nem található"
 
 #: codetoolsstrconsts.ctsnocontextnodefoundatcursor
 msgid "no context node found at cursor"
-msgstr "nincs csomópont a kurzornál"
+msgstr "nincs csomópont a beszúrási jelnél"
 
 #: codetoolsstrconsts.ctsnodefaultspecifierdefinedtwice
 msgid "nodefault specifier defined twice"
@@ -687,7 +639,7 @@ msgstr "Nincs elérhető elemző ehhez: \"%s\". Ha ez egy beemelt fájl akkor el
 
 #: codetoolsstrconsts.ctsnotenoughgenparams
 msgid "Not enough actual generic parameters"
-msgstr "Nincs elég paraméter az általánosítható típus számára"
+msgstr "Nincs elég paraméter az általánosítható típus (generic) számára"
 
 #: codetoolsstrconsts.ctsoldmethodnotfound
 msgid "old method not found: %s"
@@ -819,10 +771,6 @@ msgstr "a forráskód nem unit"
 msgid "source not found: unit %s. Check your FPC source directory."
 msgstr "A forrás nem található: %s unit. Ellenőrizze az FPC források könyvtárát."
 
-#: codetoolsstrconsts.ctssrcpathforcompiledunits
-msgid "src path for compiled units"
-msgstr "forrásútvonal a lefordított unit-ok számára"
-
 #: codetoolsstrconsts.ctssrcpathinitialization
 msgid "SrcPath Initialization"
 msgstr "SrcPath kezdőértékének beállítása"
@@ -838,10 +786,6 @@ msgstr "szöveg konstans"
 #: codetoolsstrconsts.ctssyntaxerrorinexpr
 msgid "Syntax Error in expression \"%s\""
 msgstr "Szintaktikai hiba a kifejezésben: \"%s\""
-
-#: codetoolsstrconsts.ctstcodetoolmanagerconsistencycheck
-msgid "TCodeToolManager.ConsistencyCheck=%d"
-msgstr "TCodeToolManager.ConsistencyCheck=%d"
 
 #: codetoolsstrconsts.ctstermnotsimple
 msgid "Term has no simple type"
@@ -865,7 +809,7 @@ msgstr "típusazoniosító"
 
 #: codetoolsstrconsts.ctstypeisonlyallowedingenericsendofclassnotfound
 msgid "type is only allowed in generics, end of class not found"
-msgstr "a type kulcsszó csak általánosítható típusokban (generics) megengedett, az osztály vége (end) nem található"
+msgstr "a type kulcsszó csak általánosítható típusokban (generic) megengedett, az osztály vége (end) nem található"
 
 #: codetoolsstrconsts.ctstypesectionofclassnotfound
 msgid "type section of class not found"
@@ -907,6 +851,10 @@ msgstr "váratlan kulcsszó található a begin..end részben: %s"
 msgid "unexpected keyword \"%s\" found while reading blocks backwards"
 msgstr "váratlan kulcsszó: \"%s\" a blokkok visszafelé olvasása közben"
 
+#: codetoolsstrconsts.ctsunexpectedsectionkeyword
+msgid "unexpected section keyword %s found"
+msgstr "váratlan szakasz kulcsszó: %s"
+
 #: codetoolsstrconsts.ctsunexpectedsubrangeoperatorfound
 msgid "unexpected subrange operator '..' found"
 msgstr "váratlan résztartomány '..' jel"
@@ -927,10 +875,6 @@ msgstr "Ismeretlen eljárás: %s"
 msgid "(unknown mainfilename)"
 msgstr "(ismeretlen főfájlnév)"
 
-#: codetoolsstrconsts.ctsunknownsectionkeyword
-msgid "unknown section keyword %s found"
-msgstr "ismeretlen szakasz kulcsszó: %s"
-
 #: codetoolsstrconsts.ctsunknownsubdescriptor
 msgid "(unknown subdescriptor %s)"
 msgstr "(ismeretlen al-leíró: %s)"
@@ -949,11 +893,7 @@ msgstr "Eszközök könyvtárai"
 
 #: codetoolsstrconsts.ctsvarisonlyallowedingenericsendofclassnotfound
 msgid "var is only allowed in generics, end of class not found"
-msgstr "a var kulcsszó csak általánosítható típusokban (generics) megengedett, az osztály vége (end) nem található"
-
-#: codetoolsstrconsts.ctswidgetdirectory
-msgid "Widget Directory"
-msgstr "Vezérlőkészlet könyvtára"
+msgstr "a var kulcsszó csak általánosítható típusokban (generic) megengedett, az osztály vége (end) nem található"
 
 #: codetoolsstrconsts.ctswordnotfound
 msgid "\"%s\" not found"

@@ -1,4 +1,4 @@
-{  $Id: lclstrconsts.pas 49706 2015-08-23 22:20:02Z juha $  }
+{  $Id: lclstrconsts.pas 62458 2019-12-29 20:57:29Z dmitry $  }
 {
  /***************************************************************************
                             lclstrconsts.pas
@@ -22,9 +22,6 @@ unit LCLStrConsts;
 interface
 
 resourceString
-  // common Delphi strings
-  SNoMDIForm = 'No MDI form present.';
-
   // message/input dialog buttons
   rsMbYes          = '&Yes';
   rsMbNo           = '&No';
@@ -75,7 +72,9 @@ resourceString
   rsFindMore = 'Find more';
   rsReplace = 'Replace';
   rsReplaceAll = 'Replace all';
-  
+
+  rsHelp = 'Help';
+
   // DBGrid
   rsDeleteRecord = 'Delete record?';
 
@@ -90,7 +89,14 @@ resourceString
   rsPostRecordHint = 'Post';
   rsCancelRecordHint = 'Cancel';
   rsRefreshRecordsHint = 'Refresh';
-  
+
+  // macOS (cocoa) interface
+  rsMacOSMenuHide = 'Hide %s';
+  rsMacOSMenuHideOthers = 'Hide Others';
+  rsMacOSMenuQuit = 'Quit %s';
+  rsMacOSMenuServices = 'Services';
+  rsMacOSMenuShowAll = 'Show All';
+
   // gtk interface
   rsWarningUnremovedPaintMessages = ' WARNING: There are %s unremoved LM_'
     +'PAINT/LM_GtkPAINT message links left.';
@@ -202,7 +208,7 @@ resourceString
   rsWin32Warning = 'Warning:';
   rsWin32Error = 'Error:';
   
-  // StringHashList, LResource, Menus, ExtCtrls, ImgList, Spin
+  // LResource, Menus, ExtCtrls, ImgList, Spin
   // StdCtrls, Calendar, CustomTimer, Forms, Grids, LCLProc, Controls, ComCtrls,
   // ExtDlgs, EditBtn, Masks, MaskEdit
   sInvalidActionRegistration = 'Invalid action registration';
@@ -217,11 +223,11 @@ resourceString
   sInvalidImageSize = 'Invalid image size';
   sDuplicateMenus = 'Duplicate menus';
   sCannotFocus = 'Cannot focus a disabled or invisible window';
+  sCannotSetDesignTimePPI = 'Cannot set design time PPI.';
   sParentRequired = 'Control "%s" has no parent window.';
   sInvalidCharSet = 'The char set in mask "%s" is not valid!';
   SMaskEditNoMatch = 'The current text does not match the specified mask.';
 
-  rsListMustBeEmpty = 'List must be empty';
   rsInvalidPropertyValue = 'Invalid property value';
   rsPropertyDoesNotExist = 'Property %s does not exist';
   rsInvalidStreamFormat = 'Invalid stream format';
@@ -241,12 +247,12 @@ resourceString
   rsGridIndexOutOfRange = 'Grid index out of range.';
   rsGridHasNoRows = 'Cannot insert columns into a grid when it has no rows';
   rsGridHasNoCols = 'Cannot insert rows into a grid when it has no columns';
-  rsERRORInLCL = 'ERROR in LCL: ';
-  rsCreatingGdbCatchableError = 'Creating gdb catchable error:';
   rsAControlCanNotHaveItselfAsParent = 'A control can''t have itself as a parent';
   rsControlHasNoParentWindow = 'Control ''%s'' has no parent window';
+  rsControlHasNoParentFormOrFrame = 'Control ''%s'' has no parent form or frame';
   rsControlIsNotAParent = '''%s'' is not a parent of ''%s''';
   rsControlClassCantContainChildClass = 'Control of class ''%s'' can''t have control of class ''%s'' as a child';
+  rsASCannotHaveAsParent = 'Class %s cannot have %s as parent.';
   lisLCLResourceSNotFound = 'Resource %s not found';
   rsFormResourceSNotFoundForResourcelessFormsCreateNew = 'Form resource %s '
     +'not found. For resourceless forms CreateNew constructor must be used.'
@@ -287,9 +293,9 @@ resourceString
   rsRasterImageSaveInUpdate = 'Cannot save image while update in progress';
   rsNoWidgetSet = 'No widgetset object. '
     +'Please check if the unit "interfaces" was added to the programs uses clause.';
-  rsPressOkToIgnoreAndRiskDataCorruptionPressCancelToK = '%s'
+  rsPressOkToIgnoreAndRiskDataCorruptionPressAbortToK = '%s'
     +'%sPress OK to ignore and risk data corruption.'
-    +'%sPress Cancel to kill the program.';
+    +'%sPress Abort to kill the program.';
   rsCanNotFocus = 'Can not focus';
   rsListIndexExceedsBounds = 'List index exceeds bounds (%d)';
   rsResourceNotFound = 'Resource %s not found';
@@ -314,53 +320,15 @@ resourceString
   sShellCtrlsInvalidPathRelative = 'Invalid relative pathname:'#13'"%s"'#13
     +'in relation to rootpath:'#13'"%s"';
 
-  // I'm not sure if in all languages the Dialog texts for a button
-  // have the same meaning as a key
-  // So every VK gets its own constant
   ifsVK_UNKNOWN    = 'Unknown';
-  ifsVK_LBUTTON    = 'Mouse Button Left';
-  ifsVK_RBUTTON    = 'Mouse Button Right';
-  ifsVK_CANCEL     = 'Cancel'; //= lisCancel
-  ifsVK_MBUTTON    = 'Mouse Button Middle';
-  ifsVK_BACK       = 'Backspace';
-  ifsVK_TAB        = 'Tab';
-  ifsVK_CLEAR      = 'Clear';
-  ifsVK_RETURN     = 'Return';
   ifsVK_SHIFT      = 'Shift';
   ifsVK_META       = 'Meta';
   ifsVK_CMD        = 'Cmd';
   ifsVK_SUPER      = 'Super';
-  ifsVK_CONTROL    = 'Control';
-  ifsVK_MENU       = 'Menu';
-  ifsVK_PAUSE      = 'Pause key';
-  ifsVK_CAPITAL    = 'Capital';
-  ifsVK_KANA       = 'Kana';
-  ifsVK_JUNJA      = 'Junja';
-  ifsVK_FINAL      = 'Final';
-  ifsVK_HANJA      = 'Hanja';
-  ifsVK_ESCAPE     = 'Escape';
-  ifsVK_CONVERT    = 'Convert';
-  ifsVK_NONCONVERT = 'Nonconvert';
-  ifsVK_ACCEPT     = 'Accept';
-  ifsVK_MODECHANGE = 'Mode Change';
-  ifsVK_SPACE      = 'Space key';
-  ifsVK_PRIOR      = 'Prior';
-  ifsVK_NEXT       = 'Next';
-  ifsVK_END        = 'End';
-  ifsVK_HOME       = 'Home';
-  ifsVK_LEFT       = 'Left';
-  ifsVK_UP         = 'Up';
-  ifsVK_RIGHT      = 'Right';
-  ifsVK_DOWN       = 'Down'; //= lisdown
-  ifsVK_SELECT     = 'Select'; //= lismenuselect
-  ifsVK_PRINT      = 'Print';
-  ifsVK_EXECUTE    = 'Execute';
-  ifsVK_SNAPSHOT   = 'Snapshot';
-  ifsVK_INSERT     = 'Insert';
-  ifsVK_DELETE     = 'Delete'; //= lisdelete
   ifsVK_HELP       = 'Help';
   ifsCtrl          = 'Ctrl';
   ifsAlt           = 'Alt';
+
   rsWholeWordsOnly = 'Whole words only';
   rsCaseSensitive  = 'Case sensitive';
   rsPromptOnReplace= 'Prompt on replace';
@@ -369,12 +337,6 @@ resourceString
   rsDirection      = 'Direction';
   rsForward        = 'Forward';
   rsBackward       = 'Backward';
-  ifsVK_LWIN       = 'left windows key';
-  ifsVK_RWIN       = 'right windows key';
-  ifsVK_APPS       = 'application key';
-  ifsVK_NUMPAD     = 'Numpad %d';
-  ifsVK_NUMLOCK    = 'Numlock';
-  ifsVK_SCROLL     = 'Scroll';
 
   // menu key captions
   SmkcBkSp = 'BkSp';
@@ -396,9 +358,6 @@ resourceString
   SmkcCtrl = 'Ctrl+';
   SmkcAlt = 'Alt+';
   SmkcMeta = 'Meta+';
-
-  // docking
-  rsDocking = 'Docking';
 
   // help
   rsHelpHelpNodeHasNoHelpDatabase = 'Help node "%s" has no Help Database';
@@ -428,6 +387,8 @@ resourceString
 
   hhsHelpTheHelpDatabaseWasUnableToFindFile = 'The help database "%s" was '
     +'unable to find file "%s".';
+  rsTheBuiltInURLIsReadOnlyChangeTheBaseURLInstead = 'The built-in URL is read'
+    +' only. Change the BaseURL instead.';
   hhsHelpTheMacroSInBrowserParamsWillBeReplacedByTheURL = 'The macro %s in '
     +'BrowserParams will be replaced by the URL.';
   hhsHelpNoHTMLBrowserFoundPleaseDefineOne = 'No HTML Browser found.'

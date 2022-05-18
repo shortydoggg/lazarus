@@ -1677,9 +1677,8 @@ procedure TCustomPropertyLink.SetObjectAndProperty(NewPersistent: TPersistent;
 var
   AComponent: TComponent;
 begin
-  // Note: checking for IsValidIdent is not needed, because
-  // an identifier is is only needed for streaming. So every string as Name is
-  // allowed.
+  // Note: checking for IsValidIdent is not needed, because an identifier
+  // is only needed for streaming. So every string as Name is allowed.
   if (NewPersistent<>TIObject) or (NewPropertyName<>TIPropertyName) then begin
     FPropertyLoaded:=false;
     if (FTIObject is TComponent) then begin
@@ -2159,7 +2158,7 @@ end;
 
 function TPropertyNamePropertyEditor.GetAttributes: TPropertyAttributes;
 begin
-  Result:=[paMultiSelect,paValueList,paSortList,paRevertable,paHasDefaultValue];
+  Result:=[paMultiSelect,paValueList,paSortList,paRevertable];
 end;
 
 function TPropertyNamePropertyEditor.GetEditLimit: Integer;
@@ -2375,7 +2374,6 @@ begin
       ItemValue:=Text;
 
     AState:=[];
-    if odPainted in State then Include(AState,pedsPainted);
     if odSelected in State then Include(AState,pedsSelected);
     if odFocused in State then Include(AState,pedsFocused);
     if odComboBoxEdit in State then
@@ -3587,7 +3585,6 @@ begin
       ItemValue:=Text;
 
     AState:=[];
-    if odPainted in State then Include(AState,pedsPainted);
     if odSelected in State then Include(AState,pedsSelected);
     if odFocused in State then Include(AState,pedsFocused);
     Include(AState,pedsInEdit);
@@ -3862,7 +3859,7 @@ end;
 
 function TTIElementNamePropertyEditor.GetAttributes: TPropertyAttributes;
 begin
-  Result:=[paMultiSelect,paValueList,paSortList,paRevertable,paHasDefaultValue];
+  Result:=[paMultiSelect,paValueList,paSortList,paRevertable];
 end;
 
 function TTIElementNamePropertyEditor.GetEditLimit: Integer;

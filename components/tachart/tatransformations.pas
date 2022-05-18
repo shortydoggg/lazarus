@@ -600,26 +600,26 @@ end;
 
 function TLinearAxisTransform. OffsetIsStored: Boolean;
 begin
-  Result := Offset <> 0;
+  Result := not SameValue(Offset, 0.0);
 end;
 
 function TLinearAxisTransform.ScaleIsStored: Boolean;
 begin
-  Result := Scale <> 1.0;
+  Result := not SameValue(Scale, 1.0);
 end;
 
 procedure TLinearAxisTransform.SetOffset(AValue: Double);
 begin
-  if FOffset = AValue then exit;
+  if SameValue(FOffset, AValue) then exit;
   FOffset := AValue;
   Changed;
 end;
 
 procedure TLinearAxisTransform.SetScale(AValue: Double);
 begin
-  if FScale = AValue then exit;
+  if SameValue(FScale, AValue) then exit;
   FScale := AValue;
-  if FScale = 0 then FScale := 1.0;
+  if SameValue(FScale, 0.0) then FScale := 1.0;
   Changed;
 end;
 
@@ -683,6 +683,12 @@ end;
 procedure TAutoScaleAxisTransform.ClearBounds;
 begin
   inherited ClearBounds;
+
+  // Avoid crashing when called too early, e.g. when a TNavPanel is on the form
+  // https://forum.lazarus.freepascal.org/index.php/topic,47429.0.html
+  if FDrawData = nil then
+    exit;
+
   with TAutoScaleTransformData(FDrawData) do begin
     FMin := SafeInfinity;
     FMax := NegInfinity;

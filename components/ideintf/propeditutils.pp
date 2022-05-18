@@ -11,7 +11,7 @@ unit PropEditUtils;
 interface
 
 uses
-  Classes, SysUtils, TypInfo, LazLogger;
+  Classes, SysUtils, TypInfo, LazLoggerBase;
 
 type
   {
@@ -92,14 +92,15 @@ var
 
 function GetLookupRootForComponent(APersistent: TPersistent): TPersistent;
 var
-  AOwner: TPersistent;
+  AOwner: TPersistent = nil;
   i: Integer;
 begin
   Result := APersistent;
   if Result = nil then
     Exit;
   repeat
-    AOwner := TPersistentAccess(Result).GetOwner;
+    if Result is TPersistent then
+      AOwner := TPersistentAccess(Result).GetOwner;
     if (AOwner=nil) and (GetLookupRoots<>nil) then begin
       for i:=GetLookupRoots.Count-1 downto 0 do begin
         AOwner:=TGetLookupRoot(GetLookupRoots[i])(Result);
@@ -223,7 +224,7 @@ var
 begin
   if SourceSelectionList = Self then Exit;
   Clear;
-  if (SourceSelectionList <> nil) and (SourceSelectionList.Count > 0) then
+  if Assigned(SourceSelectionList) then
   begin
     FForceUpdate := SourceSelectionList.ForceUpdate;
     FPersistentList.Count := SourceSelectionList.Count;
@@ -241,9 +242,9 @@ begin
     DebugLn(['  ',i,' ',dbgsName(Items[i])]);
 end;
 
-function TPersistentSelectionList.IsEqual(
- SourceSelectionList:TPersistentSelectionList):boolean;
-var a:integer;
+function TPersistentSelectionList.IsEqual(SourceSelectionList: TPersistentSelectionList): boolean;
+var
+  a: integer;
 begin
   if (SourceSelectionList=nil) and (Count=0) then begin
     Result:=true;

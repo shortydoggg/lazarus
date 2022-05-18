@@ -1,4 +1,4 @@
-{ $Id: qtint.pp 51056 2015-12-27 20:27:38Z ondrej $ }
+{ $Id: qtint.pp 58634 2018-07-25 23:44:54Z juha $ }
 { 
  /*************************************************************************** 
                          QTINT.pp  -  QTInterface Object
@@ -36,20 +36,30 @@ uses
   // Bindings - qt4 must come first to avoid type redefinition problems
   qt4,
   // FPC
-  Classes, SysUtils, Math, Types, maps,
+  Classes, SysUtils, Math, Types,
+  // LazUtils
+  LazUTF8, Maps, LazStringUtils,
   // LCL
-  InterfaceBase, LCLProc, LazUTF8, LCLType, LMessages, LCLMessageGlue, LCLStrConsts,
-  Controls, ExtCtrls, Forms,
-  Dialogs, StdCtrls, LCLIntf, GraphType, GraphUtil, Themes,
+  LCLPlatformDef, InterfaceBase, LCLProc, LCLType, LCLIntf,
+  LMessages, LCLMessageGlue, LCLStrConsts,
+  Controls, ExtCtrls, Forms, StdCtrls, GraphType, GraphUtil, Themes,
   // WS
   qtproc;
 
 type
+  TSysColorBrushes = array[0..MAX_SYS_COLORS] of HBrush;
+
   { TQtWidgetSet }
 
   TQtWidgetSet = Class(TWidgetSet)
   private
     App: QApplicationH;
+    {$IFDEF QtUseNativeEventLoop}
+    FMainTimerID: integer;
+    {$ENDIF}
+    {$IFDEF QtUseAccurateFrame}
+    FWSFrameMargins: TRect;
+    {$ENDIF}
     FIsLibraryInstance: Boolean;
 
     // cache for WindowFromPoint
@@ -80,7 +90,7 @@ type
     FDragHotSpot: TPoint;
     FDragImageLock: Boolean;
     FCachedColors: array[0..MAX_SYS_COLORS] of PLongWord;
-    FSysColorBrushes: array[0..MAX_SYS_COLORS] of HBrush;
+    FSysColorBrushes: TSysColorBrushes;
 
     {$IFDEF HASX11}
     SavedHintHandlesList: TFPList;
@@ -91,6 +101,9 @@ type
     // qt style does not have pixel metric for themed menubar (menu) height
     // so we must calculate it somehow.
     FCachedMenuBarHeight: Integer;
+    {$IFDEF QtUseAccurateFrame}
+    function GetFrameMargins: TRect;
+    {$ENDIF}
     function GetMenuHeight: Integer;
 
     procedure ClearCachedColors;
@@ -211,6 +224,10 @@ type
     property AppActive: Boolean read FAppActive;
     property DragImageLock: Boolean read FDragImageLock write FDragImageLock;
 
+    {$IFDEF QtUseAccurateFrame}
+    property WSFrameMargins: TRect read GetFrameMargins write FWSFrameMargins;
+    {$ENDIF}
+
     {do not create new QApplication object if we are called from library }
     property IsLibraryInstance: Boolean read FIsLibraryInstance;
 
@@ -221,6 +238,10 @@ type
     {$ENDIF}
     {$I qtwinapih.inc}
     {$I qtlclintfh.inc}
+
+    {$IFDEF EnableQTAppH}
+    property AppH: QApplicationH read App;
+    {$ENDIF}
   end;
 
 
@@ -242,6 +263,7 @@ type
   function GetQtVersion: String;
   function QtVersionCheck(const AMajor, AMinor, AMicro: Integer): Boolean;
   {$IFDEF HASX11}
+  function IsWayland: Boolean; {this is not X11 but wayland !}
   function IsCurrentDesktop(AWidget: QWidgetH): Boolean;
   function X11Raise(AHandle: HWND): boolean;
   function X11GetActiveWindow: QWidgetH;
@@ -252,6 +274,22 @@ type
   function GetAlwaysOnTopX11(Widget: QWidgetH): boolean;
   {check if we are running under kde3 installation}
   function IsOldKDEInstallation: Boolean;
+  {check KDE session version. Possible results are > 2, -1 means not running under KDE}
+  function GetKdeSessionVersion: integer;
+  {force mapping}
+  procedure MapX11Window(AWinID: LongWord);
+  {$IFDEF QtUseAccurateFrame}
+  function GetX11WindowRealized(AWinID: LongWord): boolean;
+  function GetX11WindowAttributes(AWinID: LongWord; out ALeft, ATop, AWidth, AHeight, ABorder: integer): boolean;
+  function GetX11SupportedAtoms(AWinID: LongWord; AList: TStrings): boolean;
+  {Ask for _NET_FRAME_EXTENTS,_KDE_NET_WM_SHADOW,_GTK_NET_FRAME_EXTENTS}
+  function GetX11RectForAtom(AWinID: LongWord; const AAtomName: string; out ARect: TRect): boolean;
+  function GetX11WindowPos(AWinID: LongWord; out ALeft, ATop: integer): boolean;
+  function SetX11WindowPos(AWinID: LongWord; const ALeft, ATop: integer): boolean;
+  function GetX11WindowGeometry(AWinID: LongWord; out ARect: TRect): boolean;
+  {check if wm supports request for frame extents}
+  function AskX11_NET_REQUEST_FRAME_EXTENTS(AWinID: LongWord; out AMargins: TRect): boolean;
+  {$ENDIF}
   {$ENDIF}
 
 const
@@ -317,7 +355,7 @@ uses
  QtCaret,
  QtThemes,
 ////////////////////////////////////////////////////
-  Graphics, buttons, Menus,
+  Graphics, buttons,
   // Bindings
   QtWSFactory, qtwidgets, qtobjects, qtsystemtrayicon;
 

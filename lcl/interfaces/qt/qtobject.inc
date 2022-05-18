@@ -70,11 +70,17 @@ begin
   FLastWFPMousePos := Point(MaxInt, MaxInt);
   FLastWFPResult := 0;
   inherited Create;
+  {$IFDEF QtUseAccurateFrame}
+  FWSFrameMargins := Rect(0, 0, 0, 0);
+  {$ENDIF}
   FIsLibraryInstance := QCoreApplication_instance() <> nil;
   if FIsLibraryInstance then
     App := QApplicationH(QCoreApplication_instance())
   else
     App := QApplication_Create(@argc, argv);
+  {$IFDEF QtUseNativeEventLoop}
+  FMainTimerID := -1;
+  {$ENDIF}
   {$J+}
   QtVersionInt(QtVersionMajor, QtVersionMinor, QtVersionMicro);
   {$J-}
@@ -253,8 +259,16 @@ begin
 
   ScreenDC := GetDC(0);
   try
+    {$IFDEF DARWIN}
+    // this code is removed in r57679, and cocoa/carbon are fixed separatelly, so
+    // qt/qt5 wasn't good with standard mac ppi 72. Cocoa ws uses CocoaBasePPI const.
+    // issue #34625
+    ScreenInfo.PixelsPerInchX := 96;
+    ScreenInfo.PixelsPerInchY := 96;
+	  {$ELSE}
     ScreenInfo.PixelsPerInchX := GetDeviceCaps(ScreenDC, LOGPIXELSX);
     ScreenInfo.PixelsPerInchY := GetDeviceCaps(ScreenDC, LOGPIXELSY);
+	  {$ENDIF}
     ScreenInfo.ColorDepth := GetDeviceCaps(ScreenDC, BITSPIXEL);
   finally
     ReleaseDC(0, ScreenDC);
@@ -277,10 +291,33 @@ end;
   Enter the main message loop
  ------------------------------------------------------------------------------}
 procedure TQtWidgetSet.AppRun(const ALoop: TApplicationMainLoop);
+{$IFDEF QtUseNativeEventLoop}
+var
+  ATimer: QTimerH;
+{$ENDIF}
 begin
+  {$IFDEF QtUseNativeEventLoop}
+  if Application.Terminated then
+  begin
+    // application can be terminated in show event of mainform (before AppRun is called - see TApplication.Run. related to #34982)
+    if Assigned(ALoop) then
+      ALoop;
+  end else
+  begin
+    ATimer := QTimer_create(QCoreApplication_instance());
+    if (StyleName = 'gtk') or (StyleName = 'gtk+') then
+      QTimer_setInterval(ATimer, 1) {issue #31191}
+    else
+      QTimer_setInterval(ATimer, 0);
+    QTimer_start(ATimer);
+    FMainTimerID := QTimer_timerId(ATimer);
+    QApplication_exec();
+  end;
+  {$ELSE}
   // use LCL loop
   if Assigned(ALoop) then
     ALoop;
+  {$ENDIF}
 end;
 
 {------------------------------------------------------------------------------
@@ -478,7 +515,7 @@ procedure TQtWidgetSet.AppSetTitle(const ATitle: string);
 var
   W: WideString;
 begin
-  W := GetUtf8String(ATitle);
+  W := {%H-}ATitle;
   QCoreApplication_setApplicationName(@W);
 end;
 
@@ -601,7 +638,7 @@ end;
 function TQtWidgetSet.EventFilter(Sender: QObjectH; Event: QEventH): Boolean; cdecl;
 var
   AObject: TQtObject;
-  W: TQtMainWindow;
+  W: TQtWidget;
   LCLEvent: QLCLMessageEventH;
   ASequence: QKeySequenceH;
   AKey: WideString;
@@ -629,7 +666,7 @@ var
     begin
       AWidget := QWidgetH(Sender);
       QObject_objectName(Sender, @AName);
-      if UTF8Copy(AName, 1, 16) = 'qtlclsystrayicon' then
+      if Copy(AName, 1, 16) = 'qtlclsystrayicon' then
       begin
         for i := 0 to SysTrayIconsList.Count - 1 do
         begin
@@ -675,7 +712,7 @@ var
               RGeom := TQtSystemTrayIcon(SysTrayIconsList.Items[i]).GetGeometry;
               if (QApplication_widgetAt(RGeom.Left, RGeom.Top) = AWidget) then
               begin
-                AName := 'qtlclsystrayicon_' + dbgHex(PtrUInt(AWidget));
+                AName := 'qtlclsystrayicon_' {%H-}+ dbgHex(PtrUInt(AWidget));
                 QObject_setObjectName(Sender, @AName);
                 TQtSystemTrayIcon(SysTrayIconsList.Items[i]).AttachSysTrayWidget(AWidget);
                 {$IFDEF DEBUGSYSTRAYICON}
@@ -737,11 +774,18 @@ begin
   end;
 
   case QEvent_type(Event) of
+    {$IFDEF QtUseNativeEventLoop}
+    QEventTimer:
+    begin
+      if (QTimerEvent_timerId(QTimerEventH(Event)) = FMainTimerID) and
+        Assigned(Application) and not Application.Terminated then
+          Application.Idle(True);
+    end;
+    {$ENDIF}
     QEventShortcutOverride: // issue #22827
     begin
       QKeyEvent_text(QKeyEventH(Event), @AKey);
-      if (QKeyEvent_modifiers(QKeyEventH(Event)) = QtAltModifier) and
-       (AKey <> '') then
+      if (QKeyEvent_modifiers(QKeyEventH(Event)) = QtAltModifier) and (AKey <> '') then
       begin
         ASequence := QKeySequence_create(QKeyEvent_modifiers(QKeyEventH(Event))
           or QKeyEvent_Key(QKeyEventH(Event)));
@@ -781,8 +825,9 @@ begin
         // eat next appdeactivate & appactivate since we are changing form
         // flags !
         if (StayOnTopList <> nil) then
-          W := TQtMainWindow(HWNDFromWidgetH(QApplication_activeWindow()))
-        else
+        begin
+          W := TQtWidget(GetActiveWindow);
+        end else
           W := nil;
         Application.IntfAppActivate;
         QtRestoreStayOnTop;
@@ -931,7 +976,7 @@ var
             QMdiSubWindowH(AMainWin.Widget);
       end else
       begin
-        Result := QWidget_isActiveWindow(AMainWin.Widget);
+        Result := True; // issue #31440 QWidget_isActiveWindow(AMainWin.Widget);
       end;
       if (AMainWin <> AWidget) and not Supports(AWidget, IQtEdit, QtEdit) then
         Result := True;
@@ -997,13 +1042,39 @@ var
           OldWidget.DeliverMessage(Msg);
         end else
         begin
-          {$IF DEFINED(VerboseFocus) OR DEFINED(DebugQtFocus)}
-          Writeln('TQtWidgetSet.FocusChanged: *** DO NOT KILL FOCUS ***');
-          {$ENDIF}
+          if (OldWidget is TQtComboBox) and CheckIfActiveForm(OldWidget) then
+          begin
+            if (NewWidget = nil) and QWidget_isVisible(aold) and QWidget_isEnabled(aold) and
+              (TQtComboBox(OldWidget).LineEdit = nil) then
+            begin
+              {$IF DEFINED(VerboseFocus) OR DEFINED(DebugQtFocus)}
+              DebugLn('WARNING: Qt mismatched kill focus message, backfocus to ',dbgsName(OldWidget.LCLObject),
+              ' LCLObject focus status ',dbgs(OldWidget.LCLObject.Focused));
+              {$ENDIF}
+              OldWidget.setFocus;
+            end else
+              OldWidget.DeliverMessage(Msg);
+          end else
+          begin
+            {$IF DEFINED(VerboseFocus) OR DEFINED(DebugQtFocus)}
+            Writeln('TQtWidgetSet.FocusChanged: *** DO NOT KILL FOCUS FOR ',dbgsName(OldWidget),' ***');
+            {$ENDIF}
+          end;
         end;
       end else
         if CheckIfActiveForm(OldWidget) then
-          OldWidget.DeliverMessage(Msg)
+        begin
+          if (NewWidget = nil) and QWidget_isVisible(aold) and QWidget_isEnabled(aold) and
+            (OldWidget is TQtComboBox) and (TQtComboBox(OldWidget).LineEdit = nil) then
+          begin
+            {$IF DEFINED(VerboseFocus) OR DEFINED(DebugQtFocus)}
+            DebugLn('WARNING: Qt mismatched kill focus message, backfocus to ',dbgsName(OldWidget.LCLObject),
+            ' LCLObject focus status ',dbgs(OldWidget.LCLObject.Focused));
+            {$ENDIF}
+            OldWidget.setFocus;
+          end else
+            OldWidget.DeliverMessage(Msg);
+        end
         {$IF DEFINED(VerboseFocus) OR DEFINED(DebugQtFocus)}
         else
           Writeln('TQtWidgetSet.FocusChanged: ***** Cannot kill focus of ',dbgsName(OldWidget.LCLObject))
@@ -1158,7 +1229,10 @@ begin
       end;
 
     end else
-      NewWidget.DeliverMessage(Msg);
+    begin
+      if Assigned(NewWidget.LCLObject) and NewWidget.LCLObject.IsVisible then
+          NewWidget.DeliverMessage(Msg);
+    end;
   end;
 end;
 
@@ -1225,11 +1299,13 @@ begin
     lcEmulatedMDI,
     lcCanDrawOutsideOnPaint: Result := LCL_CAPABILITY_NO;
     lcDragDockStartOnTitleClick: Result :=
-     {$ifdef MSWINDOWS} LCL_CAPABILITY_YES {$else} LCL_CAPABILITY_NO {$endif};
-     lcNeedMininimizeAppWithMainForm: Result :=
-     {$ifdef HASX11} LCL_CAPABILITY_YES {$else} LCL_CAPABILITY_NO {$endif};
-     {when issue #20475 is fixed, then set this to LCL_CAPABILITY_YES}
-     lcReceivesLMClearCutCopyPasteReliably: Result := LCL_CAPABILITY_NO;
+      {$ifdef MSWINDOWS} LCL_CAPABILITY_YES {$else} LCL_CAPABILITY_NO {$endif};
+    lcNeedMininimizeAppWithMainForm: Result :=
+      {$ifdef HASX11} LCL_CAPABILITY_YES {$else} LCL_CAPABILITY_NO {$endif};
+    {when issue #20475 is fixed, then set this to LCL_CAPABILITY_YES}
+    lcReceivesLMClearCutCopyPasteReliably: Result := LCL_CAPABILITY_NO;
+    lcRadialGradientBrush: Result := LCL_CAPABILITY_YES;
+    lcTransparentWindow: Result := LCL_CAPABILITY_YES;
   else
     Result := inherited GetLCLCapability(ACapability);
   end;
@@ -1840,7 +1916,7 @@ var
   Size: TSize;
 begin
   {$IFDEF DARWIN}
-  FCachedMenuBarHeight := 1;
+  Exit(0);
   {$ENDIF}
   if FCachedMenuBarHeight = -1 then
   begin
@@ -1853,22 +1929,164 @@ begin
     QMenuBar_sizeHint(AMenuBar, @Size);
     QMainWindow_destroy(DummyWindow);
     FCachedMenuBarHeight := Size.cy;
-
-    if QStyle_styleHint(QApplication_style(),
-      QStyleSH_MainWindow_SpaceBelowMenuBar) > 0 then
-      inc(FCachedMenuBarHeight, 4);
-    if QStyle_styleHint(QApplication_style(),
-      QStyleSH_ScrollView_FrameOnlyAroundContents) > 0 then
-      inc(FCachedMenuBarHeight, 4);
   end;
   if (FCachedMenuBarHeight <= 0) then
   begin
     FCachedMenuBarHeight := 22;
-    if QStyle_styleHint(QApplication_style(), QStyleSH_MainWindow_SpaceBelowMenuBar) > 0 then
-      inc(FCachedMenuBarHeight, 4);
   end;
   Result := FCachedMenuBarHeight;
 end;
+
+{$IFDEF QtUseAccurateFrame}
+function TQtWidgetSet.GetFrameMargins: TRect;
+var
+  ATempWidget: QWidgetH;
+  R: TRect;
+  ASize, AFrameSize: TSize;
+  AID: LongWord;
+  I: integer;
+  B: Boolean;
+  ATicks: DWORD;
+  {$IFDEF DebugQtUseAccurateFrame}
+  StartupTime: DWord;
+  {$ENDIF}
+  {$IFDEF HASX11}
+  AWMName: String;
+  //AShadowRect: TRect;
+  //AList: TStringList;
+  ALeft, ATop, AWidth, AHeight, ABorder: integer;
+  {$ENDIF}
+begin
+  if (FWSFrameMargins.Left = 0) and (FWSFrameMargins.Top = 0) or
+    (FWSFrameMargins.Right = 0) and (FWSFrameMargins.Bottom = 0) then
+  begin
+    {$IFDEF HASX11}
+    AWMName := GetWindowManager;
+    // blacklist of window managers which does not support NET_FRAME_EXTENTS
+    if (AWMName = 'Blackbox') then
+    begin
+      DebugLn('WARNING: QtLCL: "Blackbox" wm does not implement for _NET_FRAME_EXTENTS.');
+      FWSFrameMargins := Rect(1, 23, 1, 10);
+      Result := FWSFrameMargins;
+      exit;
+    end;
+    {$ENDIF}
+
+    {$IFDEF DebugQtUseAccurateFrame}
+    StartupTime := GetTickCount;
+    {$ENDIF}
+
+    ATempWidget := QWidget_create(nil, QtWindow or QtDialog);
+    QWidget_setAttribute(ATempWidget, QtWA_NativeWindow, True);
+
+    {$IFDEF HASX11}
+    if QX11Info_isCompositingManagerRunning then
+      QWidget_setWindowOpacity(ATempWidget, 0);
+    {$ENDIF}
+
+    QWidget_move(ATempWidget, -MAXSHORT, -MAXSHORT);
+    QWidget_resize(ATempWidget, 32, 32);
+
+    {$IFDEF HASX11}
+    QWidget_setAttribute(ATempWidget, QtWA_ShowWithoutActivating);
+    QWidget_show(ATempWidget);
+    AID := QWidget_winID(ATempWidget);
+
+    B := AskX11_NET_REQUEST_FRAME_EXTENTS(AID, R);
+
+    if B and (R.Top = 0) then
+    begin
+      ATicks := 0;
+      while R.Top = 0 do
+      begin
+        QWidget_size(ATempWidget, @ASize);
+        QWidget_frameSize(ATempWidget, @AFrameSize);
+        R.Left := (AFrameSize.cx - ASize.cx) div 2;
+        R.Right := R.Left;
+        R.Top := (AFrameSize.cy - ASize.cy) - R.Left;
+        R.Bottom := R.Left;
+        QCoreApplication_processEvents;
+        ATicks += 1;
+        if ATicks > 50 then
+          break; // error !
+      end;
+      (* TODO: If shadows are enabled on KWin ask for shadow rect !
+      AList := TStringList.Create;
+      try
+        GetX11SupportedAtoms(AID, AList);
+        GetX11RectForAtom(AID,'_KDE_NET_WM_SHADOW', AShadowRect);
+      finally
+        AList.Free;
+      end;
+      *)
+    end;
+
+    if B and QX11Info_isCompositingManagerRunning then
+    begin
+      {TODO: some wm's have different attributes for windows with fixed sizes and modal windows,
+      so we need to query attributes for such windows too.
+      Currently such composited wm's is "Mutter (Muffin)", "Gnome Shell"}
+      // writeln('Current WM=',GetWindowManager);
+      while not GetX11WindowRealized(QWidget_winID(ATempWidget)) do
+        QApplication_syncX();
+      if GetX11WindowAttributes(QWidget_winID(ATempWidget), ALeft, ATop, AWidth, AHeight, ABorder) then
+      begin
+        if (ALeft > 0) and (ATop > 0) then
+          R := Rect(ALeft, ATop, ALeft, ALeft);
+      end;
+    end;
+    if not B then
+    begin
+      MapX11Window(AID);
+      QApplication_syncX();
+    end;
+
+    if not B and not GetX11RectForAtom(AID, '_NET_FRAME_EXTENTS', R) then
+    begin
+      AId := QWidget_winID(ATempWidget);
+      I := 0;
+      ATicks := GetTickCount;
+      while not GetX11RectForAtom(AID, '_NET_FRAME_EXTENTS', R) do
+      begin
+        QApplication_syncX();
+        QCoreApplication_processEvents;
+        inc(I);
+        {if we do not get frame extents in 100ms get out}
+        if GetTickCount - ATicks > 100 then
+          break;
+      end;
+      {$IFDEF DebugQtUseAccurateFrame}
+      DebugLn('TQtWidgetSet.GetFrameMargins: EXIT LOOP AFTER ',dbgs(GetTickCount - ATicks),' ms LOOP=',dbgs(i),' R=',dbgs(R));
+      {$ENDIF}
+    end;
+    {$ELSE}
+    // create native window
+    QWidget_winId(ATempWidget);
+    QWidget_size(ATempWidget, @ASize);
+    QWidget_frameSize(ATempWidget, @AFrameSize);
+    R.Left := (AFrameSize.cx - ASize.cx) div 2;
+    R.Right := R.Left;
+    R.Top := (AFrameSize.cy - ASize.cy) - R.Left;
+    R.Bottom := R.Left;
+    {$ENDIF}
+
+    FWSFrameMargins := R;
+    {$IFDEF DebugQtUseAccurateFrame}
+    // just test
+    {$IFDEF HASX11}
+    QWidget_size(ATempWidget, @ASize);
+    QWidget_frameSize(ATempWidget, @AFrameSize);
+    {$ENDIF}
+    with FWSFrameMargins do
+      DebugLn('TQtWidgetSet.GetFrameMargins: **MARGINS=',Format('l %d t %d r %d b %d QtFrame x %d y %d compositor %s sysMetrics %d startup needed %d ms',
+        [Left, Top, Right, Bottom, AFrameSize.cx - ASize.cx, AFrameSize.cy - ASize.cy, BoolToStr({$IFDEF HASX11}QX11Info_isCompositingManagerRunning{$ELSE}False{$ENDIF}), GetSystemMetrics(SM_CYCAPTION),GetTickCount - StartupTime]));
+    {$ENDIF}
+    QWidget_hide(ATempWidget);
+    QWidget_destroy(ATempWidget);
+  end;
+  Result := FWSFrameMargins;
+end;
+{$ENDIF}
 
 procedure TQtWidgetSet.ClearCachedColors;
 var
@@ -1887,7 +2105,7 @@ var
   WStr: WideString;
 begin
   QObject_objectName(QApplication_style, @WStr);
-  Result := UTF16ToUTF8(WStr);
+  Result := {%H-}WStr;
 end;
 
 //------------------------------------------------------------------------

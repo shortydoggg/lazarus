@@ -1,4 +1,4 @@
-{%MainUnit ../dbctrls.pas}
+{%MainUnit ../dbctrls.pp}
 
 {******************************************************************************
                                      TDBListBox
@@ -138,7 +138,14 @@ begin
   if (csDestroying in ComponentState) then
     Exit;
   if FListLink.Active then
-    Initialize(FControlLink, FControlItems);
+    Initialize(FControlLink, FControlItems)
+  else
+  begin
+    SetLength(FListKeys, 0);
+    FControlItems.Clear;
+  end;
+  if Assigned(FControlLink) and FControlLink.Active then
+    FControlLink.Reset;
 end;
 
 procedure TDBLookup.DatasetChange(Sender: TObject);
@@ -274,7 +281,7 @@ begin
   Bookmark := ListLinkDataSet.GetBookmark;
   //in fpc 2.6.4, TMemDataset does not supports BlockRead. Issues 26356, 27959
   {$IF FPC_FULLVERSION < 30000}
-  DatasetSupportsBlockRead := not IsClass(ListLinkDataSet, 'TMemDataset');
+  DatasetSupportsBlockRead := not IsClass(ListLinkDataSet, 'TMemDataset') and not IsClass(ListLinkDataSet, 'TFixedFormatDataSet');
   if DatasetSupportsBlockRead then
     ListLinkDataSet.BlockReadSize := 1
   else

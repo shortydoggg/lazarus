@@ -12,8 +12,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 }
 
 unit SVNDiffForm;
@@ -24,7 +24,8 @@ interface
 
 uses
   Classes, SysUtils, LazFileUtils, Forms, Dialogs,
-  ButtonPanel, StdCtrls, Buttons, LazIDEIntf, SynEdit, SynHighlighterDiff;
+  ButtonPanel, StdCtrls, Buttons, LazIDEIntf, IDEImagesIntf, SynEdit,
+  SynHighlighterDiff;
 
 type
 
@@ -109,7 +110,7 @@ procedure TSVNDiffFrm.FormCreate(Sender: TObject);
 begin
   ButtonPanel.HelpButton.Enabled := False;
   ButtonPanel.HelpButton.Caption := rsSave;
-  ButtonPanel.HelpButton.LoadGlyphFromResourceName(HInstance, 'laz_save');
+  IDEImages.AssignImage(ButtonPanel.HelpButton, 'laz_save');
 end;
 
 procedure TSVNDiffFrm.FormClose(Sender: TObject; var CloseAction: TCloseAction);

@@ -1,6 +1,6 @@
 { Installs anchor docking manager in the Lazarus IDE.
 
-  Copyright (C) 2010 Mattias Gaertner mattias@freepascal.org
+  Copyright (C) 2018 Mattias Gaertner mattias@freepascal.org
 
   This library is free software; you can redistribute it and/or modify it
   under the terms of the GNU Library General Public License as published by
@@ -25,7 +25,7 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 unit RegisterAnchorDocking;
 
@@ -42,7 +42,7 @@ uses
   // LazUtils
   LazFileCache, LazFileUtils,
   // IdeIntf
-  LCLIntf, IDEWindowIntf, IDEOptionsIntf, LazIDEIntf,
+  LCLIntf, IDEWindowIntf, IDEOptionsIntf, IDEOptEditorIntf, LazIDEIntf,
   // AnchorDocking
   AnchorDockStr, AnchorDocking, AnchorDesktopOptions, AnchorDockOptionsDlg;
 
@@ -192,7 +192,7 @@ end;
 constructor TIDEAnchorDockMaster.Create;
 begin
   inherited Create;
-  DefaultAnchorDockOptionFlags:=[adofShow_ShowHeader];
+  DefaultAnchorDockOptionFlags:=[adofShow_ShowHeader,adofSpinEdits];
 
   IDEAnchorDockMaster:=Self;
   DockMaster.OnCreateControl:=@DockMasterCreateControl;
@@ -251,7 +251,12 @@ begin
   Result:=false;
   if AForm is TAnchorDockHostSite then exit;
   if (DockMaster.FindControl(AForm.Name)=nil) and (AForm.Parent<>nil) then exit;
-  Result:=true;
+  Result := AForm.IsVisible
+    or (
+      Assigned(AForm.Parent)
+      and Assigned(AForm.Parent.Parent)
+      and (AForm.Parent.Parent is TAnchorDockPage)
+    );
 end;
 
 procedure TIDEAnchorDockMaster.AdjustMainIDEWindowHeight(
@@ -356,7 +361,7 @@ begin
               {$IF defined(VerboseAnchorDocking) or defined(VerboseAnchorDockRestore)}
               debugln(['TIDEAnchorDockMaster.ShowForm NewDockSite=',DbgSName(NewDockSite),'="',NewDockSite.Caption,'"']);
               {$ENDIF}
-              DockMaster.ManualDock(Site,NewDockSite,DockAlign);
+              DockMaster.ManualDock(Site,NewDockSite,DockAlign,NewDockSite);
               {$IF defined(VerboseAnchorDocking) or defined(VerboseAnchorDockRestore)}
               debugln(['TIDEAnchorDockMaster.ShowForm after docking: ',DbgSName(AControl),' Floating=',DockMaster.IsFloating(AControl)]);
               {$ENDIF}
@@ -367,7 +372,7 @@ begin
     end;
 
   finally
-    OldActiveControl:=AForm.ActiveControl;
+    OldActiveControl:=AForm.LastActiveControl;
     {$IF defined(VerboseAnchorDocking) or defined(VerboseAnchorDockRestore)}
     if not AForm.IsVisible then
       debugln(['TIDEAnchorDockMaster.ShowForm MakeVisible ',DbgSName(AForm),' ',dbgs(AForm.BoundsRect),' Floating=',DockMaster.IsFloating(AForm)]);

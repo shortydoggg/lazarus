@@ -319,6 +319,7 @@ var
   FilterUPP: NavObjectFilterUPP;
   NavDialogUPP: NavEventUPP;
   DialogRef: NavDialogRef;
+  ReplyRecord: NavReplyRecord;
   I: Integer;
   ParsedFilter: TParseStringList;
   M: TMaskList;
@@ -335,6 +336,9 @@ begin
   if OSError(NavGetDefaultDialogCreationOptions(CreationOptions{%H-}),
     Self, SShowModal, 'NavGetDefaultDialogCreationOptions') then Exit;
 
+  CreationOptions.preferenceKey := 272829;  // The default of zero seems to cause setting the initial directory
+                                            // to fail half the time on Sierra at least, so set to an arbitrary
+                                            // non-zero value
   if FileDialog.Title <> '' then  // Override dialog's default title?
     CreateCFString(FileDialog.Title, CreationOptions.windowTitle);
 
@@ -351,6 +355,8 @@ begin
     begin
       try
         filterext:=ParsedFilter[I * 2 - 1];
+        { Spaces in filters cause problems }
+        filterext := StringReplace(filterext, ' ', '', [rfReplaceAll]);
         if (filterext = '*') or (filterext = '*.*') or (ExtractFileExt(filterext) = '.app') then
           supportPackages := true;
         M := TMaskList.Create(filterext);
@@ -419,14 +425,17 @@ begin
       
       if NavDialogGetUserAction(DialogRef) <> kNavUserActionCancel then // User OK?
       begin
+        if OSError(NavDialogGetReply(DialogRef, ReplyRecord), Self, SShowModal, 'NavDialogGetReply') then
+          Exit;
+        try
+          if not ReplyRecord.validRecord then
+            Exit;
+          DescListToFiles(@ReplyRecord.selection, FileDialog);
         if FileDialog.FCompStyle=csSaveFileDialog then
-          FileDialog.FileName := FileDialog.FileName + PathDelim +
-            CFStringToStr(NavDialogGetSaveFileName(DialogRef));
-            {Note: Not at all clear from Apple docs that NavReplyRecord.Selection
-              returns only path to file's folder with Save dialog. Also, what they
-              mean by the "full file name" returned by NavDialogGetSaveFileName
-              must mean extension and not path to file's folder.}
-
+            FileDialog.FileName := FileDialog.FileName + PathDelim + CFStringToStr(ReplyRecord.saveFileName);
+        finally
+         NavDisposeReply(ReplyRecord);
+       end;
         FileDialog.UserChoice := mrOK;
       end;
     finally
@@ -523,7 +532,8 @@ begin
     nil, SizeOf(Size), nil, @Size) = noErr then
   begin
     //DebugLn('Size: ' + DbgS(RoundFixed(Size)));
-    FontDialog.Font.Size := RoundFixed(Size);
+    //API gives "size" which equals to LCL's height (LCL height has minus)
+    FontDialog.Font.Height := -RoundFixed(Size);
   end;
   
   if GetEventParameter(AEvent, kEventParamFontColor, typeFontColor,
@@ -532,7 +542,11 @@ begin
     //DebugLn('Color: ' + DbgS(RGBColorToColor(Color)));
     FontDialog.Font.Color := RGBColorToColor(Color);
   end;
-  
+
+{ These styles don't work for most modern fonts, and can result in
+  a font being double-bolded now that carbonproc.pp::lclFontName uses
+  the full name (including style), rather than just the family name.
+
   if GetEventParameter(AEvent, kEventParamFMFontStyle, typeFMFontStyle,
     nil, SizeOf(Style), nil, @Style) = noErr then
   begin
@@ -545,7 +559,7 @@ begin
     if (Style and MacOSAll.underline) > 0 then
       FontDialog.Font.Style := FontDialog.Font.Style + [fsUnderline];
   end;
-  
+}
   // TODO: fsStrikeOut
     
   FontDialog.UserChoice := mrOK;
@@ -596,7 +610,7 @@ begin
 
   if OSError(
     CreateNewWindow(kModalWindowClass,
-      kWindowCompositingAttribute or kWindowStandardHandlerAttribute, GetCarbonRect(0, 0, 0, 0), Dialog{%H-}),
+      kWindowCompositingAttribute or kWindowStandardHandlerAttribute or kWindowFrameworkScaledAttribute, GetCarbonRect(0, 0, 0, 0), Dialog{%H-}),
     Self, SShowModal, 'CreateNewWindow') then Exit;
     
   try

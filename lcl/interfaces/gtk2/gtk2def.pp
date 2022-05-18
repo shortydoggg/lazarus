@@ -1,10 +1,10 @@
-{ $Id: gtk2def.pp 47027 2014-11-29 13:41:37Z juha $ 
+{ $Id: gtk2def.pp 59201 2018-09-30 22:45:40Z maxim $ 
                          -------------------------------
                          gtk2def.pp  -  Type definitions
                          ------------------------------- 
  
  @created(Tue Nov 20st WET 2007)
- @lastmod($Date: 2014-11-29 14:41:37 +0100 (Sa, 29 Nov 2014) $)
+ @lastmod($Date: 2018-10-01 00:45:40 +0200 (Mo, 01 Okt 2018) $)
  @author(Marc Weustink <marc@@dommelstein.net>)                       
 
  This unit contains type definitions needed in the GTK2 <-> LCL interface
@@ -27,9 +27,11 @@ interface
 uses
   // RTL
   Classes, SysUtils, glib2, gdk2pixbuf, pango, gdk2, gtk2,
+  // LazUtils
+  DynHashArray, LazLoggerBase,
   // LCL
   Gtk2Extra,
-  LCLIntf, LCLProc, LCLType, LCLMemManager, DynHashArray,
+  LCLIntf, LCLProc, LCLType, LCLMemManager,
   GraphType, Gtk2Globals, Graphics {for TColor};
 
 {$ifdef TraceGdiCalls}
@@ -424,8 +426,6 @@ type
     property ROP2: Integer read GetRop2 write SetRop2;
   end;
 
-  TGtk2DeviceContext = TGtkDeviceContext deprecated;
-
   // memory system for TDeviceContext(s) ---------------------------------------------
 
   { TDeviceContextMemManager }
@@ -511,12 +511,15 @@ type
 const
   GDK_VOIDSYMBOL = $FFFFFF;
 
+  GDK_KEY_ISO_Level5_Shift = $FE11;
+  GDK_KEY_ISO_Level5_Latch = $FE12;
+  GDK_KEY_ISO_Level5_Lock = $FE13;
+
 // MWE:
 // Additional GDK_KEY_xxx definitions, not defined in GDK. Since GDK (on Linux)
 // simply passes the X vvalue I definde those extra here as GDKX_KEY_xxx
 // I don't know what the values are in win32 so I assume the same
 // Original source: /usr/X11R6/include/X11/XF86keysym.h
-
 
 // Keys found on some "Internet" keyboards.
 const
@@ -780,9 +783,9 @@ end;
 procedure GtkDefInit;
 begin
   {$IFDEF DebugLCLComponents}
-  DebugGtkWidgets:=TDebugLCLItems.Create;
-  DebugGdiObjects:=TDebugLCLItems.Create;
-  DebugDeviceContexts:=TDebugLCLItems.Create;
+  DebugGtkWidgets:=TDebugLCLItems.Create('GtkDefInit.DebugGtkWidgets');
+  DebugGdiObjects:=TDebugLCLItems.Create('GtkDefInit.DebugGdiObjects');
+  DebugDeviceContexts:=TDebugLCLItems.Create('GtkDefInit.DebugDeviceContexts');
   {$ENDIF}
 end;
 

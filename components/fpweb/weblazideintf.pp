@@ -13,7 +13,7 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 {$mode objfpc}
 {$H+}
@@ -22,15 +22,15 @@ unit WebLazIDEIntf;
 interface
 
 uses
-  Classes, SysUtils, fpWeb, fpHTML, fpdatasetform,
-  IDEExternToolIntf,
+  Classes, SysUtils, fpWeb, fpHTML, fpdatasetform,  IDEExternToolIntf,
   Controls, Dialogs, forms, LazIDEIntf, ProjectIntf, SrcEditorIntf, IDEMsgIntf,
-  fpextjs,
-  extjsjson, extjsxml,
-  fpjsonrpc,
-  jstree,jsparser,
+  fpextjs, extjsjson, extjsxml, fpjsonrpc, jstree,jsparser,
   fpextdirect,fpwebdata,
-{$IFDEF VER3_1}
+{$IF FPC_FULLVERSION>=30004}
+  fphttpclient,
+  fphttpserver,
+{$ENDIF}
+{$IF FPC_FULLVERSION>=30100}
   fphttpwebclient,
   fpoauth2,
   fpoauth2ini,
@@ -145,8 +145,6 @@ type
     function GetImplementationSource(const Filename, SourceName, ResourceName: string): string;override;
   end;
 
-  { TSQLFileDescriptor }
-
   { TJSFileDescriptor }
 
   TJSFileDescriptor = class(TProjectFileDescriptor)
@@ -248,7 +246,7 @@ resourcestring
 
 implementation
 
-uses LazarusPackageIntf,FormEditingIntf, PropEdits, DBPropEdits, sqldbwebdata,
+uses LazarusPackageIntf,FormEditingIntf, PropEdits, DBPropEdits, sqldbwebdata, LResources,
      frmrpcmoduleoptions,frmnewhttpapp, registersqldb, sqlstringspropertyeditordlg;
 
 Const
@@ -280,11 +278,9 @@ begin
                                ]);
 end;
 
-
-{$IFDEF VER3_1}
+{$IF FPC_FULLVERSION>=30100}
 procedure RegisterTFPHTTPWebClient;
 begin
-  RegisterComponents(fpWebTab,[TFPHTTPWebClient]);
 end;
 procedure RegisterTOAuth2Handler;
 begin
@@ -296,12 +292,15 @@ begin
 end;
 {$ENDIF}
 
-Procedure RegisterComponents;
+Procedure RegisterWebComponents;
 
 begin
+  {$IF FPC_FULLVERSION>=30004}
+  RegisterComponents(fpWebTab,[TFPHTTPClient,TFPHTTPServer]);
+  {$ENDIF}
   RegisterUnit('fphtml',@RegisterHTMLComponents);
   RegisterUnit('fpdatasetform',@RegisterdatasetComponents);
-  {$IFDEF VER3_1}
+  {$IF FPC_FULLVERSION>=30100}
   RegisterUnit('fphttpwebclient',@RegisterTFPHTTPWebClient);
   RegisterUnit('fpoauth2',@RegisterTOAuth2Handler);
   RegisterUnit('fpoauth2ini',@RegisterTFPOAuth2IniStore);
@@ -311,7 +310,7 @@ end;
 
 procedure Register;
 begin
-  RegisterComponents;
+  RegisterWebComponents;
   FileDescriptorWebProviderDataModule:=TFileDescWebProviderDataModule.Create;
   FileDescriptorJSONRPCModule:=TFileDescWebJSONRPCModule.Create;
   FileDescriptorExtDirectModule:=TFileDescExtDirectModule.Create;
@@ -405,6 +404,7 @@ begin
 
   // compiler options
   AProject.LazCompilerOptions.Win32GraphicApp:=false;
+  AProject.LazCompilerOptions.UnitOutputDirectory:='lib'+PathDelim+'$(TargetCPU)-$(TargetOS)';
   AProject.Flags := AProject.Flags - [pfMainUnitHasCreateFormStatements];
   AProject.Flags := AProject.Flags - [pfRunnable];
   Result:= mrOK;
@@ -496,6 +496,7 @@ begin
   AProject.AddPackageDependency('WebLaz');
   // compiler options
   AProject.LazCompilerOptions.Win32GraphicApp:=false;
+  AProject.LazCompilerOptions.UnitOutputDirectory:='lib'+PathDelim+'$(TargetCPU)-$(TargetOS)';
   AProject.Flags := AProject.Flags - [pfMainUnitHasCreateFormStatements];
   Result:= mrOK;
 end;
@@ -620,7 +621,7 @@ begin
     +'{$ifdef unix}'+le
     +'  cthreads,'+le
     +'{$endif}'+le
-    +'  httpd,fpApache;'+le
+    +'  httpd, custapache, fpApache;'+le
     +le
     +'Const'+le
     +le
@@ -656,6 +657,7 @@ begin
   // compiler options
   AProject.LazCompilerOptions.Win32GraphicApp:=false;
   AProject.ExecutableType:=petLibrary;
+  AProject.LazCompilerOptions.UnitOutputDirectory:='lib'+PathDelim+'$(TargetCPU)-$(TargetOS)';
   AProject.Flags := AProject.Flags - [pfMainUnitHasCreateFormStatements];
   AProject.Flags := AProject.Flags - [pfRunnable];
   Result:= mrOK;
@@ -725,6 +727,9 @@ begin
     +'begin'+le
     +'  With TFCGIApp.Create(Nil) do'+le
     +'    try'+le
+    +'      { Uncomment the port setting here if you want to run the '+le 
+    +'       FastCGI application stand-alone (e.g. for NGINX) }'+le
+    +'      // Port:=2015; // For example'+le
     +'      Initialize;'+le
     +'      Run;'+le
     +'    finally'+le
@@ -738,6 +743,7 @@ begin
   AProject.AddPackageDependency('WebLaz');
   // compiler options
   AProject.LazCompilerOptions.Win32GraphicApp:=false;
+  AProject.LazCompilerOptions.UnitOutputDirectory:='lib'+PathDelim+'$(TargetCPU)-$(TargetOS)';
   AProject.Flags := AProject.Flags - [pfMainUnitHasCreateFormStatements];
   Result:= mrOK;
 end;
@@ -791,6 +797,9 @@ begin
     +le
     +'begin'+le
     +'  Application.Title:=''fcgiproject1'';'+le
+    +'  { Uncomment the port setting here if you want to run the '+le 
+    +'    FastCGI application stand-alone (e.g. for NGINX) }'+le
+    +'  // Application.Port:=2015; // For example'+le
     +'  Application.Initialize;'+le
     +'  Application.Run;'+le
     +'end.'+le
@@ -803,6 +812,7 @@ begin
 
   // compiler options
   AProject.LazCompilerOptions.Win32GraphicApp:=false;
+  AProject.LazCompilerOptions.UnitOutputDirectory:='lib'+PathDelim+'$(TargetCPU)-$(TargetOS)';
   AProject.Flags := AProject.Flags - [pfMainUnitHasCreateFormStatements];
   Result:= mrOK;
 end;
@@ -910,6 +920,7 @@ begin
 
   // compiler options
   AProject.LazCompilerOptions.Win32GraphicApp:=false;
+  AProject.LazCompilerOptions.UnitOutputDirectory:='lib'+PathDelim+'$(TargetCPU)-$(TargetOS)';
   AProject.Flags := AProject.Flags - [pfMainUnitHasCreateFormStatements];
   Result:= mrOK;
 end;
@@ -990,20 +1001,17 @@ function TFileDescWebJSONRPCModule.GetImplementationSource(const Filename,
 
 Var
   RH,RM : Boolean;
-  CN,HP : String;
+  HP : String;
 
 begin
   RH:=False;
   RM:=False;
-  CN:=ResourceName;
   HP:=ResourceName;
   With TJSONRPCModuleOptionsForm.Create(Application) do
     try
       If (ShowModal=mrOK) then
         begin
         RH:=RegisterHandlers;
-        If RH Then
-          CN:=JSONRPCClass;
         RM:=RegisterModule;
         If RM then
           HP:=HTTPPath;
@@ -1052,20 +1060,17 @@ function TFileDescExtDirectModule.GetImplementationSource(const Filename,
 
 Var
   RH,RM : Boolean;
-  CN,HP : String;
+  HP : String;
 
 begin
   RH:=False;
   RM:=False;
-  CN:=ResourceName;
   HP:=ResourceName;
   With TJSONRPCModuleOptionsForm.Create(Application) do
     try
       If (ShowModal=mrOK) then
         begin
         RH:=RegisterHandlers;
-        If RH Then
-          CN:=JSONRPCClass;
         RM:=RegisterModule;
         If RM then
           HP:=HTTPPath;
@@ -1110,6 +1115,7 @@ Var
   P : TJSParser;
   E : TJSElement;
 begin
+  Result:=mrOK;
   P:=TJSParser.Create(S);
   try
     try
@@ -1118,7 +1124,10 @@ begin
       ShowMessage('Javascript syntax OK');
     except
       On E : Exception do
+        begin
         ShowException('Javascript syntax error',E);
+        Result:=mrAbort;
+        end;
     end;
   finally
     P.free;
@@ -1198,6 +1207,9 @@ procedure TJSFileDescriptor.UpdateDefaultPascalFileExtension(
 begin
   inherited UpdateDefaultPascalFileExtension(DefPasExt);
 end;
+
+initialization
+ {$i fpweb_images.inc}
 
 finalization
   FreeAndNil(AChecker);

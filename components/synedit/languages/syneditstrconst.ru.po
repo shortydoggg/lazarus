@@ -5,9 +5,11 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "POT-Creation-Date: \n"
-"PO-Revision-Date: 2015-03-24 01:17+0300\n"
+"PO-Revision-Date: 2018-07-17 01:47+0300\n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
+"Language: ru\n"
+"X-Generator: Poedit 1.7.7\n"
 
 #: syneditstrconst.syns_attrannotation
 msgid "Annotation"
@@ -289,6 +291,10 @@ msgstr "Команда препроцессора"
 msgid "Previous value"
 msgstr "Предыдущее значение"
 
+#: syneditstrconst.syns_attrprocedureheadername
+msgid "Procedure header name"
+msgstr "Имя процедуры в заголовке"
+
 #: syneditstrconst.syns_attrprocessinginstr
 msgid "Processing Instruction"
 msgstr "Инструкция обработки"
@@ -480,6 +486,14 @@ msgstr "Подчёркивание,да,нет"
 #: syneditstrconst.syns_emcnone
 msgid "No Action"
 msgstr "Нет действия"
+
+#: syneditstrconst.syns_emcoverviewguttergotomark
+msgid "Jump to Mark (Overview Gutter)"
+msgstr "Переход к маркеру (поле обзора)"
+
+#: syneditstrconst.syns_emcoverviewgutterscrollto
+msgid "Scroll (Overview Gutter)"
+msgstr "Прокрутка (поле обзора)"
 
 #: syneditstrconst.syns_emcpasteselection
 msgid "Quick Paste Selection"

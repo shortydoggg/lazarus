@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -29,7 +29,7 @@ unit ToDoDlg;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Graphics, Dialogs, StdCtrls,
+  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls,
   ExtCtrls, Buttons, ButtonPanel, Menus, Spin,
   TodoList, ToDoListStrConsts, IDECommands, LCLType,
   MenuIntf, PackageIntf, SrcEditorIntf, IDEWindowIntf, LazIDEIntf;
@@ -49,10 +49,6 @@ type
     TodoLabel: TLabel;
     TodoMemo: TMemo;
     procedure FormCreate(Sender: TObject);
-  private
-
-  public
-
   end;
   
 var

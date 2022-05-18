@@ -1,4 +1,4 @@
-{ $Id: lclclasses.pp 41387 2013-05-24 18:30:06Z juha $}
+{ $Id: lclclasses.pp 59201 2018-09-30 22:45:40Z maxim $}
 {
  *****************************************************************************
  *                               lclclasses.pp                               * 
@@ -28,7 +28,7 @@ uses
 type
 
   // SysUtils.LongRec has unsigned Word for Lo and Hi,
-  //  we need a similar record with signed ShortInt
+  //  we need a similar record with signed SmallInt
   LazLongRec = packed record
 {$ifdef FPC_LITTLE_ENDIAN}
     Lo,Hi : SmallInt;
@@ -80,7 +80,6 @@ type
   protected
   public
     destructor Destroy; override;
-    property Handle: TLCLIntfHandle read GetHandle; deprecated;
     property HandleAllocated: Boolean read GetReferenceAllocated;
     property ReferenceAllocated: Boolean read GetReferenceAllocated;
   end;
@@ -121,8 +120,12 @@ end;
 destructor TLCLComponent.Destroy;
 begin
   {$IFNDEF DisableChecks}
-  if FLCLRefCount>0 then
-    DebugLn(['WARNING: TLCLComponent.Destroy with LCLRefCount>0. Hint: Maybe the component is processing an event?']);
+  if FLCLRefCount>0 then begin
+    DebugLn(['WARNING: ' + ClassName + '.Destroy with LCLRefCount>0. Hint: Maybe the component is processing an event?']);
+    {$IFDEF DebugTLCLComponentDestroy}
+    DumpStack;
+    {$ENDIF}
+  end;
   {$ENDIF}
   {$IFDEF DebugLCLComponents}
   //DebugLn('TLCLComponent.Destroy ',DbgSName(Self));

@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -54,7 +54,7 @@ interface
 uses
   Classes, SysUtils, Controls, Forms, StdCtrls, Buttons, ButtonPanel,
   LCLProc, LCLType, LazConf, LazFileUtils, Laz2_XMLCfg, LazFileCache,
-  IDEHelpIntf, LazarusIDEStrConsts;
+  IDEHelpIntf, IDEImagesIntf, LazarusIDEStrConsts;
 
 type
 
@@ -232,11 +232,11 @@ begin
   FirstLabel.Caption := lisFirstTest;
   SecondLabel.Caption := lisSecondTest;
   AddBtn.Caption := lisBtnAdd;
-  AddBtn.LoadGlyphFromResourceName(HInstance, 'laz_add');
+  IDEImages.AssignImage(AddBtn, 'laz_add');
   AddInverse.Caption := rsAddInverse;
-  AddInverse.LoadGlyphFromResourceName(HInstance, 'pkg_issues');
+  IDEImages.AssignImage(AddInverse, 'pkg_issues');
   RemoveBtn.Caption := lisBtnRemove;
-  RemoveBtn.LoadGlyphFromResourceName(HInstance, 'laz_delete');
+  IDEImages.AssignImage(RemoveBtn, 'laz_delete');
   ButtonPanel1.CloseButton.Caption := lisSave;
   ButtonPanel1.OKButton.Caption := lisOk;
   //ButtonPanel1.CloseButton.LoadGlyphFromStock(idButtonSave);
@@ -433,7 +433,7 @@ var
   ConfFileName: String;
 begin
   Result:=nil;
-  ConfFileName:=SetDirSeparators(GetPrimaryConfigPath+'/encloseifdef.xml');
+  ConfFileName:=AppendPathDelim(GetPrimaryConfigPath)+'encloseifdef.xml';
   try
     if (not FileExistsUTF8(ConfFileName)) then
       Result:=TXMLConfig.CreateClean(ConfFileName)

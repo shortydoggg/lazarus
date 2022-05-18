@@ -1,5 +1,5 @@
 {%MainUnit ../comctrls.pp}
-{ $Id: listitems.inc 48671 2015-04-06 19:12:20Z juha $
+{ $Id: listitems.inc 51595 2016-02-11 05:39:03Z ondrej $
 
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -214,15 +214,18 @@ end;
 {   TListItems IntfCreateItem                                                  }
 {------------------------------------------------------------------------------}
 procedure TListItems.WSCreateCacheItem;
+var
+  ACacheItem: TListItem;
 begin
-  TWSCustomListViewClass(FOwner.WidgetSetClass).ItemInsert(FOwner, FCacheIndex, FCacheItem);
-  Include(FCacheItem.FFlags, lifCreated);
-  FCacheItem.WSUpdateText;
-  FCacheItem.WSUpdateImages;
-  FCacheItem.WSUpdateChecked;
+  ACacheItem := FCacheItem; // we must use local copy because FCacheItem changes in WSUpdateText on win32
+  TWSCustomListViewClass(FOwner.WidgetSetClass).ItemInsert(FOwner, FCacheIndex, ACacheItem);
+  Include(ACacheItem.FFlags, lifCreated);
+  ACacheItem.WSUpdateText;
+  ACacheItem.WSUpdateImages;
+  ACacheItem.WSUpdateChecked;
   if not (lisfWSItemsCreated in FFlags) then
-    FCacheItem.WSSetState;
-  FCacheItem.WSUpdateState;
+    ACacheItem.WSSetState;
+  ACacheItem.WSUpdateState;
 end;
 
 {------------------------------------------------------------------------------}

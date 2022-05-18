@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,14 +25,23 @@ unit codetools_identifiercompletion_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, StdCtrls,
-  CodeToolsOptions, LazarusIDEStrConsts, IDEOptionsIntf, DividerBevel;
+  SysUtils,
+  // LCL
+  Forms, StdCtrls,
+  // LazControls
+  DividerBevel,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  CodeToolsOptions, LazarusIDEStrConsts;
 
 type
 
   { TCodetoolsIndentifierCompletionOptionsFrame }
 
   TCodetoolsIndentifierCompletionOptionsFrame = class(TAbstractIDEOptionsEditor)
+    ICAddWordsComboBox: TComboBox;
+    ICContainsFilterCheckBox: TCheckBox;
     ICAddDoCheckBox: TCheckBox;
     ICAutoAddParameterBracketsCheckBox: TCheckBox;
     ICMiscDividerBevel: TDividerBevel;
@@ -46,8 +55,12 @@ type
     ICShowHelpCheckBox: TCheckBox;
     ICAutoUseSingleIdent: TCheckBox;
     ICSortDividerBevel: TDividerBevel;
+    ICAppearanceDividerBevel: TDividerBevel;
+    ICContentDividerBevel: TDividerBevel;
     ICSortForHistoryCheckBox: TCheckBox;
     ICSortForScopeCheckBox: TCheckBox;
+    ICUseIconsInCompletionBoxCheckBox: TCheckBox;
+    ICIncludeWordsLabel: TLabel;
   private
   public
     function GetTitle: String; override;
@@ -74,6 +87,8 @@ begin
   ICOpenDividerBevel.Caption:=lisIdCOpening;
   ICAutoStartAfterPointCheckBox.Caption:=lisAutomaticallyInvokeAfterPoint;
   ICAutoUseSingleIdent.Caption:=lisAutomaticallyUseSinglePossibleIdent;
+  ICAutoUseSingleIdent.Hint:=
+    lisWhenThereIsOnlyOnePossibleCompletionItemUseItImmed;
   ICShowHelpCheckBox.Caption:=lisShowHelp;
   ICShowHelpCheckBox.Hint:=lisBestViewedByInstallingAHTMLControlLikeTurbopowerip;
 
@@ -87,6 +102,17 @@ begin
   ICSortForHistoryCheckBox.Caption:=lisShowRecentlyUsedIdentifiersAtTop;
   ICSortForScopeCheckBox.Caption:=lisSortForScope;
   ICSortForScopeCheckBox.Hint:=lisForExampleShowAtTopTheLocalVariablesThenTheMembers;
+
+  ICContentDividerBevel.Caption:=lisContents;
+  ICContainsFilterCheckBox.Caption := dlgIncludeIdentifiersContainingPrefix;
+  ICIncludeWordsLabel.Caption := dlgIncludeWordsToIdentCompl;
+  ICAddWordsComboBox.Items.Text:=
+    dlgIncludeWordsToIdentCompl_IncludeFromAllUnits+LineEnding+
+    dlgIncludeWordsToIdentCompl_IncludeFromCurrentUnit+LineEnding+
+    dlgIncludeWordsToIdentCompl_DontInclude;
+
+  ICAppearanceDividerBevel.Caption:=lisAppearance;
+  ICUseIconsInCompletionBoxCheckBox.Caption := dlgUseIconsInCompletionBox;
 
   ICMiscDividerBevel.Caption:=dlgEnvMisc;
   ICReplaceCheckBox.Caption:=lisReplaceWholeIdentifier;
@@ -111,6 +137,14 @@ begin
     ICShowHelpCheckBox.Checked:=IdentComplShowHelp;
     ICSortForHistoryCheckBox.Checked:=IdentComplSortForHistory;
     ICSortForScopeCheckBox.Checked:=IdentComplSortForScope;
+    ICContainsFilterCheckBox.Checked:=IdentComplUseContainsFilter;
+    ICUseIconsInCompletionBoxCheckBox.Checked:=IdentComplShowIcons;
+    case IdentComplIncludeWords of
+      icwIncludeFromAllUnits: ICAddWordsComboBox.ItemIndex:=0;
+      icwIncludeFromCurrentUnit: ICAddWordsComboBox.ItemIndex:=1;
+    else
+      ICAddWordsComboBox.ItemIndex:=2;
+    end;
   end;
 end;
 
@@ -130,6 +164,13 @@ begin
     IdentComplShowHelp:=ICShowHelpCheckBox.Checked;
     IdentComplSortForHistory:=ICSortForHistoryCheckBox.Checked;
     IdentComplSortForScope:=ICSortForScopeCheckBox.Checked;
+    IdentComplUseContainsFilter:=ICContainsFilterCheckBox.Checked;
+    IdentComplShowIcons:=ICUseIconsInCompletionBoxCheckBox.Checked;
+    case ICAddWordsComboBox.ItemIndex of
+      0: IdentComplIncludeWords := icwIncludeFromAllUnits;
+      1: IdentComplIncludeWords := icwIncludeFromCurrentUnit;
+      2: IdentComplIncludeWords := icwDontInclude;
+    end;
   end;
 end;
 

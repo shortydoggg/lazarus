@@ -1,3 +1,11 @@
+{
+ *****************************************************************************
+  This file is part of LazUtils.
+
+  See the file COPYING.modifiedLGPL.txt, included in this distribution,
+  for details about the license.
+ *****************************************************************************
+}
 unit LazFreeTypeFontCollection;
 
 {$mode objfpc}{$H+}
@@ -5,7 +13,9 @@ unit LazFreeTypeFontCollection;
 interface
 
 uses
-  Classes, SysUtils, EasyLazFreeType, AvgLvlTree, LazFreeType, TTTypes;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LazUtils
+  EasyLazFreeType, LazFreeType, TTTypes;
 
 type
   { TFontCollectionItem }
@@ -86,18 +96,18 @@ type
 
   TFreeTypeFontCollection = class(TCustomFreeTypeFontCollection)
   private
-    FFontList: TAvgLvlTree;
+    FFontList: TAvlTree;
     FTempFont: TFreeTypeFont;
     FUpdateCount: integer;
 
-    FFamilyList: TAvgLvlTree;
+    FFamilyList: TAvlTree;
 
     function AddFamily(AName: string): TFamilyCollectionItem;
     function FindFamily(AName: string): TFamilyCollectionItem;
     function FindFont(AFileName: string): TFontCollectionItem;
 
-    function CompareFontFileName({%H-}Tree: TAvgLvlTree; Data1, Data2: Pointer): integer;
-    function CompareFamilyName({%H-}Tree: TAvgLvlTree; Data1, Data2: Pointer): integer;
+    function CompareFontFileName({%H-}Tree: TAvlTree; Data1, Data2: Pointer): integer;
+    function CompareFamilyName({%H-}Tree: TAvlTree; Data1, Data2: Pointer): integer;
 
   protected
     function GetFont(AFileName: string): TCustomFontCollectionItem; override;
@@ -109,9 +119,9 @@ type
     constructor Create; override;
     procedure Clear; override;
     procedure BeginUpdate; override;
-    procedure AddFolder(AFolder: string); override;
+    procedure AddFolder(AFolder: string; AIncludeSubdirs: Boolean = false); override;
     procedure RemoveFolder(AFolder: string); override;
-    function AddFile(AFilename: string): boolean; override;
+    function AddFile(AFilename: string): TCustomFontCollectionItem; override;
     function RemoveFile(AFilename: string): boolean; override;
     function AddStream(AStream: TStream; AOwned: boolean): boolean; override;
     procedure EndUpdate; override;
@@ -124,6 +134,9 @@ procedure SetDefaultFreeTypeFontCollection(ACollection : TCustomFreeTypeFontColl
 
 implementation
 
+uses
+  FileUtil;
+
 const
   //one of these files will be used as a default font
   ArialLikeFonts: array[0..8] of string = ('Helvetica', 'Helvetica Neue',
@@ -135,9 +148,9 @@ type
 
    TFamilyEnumerator = class(TInterfacedObject,IFreeTypeFamilyEnumerator)
    private
-     FNodeEnumerator: TAvgLvlTreeNodeEnumerator;
+     FNodeEnumerator: TAvlTreeNodeEnumerator;
    public
-     constructor Create(ANodeEnumerator: TAvgLvlTreeNodeEnumerator);
+     constructor Create(ANodeEnumerator: TAvlTreeNodeEnumerator);
      destructor Destroy; override;
      function MoveNext: boolean;
      function GetCurrent: TCustomFamilyCollectionItem;
@@ -147,9 +160,9 @@ type
 
    TFontEnumerator = class(TInterfacedObject,IFreeTypeFontEnumerator)
    private
-     FNodeEnumerator: TAvgLvlTreeNodeEnumerator;
+     FNodeEnumerator: TAvlTreeNodeEnumerator;
    public
-     constructor Create(ANodeEnumerator: TAvgLvlTreeNodeEnumerator);
+     constructor Create(ANodeEnumerator: TAvlTreeNodeEnumerator);
      destructor Destroy; override;
      function MoveNext: boolean;
      function GetCurrent: TCustomFontCollectionItem;
@@ -380,7 +393,7 @@ begin
   end;
 end;
 
-constructor TFontEnumerator.Create(ANodeEnumerator: TAvgLvlTreeNodeEnumerator);
+constructor TFontEnumerator.Create(ANodeEnumerator: TAvlTreeNodeEnumerator);
 begin
   FNodeEnumerator := ANodeEnumerator;
 end;
@@ -407,7 +420,7 @@ begin
   result := TCustomFamilyCollectionItem(FNodeEnumerator.Current.Data);
 end;
 
-constructor TFamilyEnumerator.Create(ANodeEnumerator: TAvgLvlTreeNodeEnumerator );
+constructor TFamilyEnumerator.Create(ANodeEnumerator: TAvlTreeNodeEnumerator);
 begin
   FNodeEnumerator := ANodeEnumerator;
 end;
@@ -610,6 +623,7 @@ begin
         if FFonts[i].Styles = TempStyles then
         begin
           DuplicateStyle:= true;
+          inc(StyleNumber);
           break;
         end;
     until not DuplicateStyle;
@@ -744,8 +758,9 @@ begin
 end;
 
 function TFreeTypeFontCollection.FindFont(AFileName: string): TFontCollectionItem;
-var Comp: integer;
-    node : TAvgLvlTreeNode;
+var
+  Comp: integer;
+  node: TAvlTreeNode;
 begin
   node:= FFontList.Root;
   while (node<>nil) do begin
@@ -763,8 +778,7 @@ begin
     result := TFontCollectionItem(node.Data);
 end;
 
-function TFreeTypeFontCollection.GetFamily(AName: string
-  ): TCustomFamilyCollectionItem;
+function TFreeTypeFontCollection.GetFamily(AName: string): TCustomFamilyCollectionItem;
 var
   i,j: Integer;
 begin
@@ -833,8 +847,9 @@ begin
 end;
 
 function TFreeTypeFontCollection.FindFamily(AName: string): TFamilyCollectionItem;
-var Comp: integer;
-    node : TAvgLvlTreeNode;
+var
+  Comp: integer;
+  node: TAvlTreeNode;
 begin
   node:= FFamilyList.Root;
   while (node<>nil) do begin
@@ -852,20 +867,19 @@ begin
     result := TFamilyCollectionItem(node.Data);
 end;
 
-function TFreeTypeFontCollection.CompareFontFileName(Tree: TAvgLvlTree; Data1,
+function TFreeTypeFontCollection.CompareFontFileName(Tree: TAvlTree; Data1,
   Data2: Pointer): integer;
 begin
   result := CompareStr(TFontCollectionItem(Data1).Filename,TFontCollectionItem(Data2).Filename);
 end;
 
-function TFreeTypeFontCollection.CompareFamilyName(Tree: TAvgLvlTree; Data1,
+function TFreeTypeFontCollection.CompareFamilyName(Tree: TAvlTree; Data1,
   Data2: Pointer): integer;
 begin
   result := CompareText(TFamilyCollectionItem(Data1).FamilyName,TFamilyCollectionItem(Data2).FamilyName);
 end;
 
-function TFreeTypeFontCollection.GetFont(AFileName: string
-  ): TCustomFontCollectionItem;
+function TFreeTypeFontCollection.GetFont(AFileName: string): TCustomFontCollectionItem;
 begin
   AFilename:= ExpandFileName(AFilename);
   result := FindFont(AFilename);
@@ -875,8 +889,8 @@ constructor TFreeTypeFontCollection.Create;
 begin
   FUpdateCount := 0;
   FTempFont := nil;
-  FFontList := TAvgLvlTree.CreateObjectCompare(@CompareFontFileName);
-  FFamilyList := TAvgLvlTree.CreateObjectCompare(@CompareFamilyName);
+  FFontList := TAvlTree.CreateObjectCompare(@CompareFontFileName);
+  FFamilyList := TAvlTree.CreateObjectCompare(@CompareFamilyName);
 end;
 
 procedure TFreeTypeFontCollection.Clear;
@@ -892,10 +906,11 @@ begin
   inc(FUpdateCount);
 end;
 
-procedure TFreeTypeFontCollection.AddFolder(AFolder: string);
-var sr: TSearchRec;
-    files: TStringList;
-    i: integer;
+procedure TFreeTypeFontCollection.AddFolder(AFolder: string;
+  AIncludeSubdirs: Boolean = false);
+var
+  files: TStringList;
+  i: integer;
 begin
   AFolder := ExpandFileName(AFolder);
   if (length(AFolder) <> 0) and (AFolder[length(AFolder)] <> PathDelim) then
@@ -904,12 +919,7 @@ begin
   files := TStringList.Create;
   BeginUpdate;
   try
-    if FindFirst(AFolder+'*.ttf',faAnyfile,sr) = 0 then
-    repeat
-      if sr.Attr and (faDirectory+faVolumeId) = 0 then
-        files.Add(AFolder+sr.Name);
-    until FindNext(sr) <> 0;
-
+    FindAllFiles(files, AFolder, '*.ttf', AIncludeSubdirs);
     files.Sort;
     for i := 0 to files.Count-1 do
       AddFile(files[i]);
@@ -921,7 +931,7 @@ end;
 
 procedure TFreeTypeFontCollection.RemoveFolder(AFolder: string);
 var toBeDeleted: TStringList;
-    enumerator: TAvgLvlTreeNodeEnumerator;
+    enumerator: TAvlTreeNodeEnumerator;
     i: Integer;
 begin
   AFolder := ExpandFileName(AFolder);
@@ -945,14 +955,15 @@ begin
   toBeDeleted.Free;
 end;
 
-function TFreeTypeFontCollection.AddFile(AFilename: string): boolean;
+function TFreeTypeFontCollection.AddFile(AFilename: string
+  ): TCustomFontCollectionItem;
 var info: TFreeTypeInformation;
     fName: string;
     item: TFontCollectionItem;
     f: TFamilyCollectionItem;
 begin
   AFilename:= ExpandFileName(AFilename);
-  result := false;
+  result := nil;
   BeginUpdate;
   try
     FTempFont.Name := AFilename;
@@ -969,7 +980,7 @@ begin
           Information[info] := FTempFont.Information[info];
       end;
       f.AddFont(item);
-      result := true;
+      result := item;
     end;
   finally
     EndUpdate;

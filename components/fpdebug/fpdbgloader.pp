@@ -1,4 +1,4 @@
-{ $Id: fpdbgloader.pp 48997 2015-05-12 17:59:24Z martin $ }
+{ $Id: fpdbgloader.pp 60716 2019-03-18 14:32:20Z martin $ }
 {
  ---------------------------------------------------------------------------
  fpdbgloader.pp  -  Native Freepascal debugger - Section loader
@@ -11,7 +11,7 @@
  ---------------------------------------------------------------------------
 
  @created(Mon Aug 1st WET 2006)
- @lastmod($Date: 2015-05-12 19:59:24 +0200 (Di, 12 Mai 2015) $)
+ @lastmod($Date: 2019-03-18 15:32:20 +0100 (Mo, 18 Mär 2019) $)
  @author(Marc Weustink <marc@@dommelstein.nl>)
 
  ***************************************************************************
@@ -29,7 +29,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -50,13 +50,18 @@ type
   {$ifdef windows}
     {$define USE_WIN_FILE_MAPPING}
   {$endif}
+
+  TDbgImageLoaderList = class;
+
   { TDbgImageLoader }
 
   TDbgImageLoader = class(TObject)
   private
     FFileLoader: TDbgFileLoader;
+    FFileName: String;
     FImgReader: TDbgImageReader;
     function GetAddressMapList: TDbgAddressMapList;
+    function GetReaderErrors: String;
     function GetSubFiles: TStrings;
     function GetImage64Bit: Boolean;
     function GetUUID: TGuid;
@@ -73,7 +78,10 @@ type
     constructor Create(AFileHandle: THandle; ADebugMap: TObject = nil);
     {$endif}
     destructor Destroy; override;
+    procedure CloseFileLoader;
+    procedure AddToLoaderList(ALoaderList: TDbgImageLoaderList);
     function IsValid: Boolean;
+    property FileName: String read FFileName; // Empty if using USE_WIN_FILE_MAPPING
     property ImageBase: QWord read FImageBase; unimplemented;
     Property Image64Bit: Boolean read GetImage64Bit;
     property UUID: TGuid read GetUUID;
@@ -84,6 +92,7 @@ type
     // This is to map the addresses inside the object file
     // to their corresponding addresses in the executable. (Darwin)
     property AddressMapList: TDbgAddressMapList read GetAddressMapList;
+    property ReaderErrors: String read GetReaderErrors;
   end;
 
   { TDbgImageLoaderList }
@@ -106,7 +115,7 @@ implementation
 
 function TDbgImageLoaderList.GetImage64Bit: Boolean;
 begin
-  if Count<0 then
+  if Count>0 then
     result := Items[0].Image64Bit
   else
     {$ifdef CPU64}
@@ -156,6 +165,12 @@ begin
     result := nil
 end;
 
+function TDbgImageLoader.GetReaderErrors: String;
+begin
+  if FImgReader <> nil then
+    Result := FImgReader.ReaderErrors;
+end;
+
 function TDbgImageLoader.GetSubFiles: TStrings;
 begin
   if IsValid then
@@ -187,8 +202,10 @@ end;
 
 constructor TDbgImageLoader.Create(AFileName: String; ADebugMap: TObject = nil);
 begin
+  FFileName := AFileName;
   FFileLoader := TDbgFileLoader.Create(AFileName);
-  FImgReader := GetImageReader(FFileLoader, ADebugMap, True);
+  FImgReader := GetImageReader(FFileLoader, ADebugMap, False);
+  if FImgReader = nil then FreeAndNil(FFileLoader);
 end;
 
 procedure TDbgImageLoader.ParseSymbolTable(AFpSymbolInfo: TfpSymbolList);
@@ -201,14 +218,28 @@ end;
 constructor TDbgImageLoader.Create(AFileHandle: THandle; ADebugMap: TObject = nil);
 begin
   FFileLoader := TDbgFileLoader.Create(AFileHandle);
-  FImgReader := GetImageReader(FFileLoader, ADebugMap, True);
+  FImgReader := GetImageReader(FFileLoader, ADebugMap, False);
+  if FImgReader = nil then FreeAndNil(FFileLoader);
 end;
 {$endif}
 
 destructor TDbgImageLoader.Destroy;
 begin
   FreeAndNil(FImgReader);
+  FreeAndNil(FFileLoader);
   inherited Destroy;
+end;
+
+procedure TDbgImageLoader.CloseFileLoader;
+begin
+  if FFileLoader <> nil then
+    FFileLoader.Close;
+end;
+
+procedure TDbgImageLoader.AddToLoaderList(ALoaderList: TDbgImageLoaderList);
+begin
+  ALoaderList.Add(Self);
+  FImgReader.AddSubFilesToLoaderList(ALoaderList, Self);
 end;
 
 function TDbgImageLoader.IsValid: Boolean;

@@ -105,8 +105,9 @@ begin
         Result := False;
         exit;
       end;
+
       {$IFDEF UNIX}
-	  dllhandle := LoadLibrary(PChar(s2));
+      dllhandle := LoadLibrary(PChar(s2));
       {$ELSE}
       {$IFDEF UNICODE}
       if Copy(s2, 1, 6) = '<utf8>' then
@@ -293,8 +294,8 @@ begin
   if AddDllProcImport then
     Caller.AddSpecialProcImport('dll', @ProcessDllImport, nil);
   if RegisterUnloadDLL then
-    Caller.RegisterFunctionName('UNLOADDLL', UnloadProc, nil, nil);
-  Caller.RegisterFunctionName('DLLGETLASTERROR', GetLastErrorProc, nil, nil);
+    Caller.RegisterFunctionName('UnloadDll', UnloadProc, nil, nil);
+  Caller.RegisterFunctionName('DllGetLastError', GetLastErrorProc, nil, nil);
 end;
 
 end.

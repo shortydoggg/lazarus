@@ -12,8 +12,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 }
 
 unit SourcePrinter;
@@ -131,7 +131,7 @@ begin
       if ShowLineNumbers then s2 := Format('%4d: ',[i]);
       l := Printer.Canvas.TextFitInfo(s2 + s, Printer.PageWidth - 2 * Margin);
       l := l - Length(s2); // s2 has only single byte
-      l := UTF8CharToByteIndex(PChar(s), length(s), l);
+      l := UTF8CodepointToByteIndex(PChar(s), length(s), l);
       while (l > MIN_LINE_LEN) and (l < length(s)) do begin
         l2 := l;
         while (l2 > MIN_LINE_LEN) and
@@ -144,14 +144,14 @@ begin
         // find utf8 start
         while (l2 > 1) and (ord(s[l2]) >= 128) and (ord(s[l2+1]) >= 128) and (ord(s[l2+1]) < 192) do
           dec(l2);
-        if l2 = 0 then l2 := UTF8CharToByteIndex(PChar(s), length(s), MIN_LINE_LEN);
+        if l2 = 0 then l2 := UTF8CodepointToByteIndex(PChar(s), length(s), MIN_LINE_LEN);
         Text[j] := copy(s, 1, l2);
         delete(s, 1, l2);
         inc(j);
         Text.InsertObject(j, '', nil);
         l := Printer.Canvas.TextFitInfo(s2 + s, Printer.PageWidth - 2 * Margin);
         l := l - Length(s2);
-        l := UTF8CharToByteIndex(PChar(s), length(s), l);
+        l := UTF8CodepointToByteIndex(PChar(s), length(s), l);
       end;
       Text[j] := s;
       inc(i);

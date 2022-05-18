@@ -1,10 +1,10 @@
-{ $Id: callstackdlg.pp 49312 2015-06-11 00:00:17Z maxim $ }
+{ $Id: callstackdlg.pp 55545 2017-07-20 13:56:50Z juha $ }
 {               ----------------------------------------------  
                  callstackdlg.pp  -  Overview of the callstack 
                 ---------------------------------------------- 
  
  @created(Sun Apr 28th WET 2002)
- @lastmod($Date: 2015-06-11 02:00:17 +0200 (Do, 11 Jun 2015) $)
+ @lastmod($Date: 2017-07-20 15:56:50 +0200 (Do, 20 Jul 2017) $)
  @author(Marc Weustink <marc@@dommelstein.net>)                       
 
  This unit contains the Call Stack debugger dialog.
@@ -25,7 +25,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -39,7 +39,7 @@ uses
   SysUtils, Classes, Controls, Forms, LCLProc, LazLoggerBase,
   IDEWindowIntf, DebuggerStrConst,
   ComCtrls, Debugger, DebuggerDlg, Menus, ClipBrd, ExtCtrls, StdCtrls,
-  ActnList, IDEImagesIntf, IDECommands;
+  ActnList, IDEImagesIntf, IDECommands, EnvironmentOpts;
 
 type
 
@@ -193,11 +193,6 @@ begin
   ThreadsNotification.OnCurrent    := @CallStackChanged;
   SnapshotNotification.OnCurrent   := @CallStackChanged;
 
-  FViewLimit := 10;
-  FViewCount := 10;
-  FViewStart := 0;
-  FInUpdateView := False;
-  actViewLimit.Caption := popLimit10.Caption;
   actToggleBreakPoint.ShortCut := IDECommandList.FindIDECommand(ecToggleBreakPoint).AsShortCut;
 
   for i := low(COL_WIDTHS) to high(COL_WIDTHS) do
@@ -294,7 +289,6 @@ begin
   try DebugLnEnter(DBG_DATA_MONITORS, ['DebugDataWindow: >>ENTER: TCallStackDlg.UpdateView']);
   Exclude(FUpdateFlags, ufNeedUpdating);
 
-
   BeginUpdate;
   lvCallStack.BeginUpdate;
   try
@@ -310,7 +304,6 @@ begin
     FInUpdateView := False;
     // TODO: must make CStack ref-counted
     if CStack <> GetSelectedCallstack then exit; // Something changed, maybe debugger stopped
-
 
     if (CStack = nil) or ((Snap <> nil) and (CStack.CountLimited(MaxCnt) = 0)) then begin
       lvCallStack.Items.Clear;
@@ -328,7 +321,6 @@ begin
       lvCallStack.Items.Clear;
       exit;
     end;
-
 
     if Snap <> nil then begin
       First := 0;
@@ -589,6 +581,7 @@ begin
   if FViewCount = TMenuItem(Sender).Tag then Exit;
   FViewCount := TMenuItem(Sender).Tag;
   ViewLimit := FViewCount;
+  EnvironmentOptions.DebuggerConfig.DlgCallStackConfig.ViewCount := FViewCount;
   actViewLimit.Caption := TMenuItem(Sender).Caption;
 end;
 
@@ -728,13 +721,13 @@ end;
 procedure TCallStackDlg.FormCreate(Sender: TObject);
 var
   i: integer;
+  curPopLimit: TMenuItem;
 begin
   Caption := lisMenuViewCallStack;
   ToolButtonPower.Caption := lisDbgWinPower;
   ToolButtonPower.Hint := lisDbgWinPowerHint;
   for i:= 0 to mnuLimit.Items.Count-1 do
     mnuLimit.Items[i].Caption:= Format(lisMaxS, [mnuLimit.Items[i].Tag]);
-  actViewLimit.Caption := mnuLimit.Items[0].Caption;
   actViewMore.Caption := lisMore;
   actViewTop.Caption := lisCSTop;
   actViewBottom.Caption := lisCSBottom;
@@ -745,25 +738,42 @@ begin
   actSetCurrent.Caption := lisCurrent;
   actCopyAll.Caption := lisCopyAll;
 
+  FViewCount := EnvironmentOptions.DebuggerConfig.DlgCallStackConfig.ViewCount;
+  curPopLimit := nil;
+  for i := 0 to mnuLimit.Items.Count-1 do
+    if mnuLimit.Items[i].Tag = FViewCount then
+    begin
+      curPopLimit := mnuLimit.Items[i];
+      Break;
+    end;
+  if curPopLimit=nil then
+    curPopLimit := popLimit10;
+  FViewCount := curPopLimit.Tag;
+  FViewLimit := FViewCount;
+  FViewStart := 0;
+  FInUpdateView := False;
+  actViewLimit.Caption := curPopLimit.Caption;
+  ToolButtonMax.Caption := actViewLimit.Caption;
+
   lvCallStack.Columns[1].Caption:= lisIndex;
   lvCallStack.Columns[2].Caption:= histdlgColumnLoc;
   lvCallStack.Columns[3].Caption:= dlgAddHiAttrGroupLine;
   lvCallStack.Columns[4].Caption:= lisFunction;
 
   ToolBar1.Images := IDEImages.Images_16;
-  ToolButtonShow.ImageIndex := IDEImages.LoadImage(16, 'callstack_show');
-  ToolButtonMore.ImageIndex := IDEImages.LoadImage(16, 'callstack_more');
-  ToolButtonTop.ImageIndex := IDEImages.LoadImage(16, 'callstack_top');
-  ToolButtonBottom.ImageIndex := IDEImages.LoadImage(16, 'callstack_bottom');
-  ToolButtonGoto.ImageIndex := IDEImages.LoadImage(16, 'callstack_goto');
-  ToolButtonCopyAll.ImageIndex := IDEImages.LoadImage(16, 'laz_copy');
-  FPowerImgIdx := IDEImages.LoadImage(16, 'debugger_power');
-  FPowerImgIdxGrey := IDEImages.LoadImage(16, 'debugger_power_grey');
+  ToolButtonShow.ImageIndex := IDEImages.LoadImage('callstack_show');
+  ToolButtonMore.ImageIndex := IDEImages.LoadImage('callstack_more');
+  ToolButtonTop.ImageIndex := IDEImages.LoadImage('callstack_top');
+  ToolButtonBottom.ImageIndex := IDEImages.LoadImage('callstack_bottom');
+  ToolButtonGoto.ImageIndex := IDEImages.LoadImage('callstack_goto');
+  ToolButtonCopyAll.ImageIndex := IDEImages.LoadImage('laz_copy');
+  FPowerImgIdx := IDEImages.LoadImage('debugger_power');
+  FPowerImgIdxGrey := IDEImages.LoadImage('debugger_power_grey');
   ToolButtonPower.ImageIndex := FPowerImgIdx;
 
   lvCallStack.SmallImages := IDEImages.Images_16;
-  imgSourceLine := IDEImages.LoadImage(16, 'debugger_source_line');
-  imgNoSourceLine := IDEImages.LoadImage(16, 'debugger_nosource_line');
+  imgSourceLine := IDEImages.LoadImage('debugger_source_line');
+  imgNoSourceLine := IDEImages.LoadImage('debugger_nosource_line');
 
 end;
 

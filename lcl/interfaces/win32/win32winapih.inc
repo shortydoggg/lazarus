@@ -1,5 +1,5 @@
 {%MainUnit win32int.pp}
-{ $Id: win32winapih.inc 46788 2014-11-08 23:58:28Z bart $ }
+{ $Id: win32winapih.inc 53686 2016-12-15 08:16:09Z ondrej $ }
 
 {******************************************************************************
   All Windows API related stuff goes here.
@@ -111,6 +111,8 @@ function GetIconInfo(AIcon: HICON; AIconInfo: PIconInfo): Boolean; override;
 function GetKeyState(NVirtKey: Integer): SmallInt; override;
 function GetMapMode(DC: HDC): Integer; override;
 function GetMonitorInfo(hMonitor: HMONITOR; lpmi: LCLType.PMonitorInfo): Boolean; override;
+function GetDpiForMonitor(hmonitor: HMONITOR; dpiType: TMonitorDpiType;
+  out dpiX: UINT; out dpiY: UINT): HRESULT; override;
 function GetObject(GDIObj: HGDIOBJ; BufSize: Integer; Buf: Pointer): Integer; override;
 function GetParent(Handle: HWND): HWND; override;
 function GetProp(Handle: HWND; Str: PChar): Pointer; override;

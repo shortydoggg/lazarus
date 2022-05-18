@@ -17,7 +17,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -28,7 +28,8 @@ unit ExceptionDlg;
 interface
 
 uses
-  Classes, Forms, StdCtrls, Buttons, LazarusIDEStrConsts;
+  Classes, math, Forms, Dialogs, StdCtrls, Buttons, IDEImagesIntf,
+  LazarusIDEStrConsts;
 
 type
   
@@ -73,16 +74,23 @@ constructor TIDEExceptionDlg.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   Caption := lisExceptionDialog;
-  btnBreak.Caption := lisBreak;
-  btnContinue.Caption := lisContinue;
+  btnBreak.Caption := lisMenuBreak;
+  btnContinue.Caption := lisMenuContinue;
   cbIgnoreExceptionType.Caption := lisIgnoreExceptionType;
 
-  btnBreak.LoadGlyphFromResourceName(HInstance, 'menu_pause');
-  btnContinue.LoadGlyphFromResourceName(HInstance, 'menu_run');
+  IDEImages.AssignImage(btnBreak, 'menu_pause');
+  IDEImages.AssignImage(btnContinue, 'menu_run');
+
+  DefaultControl := btnBreak;
+  CancelControl := btnContinue;
+
+  RegisterDialogForCopyToClipboard(Self);
 end;
 
 function TIDEExceptionDlg.Execute(AMessage: String; out IgnoreException: Boolean): TModalResult;
 begin
+  lblMessage.Constraints.MaxWidth := max(1, Screen.DesktopWidth-10);
+  lblMessage.Constraints.MaxHeight := max(1, Screen.DesktopHeight-100);
   lblMessage.Caption := AMessage;
   Result := ShowModal;
   IgnoreException := cbIgnoreExceptionType.Checked;

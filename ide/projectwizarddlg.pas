@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
  
@@ -29,7 +29,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Buttons,
-  LazarusIDEStrConsts, EnvironmentOpts, StdCtrls;
+  LazarusIDEStrConsts, IDEImagesIntf, EnvironmentOpts, StdCtrls;
 
 type
   TProjectWizardSelectionType = (
@@ -85,11 +85,11 @@ begin
     btnConvertProject.caption:=lisPWConvertProject;
     gbRecent.Caption:=lisPWOpenRecentProject;
     btnCloseIDE.caption:=lisQuitLazarus;
-    btnNewProject.LoadGlyphFromResourceName(HInstance, 'item_project');
-    btnOpenProject.LoadGlyphFromResourceName(HInstance, 'menu_project_open');
-    btnExamples.LoadGlyphFromResourceName(HInstance, 'camera');
-    btnConvertProject.LoadGlyphFromResourceName(HInstance, 'laz_wand');
-    btnCloseIDE.LoadGlyphFromResourceName(HInstance, 'menu_exit');
+    IDEImages.AssignImage(btnNewProject, 'item_project');
+    IDEImages.AssignImage(btnOpenProject, 'menu_project_open');
+    IDEImages.AssignImage(btnExamples, 'camera');
+    IDEImages.AssignImage(btnConvertProject, 'laz_wand');
+    IDEImages.AssignImage(btnCloseIDE, 'menu_exit');
     cbRecentProjects.Items.AddStrings(EnvironmentOptions.RecentProjectFiles);
   end;
 

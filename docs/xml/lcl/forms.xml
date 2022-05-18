@@ -162,15 +162,7 @@
 <!-- enumeration type Visibility: default -->
       <element name="TPosition">
         <short>Represents the Position and Size of a Form on Screen.</short>
-        <descr>
-          <p>poDesigned - The Form appears exactly as it is positioned and sized in the Form Designer</p>
-          <p>poDefault - The window manager decides how the form is to appear, in a default position and size</p>
-          <p>poDefaultPosOnly - keeps the Designed size, but position determined by windowmanager</p>
-          <p>poDefaultSizeOnly - keeps the Designed position, but size determined by windowmanager</p>
-          <p>poScreenCenter - Centers the form on screen</p>
-          <p>poDeskTopCenter - Centers the form on desktop</p>
-          <p>poMainFormCenter - Centers the Form on the Main Form</p>
-          <p>poOwnerFormCenter - Centers the Form on Owner form</p>
+        <descr><p>poDesigned - The Form appears exactly as it is positioned and sized in the Form Designer</p><p>poDefault - The window manager decides how the form is to appear, in a default position and size</p><p>poDefaultPosOnly - keeps the Designed size, but position determined by windowmanager</p><p>poDefaultSizeOnly - keeps the Designed position, but size determined by windowmanager</p><p>poScreenCenter - Centers the form on screen</p><p>poDeskTopCenter - Centers the form on desktop</p><p>poMainFormCenter - Centers the Form on the Main Form</p><p>poOwnerFormCenter - Centers the Form on Owner form</p><p>poWorkAreaCenter - Centers the Form on working area</p>
         </descr>
         <seealso/>
       </element>
@@ -1357,9 +1349,9 @@
           </p>
           <ul>
             <li>
-              dmDesktop - on the full desktop
+              dmDesktop - no attempt to choose specific monitor.
             </li><li>
-              dmPrimary - on the primary monitor
+              dmPrimary - on the primary monitor.
             </li><li>
               dmMainForm - on the same monitor as the main form. If there is no main form then use dmPrimary behavior.
             </li><li>
@@ -1491,7 +1483,7 @@
       </element>
 <!-- enumeration type Visibility: default -->
       <element name="TPopupMode">
-        <short>Defines where popup menus shall appear.</short>
+        <short>Defines the parent handling for forms and dialogs.</short>
         <descr>
         </descr>
         <seealso>
@@ -1518,13 +1510,13 @@
           </p>
           <ul>
             <li>
-              caNone: do nothing (don't close)
+              caNone: do nothing (don't close).
             </li><li>
-              caHide: hide the form (default for modal forms)
+              caHide: hide the form (default for modal forms).
             </li><li>
-              caFree: destroy the form
+              caFree: destroy the form.
             </li><li>
-              caMinimize: minimize the form (MDI child default)
+              caMinimize: minimize the form (MDI child default).
             </li>
           </ul>
           <p>
@@ -3024,9 +3016,14 @@
       <element name="TCustomForm.ShowModal">
         <short>Show this form as a modal Dialog.
         </short>
-        <descr>The call doesn't return until the form is closed.
-          The application switches to modal state until then.
-        </descr>
+        <descr>Shows the form in modal state and waits til it is closed by the user or by the program.
+Modal state means that neither the user nor the program can switch to forms, that were already visible before ShowModal.
+
+The form must have Visible=false when calling ShowModal.
+The call doesn't return until the form is closed.
+The application switches to modal state until then.
+ShowModal creates its own event loop calling ProcessMessages.
+</descr>
         <errors>EInvalidOperation if the form cannot be shown modally.
         </errors>
         <seealso/>
@@ -3318,8 +3315,7 @@
       <!-- property Visibility: public -->
       <element name="TCustomForm.DefaultControl">
         <short>The control associated with the default action for this form.</short>
-        <descr>
-&#x9;&#x9;      This is typically a button such as 'Accept'
+        <descr>This is typically a button such as 'Accept'
           which is highlighted in some way on-screen to indicate
           that this is the default action,
           and is selected either by hitting 'Return' or 'Enter'
@@ -3328,8 +3324,19 @@
       </element>
       <!-- property Visibility: public -->
       <element name="TCustomForm.DefaultMonitor">
-        <short>The monitor type on which the form shall appear.</short>
-        <descr>
+        <short>The monitor on which the form will appear.</short>
+        <descr>Possible values:
+          <ul>
+            <li>
+              dmDesktop - no attempt to choose specific monitor.
+            </li><li>
+              dmPrimary - on the primary monitor.
+            </li><li>
+              dmMainForm - on the same monitor as the main form. If there is no main form then use dmPrimary behavior.
+            </li><li>
+              dmActiveForm - on the same monitor as the currently active form. If there is no active form use dmMainForm behavior.
+            </li>
+          </ul>
         </descr>
         <seealso>
         </seealso>
@@ -3352,9 +3359,18 @@
       </element>
       <!-- property Visibility: public -->
       <element name="TCustomForm.FormStyle">
-        <short>Determines the <link id="#lcl.Controls.TFormStyle">Style</link> of the form (MDI, splash...).
+        <short>Determines the style of the form.
         </short>
         <descr>
+          Possible values:
+          <ul>
+            <li>fsNormal - usual style.</li>
+            <li>fsStayOnTop - form is positioned above all application's forms, except those which have fsStayOnTop style.</li>
+            <li>fsSystemStayOnTop - form is positioned above all OS windows, except other OS top-level windows.</li>
+            <li>fsSplash - form is border-less.</li>
+            <li>fsMDIForm - MDI parent form.</li>
+            <li>fsMDIChild - MDI child form.</li>
+          </ul>
         </descr>
         <seealso>
           <link id="#lcl.Controls.TFormStyle"/>
@@ -9250,15 +9266,33 @@
       <!-- variable Visibility: default -->
       <element name="RequireDerivedFormResource">
         <short>When True every form must have a resource (e.g. a .res file). An exception is raised if the resource is missing when creating a form.</short>
-        <descr>The form resource is the lfm file compiled into the executable of your application. For this flag it does not matter if it was compiled via an lrs file or via fpcres. The resource is automatically loaded by TForm and therfore any descendant when it is created via Create(Owner). If the resource is missing there is something wrong with either a resource or the unit which contains the faulty form. If the flag is false you will see a blank form and probably search a long time what is wrong. If you set this flag to true you get an exception. 
-
-For creating forms without resources you have 3 options:
-<ul><li>Create a TForm class (not a descendant)</li><li>Construct your form using the CreateNew() constructor.</li><li>It is also possible to disable the exception by setting the global variable RequireDerivedFormResource to False. </li>
+        <descr>
+          <p>The form resource is the lfm file compiled into the executable of
+          your application. For this flag it does not matter if it was compiled
+          via an lrs file or via fpcres. The resource is automatically loaded by
+          TForm and therfore any descendant when it is created via Create(Owner).
+          If the resource is missing there is something wrong with either a
+          resource or the unit which contains the faulty form.
+          If the flag is false you will see a blank form and probably search
+          a long time what is wrong. If you set this flag to true you get an exception.
+          </p>
+          <p>
+          For creating forms without resources you have 3 options:
+          </p>
+          <ul>
+            <li>Create a TForm class (not a descendant).</li>
+            <li>Construct your form using the CreateNew() constructor.</li>
+            <li>It is also possible to disable the exception by setting the global
+               variable RequireDerivedFormResource to False.</li>
           </ul>
-History:
-
-Before 0.9.31 there was no exception. Therefore some resourceless forms might use the standard constructor Create(Owner) and will now get exceptions. This change is Delphi compatible and compatible with TFrame and TDataModule components.
-</descr>
+          <p>
+          History:
+          Before 0.9.31 there was no exception. Therefore some resourceless forms
+          might use the standard constructor Create(Owner) and will now get
+          exceptions. This change is Delphi compatible and compatible with
+          TFrame and TDataModule components.
+          </p>
+        </descr>
         <seealso>
         </seealso>
       <notes><note>?</note>
@@ -9324,6 +9358,8 @@ Before 0.9.31 there was no exception. Therefore some resourceless forms might us
         <descr/>
         <errors/>
         <seealso/>
+      </element>
+      <element name="TApplication.OnCircularException"><short>Handler invoked when there is an exception circle before killing the app with Halt</short>
       </element>
     </module>
     <!-- Forms -->

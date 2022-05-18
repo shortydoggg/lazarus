@@ -1,10 +1,8 @@
 {
-  This file is based on the FCL unit dom svn revision 15251.
-  Converted to use UTF8 instead of widestrings by Mattias Gaertner.
-}
-{
  **********************************************************************
-  This file is part of the Free Component Library
+  This file is part of LazUtils.
+  It is copied from FCL unit dom svn revision 15251 and adapted to use
+  UTF8 instead of widestrings by Mattias Gaertner.
 
   See the file COPYING.FPC, included in this distribution,
   for details about the license.
@@ -341,7 +339,7 @@ type
 //   NodeList
 // -------------------------------------------------------
 
-  TFilterResult = (frFalse, frNorecurseFalse, frTrue, frNorecurseTrue);
+  TFilterResult = (frFalse, frNoRecurseFalse, frTrue, frNoRecurseTrue);
 
   TDOMNodeList = class(TObject)
   protected
@@ -351,8 +349,7 @@ type
     function GetCount: LongWord;
     function GetItem(index: LongWord): TDOMNode;
     function NodeFilter({%H-}aNode: TDOMNode): TFilterResult; virtual;
-    // now deprecated in favor of NodeFilter
-    procedure BuildList; virtual;
+    procedure BuildList; virtual; deprecated 'Use NodeFilter instead.';
   public
     constructor Create(ANode: TDOMNode);
     destructor Destroy; override;
@@ -1904,7 +1901,7 @@ end;
 function TDOMNodeList.NodeFilter(aNode: TDOMNode): TFilterResult;
 begin
 // accept all nodes but don't allow recursion
-  Result := frNorecurseTrue;
+  Result := frNoRecurseTrue;
 end;
 
 procedure TDOMNodeList.BuildList;
@@ -1920,7 +1917,7 @@ begin
   while Assigned(current) do
   begin
     res := NodeFilter(current);
-    if res in [frTrue, frNorecurseTrue] then
+    if res in [frTrue, frNoRecurseTrue] then
       FList.Add(current);
 
     next := nil;

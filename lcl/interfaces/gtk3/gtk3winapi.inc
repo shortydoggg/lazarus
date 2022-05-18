@@ -210,7 +210,7 @@ begin
         cairo_region_get_extents(RSrc1, @ACairoRect);
         TGtk3Region(Dest).Handle := cairo_region_create_rectangle(@ACairoRect);
         RDest := TGtk3Region(Dest).Handle;
-        cairo_region_translate(RDest, -ACairoRect.x, -ACairoRect.y);
+        //cairo_region_translate(RDest, -ACairoRect.x, -ACairoRect.y);
       end else
         AStatus := cairo_region_intersect(RDest, RSrc1);
     end;
@@ -456,7 +456,7 @@ begin
     else
       APen.Style := psSolid;
     end;
-    APen.Color := lopnColor;
+    APen.Color := TColor(lopnColor);
     APen.Cosmetic := lopnWidth.X <= 0 ;
     if not APen.Cosmetic then
       APen.Width := lopnWidth.X;
@@ -588,6 +588,7 @@ begin
       AValue.set_pointer(nil);
       g_object_get_property(gtk_widget_get_default_style,'context',@AValue);
       Context := AValue.get_pointer;
+      AValue.unset;
     end else
       Context := nil;
     if Context = nil then
@@ -918,7 +919,7 @@ var
       Points[0].cX := LeftPos + Points[0].cX;
       Points[0].cY := TopPos + tm.tmHeight - TM.tmDescent + 1;
 
-      GetTextExtentPoint(DC, @aStr[pIndex], 1, Points[1]);
+      GetTextExtentPoint(DC, @aStr[pIndex], UTF8CodepointSize(@aStr[pIndex]), Points[1]);
       Points[1].cX := Points[0].cX + Points[1].cX;
       Points[1].cY := Points[0].cY;
 
@@ -1121,7 +1122,8 @@ var
   StylesCount: Integer;
   StylesList: TStringList;
   y: Integer;
-  CharsetList: TFPList;
+  CharsetList: TByteList;
+  CS: Byte;
 
   function Gtk3GetFontFamiliesDefault(var AList: TStringList): Integer;
   var
@@ -1304,11 +1306,12 @@ begin
     FontType := TRUETYPE_FONTTYPE;
     FontList := TStringList.Create;
     StylesList := TStringList.Create;
-    CharsetList := TFPList.Create;
+    CharsetList := TByteList.Create;
     for i := 0 to CharsetEncodingList.Count - 1 do
     begin
-      if CharsetList.IndexOf({%H-}Pointer(PtrUInt(TCharSetEncodingRec(CharsetEncodingList.Items[i]^).CharSet))) = -1 then
-        CharsetList.Add({%H-}Pointer(PtrUInt(TCharSetEncodingRec(CharsetEncodingList.Items[i]^).CharSet)));
+      CS := TCharSetEncodingRec(CharsetEncodingList.Items[i]^).CharSet;
+      if CharsetList.IndexOf(CS) = -1 then
+        CharsetList.Add(CS);
     end;
     try
       if Gtk3GetFontFamilies(FontList, lpLogFont^.lfPitchAndFamily,
@@ -1320,12 +1323,11 @@ begin
           EnumLogFont.elfLogFont.lfPitchAndFamily := lpLogFont^.lfPitchAndFamily;
           EnumLogFont.elfFullName := FontList[i];
 
-          StylesCount := FillLogFontA(i, EnumLogFont.elfLogFont, Metric, FontType,
-            AStyle);
+          StylesCount := FillLogFontA(i, EnumLogFont.elfLogFont, Metric, FontType, AStyle);
           EnumLogFont.elfStyle := AStyle;
 
           if CharSetList.Count > 0 then
-            EnumLogFont.elfLogFont.lfCharSet := {%H-}PtrUInt(CharsetList.Items[0]);
+            EnumLogFont.elfLogFont.lfCharSet := CharsetList.Items[0];
 
           Result := Callback(EnumLogFont, Metric, FontType, LParam);
           for y := 1 to StylesCount - 1 do
@@ -1336,7 +1338,7 @@ begin
           end;
           for y := 1 to CharSetList.Count - 1 do
           begin
-            EnumLogFont.elfLogFont.lfCharSet := {%H-}PtrUInt(CharsetList.Items[y]);
+            EnumLogFont.elfLogFont.lfCharSet := CharsetList.Items[y];
             Result := Callback(EnumLogFont, Metric, FontType, LParam);
           end;
         end;
@@ -1358,6 +1360,29 @@ begin
     exit;
   Result := cairo_region_equal(TGtk3Region(Rgn1).Handle,TGtk3Region(Rgn2).Handle);
 end;
+
+function TGtk3WidgetSet.IntersectClipRect(dc: hdc; Left, Top, Right,Bottom: Integer): Integer;
+var
+  ncorg,dcOrigin:TPoint;
+  rgn,clip:HRGN;
+begin
+  {$IFDEF GTK3DEBUGNOTIMPLEMENTED}
+  DebugLn('WARNING: TGtk3WidgetSet.ExcludeClipRect not implemented ...');
+  {$ENDIF}
+  rgn:=Self.CreateRectRgn(Left,Top,Right,Bottom);
+  //Self.SelectClipRGN(dc,rgn);
+  clip:=Self.CreateEmptyRegion;
+  Self.GetClipRGN(dc,clip);
+  Self.CombineRgn(clip,rgn,clip,RGN_AND);
+  Self.SelectClipRGN(dc,clip);
+  DeleteObject(clip);
+  DeleteObject(rgn);
+  // fail Self.ExtSelectClipRGN(dc,rgn,RGN_AND);
+ { ncorg:=Tgtk3DeviceContext(dc).fncOrigin;
+  GetWindowOrgEx(DC, @DCOrigin);
+  Result:=inherited IntersectClipRect(dc, Left, Top, Right, Bottom);}
+end;
+
 
 function TGtk3WidgetSet.ExcludeClipRect(dc: hdc; Left, Top, Right,
   Bottom: Integer): Integer;
@@ -2205,8 +2230,7 @@ begin
   with MonitorWorkArea do
     lpmi^.rcWork := Bounds(x, y, width, height);
   lpmi^.rcWork := lpmi^.rcMonitor;
-  // gtk uses zero position for primary monitor
-  if Monitor = 0 then
+  if Monitor = gdk_screen_get_primary_monitor(gdk_screen_get_default) then
     lpmi^.dwFlags := MONITORINFOF_PRIMARY
   else
     lpmi^.dwFlags := 0;
@@ -2469,6 +2493,28 @@ begin
   {$IFDEF GTK3DEBUGNOTIMPLEMENTED}
   writeln('TGtk3WidgetSet.GetSysColor WARNING: SOME SYSCOLORS ARE STILL HARDCODED nIndex=',nIndex);
   {$ENDIF}
+  if (nIndex = COLOR_WINDOW) or (nIndex = COLOR_WINDOWTEXT) or
+    (nIndex = COLOR_HIGHLIGHT) or (nIndex = COLOR_HIGHLIGHTTEXT) then
+      GetStyleWidget(lgsMemo)
+  else
+  if (nIndex = COLOR_MENU) or (nIndex = COLOR_MENUHILIGHT) or
+    (nIndex = COLOR_MENUTEXT) then
+  begin
+    GetStyleWidget(lgsMenu);
+    GetStyleWidget(lgsMenuitem);
+  end else
+  if (nIndex = COLOR_MENUBAR) then
+    GetStyleWidget(lgsMenuBar)
+  else
+  if (nIndex = COLOR_SCROLLBAR) then
+    GetStyleWidget(lgsVerticalScrollbar)
+  else
+  if (nIndex = COLOR_BTNFACE) or (nIndex = COLOR_BTNTEXT) or
+    (nIndex = COLOR_BTNSHADOW) or (nIndex = COLOR_BTNHIGHLIGHT) then
+    GetStyleWidget(lgsButton)
+  else
+  if (nIndex = COLOR_BACKGROUND) or (nIndex = COLOR_FORM) then
+    GetStyleWidget(lgsWindow);
   Result := SysColorMap[nIndex];
 end;
 
@@ -2483,9 +2529,10 @@ begin
     Result := FSysColorBrushes[nIndex];
     if Result = HBRUSH(-1) then
     begin
-      DebugLn('WARNING: GetSysColorBrush SysColorBrushes arent''t initialized properly....');
       InitSysColorBrushes;
       Result := FSysColorBrushes[nIndex];
+      if Result = HBRUSH(-1) then
+        DebugLn('WARNING: GetSysColorBrush SysColorBrushes arent''t initialized properly....');
     end;
   end;
 end;
@@ -2568,6 +2615,8 @@ begin
       begin
         result := gdk_Screen_Height;
       end;
+    SM_LCLHasFormAlphaBlend:
+      Result := 1;
   end;
 end;
 
@@ -2580,9 +2629,6 @@ end;
 
 function TGtk3WidgetSet.GetTextExtentPoint(DC: HDC; Str: PChar; Count: Integer;
   var Size: TSize): Boolean;
-var
-  ACharWidth: gint;
-  ADigitWidth: gint;
 begin
   Result := False;
   if not IsValidDC(DC) then
@@ -2593,17 +2639,7 @@ begin
     Exit;
   end;
   TGtk3DeviceContext(DC).CurrentFont.Layout^.set_text(Str, Count);
-  //this is not accurate when comparing to gtk2 or qt. Text width is smaller so we add avg size of digit char
-  //until this is fixed somehow.
   TGtk3DeviceContext(DC).CurrentFont.Layout^.get_pixel_size(@Size.Cx, @Size.CY);
-  // Ascent := TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_metrics(TGtk3DeviceContext(DC).CurrentFont.Layout^.get_font_description, TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_language)^.get_ascent;
-  // Descent := TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_metrics(TGtk3DeviceContext(DC).CurrentFont.Layout^.get_font_description, TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_language)^.get_descent;
-  ACharWidth := TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_metrics(TGtk3DeviceContext(DC).CurrentFont.Layout^.get_font_description, TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_language)^.get_approximate_char_width;
-  ADigitWidth := TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_metrics(TGtk3DeviceContext(DC).CurrentFont.Layout^.get_font_description, TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_language)^.get_approximate_digit_width;
-  // get_layout^.get_pixel_size(@Ascent, @Descent);
-  // TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_metrics(TGtk3DeviceContext(DC).CurrentFont.Layout^.get_font_description, TGtk3DeviceContext(DC).CurrentFont.Layout^.get_context^.get_language)^.
-  inc(Size.cx, (ADigitWidth div PANGO_SCALE) + 1);
-  // dec(Size.cy, Descent div PANGO_SCALE);
   // DebugLn('TGtk3WidgetSet.GetTextExtentPoint pixel size is ',dbgs(Size),
   //  ' avgcharwidth ',dbgs(ACharWidth div PANGO_SCALE),' avgdigitwidth ',dbgs(ADigitWidth div PANGO_SCALE));
   Result := True;
@@ -2729,7 +2765,7 @@ end;
 
 function TGtk3WidgetSet.GetWindowOrgEx(dc: hdc; P: PPoint): Integer;
 var
-  Matrix: Pcairo_matrix_t;
+  Matrix: cairo_matrix_t;
   dx: Double;
   dy: Double;
 begin
@@ -2744,22 +2780,17 @@ begin
     {$endif}
     exit;
   end;
-  New(Matrix);
-  cairo_get_matrix(TGtk3DeviceContext(DC).Widget, Matrix);
-  if Matrix <> nil then
+  cairo_get_matrix(TGtk3DeviceContext(DC).Widget, @Matrix);
+  dx := 0;
+  dy := 0;
+  cairo_matrix_transform_point(@Matrix, @dx, @dy);
+  // DebugLn('GetWindowOrgEx POINT ',Format('dx %d dy %d',[-Trunc(Dx), -Trunc(Dy)]));
+  if P <> nil then
   begin
-    dx := 0;
-    dy := 0;
-    cairo_matrix_transform_point(Matrix, @dx, @dy);
-    // DebugLn('GetWindowOrgEx POINT ',Format('dx %d dy %d',[-Trunc(Dx), -Trunc(Dy)]));
-    if P <> nil then
-    begin
-      P^.X := -Trunc(DX);
-      P^.Y := -Trunc(DY);
-    end;
-    Result := 1;
-    Dispose(Matrix);
+    P^.X := -Trunc(DX)+TGtk3DeviceContext(DC).fncOrigin.X;
+    P^.Y := -Trunc(DY)+TGtk3DeviceContext(DC).fncOrigin.Y;
   end;
+  Result := 1;
 end;
 
 function TGtk3WidgetSet.GetWindowRect(Handle: hwnd; var ARect: TRect): Integer;
@@ -2905,7 +2936,7 @@ end;
 
 function TGtk3WidgetSet.LPtoDP(DC: HDC; var Points; Count: Integer): BOOL;
 var
-  Matrix: Pcairo_matrix_t;
+  Matrix: cairo_matrix_t;
   cr: PCairo_t;
   P: PPoint;
   dx, dy: Double;
@@ -2919,26 +2950,23 @@ begin
   if not IsValidDC(DC) then
     exit;
   cr := TGtk3DeviceContext(DC).Widget;
-  New(Matrix);
-  try
-    cairo_get_matrix(cr, Matrix);
-    P := @Points;
-    while Count > 0 do
-    begin
-      Dec(Count);
-      DX := P^.X;
-      DY := P^.Y;
-      // DebugLn('LPTODP INPUT ',Format('dx %2.2n dy %2.2n',[dx, dy]));
-      cairo_matrix_translate(Matrix, Dx, Dy);
-      cairo_matrix_transform_point(Matrix, @Dx, @Dy);
-      // DebugLn('LPTODP Output ',Format('dx %2.2n dy %2.2n',[dx, dy]));
-      P^.X := Round(DX);
-      P^.Y := Round(DY);
-      Inc(P);
-    end;
-  finally
-    Dispose(Matrix);
+
+  P := @Points;
+  while Count > 0 do
+  begin
+    Dec(Count);
+    DX := P^.X;
+    DY := P^.Y;
+    // DebugLn('LPTODP INPUT ',Format('dx %2.2n dy %2.2n',[dx, dy]));
+    //cairo_matrix_translate(@Matrix, Dx, Dy);
+    //cairo_matrix_transform_point(@Matrix, @Dx, @Dy);
+    cairo_user_to_device(cr,@dx,@dy);
+    // DebugLn('LPTODP Output ',Format('dx %2.2n dy %2.2n',[dx, dy]));
+    P^.X := Round(DX)-TGtk3DeviceContext(DC).fncOrigin.x;
+    P^.Y := Round(DY)-TGtk3DeviceContext(DC).fncOrigin.y;
+    Inc(P);
   end;
+  Result:=true;
 end;
 
 function MessageButtonClicked(Widget : PGtkWidget; data: gPointer) : GBoolean; cdecl;
@@ -3219,7 +3247,7 @@ begin
   R := NormalizeRect(Rect(X1, Y1, X2, Y2));
   if IsRectEmpty(R) then Exit(True);
   with R do
-    TGtk3DeviceContext(DC).drawRect(Left, Top, Right - Left, Bottom - Top, True);
+    TGtk3DeviceContext(DC).drawRect(Left, Top, Right - Left, Bottom - Top, false);
   Result := True;
 end;
 
@@ -3301,9 +3329,13 @@ begin
   Result := 0;
   if Handle = 0 then
     exit;
-  g_object_set_data(TGtk3Widget(Handle).Widget, Str, nil);
+  if Gtk3IsObject(TGtk3Widget(Handle).Widget) then
+    g_object_set_data(TGtk3Widget(Handle).Widget, Str, nil);
   if TGtk3Widget(Handle).GetContainerWidget <> TGtk3Widget(Handle).Widget then
-    g_object_set_data(TGtk3Widget(Handle).GetContainerWidget, Str, nil);
+  begin
+    if Gtk3IsObject(TGtk3Widget(Handle).GetContainerWidget) then
+      g_object_set_data(TGtk3Widget(Handle).GetContainerWidget, Str, nil);
+  end;
   Result := 1;
 end;
 
@@ -3479,12 +3511,6 @@ begin
 end;
 
 function TGtk3WidgetSet.SetBkColor(DC: HDC; Color: TColorRef): TColorRef;
-var
-  ACairoPattern: Pcairo_pattern_t;
-  R: Double;
-  G: Double;
-  B: Double;
-  A: Double;
 begin
   {$IFDEF GTK3DEBUGNOTIMPLEMENTED}
   // DebugLn('WARNING: TGtk3WidgetSet.SetBkColor not implemented ...');
@@ -3493,7 +3519,7 @@ begin
   if not IsValidDC(DC) then
     exit;
   Result := TGtk3DeviceContext(DC).CurrentBrush.Color;
-  TGtk3DeviceContext(DC).CurrentBrush.Color := ColorToRGB(Color);
+  TGtk3DeviceContext(DC).CurrentBrush.Color := TColor(ColorToRGB(TColor(Color)));
 end;
 
 function TGtk3WidgetSet.SetBkMode(DC: HDC; bkMode: Integer): Integer;
@@ -3638,10 +3664,8 @@ end;
 
 function TGtk3WidgetSet.SetParent(hWndChild: HWND; hWndParent: HWND): HWND;
 begin
-  {$IFDEF GTK3DEBUGNOTIMPLEMENTED}
-  DebugLn('WARNING: TGtk3WidgetSet.SetParent not implemented ...');
-  {$ENDIF}
-  Result:=inherited SetParent(hWndChild, hWndParent);
+  Result := HWND(TGtk3Widget(hWndChild).getParent);
+  TGtk3Widget(hWndChild).SetParent(TGtk3Widget(hWndParent),0,0)
 end;
 
 function TGtk3WidgetSet.SetProp(Handle: hwnd; Str: PChar; Data: Pointer
@@ -3649,9 +3673,13 @@ function TGtk3WidgetSet.SetProp(Handle: hwnd; Str: PChar; Data: Pointer
 begin
   if Handle = 0 then
     exit(False);
-  g_object_set_data(TGtk3Widget(Handle).Widget, Str, Data);
+  if Gtk3IsObject(TGtk3Widget(Handle).Widget) then
+    g_object_set_data(TGtk3Widget(Handle).Widget, Str, Data);
   if TGtk3Widget(Handle).GetContainerWidget <> TGtk3Widget(Handle).Widget then
-    g_object_set_data(TGtk3Widget(Handle).GetContainerWidget, Str, Data);
+  begin
+    if Gtk3IsObject(TGtk3Widget(Handle).GetContainerWidget) then
+      g_object_set_data(TGtk3Widget(Handle).GetContainerWidget, Str, Data);
+  end;
   Result := True;
 end;
 
@@ -3890,7 +3918,7 @@ end;
 function TGtk3WidgetSet.SetWindowOrgEx(dc: hdc; NewX, NewY: Integer;
   OldPoint: PPoint): Boolean;
 var
-  Matrix: Pcairo_matrix_t;
+  Matrix: cairo_matrix_t;
   dx: Double;
   dy: Double;
 begin
@@ -3898,20 +3926,18 @@ begin
   if IsValidDC(DC) then
   begin
     GetWindowOrgEx(dc, OldPoint);
-    New(Matrix);
-    cairo_get_matrix(TGtk3DeviceContext(DC).Widget, Matrix);
-    if Matrix <> nil then
-    begin
-      dx := 0;
-      dy := 0;
-      // cairo_matrix_init_translate(Matrix, -NewX, -NewY);
-      cairo_matrix_translate(Matrix, -NewX, -NewY);
-      cairo_transform(TGtk3DeviceContext(DC).Widget, Matrix);
-      // cairo_set_matrix(TGtk3DeviceContext(DC).Widget, Matrix);
-      // DebugLn('TGtk3WidgetSet.SetWindowOrgEx NewX=',dbgs(NewX),' NewY=',dbgs(NewY));
-      Result := True;
-      Dispose(Matrix);
-    end;
+    cairo_get_matrix(TGtk3DeviceContext(DC).Widget, @Matrix);
+    dx := 0;
+    dy := 0;
+    // cairo_matrix_init_translate(Matrix, -NewX, -NewY);
+    cairo_matrix_translate(@Matrix,
+    	-NewX - TGtk3DeviceContext(DC).fncOrigin.x,
+      -NewY - TGtk3DeviceContext(DC).fncOrigin.Y);
+    cairo_transform(TGtk3DeviceContext(DC).Widget, @Matrix);
+    // cairo_set_matrix(TGtk3DeviceContext(DC).Widget, Matrix);
+    // DebugLn('TGtk3WidgetSet.SetWindowOrgEx NewX=',dbgs(NewX),' NewY=',dbgs(NewY));
+    Result := True;
+
   end;
 end;
 

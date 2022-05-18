@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -33,10 +33,16 @@ unit QFInitLocalVarDlg;
 interface
 
 uses
-  Classes, SysUtils, Math, contnrs, LazLogger,
-  Forms, Controls, Graphics, Dialogs, ButtonPanel, ExtCtrls,
+  Classes, SysUtils, Math, contnrs,
+  // LCL
+  Forms, Controls, Dialogs, ButtonPanel, ExtCtrls,
+  // LazUtils
+  LazLoggerBase,
+  // Codetools
   CodeToolManager, CodeCache, StdCodeTools,
+  // IdeIntf
   LazIDEIntf, IDEDialogs,
+  // IDE
   LazarusIDEStrConsts;
 
 type
@@ -114,14 +120,22 @@ begin
 end;
 
 procedure TQFInitLocalVarDialog.ButtonPanel1OKButtonClick(Sender: TObject);
+var
+  OldChange: Boolean;
 begin
-  if CodeToolBoss.InsertStatements(
-    TInsertStatementPosDescription(InsertPositions[Max(0,WhereRadioGroup.ItemIndex)]),
-    Statements[Max(0,ValueRadioGroup.ItemIndex)])
-  then begin
-    ModalResult:=mrOk;
-  end else begin
-    ModalResult:=mrAbort;
+  OldChange:=LazarusIDE.OpenEditorsOnCodeToolChange;
+  LazarusIDE.OpenEditorsOnCodeToolChange:=true;
+  try
+    if CodeToolBoss.InsertStatements(
+      TInsertStatementPosDescription(InsertPositions[Max(0,WhereRadioGroup.ItemIndex)]),
+      Statements[Max(0,ValueRadioGroup.ItemIndex)])
+    then begin
+      ModalResult:=mrOk;
+    end else begin
+      ModalResult:=mrAbort;
+    end;
+  finally
+    LazarusIDE.OpenEditorsOnCodeToolChange:=OldChange;
   end;
 end;
 

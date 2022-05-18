@@ -29,7 +29,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: syneditautocomplete.pp 44755 2014-04-17 22:25:13Z martin $
+$Id: syneditautocomplete.pp 55311 2017-06-10 16:30:27Z juha $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -416,7 +416,7 @@ procedure TCustomSynAutoComplete.ParseCompletionList;
     if (i<length(Pattern)) and (Pattern[i+1] in [#10,#13])
     and (Pattern[i+1]<>Pattern[i]) then
       inc(i);
-    Pattern:=copy(Pattern,i+1,length(Pattern));
+    delete(Pattern,1,i);
   end;
 
 var

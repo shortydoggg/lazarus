@@ -1,4 +1,4 @@
-{ $Id: qtwsspin.pp 51621 2016-02-14 09:08:06Z mattias $}
+{ $Id: qtwsspin.pp 58594 2018-07-22 08:18:56Z zeljko $}
 {
  *****************************************************************************
  *                                QtWSSpin.pp                                * 
@@ -75,11 +75,17 @@ begin
     begin
       ASpinWidget.setMinimum(ACustomFloatSpinEdit.MinValue);
       ASpinWidget.setMaximum(ACustomFloatSpinEdit.MaxValue);
-    end
-    else
+    end else
     begin
-      ASpinWidget.setMinimum(-MaxDouble);
-      ASpinWidget.setMaximum(MaxDouble);
+      if ASpinWidget is TQtFloatSpinBox then
+      begin
+        ASpinWidget.setMinimum(-MaxDouble);
+        ASpinWidget.setMaximum(MaxDouble);
+      end else
+      begin
+        ASpinWidget.setMinimum(-MaxInt);
+        ASpinWidget.setMaximum(MaxInt);
+      end;
     end;
     ASpinWidget.setSingleStep(ACustomFloatSpinEdit.Increment);
   finally

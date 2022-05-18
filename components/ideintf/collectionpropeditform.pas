@@ -5,7 +5,12 @@ unit CollectionPropEditForm;
 interface
 
 uses
-  Classes, SysUtils, Forms, ComCtrls, StdCtrls, ActnList, LCLType;
+  Classes, SysUtils,
+  // LCL
+  LCLType, LCLProc, Forms, Controls, Dialogs, ComCtrls, StdCtrls, ActnList,
+  // IdeIntf
+  ObjInspStrConsts, PropEditUtils, IDEImagesIntf, IDEWindowIntf;
+
 
 type
   { TCollectionPropertyEditorForm }
@@ -25,9 +30,9 @@ type
     MoveDownButton: TToolButton;
     procedure actAddExecute(Sender: TObject);
     procedure actDelExecute(Sender: TObject);
-    procedure actMoveDownExecute(Sender: TObject);
-    procedure actMoveUpExecute(Sender: TObject);
+    procedure actMoveUpDownExecute(Sender: TObject);
     procedure CollectionListBoxClick(Sender: TObject);
+    procedure FormClose(Sender: TObject; var {%H-}CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
   private
@@ -35,6 +40,10 @@ type
     FOwnerComponent: TPersistent;
     FOwnerPersistent: TPersistent;
     FPropertyName: String;
+    procedure FillCollectionListBox;
+    procedure ClearSelectionInObjectInspector;
+    procedure SelectInObjectInspector(ForceUpdate: Boolean);
+    procedure Modified;
   protected
     procedure UpdateCaption;
     procedure UpdateButtons;
@@ -43,11 +52,8 @@ type
     procedure PersistentDeleting(APersistent: TPersistent);
     procedure RefreshPropertyValues;
   public
-    procedure FillCollectionListBox;
-    procedure SelectInObjectInspector(ForceUpdate, UnselectAll: Boolean);
     procedure SetCollection(NewCollection: TCollection;
                     NewOwnerPersistent: TPersistent; const NewPropName: String);
-    procedure Modified;
   public
     property Collection: TCollection read FCollection;
     property OwnerComponent: TPersistent read FOwnerComponent;
@@ -60,8 +66,7 @@ implementation
 {$R *.lfm}
 
 uses
-  Controls, Dialogs, LCLProc, IDEImagesIntf, ObjInspStrConsts, PropEdits,
-  PropEditUtils;
+  PropEdits;
 
 type
   TPersistentAccess = class(TPersistent)
@@ -75,10 +80,10 @@ begin
   actDel.Caption := oiColEditDelete;
   actMoveUp.Caption := oiColEditUp;
   actMoveDown.Caption := oiColEditDown;
-  actAdd.ImageIndex := IDEImages.LoadImage(16, 'laz_add');
-  actDel.ImageIndex := IDEImages.LoadImage(16, 'laz_delete');
-  actMoveUp.ImageIndex := IDEImages.LoadImage(16, 'arrow_up');
-  actMoveDown.ImageIndex := IDEImages.LoadImage(16, 'arrow_down');
+  actAdd.ImageIndex := IDEImages.LoadImage('laz_add');
+  actDel.ImageIndex := IDEImages.LoadImage('laz_delete');
+  actMoveUp.ImageIndex := IDEImages.LoadImage('arrow_up');
+  actMoveDown.ImageIndex := IDEImages.LoadImage('arrow_down');
   actMoveUp.ShortCut := scCtrl or VK_UP;
   actMoveDown.ShortCut := scCtrl or VK_DOWN;
 
@@ -86,6 +91,13 @@ begin
   actDel.Hint := oiColEditDelete;
   actMoveUp.Hint := oiColEditUp;
   actMoveDown.Hint := oiColEditDown;
+  IDEDialogLayoutList.ApplyLayout(Self);
+end;
+
+procedure TCollectionPropertyEditorForm.FormClose(Sender: TObject;
+  var CloseAction: TCloseAction);
+begin
+  IDEDialogLayoutList.SaveLayout(Self);
 end;
 
 procedure TCollectionPropertyEditorForm.FormDestroy(Sender: TObject);
@@ -98,7 +110,7 @@ procedure TCollectionPropertyEditorForm.CollectionListBoxClick(Sender: TObject);
 begin
   UpdateButtons;
   UpdateCaption;
-  SelectInObjectInspector(False, False);
+  SelectInObjectInspector(False);
 end;
 
 procedure TCollectionPropertyEditorForm.actAddExecute(Sender: TObject);
@@ -109,7 +121,7 @@ begin
   FillCollectionListBox;
   if CollectionListBox.Items.Count > 0 then
     CollectionListBox.ItemIndex := CollectionListBox.Items.Count - 1;
-  SelectInObjectInspector(True, False);
+  SelectInObjectInspector(True);
   UpdateButtons;
   UpdateCaption;
   Modified;
@@ -148,7 +160,7 @@ begin
       if NewItemIndex > I then Dec(NewItemIndex);
       //debugln('TCollectionPropertyEditorForm.DeleteClick A NewItemIndex=',dbgs(NewItemIndex),' ItemIndex=',dbgs(CollectionListBox.ItemIndex),' CollectionListBox.Items.Count=',dbgs(CollectionListBox.Items.Count),' Collection.Count=',dbgs(Collection.Count));
       // unselect all items in OI (collections can act strange on delete)
-      SelectInObjectInspector(True, True);
+      ClearSelectionInObjectInspector;
       // now delete
       Collection.Items[I].Free;
       // update listbox after whatever happened
@@ -157,7 +169,7 @@ begin
       if NewItemIndex < CollectionListBox.Items.Count then
       begin
         CollectionListBox.ItemIndex := NewItemIndex;
-        SelectInObjectInspector(False, False);
+        SelectInObjectInspector(False);
       end;
       //debugln('TCollectionPropertyEditorForm.DeleteClick B');
       Modified;
@@ -167,37 +179,30 @@ begin
   UpdateCaption;
 end;
 
-procedure TCollectionPropertyEditorForm.actMoveDownExecute(Sender: TObject);
+procedure TCollectionPropertyEditorForm.actMoveUpDownExecute(Sender: TObject);
 var
-  I: Integer;
+  I, Direction: Integer;
 begin
   if Collection = nil then Exit;
-
   I := CollectionListBox.ItemIndex;
-  if I >= Collection.Count - 1 then Exit;
 
-  Collection.Items[I].Index := I + 1;
-  CollectionListBox.ItemIndex := I + 1;
+  if TComponent(Sender).Name = 'actMoveUp' then
+  begin
+    Direction := -1;
+    Assert(I > 0, 'TCollectionPropertyEditorForm.actMoveUpDownExecute: wrong index.');
+  end
+  else begin
+    Direction := 1;
+    Assert(I < Collection.Count-1, 'TCollectionPropertyEditorForm.actMoveUpDownExecute: wrong index.');
+  end;
+
+  Collection.Items[I].Index := I + Direction;
+
+  CollectionListBox.Items.Move(I + Direction, I);
+  CollectionListBox.ItemIndex := I + Direction;
 
   FillCollectionListBox;
-  SelectInObjectInspector(True, False);
-  Modified;
-end;
-
-procedure TCollectionPropertyEditorForm.actMoveUpExecute(Sender: TObject);
-var
-  I: Integer;
-begin
-  if Collection = nil then Exit;
-
-  I := CollectionListBox.ItemIndex;
-  if I < 0 then Exit;
-
-  Collection.Items[I].Index := I - 1;
-  CollectionListBox.ItemIndex := I - 1;
-
-  FillCollectionListBox;
-  SelectInObjectInspector(True, False);
+  SelectInObjectInspector(False);
   Modified;
 end;
 
@@ -215,7 +220,8 @@ begin
     else
       NewCaption := '';
 
-  if NewCaption <> '' then NewCaption := NewCaption + '.';
+  if NewCaption <> '' then
+    NewCaption := NewCaption + '.';
   NewCaption := oiColEditEditing + ' ' + NewCaption + PropertyName;
 
   if CollectionListBox.ItemIndex > -1 then
@@ -248,33 +254,15 @@ begin
 end;
 
 procedure TCollectionPropertyEditorForm.PersistentDeleting(APersistent: TPersistent);
-var
-  AIndex, I: Integer;
 begin
-  if (APersistent = OwnerPersistent) or (APersistent = OwnerComponent) then
-  begin
-    SetCollection(nil, nil, '');
-    Hide;
-  end
-  else
-  if Assigned(Collection) and (APersistent is TCollectionItem) and
-    (TCollectionItem(APersistent).Collection = Collection) then
-  begin
-    // persistent is still alive
-    AIndex := CollectionListBox.ItemIndex;
-    CollectionListBox.Items.BeginUpdate;
-    CollectionListBox.Items.Delete(TCollectionItem(APersistent).Index);
-    for I := TCollectionItem(APersistent).Index to CollectionListBox.Items.Count - 1 do
-      CollectionListBox.Items[I] := IntToStr(I) + ' - ' + Collection.Items[I + 1].DisplayName;
-    CollectionListBox.Items.EndUpdate;
-    if AIndex < CollectionListBox.Items.Count then
-      CollectionListBox.ItemIndex := AIndex
-    else
-      CollectionListBox.ItemIndex := CollectionListBox.Items.Count - 1;
-  end;
+  // For some reason this is called only when the whole collection is deleted,
+  // for example when changing to another project. Thus clear the whole collection.
+  DebugLn(['TCollectionPropertyEditorForm.PersistentDeleting: APersistent=', APersistent,
+           ', OwnerPersistent=', OwnerPersistent, ', OwnerComponent=', OwnerComponent]);
+  SetCollection(nil, nil, '');
+  Hide;
   UpdateButtons;
   UpdateCaption;
-  //DebugLn('*** TCollectionPropertyEditorForm.PersistentDeleting called ***');
 end;
 
 procedure TCollectionPropertyEditorForm.RefreshPropertyValues;
@@ -291,8 +279,10 @@ var
 begin
   CollectionListBox.Items.BeginUpdate;
   try
-    if Collection <> nil then Cnt := Collection.Count
-    else Cnt := 0;
+    if Collection <> nil then
+      Cnt := Collection.Count
+    else
+      Cnt := 0;
 
     // add or replace list items
     for I := 0 to Cnt - 1 do
@@ -308,14 +298,10 @@ begin
     if Cnt > 0 then
     begin
       while CollectionListBox.Items.Count > Cnt do
-      begin
         CollectionListBox.Items.Delete(CollectionListBox.Items.Count - 1);
-      end;
     end
     else
-    begin
       CollectionListBox.Items.Clear;
-    end;
   finally
     CollectionListBox.Items.EndUpdate;
     UpdateButtons;
@@ -323,27 +309,37 @@ begin
   end;
 end;
 
-procedure TCollectionPropertyEditorForm.SelectInObjectInspector(ForceUpdate, UnselectAll: Boolean);
+procedure TCollectionPropertyEditorForm.ClearSelectionInObjectInspector;
+var
+  NewSelection: TPersistentSelectionList;
+begin
+  if GlobalDesignHook = nil then Exit;
+  // select in OI
+  NewSelection := TPersistentSelectionList.Create;
+  NewSelection.ForceUpdate := True;
+  try
+    GlobalDesignHook.SetSelection(NewSelection);
+    GlobalDesignHook.LookupRoot := GetLookupRootForComponent(OwnerPersistent);
+  finally
+    NewSelection.Free;
+  end;
+end;
+
+procedure TCollectionPropertyEditorForm.SelectInObjectInspector(ForceUpdate: Boolean);
 var
   I: Integer;
   NewSelection: TPersistentSelectionList;
 begin
-  if Collection = nil then Exit;
+  if (Collection = nil) or (GlobalDesignHook = nil) then Exit;
   // select in OI
   NewSelection := TPersistentSelectionList.Create;
   NewSelection.ForceUpdate := ForceUpdate;
   try
-    if not UnselectAll then
-    begin
-      for I := 0 to CollectionListBox.Items.Count - 1 do
-        if CollectionListBox.Selected[I] then
-          NewSelection.Add(Collection.Items[I]);
-    end;
-    if GlobalDesignHook <> nil then
-    begin
-      GlobalDesignHook.SetSelection(NewSelection);
-      GlobalDesignHook.LookupRoot := GetLookupRootForComponent(OwnerPersistent);
-    end;
+    for I := 0 to CollectionListBox.Items.Count - 1 do
+      if CollectionListBox.Selected[I] then
+        NewSelection.Add(Collection.Items[I]);
+    GlobalDesignHook.SetSelection(NewSelection);
+    GlobalDesignHook.LookupRoot := GetLookupRootForComponent(OwnerPersistent);
   finally
     NewSelection.Free;
   end;
@@ -380,6 +376,7 @@ begin
   end;
 
   FillCollectionListBox;
+  CollectionListBox.ItemIndex := -1;  // Some widgetsets select the last item.
   UpdateCaption;
 end;
 

@@ -1,10 +1,10 @@
-{ $Id: qtproc.pp 47604 2015-02-06 18:25:31Z juha $ }
+{ $Id: qtproc.pp 56639 2017-12-05 21:30:51Z juha $ }
 {
                   ----------------------------------
                    qtproc.pp  -  qt interface procs
                   ----------------------------------
 
- @lastmod($Date: 2015-02-06 19:25:31 +0100 (Fr, 06 Feb 2015) $)
+ @lastmod($Date: 2017-12-05 22:30:51 +0100 (Di, 05 Dez 2017) $)
  @author(Marc Weustink <marc@@lazarus.dommelstein.net>)
 
  This unit contains procedures/functions needed for the qt <-> LCL interface
@@ -49,7 +49,6 @@ type
 
 procedure FillStandardDescription(var Desc: TRawImageDescription);
 function GetPixelsPerInch: Integer;
-function GetUtf8String(const S: String): WideString;
 
 implementation
 
@@ -92,13 +91,6 @@ begin
   Desc.MaskBitOrder := riboReversedBits;
   Desc.MaskBitsPerPixel := 1;
 //  Desc.MaskShift := 0;
-end;
-
-function GetUtf8String(const S: String): WideString;
-begin
-  Result := UTF8ToUTF16(S);
-  if Result = '' then
-    Result := S;
 end;
 
 {------------------------------------------------------------------------------

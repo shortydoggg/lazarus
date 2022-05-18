@@ -16,6 +16,8 @@ type
      datatype pointing to data on the target
   *)
   TDBGPtr = type QWord;
+  PDBGPtr = ^TDBGPtr;
+  TDBGPtrArray = Array of TDBGPtr;
 
   (* TDbgSymbolKind
      Enum of types that a value can have.

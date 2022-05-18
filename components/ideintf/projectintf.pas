@@ -16,9 +16,11 @@ unit ProjectIntf;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, LazFileUtils, Controls, Forms, AvgLvlTree,
-  NewItemIntf, ProjPackIntf, CompOptsIntf, ObjInspStrConsts, LazFileCache,
-  LazMethodList;
+  Classes, SysUtils, Contnrs,
+  // LazUtils
+  FileUtil, LazFileUtils, LazFileCache, LazMethodList, UITypes, AvgLvlTree,
+  // IdeIntf
+  IDEOptionsIntf, NewItemIntf, ProjPackIntf, CompOptsIntf, ObjInspStrConsts;
 
 const
   FileDescGroupName = 'File';
@@ -237,7 +239,8 @@ type
     pfMainUnitIsPascalSource,// main unit is pascal, even it does not end in .pas/.pp
     pfMainUnitHasUsesSectionForAllUnits,// add new units to main uses section
     pfMainUnitHasCreateFormStatements,// add/remove Application.CreateForm statements
-    pfMainUnitHasTitleStatement,// add/remove Application.Title:= statements
+    pfMainUnitHasTitleStatement,// add/remove Application.Title:= statement
+    pfMainUnitHasScaledStatement,// add/remove Application.Scaled:= statement
     pfRunnable, // project can be run
     pfAlwaysBuild, // skip IDE's smart check if compilation is needed and always compile
     pfUseDesignTimePackages, // compile design time packages to project
@@ -257,6 +260,34 @@ type
   TProjectSessionStorages = set of TProjectSessionStorage;
 
 const
+  ProjectFlagNames : array[TProjectFlag] of string = (
+      'SaveClosedFiles',
+      'SaveOnlyProjectUnits',
+      'MainUnitIsPascalSource',
+      'MainUnitHasUsesSectionForAllUnits',
+      'MainUnitHasCreateFormStatements',
+      'MainUnitHasTitleStatement',
+      'MainUnitHasScaledStatement',
+      'Runnable',
+      'AlwaysBuild',
+      'UseDesignTimePackages',
+      'LRSInOutputDirectory',
+      'UseDefaultCompilerOptions',
+      'SaveJumpHistory',
+      'SaveFoldState'
+    );
+  ProjectSessionStorageNames: array[TProjectSessionStorage] of string = (
+    'InProjectInfo',
+    'InProjectDir',
+    'InIDEConfig',
+    'None'
+    );
+
+  CompilationExecutableTypeNames: array[TCompilationExecutableType] of string =(
+    'Program',
+    'Library'
+    );
+
   pssHasSeparateSession = [pssInProjectDir,pssInIDEConfig];
   DefaultProjectCleanOutputFileMask = '*';
   DefaultProjectCleanSourcesFileMask = '*.ppu;*.ppl;*.o;*.or';
@@ -314,8 +345,10 @@ type
     property Descriptor: TProjectDescriptor read FDescriptor write FDescriptor;
   end;
 
-  TAbstractRunParamsOptions = class
-  protected
+  TAbstractRunParamsOptionsMode = class(TPersistent)
+  private
+    fName: string;
+
     // local options
     fHostApplicationFilename: string;
     fCmdLineParams: string;
@@ -328,9 +361,16 @@ type
     // environment options
     fUserOverrides: TStringList;
     fIncludeSystemVariables: boolean;
+  protected
+    procedure AssignTo(Dest: TPersistent); override;
   public
-    procedure Clear; virtual; abstract;
+    constructor Create(const AName: string); virtual;
+    destructor Destroy; override;
+
+    procedure Clear; virtual;
     procedure AssignEnvironmentTo(Strings: TStrings); virtual; abstract;
+
+    property Name: string Read fName;
 
     // local options
     property HostApplicationFilename: string
@@ -348,6 +388,34 @@ type
     property UserOverrides: TStringList Read fUserOverrides;
     property IncludeSystemVariables: boolean
       Read fIncludeSystemVariables Write fIncludeSystemVariables;
+  end;
+
+  { TAbstractRunParamsOptions }
+
+  TAbstractRunParamsOptions = class(TPersistent)
+  private
+    fActiveModeName: string;
+    fModes: TObjectList;
+    function GetCount: Integer;
+    function GetMode(AIndex: Integer): TAbstractRunParamsOptionsMode; inline;
+  protected
+    procedure AssignTo(Dest: TPersistent); override;
+    function CreateMode(const AName: string): TAbstractRunParamsOptionsMode; virtual; abstract;
+    procedure SetActiveModeName(const AValue: string); virtual;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  public
+    procedure AssignEnvironmentTo(Strings: TStrings); virtual; abstract;
+
+    procedure Clear; virtual;
+    procedure Delete(const AIndex: Integer);
+    function Add(const AName: string): TAbstractRunParamsOptionsMode;
+    function Find(const AName: string): TAbstractRunParamsOptionsMode;
+    function GetOrCreate(const AName: string): TAbstractRunParamsOptionsMode;
+    property Modes[AIndex: Integer]: TAbstractRunParamsOptionsMode read GetMode; default;
+    property Count: Integer read GetCount;
+    property ActiveModeName: string read fActiveModeName write SetActiveModeName;
   end;
 
   { TLazProjectBuildMode }
@@ -381,8 +449,6 @@ type
     property Modified: boolean read GetModified write SetModified;
     property LazCompilerOptions: TLazCompilerOptions read GetLazCompilerOptions;
   end;
-
-  { TProjectBuildModes }
 
   { TLazProjectBuildModes }
 
@@ -424,6 +490,7 @@ type
     FExecutableType: TProjectExecutableType;
     FFPDocPackageName: string;
     FProjectSessionFile: string;
+    FScaled: Boolean;
     FSessionModified: boolean;
     FTitle: String;
     FSessionStorage: TProjectSessionStorage;
@@ -433,9 +500,11 @@ type
     procedure SetCleanSourcesFileMask(const AValue: string);
     procedure SetFPDocPackageName(AValue: string);
     procedure SetFPDocPaths(const AValue: string);
+    procedure SetScaled(const AScaled: Boolean);
     procedure SetUseAppBundle(AValue: Boolean);
   protected
     FChangeStamp: integer;
+    FSessionChangeStamp: integer;
     FFlags: TProjectFlags;
     FResources: TObject;
     FRunParameters: TAbstractRunParamsOptions;
@@ -464,6 +533,7 @@ type
     destructor Destroy; override;
     procedure Clear; virtual;
     procedure IncreaseChangeStamp; inline;
+    procedure IncreaseSessionChangeStamp; inline;
     function IsVirtual: boolean; virtual; abstract;
     function CreateProjectFile(const Filename: string): TLazProjectFile; virtual; abstract;
     procedure AddFile(ProjectFile: TLazProjectFile;
@@ -471,6 +541,7 @@ type
     procedure RemoveUnit(Index: integer; RemoveFromUsesSection: boolean = true); virtual; abstract;
     procedure AddSrcPath(const SrcPathAddition: string); virtual; abstract;
     procedure AddPackageDependency(const PackageName: string); virtual; abstract;
+    function RemovePackageDependency(const PackageName: string): boolean; virtual; abstract;
     procedure ClearModifieds(ClearUnits: boolean);
     function FindFile(const AFilename: string;
                       SearchFlags: TProjectFileSearchFlags): TLazProjectFile; virtual; abstract;
@@ -487,11 +558,13 @@ type
     property ActiveBuildModeID: string read GetActiveBuildModeID
                                        write SetActiveBuildModeID;
     property ChangeStamp: integer read FChangeStamp;
+    property SessionChangeStamp: integer read FSessionChangeStamp;
     property Files[Index: integer]: TLazProjectFile read GetFiles;
     property FileCount: integer read GetFileCount;
     property MainFileID: Integer read GetMainFileID write SetMainFileID;
     property MainFile: TLazProjectFile read GetMainFile;
     property Title: String read FTitle write SetTitle;
+    property Scaled: Boolean read FScaled write SetScaled;
     property Flags: TProjectFlags read FFlags write SetFlags;
     property ExecutableType: TProjectExecutableType read FExecutableType
                  write SetExecutableType;// read from MainFile, not saved to lpi
@@ -517,6 +590,10 @@ type
 
   TLazProjectClass = class of TLazProject;
 
+  TAbstractIDEProjectOptions = class(TAbstractIDEOptions)
+  public
+    function GetProject: TLazProject; virtual; abstract;
+  end;
 
   { TProjectDescriptors }
 
@@ -547,43 +624,17 @@ function ProjectDescriptorCustomProgram: TProjectDescriptor;
 function ProjectDescriptorEmptyProject: TProjectDescriptor;
 
 const
-  DefaultProjectFlags = [pfSaveClosedUnits,
+  DefaultProjectNoApplicationFlags = [pfSaveClosedUnits,
                          pfMainUnitIsPascalSource,
                          pfMainUnitHasUsesSectionForAllUnits,
-                         pfMainUnitHasCreateFormStatements,
-                         pfMainUnitHasTitleStatement,
                          pfRunnable,
                          pfLRSFilesInOutputDirectory,
                          pfSaveJumpHistory,
                          pfSaveFoldState];
-  ProjectFlagNames : array[TProjectFlag] of string = (
-      'SaveClosedFiles',
-      'SaveOnlyProjectUnits',
-      'MainUnitIsPascalSource',
-      'MainUnitHasUsesSectionForAllUnits',
-      'MainUnitHasCreateFormStatements',
-      'MainUnitHasTitleStatement',
-      'Runnable',
-      'AlwaysBuild',
-      'UseDesignTimePackages',
-      'LRSInOutputDirectory',
-      'UseDefaultCompilerOptions',
-      'SaveJumpHistory',
-      'SaveFoldState'
-    );
-
-  ProjectSessionStorageNames: array[TProjectSessionStorage] of string = (
-    'InProjectInfo',
-    'InProjectDir',
-    'InIDEConfig',
-    'None'
-    );
-
-  CompilationExecutableTypeNames: array[TCompilationExecutableType] of string =(
-    'Program',
-    'Library'
-    );
-
+  DefaultProjectFlags = DefaultProjectNoApplicationFlags+[
+                         pfMainUnitHasCreateFormStatements,
+                         pfMainUnitHasTitleStatement,
+                         pfMainUnitHasScaledStatement];
 
 function ProjectFlagsToStr(Flags: TProjectFlags): string;
 function StrToProjectSessionStorage(const s: string): TProjectSessionStorage;
@@ -601,6 +652,20 @@ procedure RegisterProjectDescriptor(ProjDesc: TProjectDescriptor;
                        DefaultCreateFlag: TNewIDEItemFlag = niifCopy;
                        const AllowedCreateFlags: TNewIDEItemFlags = [niifCopy]);
 
+{ Call to register a custom form class with the IDE
+
+  RegisterForm parameters:
+
+  Package: The name of the package containing your custom form
+  FormClass: The class type of your custom form
+  Category: The group under which your form class apears in the New... dialog
+  Caption: The name of your form class as it appears in the New... dialog
+  Description: A brief summary of your form class as it appears in the New... dialog
+  Units: A list of units to add the uses clause of a unit with your form class
+    (Typically just the name of the unit defining your form class) }
+{procedure RegisterForm(const Package: string; FormClass: TCustomFormClass;
+  const Category, Caption, Description, Units: string);
+}
 
 implementation
 
@@ -719,6 +784,153 @@ begin
   for Result:=Low(TCompilationExecutableType) to High(TCompilationExecutableType)
   do if CompareText(s,CompilationExecutableTypeNames[Result])=0 then exit;
   Result:=cetProgram;
+end;
+
+{ TAbstractRunParamsOptionsMode }
+
+constructor TAbstractRunParamsOptionsMode.Create(const AName: string);
+begin
+  inherited Create;
+
+  fName := AName;
+  fUserOverrides := TStringList.Create;
+
+  Clear;
+end;
+
+procedure TAbstractRunParamsOptionsMode.AssignTo(Dest: TPersistent);
+var
+  ADest: TAbstractRunParamsOptionsMode;
+begin
+  if Dest is TAbstractRunParamsOptionsMode then
+  begin
+    ADest := TAbstractRunParamsOptionsMode(Dest);
+
+    ADest.HostApplicationFilename := HostApplicationFilename;
+    ADest.CmdLineParams := CmdLineParams;
+    ADest.UseDisplay := UseDisplay;
+    ADest.UseLaunchingApplication := UseLaunchingApplication;
+    ADest.LaunchingApplicationPathPlusParams := LaunchingApplicationPathPlusParams;
+    ADest.WorkingDirectory := WorkingDirectory;
+    ADest.Display := Display;
+
+    ADest.UserOverrides.Assign(UserOverrides);
+    ADest.IncludeSystemVariables := IncludeSystemVariables;
+  end else
+    inherited AssignTo(Dest);
+end;
+
+procedure TAbstractRunParamsOptionsMode.Clear;
+begin
+  // local options
+  fHostApplicationFilename := '';
+  fCmdLineParams := '';
+  fUseLaunchingApplication := False;
+  fLaunchingApplicationPathPlusParams := '';
+  // TODO: guess are we under gnome or kde so query for gnome-terminal or konsole.
+  fWorkingDirectory := '';
+  fUseDisplay := False;
+  fDisplay    := ':0';
+
+  // environment options
+  fUserOverrides.Clear;
+  fIncludeSystemVariables := False;
+end;
+
+destructor TAbstractRunParamsOptionsMode.Destroy;
+begin
+  fUserOverrides.Free;
+
+  inherited Destroy;
+end;
+
+{ TAbstractRunParamsOptions }
+
+// inline
+function TAbstractRunParamsOptions.GetMode(AIndex: Integer
+  ): TAbstractRunParamsOptionsMode;
+begin
+  Result := TAbstractRunParamsOptionsMode(fModes[AIndex]);
+end;
+
+constructor TAbstractRunParamsOptions.Create;
+begin
+  inherited Create;
+
+  fModes := TObjectList.Create(True);
+end;
+
+function TAbstractRunParamsOptions.Add(const AName: string
+  ): TAbstractRunParamsOptionsMode;
+begin
+  if Find(AName)<>nil then
+    raise Exception.CreateFmt('RunParams Options: mode "%s" already exists.', [AName]);
+  Result := CreateMode(AName);
+  fModes.Add(Result);
+end;
+
+procedure TAbstractRunParamsOptions.AssignTo(Dest: TPersistent);
+var
+  ADest: TAbstractRunParamsOptions;
+  I: Integer;
+begin
+  if Dest is TAbstractRunParamsOptions then
+  begin
+    ADest := TAbstractRunParamsOptions(Dest);
+    ADest.Clear;
+    for I := 0 to Count-1 do
+      ADest.Add(Modes[I].Name).Assign(Modes[I]);
+  end else
+    inherited AssignTo(Dest);
+end;
+
+procedure TAbstractRunParamsOptions.SetActiveModeName(const AValue: string);
+begin
+  fActiveModeName:=AValue;
+end;
+
+procedure TAbstractRunParamsOptions.Clear;
+begin
+  ActiveModeName:='';
+  fModes.Clear;
+end;
+
+procedure TAbstractRunParamsOptions.Delete(const AIndex: Integer);
+begin
+  if CompareText(Modes[AIndex].Name,ActiveModeName)=0 then
+    ActiveModeName:='';
+  fModes.Delete(aIndex);
+end;
+
+destructor TAbstractRunParamsOptions.Destroy;
+begin
+  FreeAndNil(fModes);
+  inherited Destroy;
+end;
+
+function TAbstractRunParamsOptions.Find(const AName: string
+  ): TAbstractRunParamsOptionsMode;
+var
+  I: Integer;
+begin
+  if AName='' then exit(nil);
+  for I := 0 to Count-1 do
+    if CompareText(Modes[I].Name,AName)=0 then
+      Exit(Modes[I]);
+  Result := nil;
+end;
+
+function TAbstractRunParamsOptions.GetCount: Integer;
+begin
+  Result := fModes.Count;
+end;
+
+function TAbstractRunParamsOptions.GetOrCreate(const AName: string
+  ): TAbstractRunParamsOptionsMode;
+begin
+  Result := Find(aName);
+  if Result=nil then
+    Result := Add(AName);
 end;
 
 { TLazProjectBuildModes }
@@ -954,7 +1166,7 @@ end;
 
 function TFileDescPascalUnitWithResource.GetInterfaceUsesSection: string;
 begin
-  Result := inherited GetInterfaceUsesSection + ', FileUtil';
+  Result := inherited GetInterfaceUsesSection;
   if GetResourceType = rtLRS then
     Result := Result +', LResources';
 end;
@@ -968,9 +1180,9 @@ begin
      'type'+LE
     +'  T'+ResourceName+' = class('+ResourceClass.ClassName+')'+LE
     +'  private'+LE
-    +'    { private declarations }'+LE
+    +LE
     +'  public'+LE
-    +'    { public declarations }'+LE
+    +LE
     +'  end;'+LE
     +LE;
 
@@ -1176,6 +1388,13 @@ begin
   SessionModified:=true;
 end;
 
+procedure TLazProject.SetScaled(const AScaled: Boolean);
+begin
+  if FScaled = aScaled then Exit;
+  FScaled := aScaled;
+  Modified:=true;
+end;
+
 procedure TLazProject.SetFPDocPaths(const AValue: string);
 begin
   if FFPDocPaths=AValue then exit;
@@ -1295,6 +1514,11 @@ begin
   LUIncreaseChangeStamp(FChangeStamp);
 end;
 
+procedure TLazProject.IncreaseSessionChangeStamp;
+begin
+  LUIncreaseChangeStamp(FSessionChangeStamp);
+end;
+
 { TLazProjectFile }
 
 procedure TLazProjectFile.SetIsPartOfProject(const AValue: boolean);
@@ -1353,6 +1577,68 @@ begin
     FDescriptor:=TNewItemProject(Source).Descriptor;
 end;
 
+{ TCustomFormDescriptor }
+{
+type
+  TCustomFormDescriptor = class(TFileDescPascalUnitWithResource)
+  private
+    FCaption: string;
+    FDescription: string;
+    FUnits: string;
+  public
+    constructor Create(const Package: string; FormClass: TCustomFormClass; const Caption, Description, Units: string); reintroduce;
+    function GetResourceType: TResourceType; override;
+    function GetLocalizedName: string; override;
+    function GetLocalizedDescription: string; override;
+    function GetInterfaceUsesSection: string; override;
+  end;
+
+constructor TCustomFormDescriptor.Create(const Package: string; FormClass: TCustomFormClass;
+  const Caption, Description, Units: string);
+begin
+  inherited Create;
+  RequiredPackages := 'LCL;' + Package;
+  ResourceClass := FormClass;
+  Name := Caption;
+  UseCreateFormStatements := True;
+  FCaption := Caption;
+  FDescription := Description;
+  FUnits := Units;
+end;
+
+function TCustomFormDescriptor.GetResourceType: TResourceType;
+begin
+  Result := rtRes;
+end;
+
+function TCustomFormDescriptor.GetLocalizedName: string;
+begin
+  Result := FCaption;
+end;
+
+function TCustomFormDescriptor.GetLocalizedDescription: string;
+begin
+  Result:= FDescription;
+end;
+
+function TCustomFormDescriptor.GetInterfaceUsesSection: string;
+begin
+  Result := inherited GetInterfaceUsesSection
+    + ', Controls, Forms,'#13#10 + '  ' + FUnits;
+end;
+}
+{ RegisterForm }
+{
+procedure RegisterForm(const Package: string; FormClass: TCustomFormClass;
+  const Category, Caption, Description, Units: string);
+begin
+  RegisterNoIcon([FormClass]);
+  if NewIDEItems.IndexOf(Category) < 0 then
+    RegisterNewItemCategory(TNewIDEItemCategory.Create(Category));
+  RegisterProjectFileDescriptor(TCustomFormDescriptor.Create(Package, FormClass,
+    Caption, Description, Units), Category);
+end;
+}
 initialization
   ProjectFileDescriptors:=nil;
 

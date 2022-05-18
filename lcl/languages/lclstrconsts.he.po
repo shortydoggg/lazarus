@@ -53,211 +53,30 @@ msgstr "מקש אלט"
 msgid "Ctrl"
 msgstr "מקש קונטרול"
 
-#: lclstrconsts.ifsvk_accept
-msgid "Accept"
-msgstr "קבל"
-
-#: lclstrconsts.ifsvk_apps
-msgid "application key"
-msgstr "מקש יישם"
-
-#: lclstrconsts.ifsvk_back
-msgid "Backspace"
-msgstr "מקש חזור"
-
-#: lclstrconsts.ifsvk_cancel
-msgctxt "lclstrconsts.ifsvk_cancel"
-msgid "Cancel"
-msgstr "ביטול"
-
-#: lclstrconsts.ifsvk_capital
-msgid "Capital"
-msgstr "אות ריישית"
-
-#: lclstrconsts.ifsvk_clear
-msgid "Clear"
-msgstr "מקש נקה"
-
 #: lclstrconsts.ifsvk_cmd
 msgid "Cmd"
 msgstr ""
 
-#: lclstrconsts.ifsvk_control
-msgid "Control"
-msgstr "מקש קונטרול"
-
-#: lclstrconsts.ifsvk_convert
-msgid "Convert"
-msgstr "המר"
-
-#: lclstrconsts.ifsvk_delete
-msgctxt "lclstrconsts.ifsvk_delete"
-msgid "Delete"
-msgstr "מחק"
-
-#: lclstrconsts.ifsvk_down
-msgctxt "lclstrconsts.ifsvk_down"
-msgid "Down"
-msgstr "למטה"
-
-#: lclstrconsts.ifsvk_end
-msgctxt "lclstrconsts.ifsvk_end"
-msgid "End"
-msgstr "מקש סיום"
-
-#: lclstrconsts.ifsvk_escape
-msgid "Escape"
-msgstr "מקש בטל"
-
-#: lclstrconsts.ifsvk_execute
-msgid "Execute"
-msgstr "הרץ"
-
-#: lclstrconsts.ifsvk_final
-msgid "Final"
-msgstr "סופי"
-
-#: lclstrconsts.ifsvk_hanja
-msgid "Hanja"
-msgstr "Hanja"
-
 #: lclstrconsts.ifsvk_help
+msgctxt "lclstrconsts.ifsvk_help"
 msgid "Help"
 msgstr "עזרה"
-
-#: lclstrconsts.ifsvk_home
-msgctxt "lclstrconsts.ifsvk_home"
-msgid "Home"
-msgstr "מקש התחלה (בית)"
-
-#: lclstrconsts.ifsvk_insert
-msgctxt "lclstrconsts.ifsvk_insert"
-msgid "Insert"
-msgstr "הכנס"
-
-#: lclstrconsts.ifsvk_junja
-msgid "Junja"
-msgstr "Junja"
-
-#: lclstrconsts.ifsvk_kana
-msgid "Kana"
-msgstr "Kana"
-
-#: lclstrconsts.ifsvk_lbutton
-msgid "Mouse Button Left"
-msgstr "לחצן עכבר שמאלי"
-
-#: lclstrconsts.ifsvk_left
-msgctxt "lclstrconsts.ifsvk_left"
-msgid "Left"
-msgstr "שמאל"
-
-#: lclstrconsts.ifsvk_lwin
-msgid "left windows key"
-msgstr "מקש חלונות שמאלי"
-
-#: lclstrconsts.ifsvk_mbutton
-msgid "Mouse Button Middle"
-msgstr "לחצן עכבר אמצעי"
-
-#: lclstrconsts.ifsvk_menu
-msgctxt "lclstrconsts.ifsvk_menu"
-msgid "Menu"
-msgstr "תפריט"
 
 #: lclstrconsts.ifsvk_meta
 msgid "Meta"
 msgstr ""
 
-#: lclstrconsts.ifsvk_modechange
-msgid "Mode Change"
-msgstr "שינוי מצב"
-
-#: lclstrconsts.ifsvk_next
-msgctxt "lclstrconsts.ifsvk_next"
-msgid "Next"
-msgstr "הבא "
-
-#: lclstrconsts.ifsvk_nonconvert
-msgid "Nonconvert"
-msgstr "אל תמיר"
-
-#: lclstrconsts.ifsvk_numlock
-msgid "Numlock"
-msgstr "נעילת לוח מקשי המספרים"
-
-#: lclstrconsts.ifsvk_numpad
-#, fuzzy,badformat
-msgid "Numpad %d"
-msgstr "לוח מקשי המספרים"
-
-#: lclstrconsts.ifsvk_pause
-msgid "Pause key"
-msgstr "מקש השהה"
-
-#: lclstrconsts.ifsvk_print
-msgid "Print"
-msgstr "הדפס"
-
-#: lclstrconsts.ifsvk_prior
-msgctxt "lclstrconsts.ifsvk_prior"
-msgid "Prior"
-msgstr "קודם"
-
-#: lclstrconsts.ifsvk_rbutton
-msgid "Mouse Button Right"
-msgstr "לחצן עכבר ימני"
-
-#: lclstrconsts.ifsvk_return
-msgid "Return"
-msgstr "מקש אנטר"
-
-#: lclstrconsts.ifsvk_right
-msgctxt "lclstrconsts.ifsvk_right"
-msgid "Right"
-msgstr "ימין"
-
-#: lclstrconsts.ifsvk_rwin
-msgid "right windows key"
-msgstr "מקש חלונות ימני"
-
-#: lclstrconsts.ifsvk_scroll
-msgid "Scroll"
-msgstr "גלול"
-
-#: lclstrconsts.ifsvk_select
-msgid "Select"
-msgstr "בחר"
-
 #: lclstrconsts.ifsvk_shift
 msgid "Shift"
 msgstr "מקש הזז"
-
-#: lclstrconsts.ifsvk_snapshot
-msgid "Snapshot"
-msgstr "תצלום-בזק"
-
-#: lclstrconsts.ifsvk_space
-msgid "Space key"
-msgstr "מקש רווח"
 
 #: lclstrconsts.ifsvk_super
 msgid "Super"
 msgstr ""
 
-#: lclstrconsts.ifsvk_tab
-msgctxt "lclstrconsts.ifsvk_tab"
-msgid "Tab"
-msgstr "מקש טאב"
-
 #: lclstrconsts.ifsvk_unknown
 msgid "Unknown"
 msgstr "לא ידוע"
-
-#: lclstrconsts.ifsvk_up
-msgctxt "lclstrconsts.ifsvk_up"
-msgid "Up"
-msgstr "למעלה"
 
 #: lclstrconsts.lislclresourcesnotfound
 #, fuzzy,badformat
@@ -296,6 +115,10 @@ msgstr "שטח עבודה של היישום"
 #: lclstrconsts.rsaquacolorcaption
 msgid "Aqua"
 msgstr "מימי"
+
+#: lclstrconsts.rsascannothaveasparent
+msgid "Class %s cannot have %s as parent."
+msgstr ""
 
 #: lclstrconsts.rsbackgroundcolorcaption
 msgid "Desktop"
@@ -367,6 +190,10 @@ msgstr "רגיש לריישיות"
 msgid "Control of class '%s' can't have control of class '%s' as a child"
 msgstr "פקד של המחלקה  '%s' לא יכול לקבל פקד של מחלקה s% בתור בן"
 
+#: lclstrconsts.rscontrolhasnoparentformorframe
+msgid "Control '%s' has no parent form or frame"
+msgstr ""
+
 #: lclstrconsts.rscontrolhasnoparentwindow
 #, fuzzy,badformat
 msgid "Control '%s' has no parent window"
@@ -379,10 +206,6 @@ msgstr ""
 #: lclstrconsts.rscreamcolorcaption
 msgid "Cream"
 msgstr "קרמי"
-
-#: lclstrconsts.rscreatinggdbcatchableerror
-msgid "Creating gdb catchable error:"
-msgstr "יצירת שגיאה שנלכדת ע\"י gdb:"
 
 #: lclstrconsts.rscursor
 msgid "Cursor"
@@ -417,10 +240,6 @@ msgstr "כיוון"
 msgid "&Directory"
 msgstr "תיקייה"
 
-#: lclstrconsts.rsdocking
-msgid "Docking"
-msgstr "עיגון"
-
 #: lclstrconsts.rsdocopy
 msgid "Copy"
 msgstr ""
@@ -449,10 +268,6 @@ msgstr "שגיאה"
 #: lclstrconsts.rserrorcreatingdevicecontext
 msgid "Error creating device context for %s.%s"
 msgstr "שגיאה ביצירת הקשר התקן עבור %s.%s"
-
-#: lclstrconsts.rserrorinlcl
-msgid "ERROR in LCL: "
-msgstr "שגיאה ב LCL:"
 
 #: lclstrconsts.rserroroccurredinataddressframe
 #, fuzzy,badformat
@@ -679,6 +494,12 @@ msgstr "מנטרל את הרחבת הזיכרון המשותף של השרת.   
 #: lclstrconsts.rsgtkoptionsync
 msgid "--sync                Call XSynchronize (display, True) after the Xserver connection has been established. This makes debugging X protocol errors easier, because X request buffering will be disabled and X errors will be received immediately after the protocol request that generated the error has been processed by the X server."
 msgstr "קורא ל XSynchronize (display, True) אחרי בוסס הקשר עם שרת X . זה עושה את ניםוי השגיאות של פרוטוקול X ליותר קל, כי דרישות החציצה של X יבוטלו והשגיאות של X יתקבלו מיד אחרי דרישות הפרוטוקול אשר יוצרות את השגיאה יבוצעו ע\"י השרת.    sync--"
+
+#: lclstrconsts.rshelp
+#, fuzzy
+msgctxt "lclstrconsts.rshelp"
+msgid "Help"
+msgstr "עזרה"
 
 #: lclstrconsts.rshelpalreadyregistered
 msgid "%s: Already registered"
@@ -913,9 +734,25 @@ msgstr "לימוני"
 msgid "List index exceeds bounds (%d)"
 msgstr "אינדקס הרשימה עובר את הגבול"
 
-#: lclstrconsts.rslistmustbeempty
-msgid "List must be empty"
-msgstr "הרשימה חייבת להיות ריקה"
+#: lclstrconsts.rsmacosmenuhide
+msgid "Hide %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuhideothers
+msgid "Hide Others"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuquit
+msgid "Quit %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuservices
+msgid "Services"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenushowall
+msgid "Show All"
+msgstr ""
 
 #: lclstrconsts.rsmarooncolorcaption
 msgid "Maroon"
@@ -1089,10 +926,9 @@ msgstr "מפת פיקסלים ברת ניידות"
 msgid "Post"
 msgstr "אחרי"
 
-#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpresscanceltok
-#, fuzzy,badformat
-msgid "%s%sPress OK to ignore and risk data corruption.%sPress Cancel to kill the program."
-msgstr "לחץ אישור להתעלמות וסיכון של השחתת מידע. לחץ ביטול כדי להרוג את התכנית."
+#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpressaborttok
+msgid "%s%sPress OK to ignore and risk data corruption.%sPress Abort to kill the program."
+msgstr ""
 
 #: lclstrconsts.rspriorrecordhint
 msgctxt "lclstrconsts.rspriorrecordhint"
@@ -1274,6 +1110,10 @@ msgstr "כחלחל ירקרק"
 msgid "Text"
 msgstr "טקסט"
 
+#: lclstrconsts.rsthebuiltinurlisreadonlychangethebaseurlinstead
+msgid "The built-in URL is read only. Change the BaseURL instead."
+msgstr ""
+
 #: lclstrconsts.rstiff
 msgid "Tagged Image File Format"
 msgstr "פורמט מתוייג של קובץ דמות"
@@ -1378,6 +1218,10 @@ msgstr "צהוב"
 #: lclstrconsts.scannotfocus
 msgid "Cannot focus a disabled or invisible window"
 msgstr "לא יכול להתמקד בחלון מנוטרל או בלתי נראה"
+
+#: lclstrconsts.scannotsetdesigntimeppi
+msgid "Cannot set design time PPI."
+msgstr ""
 
 #: lclstrconsts.sduplicatemenus
 msgid "Duplicate menus"
@@ -1509,10 +1353,6 @@ msgstr "מקש טאב"
 msgctxt "lclstrconsts.smkcup"
 msgid "Up"
 msgstr "למעלה"
-
-#: lclstrconsts.snomdiform
-msgid "No MDI form present."
-msgstr "לא קיים טופס MDI "
 
 #: lclstrconsts.snotimers
 msgid "No timers available"

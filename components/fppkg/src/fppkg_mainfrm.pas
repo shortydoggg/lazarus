@@ -25,18 +25,25 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 unit fppkg_mainfrm;
 
 {$mode objfpc}{$H+}
 
+{$ifndef ver3}
+{$error This packagemanager only works with fpc 3.1.1 or higher.}
+{$endif}
+
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, StdCtrls, ComCtrls, ExtCtrls, Buttons,
-  Menus, CheckLst, Dialogs, fppkg_const,
+  Classes, SysUtils,
+  lazCollections,
+  Forms, Controls, StdCtrls, ComCtrls, ExtCtrls, Buttons,
+  Menus, CheckLst, Dialogs, fppkg_const, LCLIntf, LMessages,
   fppkg_optionsfrm, fppkg_details,
+  pkgFppkg,
   //IDE interface
   {$IFDEF LazarusIDEPackage}
     PackageIntf, IDECommands, contnrs, fppkg_lpk,
@@ -45,14 +52,12 @@ uses
   fprepos,
   pkgmessages, pkgglobals, pkgoptions, pkgrepos, laz_pkgrepos,
   // Package Handler components
-  pkghandler, laz_pkghandler, laz_pkgcommands, pkgcommands,
+  pkghandler, pkgcommands,
   //downloader
-  pkgfphttp;
+  pkgfphttp,
+  FppkgWorkerThread;
 
 type
-  TFppkgConfigOptions = record
-    ConfigFile: string;
-  end;
 
   { TFppkgForm }
 
@@ -95,6 +100,7 @@ type
     CleanButton: TToolButton;
     ArchiveButton: TToolButton;
     DownloadButton: TToolButton;
+    UninstallButton: TToolButton;
     VertSplitter: TSplitter;
     procedure ArchiveButtonClick(Sender: TObject);
     procedure BuildButtonClick(Sender: TObject);
@@ -103,6 +109,7 @@ type
     procedure CompileButtonClick(Sender: TObject);
     procedure DownloadButtonClick(Sender: TObject);
     procedure FixBrokenButtonClick(Sender: TObject);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: boolean);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure InstallButtonClick(Sender: TObject);
@@ -114,26 +121,49 @@ type
     procedure miExitClick(Sender: TObject);
     procedure miSelectClick(Sender: TObject);
     procedure miUnselectClick(Sender: TObject);
+    procedure PanelClick(Sender: TObject);
     procedure SearchButtonClick(Sender: TObject);
     procedure SearchEditKeyUp(Sender: TObject; var Key: word; Shift: TShiftState);
     procedure SupportCheckGroupItemClick(Sender: TObject; Index: integer);
+    procedure UninstallButtonClick(Sender: TObject);
     procedure UpdateButtonClick(Sender: TObject);
+    procedure HandleLog(var Msg: TLMessage); message WM_LogMessageWaiting;
+    procedure HandleWorkerThreadDone(var Msg: TLMessage); message WM_WorkerThreadDone;
   private
     SearchPhrases: TStrings;
 
-    function FindSearchPhrase(pkg: TLazPackageData): boolean;
-    function FindCategory(pkg: TLazPackageData): boolean;
-    function FindSupport(pkg: TLazPackageData): boolean;
+    FBufferLogLines: TStrings;
+    FLogMonitor: TLazMonitor;
+    FMainThreadTriggered: Boolean;
+
+    FFPpkg: TpkgFPpkg;
+    FLazPackages: TLazPackages;
+    FErrors: TStringList;
+    FCurrentlyRunningTaskDescription: string;
+
+    FWorkerThread: TFppkgWorkerThread;
+
+    function PkgColumnValue(AName: string; pkg: TLazPackage): string;
+
+    function FindSearchPhrase(pkg: TLazPackage): boolean;
+    function FindCategory(pkg: TLazPackage): boolean;
+    function FindSupport(pkg: TLazPackage): boolean;
     procedure GetSelectedPackages(var s: TStrings);
 
     procedure MaybeCreateLocalDirs;
-    procedure DoRun(cfg: TFppkgConfigOptions; ParaAction: string; ParaPackages: TStrings);
-    procedure LoadCompilerDefaults;
+    procedure DoRun(cfg: TFppkgConfigOptions; ParaAction: string; ParaPackages: TStrings; Description: string);
 
     procedure UpdatePackageListView;
     procedure ListPackages;
-  public
 
+    procedure LoadFppkgConfiguration;
+    procedure RescanPackages;
+    procedure SetupColumns;
+
+    procedure ShowError(const Description, Error: String);
+  public
+    procedure OnErrorThreadSafe(const Msg: String);
+    procedure OnLogThreadSafe(const Msg: String);
   end;
 
 var
@@ -145,7 +175,23 @@ implementation
 {$R *.lfm}
 
 uses
-  Masks, fppkg_aboutfrm;
+  Masks, fppkg_aboutfrm, fppkg_initializeoptionsfrm;
+
+resourcestring
+  SErrActionFailed    = 'Failed to %s: ' + sLineBreak + sLineBreak + '%s';
+  SMsgActionSucceeded = '%s succeeded.';
+  SMsgFppkgRunning    = 'A prior command is still in progress.';
+  SActFixBroken       = 'fix broken packages';
+  SActCleanPackages   = 'clean package(s)';
+  SActCompilePackages = 'compile packages';
+  SActDownloadPackages= 'download packages';
+  SActArchivePackages = 'create archive(s) for package(s)';
+  SActBuildPackages   = 'build package(s)';
+  SActInstallPackages = 'install package(s)';
+  SActUnInstPackages  = 'uninstall package(s)';
+  SActUpdate          = 'update repository';
+  SActInitializeFppkg = 'initialize fppkg';
+
 
 procedure LazLog(Level: TLogLevel; const Msg: string);
 var
@@ -153,34 +199,34 @@ var
 begin
   if not(Level in LogLevels) then
     exit;
-  Prefix:='';
   case Level of
-    {$IF FPC_FULLVERSION > 20602}
     llWarning :
       Prefix:=SWarning;
     llError :
       Prefix:=SError;
-    {$ELSE}
-    vlWarning :
-      Prefix:=SWarning;
-    vlError :
-      Prefix:=SError;
-    {$ENDIF}
-{    vlInfo :
-      Prefix:='I: ';
-    vlCommands :
-      Prefix:='C: ';
-    vlDebug :
-      Prefix:='D: '; }
+    llInfo :
+      Prefix:=SInfo;
+    llCommands :
+      Prefix:=SCommand;
+    llDebug :
+      Prefix:=SDebug;
+    llProgress :
+      Prefix:=SProgress
+  else
+    Prefix := '';
   end;
 
   if Assigned(FppkgForm) then
-    FppkgForm.OutputMemo.Lines.Add(DateTimeToStr(Now) + ' ' + Prefix + ' ' + Msg);
+    FppkgForm.OnLogThreadSafe(DateTimeToStr(Now) + ' ' + Prefix + ' ' + Msg);
 end;
 
 procedure LazError(const Msg: String);
 begin
-  ShowMessage(Msg);
+  LazLog(llError, Msg);
+  if Assigned(FppkgForm) then
+    FppkgForm.OnErrorThreadSafe(Msg)
+  else
+    ShowMessage(Msg);
 end;
 
 { TFppkgForm }
@@ -190,10 +236,19 @@ var
   s: TStrings;
 begin
   s := TStringList.Create;
-  DoRun(FppkgCfg, 'laz_fixbroken', s);
+  DoRun(FppkgCfg, 'fixbroken', s, SActFixBroken);
   ListPackages;
   UpdatePackageListView;
   s.Free;
+end;
+
+procedure TFppkgForm.FormCloseQuery(Sender: TObject; var CanClose: boolean);
+begin
+  if Assigned(FWorkerThread) and not FWorkerThread.Finished then
+    begin
+      ShowMessage(SMsgFppkgRunning);
+      CanClose := False;
+    end;
 end;
 
 procedure TFppkgForm.CleanButtonClick(Sender: TObject);
@@ -205,9 +260,9 @@ begin
   GetSelectedPackages(s);
 
   if s.Count = 0 then
-    Error(SErrNoPackageSpecified)
+    ShowError(SActCleanPackages, SErrNoPackageSpecified)
   else
-    DoRun(FppkgCfg, 'clean', s);
+    DoRun(FppkgCfg, 'clean', S, SActCleanPackages);
 
   s.Free;
 end;
@@ -221,9 +276,9 @@ begin
   GetSelectedPackages(s);
 
   if s.Count = 0 then
-    Error(SErrNoPackageSpecified)
+    ShowError(SActCompilePackages, SErrNoPackageSpecified)
   else
-    DoRun(FppkgCfg, 'compile', s);
+    DoRun(FppkgCfg, 'compile', s, SActCompilePackages);
 
   s.Free;
 end;
@@ -237,9 +292,9 @@ begin
   GetSelectedPackages(s);
 
   if s.Count = 0 then
-    Error(SErrNoPackageSpecified)
+    ShowError(SActDownloadPackages, SErrNoPackageSpecified)
   else
-    DoRun(FppkgCfg, 'download', s);
+    DoRun(FppkgCfg, 'download', s, SActDownloadPackages);
 
   s.Free;
 end;
@@ -253,9 +308,9 @@ begin
   GetSelectedPackages(s);
 
   if s.Count = 0 then
-    Error(SErrNoPackageSpecified)
+    ShowError(SActArchivePackages, SErrNoPackageSpecified)
   else
-    DoRun(FppkgCfg, 'archive', s);
+    DoRun(FppkgCfg, 'archive', s, SActArchivePackages);
 
   s.Free;
 end;
@@ -269,9 +324,9 @@ begin
   GetSelectedPackages(s);
 
   if s.Count = 0 then
-    Error(SErrNoPackageSpecified)
+    ShowError(SActBuildPackages, SErrNoPackageSpecified)
   else
-    DoRun(FppkgCfg, 'build', s);
+    DoRun(FppkgCfg, 'build', s, SActBuildPackages);
 
   s.Free;
 end;
@@ -284,12 +339,30 @@ end;
 procedure TFppkgForm.FormCreate(Sender: TObject);
 begin
   //setup log callback function
+
+  // This is a strange hack. When a message is send to this form while it
+  // is being created, the checkboxes in the PackageListView are not visible
+  // afterwards.
+  FMainThreadTriggered := True;
+
+  FLogMonitor := TLazMonitor.Create;
+  FBufferLogLines := TStringList.Create;
+  LogLevels := AllLogLevels;
   LogHandler := @LazLog;
 
   //setup error callback function
   ErrorHandler := @LazError;
-  SetDefaultRepositoryClass(TLazFPRepository);
 
+  if not TInitializeOptionsForm.CheckInitialConfiguration then
+    begin
+    Application.Terminate;
+    Exit;
+    end;
+  TInitializeOptionsForm.CheckLazarusConfiguration;
+
+  FFPpkg := TpkgFPpkg.Create(Self);
+
+  LoadFppkgConfiguration;
 
   Caption := rsFreePascalPackageManagerForLazarus;
 
@@ -300,14 +373,32 @@ begin
   SearchPhrases := TStringList.Create;
   SearchPhrases.Delimiter := ' ';
 
-  ListPackages;
+  FLazPackages := TLazPackages.Create(Self);
+  FLazPackages.PackageManager := FFPpkg;
 
-  UpdatePackageListView;
+  SetupColumns;
+
+  RescanPackages;
+
+  FLogMonitor.Enter;
+  // Hack, see the earlier comment.
+  FMainThreadTriggered := false;
+  FErrors := TStringList.Create;
+  FLogMonitor.Release;
 end;
 
 procedure TFppkgForm.FormDestroy(Sender: TObject);
 begin
-  FreeAndNil(AvailableRepository);
+  if Assigned(FWorkerThread) then
+    begin
+      FWorkerThread.Terminate;
+      FWorkerThread.WaitFor;
+      FWorkerThread.Free;
+    end;
+
+  FLogMonitor.Free;
+  FreeAndNil(FErrors);
+  FBufferLogLines.Free;
   SearchPhrases.Free;
 end;
 
@@ -315,6 +406,7 @@ procedure TFppkgForm.InstallButtonClick(Sender: TObject);
 var
   s: TStrings;
   {$IFDEF LazarusIDEPackage}
+(*
     P: TLazFPPackage;
     RebuildLazarus: boolean;
     PkgFlags: TPkgInstallInIDEFlags;
@@ -322,6 +414,7 @@ var
     InstPackages: TObjectList;
     i, j, k: integer;
     LPKFile: string;
+*)
   {$ENDIF}
 begin
   s := TStringList.Create;
@@ -329,21 +422,22 @@ begin
   GetSelectedPackages(s);
 
   if s.Count = 0 then
-    Error(SErrNoPackageSpecified)
+    ShowError(SActInstallPackages, SErrNoPackageSpecified)
   else
   begin
-    DoRun(FppkgCfg, 'install', s);
+    DoRun(FppkgCfg, 'install', s, SActInstallPackages);
     ListPackages;
     UpdatePackageListView;
 
     {$IFDEF LazarusIDEPackage}
+(*
     RebuildLazarus := False;
     InstPackages:=TObjectList.create;
     try
       PkgFlags := [piiifQuiet];
       for i:=0 to s.Count-1 do
       begin
-        P := InstalledRepository.FindPackage(s.Strings[i]) as TLazFPPackage;
+        P := Repository.FindPackage(s.Strings[i]) as TLazFPPackage;
         if P.HasLazarusPackageFiles then
           for j := 0 to p.LazarusPackageFiles.Count-1 do
           begin
@@ -380,6 +474,7 @@ begin
     end;
     if RebuildLazarus then
       ExecuteIDECommand(Self, ecBuildLazarus);
+*)
     {$ENDIF}
   end;
   s.Free;
@@ -414,6 +509,7 @@ begin
     PkgDetailsForm := TPkgDetailsForm.Create(Self);
 
   PkgDetailsForm.PackageName := PackageListView.Selected.Caption;
+  PkgDetailsForm.LazPackages := FLazPackages;
   PkgDetailsForm.ShowModal;
 
   FreeAndNil(PkgDetailsForm);
@@ -427,6 +523,7 @@ begin
   OptionsForm.ShowModal;
 
   //to be sure setup the view again
+  SetupColumns;
   UpdatePackageListView;
 end;
 
@@ -453,6 +550,11 @@ begin
       PackageListView.Items[i].Checked := False;
 end;
 
+procedure TFppkgForm.PanelClick(Sender: TObject);
+begin
+
+end;
+
 procedure TFppkgForm.SearchButtonClick(Sender: TObject);
 begin
   SearchPhrases.DelimitedText := SearchEdit.Text;
@@ -474,24 +576,80 @@ begin
   UpdatePackageListView;
 end;
 
+procedure TFppkgForm.UninstallButtonClick(Sender: TObject);
+var
+  s: TStrings;
+begin
+  s := TStringList.Create;
+
+  GetSelectedPackages(s);
+
+  if s.Count = 0 then
+    ShowError(SActUnInstPackages, SErrNoPackageSpecified)
+  else
+  begin
+    DoRun(FppkgCfg, 'uninstall', s, SActUnInstPackages);
+    ListPackages;
+    UpdatePackageListView;
+  end;
+  s.Free;
+end;
+
 procedure TFppkgForm.UpdateButtonClick(Sender: TObject);
 var
   s: TStrings;
 begin
   s := TStringList.Create;
-  DoRun(FppkgCfg, 'update', s);
+  DoRun(FppkgCfg, 'update', s, SActUpdate);
   UpdatePackageListView;
   s.Free;
 end;
 
-procedure TFppkgForm.MaybeCreateLocalDirs;
+procedure TFppkgForm.HandleLog(var Msg: TLMessage);
+var
+  SB: TMemoScrollbar;
 begin
-  ForceDirectories(GlobalOptions.BuildDir);
-  ForceDirectories(GlobalOptions.ArchivesDir);
-  ForceDirectories(GlobalOptions.CompilerConfigDir);
+  FLogMonitor.Enter;
+  try
+    OutputMemo.Lines.AddStrings(FBufferLogLines);
+    FBufferLogLines.Clear;
+    FMainThreadTriggered := false;
+    SB := OutputMemo.VertScrollBar;
+    SB.Position := SB.Range - SB.Page;
+  finally
+    FLogMonitor.Leave;
+  end;
 end;
 
-function TFppkgForm.FindSearchPhrase(pkg: TLazPackageData): boolean;
+procedure TFppkgForm.HandleWorkerThreadDone(var Msg: TLMessage);
+var
+  s: String;
+begin
+  FLogMonitor.Enter;
+  try
+    if FErrors.Count>0 then
+      ShowError(FCurrentlyRunningTaskDescription, FErrors[0])
+    else
+      begin
+        s := Format(SMsgActionSucceeded, [FCurrentlyRunningTaskDescription]);
+        s[1] := upCase(s[1]);
+        ShowMessage(s);
+      end;
+  finally
+    FLogMonitor.Leave;
+  end;
+  FreeAndNil(FWorkerThread);
+  RescanPackages;
+end;
+
+procedure TFppkgForm.MaybeCreateLocalDirs;
+begin
+  ForceDirectories(FFPpkg.Options.GlobalSection.BuildDir);
+  ForceDirectories(FFPpkg.Options.GlobalSection.ArchivesDir);
+  ForceDirectories(FFPpkg.Options.GlobalSection.CompilerConfigDir);
+end;
+
+function TFppkgForm.FindSearchPhrase(pkg: TLazPackage): boolean;
 var
   i: integer;
   searchmask: string;
@@ -516,7 +674,7 @@ begin
   end;
 end;
 
-function TFppkgForm.FindCategory(pkg: TLazPackageData): boolean;
+function TFppkgForm.FindCategory(pkg: TLazPackage): boolean;
 var
   i: integer;
   searchmask: string;
@@ -545,19 +703,19 @@ begin
   end;
 end;
 
-function TFppkgForm.FindSupport(pkg: TLazPackageData): boolean;
+function TFppkgForm.FindSupport(pkg: TLazPackage): boolean;
 begin
   Result := False;
 
   //FPC
-  Result := Result or (SupportCheckGroup.Checked[0] and (pkg.Category = 'FPC'));
+  Result := Result or (SupportCheckGroup.Checked[0] and (pkg.Support = 'FPC'));
 
   //Lazarus
-  Result := Result or (SupportCheckGroup.Checked[1] and (pkg.Category = 'Lazarus'));
+  Result := Result or (SupportCheckGroup.Checked[1] and (pkg.Support = 'Lazarus'));
 
   //Rest
   Result := Result or (SupportCheckGroup.Checked[2] and
-    ((pkg.Category <> 'FPC') and (pkg.Category <> 'Lazarus')));
+    ((pkg.Support <> 'FPC') and (pkg.Support <> 'Lazarus')));
 end;
 
 procedure TFppkgForm.GetSelectedPackages(var s: TStrings);
@@ -569,227 +727,52 @@ begin
       s.Add(PackageListView.Items[i].Caption);
 end;
 
-procedure TFppkgForm.LoadCompilerDefaults;
-var
-  S: string;
+procedure TFppkgForm.DoRun(cfg: TFppkgConfigOptions; ParaAction: string; ParaPackages: TStrings;
+  Description: string);
 begin
-  // Load default compiler config
-  S := GlobalOptions.CompilerConfigDir + GlobalOptions.CompilerConfig;
-  CompilerOptions.UpdateLocalRepositoryOption;
-  if FileExists(S) then
-  begin
-    pkgglobals.Log({$IF FPC_FULLVERSION > 20602}llDebug{$ELSE}vlDebug{$ENDIF}, SLogLoadingCompilerConfig, [S]);
-    CompilerOptions.LoadCompilerFromFile(S);
-  end
-  else
-  begin
-    // Generate a default configuration if it doesn't exists
-    if GlobalOptions.CompilerConfig = 'default' then
+  if Assigned(FWorkerThread) then
     begin
-      pkgglobals.Log({$IF FPC_FULLVERSION > 20602}llDebug{$ELSE}vlDebug{$ENDIF}, SLogGeneratingCompilerConfig, [S]);
-      CompilerOptions.InitCompilerDefaults;
-      CompilerOptions.SaveCompilerToFile(S);
-      if CompilerOptions.SaveInifileChanges then
-        CompilerOptions.SaveCompilerToFile(S);
-    end
-    else
-      Error(SErrMissingCompilerConfig, [S]);
-  end;
-  // Log compiler configuration
-  CompilerOptions.LogValues({$IF FPC_FULLVERSION > 20602}llDebug{$ELSE}vlDebug{$ENDIF}, '');
-  // Load FPMake compiler config, this is normally the same config as above
-  S := GlobalOptions.CompilerConfigDir + GlobalOptions.FPMakeCompilerConfig;
-  FPMakeCompilerOptions.UpdateLocalRepositoryOption;
-  if FileExists(S) then
-  begin
-    pkgglobals.Log({$IF FPC_FULLVERSION > 20602}llDebug{$ELSE}vlDebug{$ENDIF}, SLogLoadingFPMakeCompilerConfig, [S]);
-    FPMakeCompilerOptions.LoadCompilerFromFile(S);
-    if FPMakeCompilerOptions.SaveInifileChanges then
-      FPMakeCompilerOptions.SaveCompilerToFile(S);
-  end
-  else
-    Error(SErrMissingCompilerConfig, [S]);
-  // Log compiler configuration
-  FPMakeCompilerOptions.LogValues({$IF FPC_FULLVERSION > 20602}llDebug{$ELSE}vlDebug{$ENDIF}, 'fpmake-building ');
-end;
-
-procedure TFppkgForm.DoRun(cfg: TFppkgConfigOptions; ParaAction: string;
-  ParaPackages: TStrings);
-var
-  ActionPackage: TFPPackage;
-  OldCurrDir: string;
-  i: integer;
-  SL: TStringList;
-begin
-  OldCurrDir := GetCurrentDir;
-  try
-    LoadGlobalDefaults(cfg.ConfigFile);
-    //ProcessCommandLine(true);
-
-    // Scan is special, it doesn't need a valid local setup
-    if (ParaAction = 'laz_scan') then
-    begin
-      RebuildRemoteRepository;
-      ListRemoteRepository;
-      SaveRemoteRepository;
-      exit;
-    end;
-
-    MaybeCreateLocalDirs;
-    if not GlobalOptions.SkipConfigurationFiles then
-      LoadCompilerDefaults
-    else
-    begin
-      FPMakeCompilerOptions.InitCompilerDefaults;
-      CompilerOptions.InitCompilerDefaults;
-    end;
-
-    // The command-line is parsed for the second time, to make it possible
-    // to override the values in the compiler-configuration file. (like prefix)
-    //ProcessCommandLine(false);
-
-    // If CompilerVersion, CompilerOS or CompilerCPU is still empty, use the
-    // compiler-executable to get them
-    FPMakeCompilerOptions.CheckCompilerValues;
-    CompilerOptions.CheckCompilerValues;
-
-    LoadLocalAvailableMirrors;
-
-    // Load local repository, update first if this is a new installation
-    // errors will only be reported as warning. The user can be bootstrapping
-    // and do an update later
-    if not FileExists(GlobalOptions.LocalPackagesFile) then
-    begin
-      try
-        laz_pkghandler.Laz_ExecuteAction('', 'laz_update');
-      except
-        on E: Exception do
-          pkgglobals.Log({$IF FPC_FULLVERSION > 20602}llWarning{$ELSE}vlWarning{$ENDIF}, E.Message);
-      end;
-    end;
-    LoadLocalAvailableRepository;
-    FindInstalledPackages(FPMakeCompilerOptions, True);
-    CheckFPMakeDependencies;
-    // We only need to reload the status when we use a different
-    // configuration for compiling fpmake
-    if GlobalOptions.CompilerConfig <> GlobalOptions.FPMakeCompilerConfig then
-      FindInstalledPackages(CompilerOptions, True);
-
-    // Check for broken dependencies
-    if not GlobalOptions.AllowBroken and
-      (((ParaAction = 'laz_fixbroken') and (ParaPackages.Count > 0)) or
-      (ParaAction = 'laz_compile') or (ParaAction = 'laz_build') or
-      (ParaAction = 'laz_install') or (ParaAction = 'laz_archive')) then
-    begin
-      pkgglobals.Log({$IF FPC_FULLVERSION > 20602}llDebug{$ELSE}vlDebug{$ENDIF}, SLogCheckBrokenDependenvies);
-      SL := TStringList.Create;
-      if FindBrokenPackages(SL) then
-        Error(SErrBrokenPackagesFound);
-      FreeAndNil(SL);
-    end;
-
-    if ParaPackages.Count = 0 then
-    begin
-      ActionPackage := AvailableRepository.AddPackage(CurrentDirPackageName);
-      laz_pkghandler.Laz_ExecuteAction(CurrentDirPackageName, ParaAction);
-    end
-    else
-    begin
-      // Process packages
-      for i := 0 to ParaPackages.Count - 1 do
-      begin
-        if sametext(ExtractFileExt(ParaPackages[i]), '.zip') and
-          FileExists(ParaPackages[i]) then
+      if not FWorkerThread.Finished then
         begin
-          ActionPackage := AvailableRepository.AddPackage(CmdLinePackageName);
-          ActionPackage.LocalFileName := ExpandFileName(ParaPackages[i]);
-          laz_pkghandler.Laz_ExecuteAction(CmdLinePackageName, ParaAction);
-        end
-        else
-        begin
-          pkgglobals.Log({$IF FPC_FULLVERSION > 20602}llDebug{$ELSE}vlDebug{$ENDIF}, SLogCommandLineAction,['[' + ParaPackages[i] + ']', ParaAction]);
-          laz_pkghandler.Laz_ExecuteAction(ParaPackages[i], ParaAction);
+          ShowMessage(SMsgFppkgRunning);
+          Exit;
         end;
-      end;
+      FWorkerThread.WaitFor;
+      FWorkerThread.Free;
     end;
-
-    // Recompile all packages dependent on this package
-    if (ParaAction = 'install') and not GlobalOptions.SkipFixBrokenAfterInstall then
-      laz_pkghandler.Laz_ExecuteAction('', 'fixbroken');
-
-  except
-    On E: Exception do
-    begin
-      Error(SErrException);
-      Error(E.Message);
-      exit;
-    end;
-  end;
-  SetCurrentDir(OldCurrDir);
+  FErrors.Clear;
+  FCurrentlyRunningTaskDescription := Description;
+  FWorkerThread := TFppkgWorkerThread.Create(ParaAction, ParaPackages, Description, Handle);
 end;
 
-function PkgColumnValue(AName: string; pkg: TLazPackageData): string;
+function TFppkgForm.PkgColumnValue(AName: string; pkg: TLazPackage): string;
 begin
-  if AName = 'Name' then
-    Result := pkg.Name;
-  if AName = 'Installed' then
-    Result := pkg.InstalledVersion;
-  if AName = 'Available' then
-    Result := pkg.AvialableVersion;
-  if AName = 'Description' then
-    Result := pkg.Description;
-  if AName = 'State' then
-    Result := pkg.State;
-  if AName = 'Keywords' then
-    Result := pkg.Keywords;
-  if AName = 'Category' then
-    Result := pkg.Category;
-  if AName = 'Support' then
-    Result := pkg.Support;
-  if AName = 'Author' then
-    Result := pkg.Author;
-  if AName = 'License' then
-    Result := pkg.License;
-  if AName = 'HomepageURL' then
-    Result := pkg.HomepageURL;
-  if AName = 'DownloadURL' then
-    Result := pkg.DownloadURL;
-  if AName = 'FileName' then
-    Result := pkg.FileName;
-  if AName = 'Email' then
-    Result := pkg.Email;
-  if AName = 'OS' then
-    Result := pkg.OS;
-  if AName = 'CPU' then
-    Result := pkg.CPU;
+  case AName of
+    'Name'    : Result := pkg.Name;
+    'State'   : Result := SLazPackageInstallStateString[pkg.State];
+    'Version' : Result := pkg.Version;
+    'Info'    : Result := pkg.GetInfo(FFPpkg);
+    'Description' : Result := pkg.Description;
+    'Keywords': Result := pkg.Keywords;
+    'Category': Result := pkg.Category;
+  end;
 end;
 
 procedure TFppkgForm.UpdatePackageListView;
 var
   i, c: integer;
   li: TListItem;
-  pkg: TLazPackageData;
-  col: TListColumn;
+  pkg: TLazPackage;
   f: boolean;
 begin
   //setup the package listview
   PackageListView.BeginUpdate;
 
-  //setup columns
-  PackageListView.Columns.Clear;
-  for c := 0 to LazPkgOptions.PkgColumnCount - 1 do
-    if LazPkgOptions.PkgColumns[c].Visible then
-    begin
-      col := PackageListView.Columns.Add;
-      col.Caption := LazPkgOptions.PkgColumns[c].Name;
-      col.AutoSize := True;
-    end;
-
   PackageListView.Clear;
 
-  for i := 0 to Laz_Packages.Count - 1 do
+  for i := 0 to FLazPackages.Count - 1 do
   begin
-    pkg := Laz_Packages.PkgData[i];
+    pkg := FLazPackages.PkgData[i];
 
     if FindSearchPhrase(pkg) and FindCategory(pkg) and FindSupport(pkg) then
     begin
@@ -824,22 +807,31 @@ end;
 
 procedure TFppkgForm.ListPackages;
 var
-  s: TStringList;
-  i: integer;
-  pkg: TLazPackageData;
+  i, RepoIndex: integer;
   cat: string;
+  Repository: TFPRepository;
+  Package: TFPPackage;
+  pkg: TLazPackage;
 begin
   //update the package list
-  s := TStringList.Create;
-  DoRun(FppkgCfg, 'laz_list', s);
-  s.Free;
+  FLazPackages.Clear;
+
+  for RepoIndex := 0 to FFPpkg.RepositoryList.Count -1 do
+  begin
+    Repository := FFPpkg.RepositoryList.Items[RepoIndex] as TFPRepository;
+    for i := 0 to Repository.PackageCount -1 do
+    begin
+      Package := Repository.Packages[i];
+      FLazPackages.AddFPPackage(Package);
+    end;
+  end;
 
   //setup the categories listview
   CategoryCheckListBox.Clear;
   CategoryCheckListBox.Items.Add('All');
-  for i := 0 to Laz_Packages.Count - 1 do
+  for i := 0 to FLazPackages.Count - 1 do
   begin
-    pkg := Laz_Packages.PkgData[i];
+    pkg := FLazPackages.PkgData[i];
 
     if pkg.Category = '' then
       cat := 'Unknown'
@@ -853,6 +845,113 @@ begin
   //check all the items
   for i := 0 to CategoryCheckListBox.Count - 1 do
     CategoryCheckListBox.Checked[i] := True;
+end;
+
+procedure TFppkgForm.LoadFppkgConfiguration;
+var
+  i: Integer;
+begin
+  FFPpkg.InitializeGlobalOptions('');
+
+  FFPpkg.Options.GlobalSection.Downloader := 'FPC';
+
+  SetLength(FPMKUnitDeps,FPMKUnitDepDefaultCount);
+  for i := 0 to FPMKUnitDepDefaultCount-1 do
+    FPMKUnitDeps[i]:=FPMKUnitDepsDefaults[i];
+
+  FFPpkg.InitializeCompilerOptions;
+
+  FFPpkg.CompilerOptions.CheckCompilerValues;
+  FFPpkg.FpmakeCompilerOptions.CheckCompilerValues;
+
+  FFPpkg.ScanPackages;
+
+  if not Assigned(FFPpkg.FindPackage('rtl', pkgpkInstalled)) then
+    begin
+      ShowMessage('Fppkg seems to be configured, but the RTL could not be found. Please fix the Fppkg-configuration with the wizard or manualy.');
+      if TInitializeOptionsForm.RecreateFppkgConfiguration then
+        begin
+          LoadFppkgConfiguration;
+        end;
+    end
+  else if not Assigned(FFPpkg.FindPackage('lcl', pkgpkInstalled)) then
+    begin
+      ShowMessage('Fppkg seems to be configured for using Lazarus-packages, but the LCL could not be found. Please fix the Fppkg-configuration for Lazarus with the wizard or manualy.');
+      if TInitializeOptionsForm.RecreateLazarusConfiguration then
+        begin
+          LoadFppkgConfiguration;
+        end;
+    end
+  else
+    FFPpkg.LoadLocalAvailableMirrors;
+end;
+
+procedure TFppkgForm.RescanPackages;
+begin
+  FFPpkg.ScanAvailablePackages;
+  FFPpkg.ScanPackages;
+  ListPackages;
+  UpdatePackageListView;
+end;
+
+procedure TFppkgForm.SetupColumns;
+var
+  c: Integer;
+  col: TListColumn;
+begin
+  PackageListView.BeginUpdate;
+  //setup columns
+  PackageListView.Columns.Clear;
+  for c := 0 to LazPkgOptions.PkgColumnCount - 1 do
+    if LazPkgOptions.PkgColumns[c].Visible then
+    begin
+      col := PackageListView.Columns.Add;
+      col.Caption := LazPkgOptions.PkgColumns[c].Name;
+      col.AutoSize := True;
+    end;
+  PackageListView.EndUpdate;
+end;
+
+procedure TFppkgForm.ShowError(const Description, Error: String);
+begin
+  ShowMessage(Format(SErrActionFailed, [Description, Error]))
+end;
+
+procedure TFppkgForm.OnErrorThreadSafe(const Msg: String);
+begin
+  // Cache all errors and show the them after a command has been finished
+  // completely. This because most problems lead to multiple errors, which is
+  // annoying in a GUI-environment
+  FLogMonitor.Enter;
+  try
+    if Assigned(FErrors) then
+      begin
+        FErrors.Add(Msg);
+        Exit;
+      end;
+  finally
+    FLogMonitor.Leave;
+  end;
+  ShowError(SActInitializeFppkg, Msg);
+end;
+
+procedure TFppkgForm.OnLogThreadSafe(const Msg: String);
+begin
+  FLogMonitor.Enter;
+  try
+    FBufferLogLines.Add(Msg);
+    if not FMainThreadTriggered then
+    begin
+      FMainThreadTriggered := true;
+      PostMessage(Handle, WM_LogMessageWaiting, 0, 0);
+    end
+    else
+    begin
+      FMainThreadTriggered := True;
+    end;
+  finally
+    FLogMonitor.Leave;
+  end;
 end;
 
 end.

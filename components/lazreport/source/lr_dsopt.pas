@@ -27,6 +27,7 @@ type
   TfrDesOptionsForm = class(TForm)
     ButtonPanel1: TButtonPanel;
     CheckBox1: TCheckBox;
+    CheckBox2: TCheckBox;
     ComboBox1: TComboBox;
     ComboBox2: TComboBox;
     GroupBox6: TGroupBox;
@@ -36,6 +37,7 @@ type
     Label3: TLabel;
     Label4: TLabel;
     Label5: TLabel;
+    Label6: TLabel;
     PageControl1: TPageControl;
     RadioButton1: TRadioButton;
     RadioButton2: TRadioButton;
@@ -121,6 +123,8 @@ begin
   Label3.Caption := sFRDesignerFormFontName;
   Label4.Caption := sFRDesignerFormFontSize;
   CheckBox1.Caption := sUseSyntaxHighlight;
+  //
+  CheckBox2.Caption:= sDesOptionsFormInPlace;
   FillFonts;
   RadioButton1Change(nil);
 end;

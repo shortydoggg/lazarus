@@ -184,7 +184,6 @@ class procedure TWin32WSCustomCheckListBox.DefaultWndHandler(
     OldColor: COLORREF;
     OldBkMode: Integer;
     sz: TSize;
-    AnsiBuffer: string;
     WideBuffer: widestring;
   begin
     Selected := (Data^.itemState and ODS_SELECTED) > 0;
@@ -214,9 +213,11 @@ class procedure TWin32WSCustomCheckListBox.DefaultWndHandler(
 
     Details := ThemeServices.GetElementDetails(ThemeStateMap[CheckListBox.State[Data^.ItemID], Enabled]);
     sz := ThemeServices.GetDetailSize(Details);
+    sz.cx := MulDiv(sz.cx, CheckListBox.Font.PixelsPerInch, ScreenInfo.PixelsPerInchX);
+    sz.cy := MulDiv(sz.cy, CheckListBox.Font.PixelsPerInch, ScreenInfo.PixelsPerInchY);
     ARect := Bounds((ARect.Left + ARect.Right - sz.cx) div 2, (ARect.Top + ARect.Bottom - sz.cy) div 2,
       sz.cx, sz.cy);
-    InflateRect(ARect, 1, 1);
+    OffsetRect(ARect, 1, 1);
     ThemeServices.DrawElement(Data^._HDC, Details, ARect);
 
     // draw text
@@ -241,18 +242,9 @@ class procedure TWin32WSCustomCheckListBox.DefaultWndHandler(
         OldColor := TColorRef(CheckListBox.GetDefaultColor(dctFont));
       OldColor := Windows.SetTextColor(Data^._HDC, ColorToRGB(TColor(OldColor)));
     end;
-    if UnicodeEnabledOS then
-    begin
-      WideBuffer := UTF8ToUTF16(CheckListBox.Items[Data^.ItemID]);
-      Windows.DrawTextW(Data^._HDC, PWideChar(WideBuffer), -1,
-       TextRect, TextFlags);
-    end
-    else
-    begin
-      AnsiBuffer := Utf8ToAnsi(CheckListBox.Items[Data^.ItemID]);
-      Windows.DrawText(Data^._HDC, PChar(AnsiBuffer), -1,
-       TextRect, TextFlags);
-    end;
+    WideBuffer := UTF8ToUTF16(CheckListBox.Items[Data^.ItemID]);
+    Windows.DrawTextW(Data^._HDC, PWideChar(WideBuffer), -1,
+     TextRect, TextFlags);
     // restore old colors
     Windows.SetTextColor(Data^._HDC, OldColor);
     Windows.SetBkMode(Data^._HDC, OldBkMode);

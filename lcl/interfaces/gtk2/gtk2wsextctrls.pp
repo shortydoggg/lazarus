@@ -1,4 +1,4 @@
-{ $Id: gtk2wsextctrls.pp 45601 2014-06-22 08:57:16Z mattias $}
+{ $Id: gtk2wsextctrls.pp 59221 2018-10-01 15:16:18Z mattias $}
 {
  *****************************************************************************
  *                             Gtk2WSExtCtrls.pp                             * 
@@ -143,6 +143,7 @@ type
     class procedure SetCallbacks(const AGtkWidget: PGtkWidget; const AWidgetInfo: PWidgetInfo); virtual;
   published
     class function CreateHandle(const AWinControl: TWinControl; const AParams: TCreateParams): TLCLIntfHandle; override;
+    class function GetDefaultColor(const {%H-}AControl: TControl; const ADefaultColorType: TDefaultColorType): TColor; override;
     class procedure SetColor(const AWinControl: TWinControl); override;
   end;
 
@@ -164,15 +165,13 @@ type
 
 implementation
 
-uses
 {$ifdef HasX}
-  x, xlib,
+uses
+  {$ifdef HasGdk2X}
+    gdk2x,
+  {$endif}
+  x, xlib;
 {$endif}
-//  gtk2, gdk2, glib2, gtk2def, gtk2proc,
-{$ifdef HasGdk2X}
-  gdk2x,
-{$endif}
-  interfacebase;
 
 { TGtk2WSCustomPanel }
 
@@ -240,12 +239,23 @@ begin
 
   // issue #23940. Hide panel if we are not visible, but before setting callbacks.
   // so it won't trigger unnecessary events to LCL.
-  if not AWinControl.Visible and not (csDesigning in AWinControl.ComponentState) then
+  if not AWinControl.HandleObjectShouldBeVisible and not (csDesigning in AWinControl.ComponentState) then
     gtk_widget_hide(Frame);
 
   SetCallbacks(Frame, WidgetInfo);
 
   Result := TLCLIntfHandle({%H-}PtrUInt(Frame));
+end;
+
+class function TGtk2WSCustomPanel.GetDefaultColor(const AControl: TControl;
+  const ADefaultColorType: TDefaultColorType): TColor;
+const
+  DefColors: array[TDefaultColorType] of TColor = (
+ { dctBrush } clBackground,
+ { dctFont } clBtnText
+  );
+begin
+  Result := DefColors[ADefaultColorType];
 end;
 
 class procedure TGtk2WSCustomPanel.SetColor(const AWinControl: TWinControl);

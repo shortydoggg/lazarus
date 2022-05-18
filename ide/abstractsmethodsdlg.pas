@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -255,7 +255,7 @@ end;
 
 function TAbstractMethodsDialog.AddOverrides(OnlyFirst: boolean): boolean;
 var
-  i: Integer;
+  i, BlockTopLine, BlockBottomLine: Integer;
   NewList: TFPList;
   Item: TAbstractMethodDlgItem;
 begin
@@ -273,14 +273,14 @@ begin
     
     //DebugLn(['TAbstractMethodsDialog.AddOverrides ',CodePos.Code.Filename,' ',CodePos.X,',',CodePos.Y]);
     if not CodeToolBoss.AddMethods(CodePos.Code,CodePos.X,CodePos.Y,TopLine,
-      NewList,true,NewCode,NewX,NewY,NewTopLine)
+      NewList,true,NewCode,NewX,NewY,NewTopLine,BlockTopLine,BlockBottomLine)
     then begin
       LazarusIDE.DoJumpToCodeToolBossError;
       exit;
     end;
     
     LazarusIDE.DoOpenFileAndJumpToPos(NewCode.Filename,Point(NewX,NewY),
-                                      NewTopLine,-1,-1,[]);
+                                      NewTopLine,BlockTopLine,BlockBottomLine,-1,-1,[]);
   finally
     CodeToolBoss.FreeListOfPCodeXYPosition(NewList);
   end;

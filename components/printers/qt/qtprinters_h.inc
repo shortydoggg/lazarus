@@ -1,21 +1,39 @@
 {%MainUnit ../osprinters.pas}
 uses
-  Classes, SysUtils, Printers, qt4, qtobjects,
-  LCLType, LCLProc;
+  Classes, SysUtils, Printers, {$IFDEF LCLQt5}qt5{$ELSE}qt4{$ENDIF}, qtobjects,
+  LCLType, LCLProc, LazUTF8;
 
 type
+  {$IFDEF LCLQt5}
+  QtLCLPrinterPageSize = QPagedPaintDevicePageSize;
+  {$ELSE}
+  QtLCLPrinterPageSize = QPrinterPageSize;
+  {$ENDIF}
+  TPaperRec = record
+    {$IFDEF LCLQt5}
+    PageSize: QPagedPaintDevicePageSize;
+    {$ELSE}
+    PageSize: QPrinterPageSize;
+    {$ENDIF}
+    PaperName: string;
+    PageRect: TRect;
+    PaperRect: TRect;
+  end;
+
   { TQtPrinters }
   TQtPrinters = class(TPrinter)
   private
-    FPagesEnum: TStrings;
     FPrinterHandle: TQtPrinter;
+    FDefaultPaperIndex: Integer;
+    FPapers: array of TPaperRec;
 
-    procedure CreatePrintSettings;
     procedure BeginPage;
     procedure EndPage;
     
+    procedure CachePapers(OnlySupportedByPrinter:boolean);
     procedure EnumQPrinters(Lst: TStrings);
-    procedure EnumQPapers(Lst: TStrings);
+    function IndexOfPaper(const Paper: string; RetDefault: boolean=true): Integer;
+    function IndexOfPageSize(const PageSize: QtLCLPrinterPageSize): Integer;
     function GetColorMode: QPrinterColorMode;
     function GetFullPage: Boolean;
     function GetPageOrder: QPrinterPageOrder;
@@ -54,10 +72,10 @@ type
     procedure DoDestroy; override;
   public
     procedure Validate;
-    function GetPaperSize(Const Str: String): QPrinterPageSize;
+    function GetPaperSize(Const Str: String): {$IFDEF LCLQt5}QPagedPaintDevicePageSize{$ELSE}QPrinterPageSize{$ENDIF};
   public
     constructor Create; override;
-    function Write(const {%H-}Buffer; {%H-}Count:Integer; var {%H-}Written: Integer): Boolean; override;
+    function Write(const {%H-}Buffer; {%H-}Count:Integer; out Written: Integer): Boolean; override;
 
     property ColorMode: QPrinterColorMode read GetColorMode write SetColorMode;
     property FullPage: Boolean read GetFullPage write SetFullPage;

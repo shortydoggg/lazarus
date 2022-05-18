@@ -31,7 +31,7 @@ interface
 
 uses
   Classes, StdCtrls,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -56,9 +56,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -91,7 +91,7 @@ end;
 
 procedure TfUses.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.UsesClause do
+  with FormattingSettings.UsesClause do
   begin
     cbRemoveEnabled.Checked   := RemoveEnabled;
     cbInsertInterface.Checked := InsertInterfaceEnabled;
@@ -113,7 +113,7 @@ end;
 
 procedure TfUses.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.UsesClause do
+  with FormattingSettings.UsesClause do
   begin
     RemoveEnabled      := cbRemoveEnabled.Checked;
     InsertInterfaceEnabled := cbInsertInterface.Checked;
@@ -131,7 +131,7 @@ end;
 
 class function TfUses.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 procedure TfUses.cbInsertInterfaceClick(Sender: TObject);

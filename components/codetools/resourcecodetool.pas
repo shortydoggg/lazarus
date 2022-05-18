@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -71,7 +71,6 @@ begin
   SrcLen:=length(Src);
   CurPos:=StartAtomPosition;
   LastAtoms.Clear;
-  NextPos.StartPos:=-1;
   CurNode:=nil;
   DoDeleteNodes(Tree.Root);
 end;
@@ -117,10 +116,8 @@ begin
   Result.StartPos:=-1;
   Result.EndPos:=-1;
   SetSource(ResourceCode);
-  if StartPos>=1 then begin
-    CurPos.StartPos:=StartPos;
-    CurPos.EndPos:=StartPos;
-  end;
+  if StartPos>=1 then
+    MoveCursorToCleanPos(StartPos);
 
   // search "LAZARUSRESOURCES.ADD('ResourceName',"
   ResourceNameInPascal:=''''+UpperCaseStr(ResourceName)+'''';

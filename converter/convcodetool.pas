@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -31,17 +31,19 @@ unit ConvCodeTool;
 interface
 
 uses
-  // RTL + FCL + LCL
-  Classes, SysUtils, contnrs, strutils, Forms, Controls, Dialogs,
+  // RTL + FCL
+  Classes, SysUtils, contnrs, strutils,
+  // LCL
+  Forms, Controls,
   // CodeTools
-  CodeToolManager, StdCodeTools, CodeTree, CodeAtom, FileProcs,
-  FindDeclarationTool, LFMTrees,
-  ExprEval, KeywordFuncLists, BasicCodeTools, LinkScanner,
-  CodeCache, SourceChanger, CustomCodeTool, CodeToolsStructs,
+  CodeToolManager, CodeTree, CodeAtom, FileProcs, KeywordFuncLists, BasicCodeTools,
+  LinkScanner, CodeCache, SourceChanger,
   // LazUtils
-  LazFileUtils,
+  LazFileUtils, AvgLvlTree,
+  // IdeIntf
+  IDEExternToolIntf,
   // IDE
-  LazIDEIntf, IDEExternToolIntf, FormEditor, LazarusIDEStrConsts,
+  LazarusIDEStrConsts,
   // Converter
   ConverterTypes, ConvertSettings, ReplaceNamesUnit, ReplaceFuncsUnit;
 
@@ -226,6 +228,7 @@ begin
       if not ReplaceFuncCalls(fIsConsoleApp) then exit;
   finally
     fCTLink.SrcCache.EndUpdate;
+    fCTLink.SrcCache.Apply;
   end;
   Result:=mrOK;
 end;
@@ -252,6 +255,7 @@ function TConvDelphiCodeTool.RenameUnitIfNeeded: boolean;
 // Change the unit name to match the disk name unless the disk name is all lowercase.
 var
   NamePos: TAtomPosition;
+  CaretPos: TCodeXYPosition;
   DiskNm, UnitNm: String;
 begin
   Result:=false;
@@ -265,7 +269,10 @@ begin
         SrcCache.MainScanner:=CodeTool.Scanner;
         SrcCache.Replace(gtNone, gtNone, NamePos.StartPos, NamePos.EndPos, DiskNm);
         if not SrcCache.Apply then exit;
-        fSettings.AddLogLine(Format(lisConvFixedUnitName, [UnitNm, DiskNm]));
+        if CodeTool.CleanPosToCaret(NamePos.StartPos, CaretPos) then
+          fSettings.AddLogLine(mluNote,
+            Format(lisConvFixedUnitName, [UnitNm, DiskNm]), fCode.Filename,
+            CaretPos.Y, CaretPos.X);
       end;
     end;
   end;
@@ -274,28 +281,30 @@ end;
 
 function TConvDelphiCodeTool.AddModeDelphiDirective: boolean;
 var
-  ModeDirectivePos: integer;
-  InsertPos: Integer;
+  NamePos: TAtomPosition;
+  CaretPos: TCodeXYPosition;
+  InsPos: Integer;
   s: String;
 begin
   Result:=false;
-  with fCTLink.CodeTool do begin
-    if not FindModeDirective(true,ModeDirectivePos) then begin
-      // add {$MODE Delphi} behind source type
-      if Tree.Root=nil then exit;
-      MoveCursorToNodeStart(Tree.Root);
-      ReadNextAtom; // 'unit', 'program', ..
-      ReadNextAtom; // name
-      ReadNextAtom; // semicolon
-      InsertPos:=CurPos.EndPos;
-      if fCTLink.Settings.SupportDelphi then
-        s:='{$IFDEF FPC}'+LineEnding+'  {$MODE Delphi}'+LineEnding+'{$ENDIF}'
-      else
-        s:='{$MODE Delphi}';
-      fCTLink.SrcCache.Replace(gtEmptyLine,gtEmptyLine,InsertPos,InsertPos,s);
-    end;
-    // changing mode requires rescan
-    BuildTree(lsrEnd);
+  with fCTLink do begin
+    if CodeTool.FindModeDirective(true,InsPos) then exit; // Already has mode directive.
+    Assert(Assigned(CodeTool.Tree.Root), 'AddModeDelphiDirective: Tree root is Nil.');
+    if not CodeTool.GetSourceNamePos(NamePos) then exit;  // "unit" or "program"
+    CodeTool.MoveCursorToCleanPos(NamePos.EndPos);
+    CodeTool.ReadNextAtom; // semicolon
+    InsPos:=CodeTool.CurPos.EndPos;
+    if Settings.SupportDelphi then
+      s:='{$IFDEF FPC}'+LineEnding+'  {$MODE Delphi}'+LineEnding+'{$ENDIF}'
+    else
+      s:='{$MODE Delphi}';
+    SrcCache.MainScanner:=CodeTool.Scanner;
+    SrcCache.Replace(gtEmptyLine, gtEmptyLine, InsPos, InsPos, s);
+    if not SrcCache.Apply then exit;
+    if CodeTool.CleanPosToCaret(InsPos, CaretPos) then
+      fSettings.AddLogLine(mluNote, lisConvAddedModeDelphiModifier,
+                           fCode.Filename, CaretPos.Y, CaretPos.X);
+    CodeTool.BuildTree(lsrEnd);   // changing mode requires rescan
   end;
   Result:=true;
 end;
@@ -367,7 +376,6 @@ begin
       end;
       CleanPos:=FindCommentEnd(Code.Source, CleanPos, CodeTool.Scanner.NestedComments);
     until false;
-    //SrcCache.Apply;
   end;
   Result:=true;
 end;
@@ -496,6 +504,7 @@ var
 
 var
   FuncInfo: TFuncReplacement;
+  CaretPos: TCodeXYPosition;
   PossibleCommentPos: Integer;               // Start looking for comments here.
   i: Integer;
   s, NewFunc, Comment: String;
@@ -510,24 +519,29 @@ begin
       ReplacementParams.Clear;
       PossibleCommentPos:=ParseReplacementParams(FuncInfo.ReplFunc);
       // Replace only if the params match somehow, so eg. a variable is not replaced.
-      if (FuncInfo.Params.Count>0) or (ReplacementParams.Count=0) then begin
+      if (FuncInfo.Params.Count>0) or (ReplacementParams.Count=0) then
+      with fCTLink do
+      begin
         NewFunc:=InsertParams2Replacement(FuncInfo);
         // Separate function body
         NewFunc:=NewFunc+FuncInfo.InclEmptyBrackets+FuncInfo.InclSemiColon;
-        if fCTLink.fSettings.FuncReplaceComment then
+        if fSettings.FuncReplaceComment then
           NewFunc:=NewFunc+Format(lisConvConvertedFrom, [FuncInfo.FuncName]);
         Comment:=GetComment(FuncInfo.ReplFunc, PossibleCommentPos);
         if Comment<>'' then            // Possible comment from the configuration
           NewFunc:=NewFunc+' { ' +Comment+' }';
         // Old function call with params for IDE message output.
-        s:=copy(fCTLink.CodeTool.Src, FuncInfo.StartPos, FuncInfo.EndPos-FuncInfo.StartPos);
+        s:=copy(CodeTool.Src, FuncInfo.StartPos, FuncInfo.EndPos-FuncInfo.StartPos);
         s:=StringReplace(s, #10, '', [rfReplaceAll]);
         s:=StringReplace(s, #13, '', [rfReplaceAll]);
         // Now replace it.
-        fCTLink.ResetMainScanner;
-        if not fCTLink.SrcCache.Replace(gtNone, gtNone,
+        ResetMainScanner;
+        if not SrcCache.Replace(gtNone, gtNone,
                             FuncInfo.StartPos, FuncInfo.EndPos, NewFunc) then exit;
-        fCTLink.fSettings.AddLogLine(Format(lisConvReplacedCall, [s, NewFunc]));
+        if CodeTool.CleanPosToCaret(FuncInfo.StartPos, CaretPos) then
+          fSettings.AddLogLine(mluNote,
+            Format(lisConvReplacedCall, [s, NewFunc]), fCode.Filename,
+            CaretPos.Y, CaretPos.X);
         // Add the required unit name to uses section if needed.
         if Assigned(AddUnitEvent) and (FuncInfo.UnitName<>'') then
           AddUnitEvent(FuncInfo.UnitName);

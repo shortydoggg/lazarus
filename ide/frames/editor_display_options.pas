@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,11 +25,16 @@ unit editor_display_options;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Dialogs, StdCtrls, Spin, LCLType, SynEdit,
-  SynEditMouseCmds, EditorOptions, LazarusIDEStrConsts, IDEOptionsIntf,
-  IDEUtils, editor_general_options, editor_color_options, IDEProcs,
-  SynGutterLineNumber, SynGutterLineOverview, SynGutter, SourceSynEditor,
-  SourceMarks;
+  Classes, SysUtils,
+  // LCL
+  Graphics, Dialogs, StdCtrls, Spin, LCLType, Controls, LCLProc,
+  // SynEdit
+  SynEdit, SynEditMouseCmds, SynGutterLineNumber, SynGutterLineOverview, SynGutter,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEUtils,
+  // IDE
+  EditorOptions, LazarusIDEStrConsts, editor_general_options, editor_color_options,
+  SourceSynEditor, SourceMarks;
 
 type
   { TEditorDisplayOptionsFrame }
@@ -166,23 +171,35 @@ end;
 procedure TEditorDisplayOptionsFrame.EditorFontSizeSpinEditChange(Sender: TObject);
 var
   NewVal, a: Integer;
+  s: TCaption;
 begin
-  NewVal := EditorFontSizeSpinEdit.Value;
-  if (NewVal < 0) and (NewVal > -EditorOptionsMinimumFontSize) then
-  begin
-    // Skip to minimum positive value. Will trigger OnChange again.
-    SetEditorFontSizeSpinEditValue(EditorOptionsMinimumFontSize);
+  s := EditorFontSizeSpinEdit.Text;
+  if copy(trim(s),1,1) = '-' then begin
+    if EditorFontSizeSpinEdit.MinValue > 0 then begin
+      EditorFontSizeSpinEdit.MinValue := -100;
+      EditorFontSizeSpinEdit.MaxValue := -EditorOptionsMinimumFontSize;
+      EditorFontSizeSpinEdit.Text := s;
+    end
+    else
+    if EditorFontSizeSpinEdit.Value > -EditorOptionsMinimumFontSize then
+      EditorFontSizeSpinEdit.Value := -EditorOptionsMinimumFontSize;
   end
-  else
-  begin
-    if (NewVal > 0) and not FUpdatingFontSizeRange then
+  else begin
+    if EditorFontSizeSpinEdit.MinValue < 0 then begin
+      EditorFontSizeSpinEdit.MaxValue := 100;
       EditorFontSizeSpinEdit.MinValue := EditorOptionsMinimumFontSize;
-
-    with GeneralPage do
-      for a := Low(PreviewEdits) to High(PreviewEdits) do
-        if PreviewEdits[a] <> nil then
-          PreviewEdits[a].Font.Size := NewVal;
+      EditorFontSizeSpinEdit.Text := s;
+    end
+    else
+    if EditorFontSizeSpinEdit.Value < EditorOptionsMinimumFontSize then
+      EditorFontSizeSpinEdit.Value := EditorOptionsMinimumFontSize;
   end;
+
+  NewVal := EditorFontSizeSpinEdit.Value;
+  with GeneralPage do
+    for a := Low(PreviewEdits) to High(PreviewEdits) do
+      if PreviewEdits[a] <> nil then
+        PreviewEdits[a].Font.Size := NewVal;
 end;
 
 procedure TEditorDisplayOptionsFrame.ComboboxOnExit(Sender: TObject);
@@ -319,10 +336,14 @@ end;
 procedure TEditorDisplayOptionsFrame.SetEditorFontSizeSpinEditValue(FontSize: Integer);
 begin
   FUpdatingFontSizeRange := True;
-  if FontSize < 0 then
-    EditorFontSizeSpinEdit.MinValue := -EditorFontSizeSpinEdit.MaxValue
-  else
+  if FontSize < 0 then begin
+    EditorFontSizeSpinEdit.MinValue := -100;
+    EditorFontSizeSpinEdit.MaxValue := -EditorOptionsMinimumFontSize;
+  end
+  else begin
+    EditorFontSizeSpinEdit.MaxValue := 100;
     EditorFontSizeSpinEdit.MinValue := EditorOptionsMinimumFontSize;
+  end;
   FUpdatingFontSizeRange := False;
   EditorFontSizeSpinEdit.Value := FontSize;
 end;

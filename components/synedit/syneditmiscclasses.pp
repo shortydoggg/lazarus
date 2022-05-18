@@ -27,7 +27,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: syneditmiscclasses.pp 47596 2015-02-06 02:07:31Z martin $
+$Id: syneditmiscclasses.pp 61159 2019-05-05 15:57:39Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -42,9 +42,13 @@ unit SynEditMiscClasses;
 interface
 
 uses
-  LCLIntf, LCLType, LCLProc,
-  Classes, Graphics, Controls, SysUtils, Clipbrd, SynEditHighlighter,
-  SynEditMiscProcs, SynEditTypes, LazSynEditText, SynEditPointClasses;
+  Classes, SysUtils,
+  // LazUtils
+  LazMethodList, LazUtilities,
+  // LCL
+  LCLIntf, LCLType, LCLProc, Graphics, Controls, Clipbrd, ImgList,
+  // SynEdit
+  SynEditHighlighter, SynEditMiscProcs, SynEditTypes, LazSynEditText, SynEditPointClasses;
 
 type
 
@@ -233,7 +237,6 @@ type
     property StartX: TLazSynDisplayTokenBound read FStartX write FStartX;
     property EndX: TLazSynDisplayTokenBound read FEndX write FEndX;
   public
-    function IsEnabled: boolean;
     function GetModifiedStyle(aStyle: TFontStyles): TFontStyles; // deprecated;
     procedure ModifyColors(var AForeground, ABackground, AFrameColor: TColor;
       var AStyle: TFontStyles; var AFrameStyle: TSynLineStyle); deprecated;
@@ -350,7 +353,7 @@ type
 
   TSynBookMarkOpt = class(TPersistent)
   private
-    fBookmarkImages: TImageList;
+    fBookmarkImages: TCustomImageList;
     fDrawBookmarksFirst: boolean;                                               //mh 2000-10-12
     fEnableKeys: Boolean;
     fGlyphsVisible: Boolean;
@@ -358,7 +361,7 @@ type
     fOwner: TComponent;
     fXoffset: integer;
     fOnChange: TNotifyEvent;
-    procedure SetBookmarkImages(const Value: TImageList);
+    procedure SetBookmarkImages(const Value: TCustomImageList);
     procedure SetDrawBookmarksFirst(Value: boolean);                            //mh 2000-10-12
     procedure SetGlyphsVisible(Value: Boolean);
     procedure SetLeftMargin(Value: Integer);
@@ -366,7 +369,7 @@ type
   public
     constructor Create(AOwner: TComponent);
   published
-    property BookmarkImages: TImageList
+    property BookmarkImages: TCustomImageList
       read fBookmarkImages write SetBookmarkImages;
     property DrawBookmarksFirst: boolean read fDrawBookmarksFirst               //mh 2000-10-12
       write SetDrawBookmarksFirst default True;
@@ -1229,12 +1232,6 @@ begin
   FEndX.Offset     := 0;
 end;
 
-function TSynSelectedColor.IsEnabled: boolean;
-begin
-  Result := (Background <> clNone) or (Foreground <> clNone) or (FrameColor <> clNone) or
-            (Style <> []) or (StyleMask <> []);
-end;
-
 { TLazSynSurface }
 
 function TLazSynSurface.GetHandle: HWND;
@@ -1336,7 +1333,7 @@ begin
   fXOffset := 12;
 end;
 
-procedure TSynBookMarkOpt.SetBookmarkImages(const Value: TImageList);
+procedure TSynBookMarkOpt.SetBookmarkImages(const Value: TCustomImageList);
 begin
   if fBookmarkImages <> Value then begin
     if Assigned(fBookmarkImages) then fBookmarkImages.RemoveFreeNotification(fOwner);
@@ -1574,7 +1571,7 @@ end;
 
 function TSynObjectListItem.Compare(Other: TSynObjectListItem): Integer;
 begin
-  Result := PtrUInt(self) - PtrUInt(Other);
+  Result := ComparePointers(Pointer(self), Pointer(Other));
 end;
 
 constructor TSynObjectListItem.Create(AOwner: TComponent);
@@ -1656,7 +1653,7 @@ end;
 class function TSynClipboardStream.ClipboardFormatId: TClipboardFormat;
 const
   SYNEDIT_CLIPBOARD_FORMAT_TAGGED = 'Application/X-Laz-SynEdit-Tagged';
-  Format: UINT = 0;
+  Format: TClipboardFormat = 0;
 begin
   if Format = 0 then
     Format := ClipboardRegisterFormat(SYNEDIT_CLIPBOARD_FORMAT_TAGGED);
@@ -1689,7 +1686,7 @@ begin
     end;
   end;
   // Normal text
-  if (FTextP = nil) and AClipboard.HasFormat(CF_TEXT) then begin
+  if (FTextP = nil) then begin
     Result := true;
     FText := AClipboard.AsText;
     if FText <> '' then begin
@@ -2929,7 +2926,8 @@ begin
   while Result <> nil do begin
     if ALeftSum < Result.FLeftSizeSum then begin
       Result := Result.FLeft;
-      aStartPosition := aStartPosition + Result.FPositionOffset;
+      if Result <> nil then
+        aStartPosition := aStartPosition + Result.FPositionOffset;
       continue;
     end;
 
@@ -2942,7 +2940,8 @@ begin
       ALeftSum := ALeftSum - Result.FSize;
       aSizesBeforeSum := aSizesBeforeSum + Result.FSize;
       Result := Result.FRight;
-      aStartPosition := aStartPosition + Result.FPositionOffset;
+      if Result <> nil then
+        aStartPosition := aStartPosition + Result.FPositionOffset;
       continue;
     end;
   end;

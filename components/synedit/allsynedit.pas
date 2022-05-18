@@ -4,6 +4,7 @@
 
 unit allsynedit;
 
+{$warn 5023 off : no warning about unused units}
 interface
 
 uses
@@ -27,10 +28,10 @@ uses
   SynHighlighterTeX, synhighlighterunixshellscript, SynHighlighterVB, 
   SynHighlighterXML, SynMacroRecorder, SynMemo, SynPluginSyncroEdit, 
   SynPluginSyncronizedEditBase, SynPluginTemplateEdit, LazSynEditText, 
-  LazSynTextArea, SynRegExpr, SynTextDrawer, SynEditMarkupGutterMark, 
-  SynHighlighterBat, SynHighlighterIni, SynEditMarkupSpecialChar, 
-  SynEditTextDoubleWidthChars, SynEditTextSystemCharWidth, SynEditMarkupIfDef, 
-  SynPluginMultiCaret, synhighlighterpike, LazarusPackageIntf;
+  LazSynTextArea, SynTextDrawer, SynEditMarkupGutterMark, SynHighlighterBat, 
+  SynHighlighterIni, SynEditMarkupSpecialChar, SynEditTextDoubleWidthChars, 
+  SynEditTextSystemCharWidth, SynEditMarkupIfDef, SynPluginMultiCaret, 
+  synhighlighterpike, SynEditMarkupFoldColoring, LazarusPackageIntf;
 
 implementation
 

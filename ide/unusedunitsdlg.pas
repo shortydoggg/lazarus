@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -32,9 +32,15 @@ unit UnusedUnitsDlg;
 interface
 
 uses
-  Classes, sysutils, LCLProc, Forms, Controls, ComCtrls, StdCtrls, ExtCtrls,
-  Buttons, Dialogs, SrcEditorIntf, LazIDEIntf, IDEImagesIntf, IDEDialogs,
-  CodeCache, CodeToolManager, LazarusIDEStrConsts;
+  Classes, SysUtils,
+  // LCL
+  LCLProc, Forms, Controls, ComCtrls, StdCtrls, ExtCtrls, Buttons, Dialogs,
+  // Codetools
+  CodeCache, CodeToolManager,
+  // IdeIntf
+  SrcEditorIntf, LazIDEIntf, IDEImagesIntf, IDEDialogs,
+  // IDE
+  LazarusIDEStrConsts;
 
 type
 
@@ -169,10 +175,10 @@ begin
   CancelBitBtn.Caption:=lisCancel;
 
   UnitsTreeView.StateImages := IDEImages.Images_16;
-  ImgIDInterface := IDEImages.LoadImage(16, 'ce_interface');
-  ImgIDImplementation := IDEImages.LoadImage(16, 'ce_implementation');
-  ImgIDInitialization := IDEImages.LoadImage(16, 'ce_initialization');
-  ImgIDNone := IDEImages.LoadImage(16, 'ce_default');
+  ImgIDInterface := IDEImages.LoadImage('ce_interface');
+  ImgIDImplementation := IDEImages.LoadImage('ce_implementation');
+  ImgIDInitialization := IDEImages.LoadImage('ce_initialization');
+  ImgIDNone := IDEImages.LoadImage('ce_default');
 end;
 
 procedure TUnusedUnitsDialog.RemoveAllBitBtnClick(Sender: TObject);

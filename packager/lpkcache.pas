@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -51,9 +51,13 @@ unit LPKCache;
 interface
 
 uses
-  Classes, SysUtils, PackageLinks, PackageDefs, PackageSystem, PackageIntf,
-  EnvironmentOpts, LCLProc, LazFileUtils, AvgLvlTree, Laz2_XMLCfg,
-  LazLoggerBase, LazMethodList;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LazUtils
+  LazFileUtils, Laz2_XMLCfg, LazLoggerBase, LazTracer, LazMethodList,
+  // IdeIntf
+  PackageDependencyIntf, PackageIntf, PackageLinkIntf,
+  // IDE
+  EnvironmentOpts, PackageLinks, PackageDefs, PackageSystem;
 
 type
   TLPKInfoState = (
@@ -83,7 +87,7 @@ type
     PkgType: TLazPackageType; // design, runtime
 
     procedure Assign(Source: TObject);
-    constructor Create(TheID: TLazPackageID; CreateNewID: boolean);
+    constructor Create(TheID: TLazPackageID);
     destructor Destroy; override;
   end;
 
@@ -120,8 +124,8 @@ type
   private
     FCritSec: TRTLCriticalSection;
     FLPKReader: TIPSLPKReader;
-    fLPKByFilename: TAvgLvlTree; // tree of TLPKInfo sorted for LPKFilename
-    fLPKByID: TAvgLvlTree; // tree of TLPKInfo sorted for ID
+    fLPKByFilename: TAvlTree; // tree of TLPKInfo sorted for LPKFilename
+    fLPKByID: TAvlTree; // tree of TLPKInfo sorted for ID
     fEvents: array[TLPKInfoCacheEvent] of TMethodList;
     fAvailableFiles: TStrings; // used by OnIterateAvailablePackages
     procedure QueueEmpty;
@@ -151,8 +155,8 @@ type
     function FindPkgInfoWithFilename(aFilename: string): TLPKInfo; // requires crit sec
     function FindPkgInfoWithID(PkgID: TLazPackageID): TLPKInfo; // requires crit sec
     function FindPkgInfoWithIDAsString(PkgID: string): TLPKInfo; // requires crit sec
-    property LPKByFilename: TAvgLvlTree read fLPKByFilename; // tree of TLPKInfo sorted for LPKFilename
-    property LPKByID: TAvgLvlTree read fLPKByID; // tree of TLPKInfo sorted for ID
+    property LPKByFilename: TAvlTree read fLPKByFilename; // tree of TLPKInfo sorted for LPKFilename
+    property LPKByID: TAvlTree read fLPKByID; // tree of TLPKInfo sorted for ID
 
     // thread safe
     function IsValidLPKFilename(LPKFilename: string): boolean;
@@ -234,7 +238,7 @@ begin
         // new info
         ID:=TLazPackageID.Create;
         ID.Name:=ExtractFileNameOnly(CurFilename);
-        Info:=TLPKInfo.Create(ID,false);
+        Info:=TLPKInfo.Create(ID);
         Info.LPKFilename:=CurFilename;
         Info.InLazSrc:=FileIsInPath(Info.LPKFilename,
                                   EnvironmentOptions.GetParsedLazarusDirectory);
@@ -308,7 +312,7 @@ begin
   if not FilenameIsAbsolute(LPKFilename) then exit;
   if CompareFilenames(ExtractFileExt(LPKFilename),'.lpk')<>0 then exit;
   PkgName:=ExtractFileNameOnly(LPKFilename);
-  if (PkgName='') or not IsValidIdent(PkgName) then exit;
+  if not IsValidPkgName(PkgName) then exit;
   Result:=true;
 end;
 
@@ -351,8 +355,13 @@ procedure TLPKInfoCache.OnIterateAvailablePackages(APackage: TLazPackageID);
 begin
   if APackage is TLazPackage then
     fAvailableFiles.Add(TLazPackage(APackage).Filename)
-  else if APackage is TPackageLink then
-    fAvailableFiles.Add(TPackageLink(APackage).LPKFilename);
+  else if APackage is TLazPackageLink then begin
+    {if (OPMInterface<>nil) and (TLazPackageLink(APackage).Origin=ploOnline) and
+        (not OPMInterface.IsPackageAvailable(TLazPackageLink(APackage), 2)) then
+      fAvailableFiles.Add(TLazPackageLink(APackage).OPMFileName)
+    else}
+      fAvailableFiles.Add(TLazPackageLink(APackage).LPKFilename);
+  end;
 end;
 
 procedure TLPKInfoCache.QueueEmpty;
@@ -384,7 +393,7 @@ end;
 
 function TLPKInfoCache.FindPkgInfoWithFilename(aFilename: string): TLPKInfo;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   Node:=fLPKByFilename.FindKey(Pointer(aFilename),@CompareFilenameWithIPSPkgInfo);
   if Node<>nil then
@@ -395,7 +404,7 @@ end;
 
 function TLPKInfoCache.FindPkgInfoWithID(PkgID: TLazPackageID): TLPKInfo;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   Node:=fLPKByID.FindKey(Pointer(PkgID),@ComparePkgIDWithIPSPkgInfo);
   if Node<>nil then
@@ -513,8 +522,8 @@ var
   e: TLPKInfoCacheEvent;
 begin
   InitCriticalSection(FCritSec);
-  fLPKByFilename:=TAvgLvlTree.Create(@CompareIPSPkgInfosWithFilename);
-  fLPKByID:=TAvgLvlTree.Create(@CompareIPSPkgInfos);
+  fLPKByFilename:=TAvlTree.Create(@CompareIPSPkgInfosWithFilename);
+  fLPKByID:=TAvlTree.Create(@CompareIPSPkgInfos);
   for e:=Low(TLPKInfoCacheEvent) to high(TLPKInfoCacheEvent) do
     fEvents[e]:=TMethodList.Create;
 end;
@@ -623,14 +632,9 @@ end;
 
 { TLPKInfo }
 
-constructor TLPKInfo.Create(TheID: TLazPackageID; CreateNewID: boolean);
+constructor TLPKInfo.Create(TheID: TLazPackageID);
 begin
-  if CreateNewID then begin
-    ID:=TLazPackageID.Create;
-    ID.AssignID(TheID);
-  end else begin
-    ID:=TheID;
-  end;
+  ID:=TheID;
 end;
 
 procedure TLPKInfo.Assign(Source: TObject);

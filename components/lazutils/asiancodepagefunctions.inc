@@ -1,26 +1,22 @@
 {%MainUnit ../lconvencoding.pp}
 
-{******************************************************************************
-                               Asian Unicode Functions
- ******************************************************************************
-
+{
  *****************************************************************************
-  This file is part of the Lazarus Component Library (LCL)
+  This file is part of LazUtils.
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
  *****************************************************************************
 
+  Asian Unicode Functions.
   The clipboard is able to work with the windows and gtk behaviour/features.
 }
 
 function DBCSToUTF8(const s: string; CodeP: integer): string;
 var
-  len:  SizeInt;
-  Src:  PChar;
-  Dest: PChar;
-  c:    char;
-  l: Integer;
+  len, l: Integer;
+  Src, Dest: PChar;
+  c: char;
   code: word;
 begin
   if s = '' then
@@ -191,13 +187,10 @@ end;
 
 function UTF8ToDBCS(const s: string; const UTF8CharConvFunc: TUnicodeToCharID): string;
 var
-  len:  integer;
-  Src:  PChar;
-  Dest: PChar;
-  c:    char;
+  len, i, CharLen: integer;
+  Src, Dest: PChar;
+  c: char;
   Unicode: longword;
-  CharLen: integer;
-  i:    integer;
 begin
   if s = '' then
   begin
@@ -219,7 +212,7 @@ begin
     end
     else
     begin
-      Unicode := UTF8CharacterToUnicode(Src, CharLen);
+      Unicode := UTF8CodepointToUnicode(Src, CharLen);
       Inc(Src, CharLen);
       i := UTF8CharConvFunc(Unicode);
       //writeln(Format('%X', [i]));
@@ -234,7 +227,10 @@ begin
         else
           Dest^ := chr(i);
         Inc(Dest);
-      end;
+      end
+      else
+      if ConvertEncodingFromUtf8RaisesException then
+        raise EConvertError.Create('Cannot convert UTF8 to DBCS code page');
     end;
   until false;
   //SetLength(Result, Dest - PChar(Result));

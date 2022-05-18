@@ -57,8 +57,13 @@ unit SynEditHighlighterFoldBase;
 interface
 
 uses
-  SysUtils, Classes, math, LCLProc, SynEditHighlighter, SynEditTypes,
-  AvgLvlTree, LazClasses;
+  SysUtils, Classes, math, Laz_AVL_Tree,
+  // LCL
+  LCLProc,
+  // LazUtils
+  LazClasses, LazLoggerBase,
+  // SynEdit
+  SynEditHighlighter, SynEditTypes, LazSynEditText;
 
 const
   NullRange = TSynEditRange(nil);
@@ -77,9 +82,18 @@ type
                      // //sfaSingleLineClosedByNext
                      sfaCloseForNextLine,  // Fold closes this line, but keyword is on the next (e.g. "var" block)
                      sfaLastLineClose,     // Fold is incomplete, and closed at last line of file
+                     sfaCloseAndOpen,    // This node has the same location/type as the neighbouring opposite node.
+                                         // eg an open node, matche exactly the previous node, which has to be a closing node of the same type and location (and vice versa for a closing node matching the next...)
 
                      sfaDefaultCollapsed,
                      sfaMarkup,   // This node can be highlighted, by the matching Word-Pair Markup
+                     sfaOutline,  // This node will be higlighted by nested color replacing the token color
+                     sfaOutlineKeepLevel, // Direct children should not increase color dept. (But grandchild can.)  e.g. "if","then" any "procedure"
+                     sfaOutlineMergeParent,// This node want to decrease current color depth. (But Previous sibling increased) e.g. "except", "finally"
+                     sfaOutlineForceIndent, // Node will temporary ignore sfaOutlineKeep. (Next sibling can.) e.g in NESTED "procedure"
+// TODO: review sfaOutlineNoColor / see issue 0034410
+                     sfaOutlineNoColor,     // Node will not painted by nested-coloring, but may increase color (e.g. any "procedure")
+                     sfaOutlineNoLine,      // Node doesn't want to have vertical line. (e.g. "then")
                      sfaInvalid,  // Wrong Index
 
                      // TODO: deprecate
@@ -197,7 +211,103 @@ type
     property Line: TLineIdx read FLine write SetLine;
   end;
 
-  TSynCustomFoldConfigMode = (fmFold, fmHide, fmMarkup);
+  (* TLazSynEditNestedFoldsList
+     Provides Info on all foldable-blocks containing a given line (0 based index).
+     That are:
+     - All foldable blocks opening on a previous line, that are still open
+       at the start of the line. (May end on this line or later)
+     - Foldable blocks opening on that line. (OpeningOnLineCount)
+
+     The data is NOT automatically invalidated.
+  *)
+
+  TLazSynEditNestedFoldsListEntry = record
+    FFLags: set of (nfeHasHNode, nfeMaxPrevReached);
+    FGroupMinLevels: Array of Integer;
+    //OpenCount: Integer;
+    LineIdx: TLineIdx;
+    EndLineIdx: TLineIdx;
+    HNode: TSynFoldNodeInfo;    // Highlighter Node
+    //FNode: TSynTextFoldAVLNode; // AvlFoldNode
+    PrevNodeAtSameLevel: array of TLazSynEditNestedFoldsListEntry; // Only for same NodeGroup
+  end;
+
+//  TSynGetHighLighter = function(): TSynCustomFoldHighlighter of object;
+
+  TLazSynEditNestedFoldsList = class
+  { $Define DebugTLazSynEditNestedFoldsList}
+  // TODO: in all methods: get "FoldNodeInfo" from FoldProvider, instead of Highlighter
+  private
+    FLines : TSynEditStrings;
+    FHighLighter: TSynCustomFoldHighlighter;
+    FFoldGroup: Integer;
+    FLine: TLineIdx;
+    procedure SetFoldGroup(AValue: Integer);
+    procedure SetLine(AValue: TLineIdx);
+  private
+    FFoldFlags: TSynFoldBlockFilterFlags;
+    FGroupCount: Integer;
+    FGroupEndLevelsAtEval: Array of integer;
+    FCount, FOpeningOnLineCount: Integer;
+    FOpeningLineEndIndex: Integer;
+    FIncludeOpeningOnLine: Boolean;
+    FNestInfo, FOnLineNestInfo: Array of TLazSynEditNestedFoldsListEntry;
+    FEvaluationIndex: Integer;
+
+    FPreviousNestInfo: Array of TLazSynEditNestedFoldsListEntry;
+    FPreviousLine, FPreviousEvaluationIndex, FPreviousCount: Integer;
+    FPreviousMergeLine: Integer;
+
+    FFoldNodeInfoList: TLazSynFoldNodeInfoList;
+    FFoldNodeInfoListHoldCnt: integer;
+
+    function GetHLNode(Index: Integer): TSynFoldNodeInfo;
+    function GetNodeEndLine(Index: Integer): Integer;
+    function GetNodeFoldGroup(Index: Integer): Integer;
+    function GetNodeLine(Index: Integer): Integer;
+    function GetNodeFoldType(Index: Integer): Pointer;
+    function GetNodeLineEx(Index, PrevCount: Integer): Integer;
+    procedure InitSubGroupEndLevels;
+    procedure InitNestInfoForIndex(AnIndex: Integer);
+    procedure InitLineInfoForIndex(AnIndex: Integer);
+    procedure InitCount;
+    procedure InitOpeningOnLine;
+    procedure SetFoldFlags(AValue: TSynFoldBlockFilterFlags);
+    procedure SetHighLighter(AValue: TSynCustomFoldHighlighter);
+    procedure SetIncludeOpeningOnLine(AValue: Boolean);
+    procedure AquireFoldNodeInfoList(const ALine: Integer = -1);
+    procedure ReleaseFoldNodeInfoList;
+    procedure SetLines(AValue: TSynEditStrings);
+    procedure SetOpeningLineEndIndex(AValue: Integer);
+    function HasCount: Boolean;
+    procedure ClearPreviousCache;
+  public
+    constructor Create(ALines : TSynEditStrings; AnHighLighter: TSynCustomFoldHighlighter = nil);
+    procedure Clear;
+    procedure ResetFilter;
+    function Count: Integer;
+    function OpeningOnLineCount: Integer;  // ignores FFoldFlags
+    procedure Debug;
+    property Line: TLineIdx read FLine write SetLine;
+    property FoldGroup: Integer read FFoldGroup write SetFoldGroup;
+    property FoldFlags: TSynFoldBlockFilterFlags read FFoldFlags write SetFoldFlags;
+    property IncludeOpeningOnLine: Boolean read FIncludeOpeningOnLine write SetIncludeOpeningOnLine;
+    // OpeningLineEnd... can only be used with sfbIncludeDisabled
+    // Highest included index (unfiltered index)
+    property OpeningLineEndIndex: Integer read FOpeningLineEndIndex write SetOpeningLineEndIndex;
+    //property OpeningLineEndLogicalPos: Integer read FOpeningLineEndLogicalPos write SetOpeningLineEndLogicalPos;
+    property Lines: TSynEditStrings read FLines write SetLines;
+    property HighLighter: TSynCustomFoldHighlighter read FHighLighter write SetHighLighter;
+  public
+    property HLNode[Index: Integer]: TSynFoldNodeInfo read GetHLNode;
+    property NodeFoldType[Index: Integer]: Pointer read GetNodeFoldType;        // e.g.cfbtBeginEnd, cfbtcfbtProcedure ...
+    property NodeFoldGroup[Index: Integer]: Integer read GetNodeFoldGroup;      // independend/overlapping folds, e.g begin/end; ifdef, region
+    property NodeLine[Index: Integer]: Integer read GetNodeLine;                // Index
+    property NodeEndLine[Index: Integer]: Integer read GetNodeEndLine;          // Index
+    property NodeLineEx[Index, PrevCount: Integer]: Integer read GetNodeLineEx; // Index
+  end;
+
+  TSynCustomFoldConfigMode = (fmFold, fmHide, fmMarkup, fmOutline);
   TSynCustomFoldConfigModes = set of TSynCustomFoldConfigMode;
 
   { TSynCustomFoldConfig }
@@ -206,18 +316,21 @@ type
   private
     FEnabled: Boolean;
     FFoldActions: TSynFoldActions;
+    FIsEssential: boolean;
     FModes: TSynCustomFoldConfigModes;
     FOnChange: TNotifyEvent;
     FSupportedModes: TSynCustomFoldConfigModes;
     procedure SetEnabled(const AValue: Boolean);
     procedure SetModes(AValue: TSynCustomFoldConfigModes);
-    procedure SetSupportedModes(AValue: TSynCustomFoldConfigModes);
+    procedure SetSupportedModes(AValue: TSynCustomFoldConfigModes); deprecated 'use create';
   protected
     procedure DoOnChange;
   public
     constructor Create;
-    procedure Assign(Src: TSynCustomFoldConfig); reintroduce; virtual;
+    constructor Create(ASupportedModes: TSynCustomFoldConfigModes; AnIsEssential: Boolean = False);
+    procedure Assign(Src: TSynCustomFoldConfig); reintroduce; virtual; // TODO: do not copy supported modes
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    property IsEssential: boolean read FIsEssential;   // create node, even if disabled
     property SupportedModes: TSynCustomFoldConfigModes
              read FSupportedModes write SetSupportedModes;
     // Actions representing the modes
@@ -255,8 +368,11 @@ type
 
   TSynCustomHighlighterRange = class
   private
+    // TODO: either reduce to one level, or create subclass for 2nd level
     FCodeFoldStackSize: integer; // EndLevel
+    FNestFoldStackSize: integer; // EndLevel
     FMinimumCodeFoldBlockLevel: integer;
+    FMinimumNestFoldBlockLevel: integer;
     FRangeType: Pointer;
     FTop: TSynCustomCodeFoldBlock;
   public
@@ -273,9 +389,12 @@ type
     property FoldRoot: TSynCustomCodeFoldBlock read FTop write FTop;
   public
     property RangeType: Pointer read FRangeType write FRangeType;
-    property CodeFoldStackSize: integer read FCodeFoldStackSize;
+    property CodeFoldStackSize: integer read FCodeFoldStackSize; // excl disabled, only IncreaseLevel
     property MinimumCodeFoldBlockLevel: integer
       read FMinimumCodeFoldBlockLevel write FMinimumCodeFoldBlockLevel;
+    property NestFoldStackSize: integer read FNestFoldStackSize; // all, incl disabled (not IncreaseLevel)
+    property MinimumNestFoldBlockLevel: integer
+      read FMinimumNestFoldBlockLevel; // write FMinimumNestFoldBlockLevel;
     property Top: TSynCustomCodeFoldBlock read FTop;
   end;
   TSynCustomHighlighterRangeClass = class of TSynCustomHighlighterRange;
@@ -292,15 +411,18 @@ type
     procedure SetFoldConfig(Index: Integer; const AValue: TSynCustomFoldConfig); virtual;
     function GetFoldConfigCount: Integer; virtual;
     function GetFoldConfigInternalCount: Integer; virtual;
+    function CreateFoldConfigInstance(Index: Integer): TSynCustomFoldConfig; virtual;
     function GetFoldConfigInstance(Index: Integer): TSynCustomFoldConfig; virtual;
     procedure InitFoldConfig;
     procedure DestroyFoldConfig;
     procedure DoFoldConfigChanged(Sender: TObject); virtual;
   private
     FCodeFoldRange: TSynCustomHighlighterRange;
+    FIsCollectingNodeInfo: boolean;
     fRanges: TSynCustomHighlighterRanges;
     FRootCodeFoldBlock: TSynCustomCodeFoldBlock;
     FFoldNodeInfoList: TLazSynFoldNodeInfoList;
+    FCollectingNodeInfoList: TLazSynFoldNodeInfoList;
     procedure ClearFoldNodeList;
   protected
     // "Range"
@@ -312,18 +434,30 @@ type
       write FRootCodeFoldBlock;
 
     // Open/Close Folds
-    function StartCodeFoldBlock(ABlockType: Pointer;
-              IncreaseLevel: Boolean = true): TSynCustomCodeFoldBlock; virtual;
+    function StartCodeFoldBlock(ABlockType: Pointer = nil;
+              IncreaseLevel: Boolean = true; ForceDisabled: Boolean = False): TSynCustomCodeFoldBlock; virtual;
     procedure EndCodeFoldBlock(DecreaseLevel: Boolean = True); virtual;
+    procedure CollectNodeInfo(FinishingABlock : Boolean; ABlockType: Pointer;
+              LevelChanged: Boolean); virtual;
+    procedure DoInitNode(var Node: TSynFoldNodeInfo;
+                       FinishingABlock: Boolean;
+                       ABlockType: Pointer; aActions: TSynFoldActions;
+                       AIsFold: Boolean); virtual;
+    procedure RepairSingleLineNode(var Node: TSynFoldNodeInfo); virtual;
+    procedure GetTokenBounds(out LogX1,LogX2: Integer); virtual;
 
     // Info about Folds
     function CreateFoldNodeInfoList: TLazSynFoldNodeInfoList; virtual;
     function GetFoldNodeInfo(Line: TLineIdx): TLazSynFoldNodeInfoList;
-    procedure InitFoldNodeInfo(AList: TLazSynFoldNodeInfoList; Line: TLineIdx); virtual;
+    procedure ScanFoldNodeInfo(); virtual;
+    procedure InitFoldNodeInfo(AList: TLazSynFoldNodeInfoList; Line: TLineIdx);
 
     // Info about Folds, on currently set line/range (simply forwarding to range
     function MinimumCodeFoldBlockLevel: integer; virtual;
     function CurrentCodeFoldBlockLevel: integer; virtual;
+
+    property IsCollectingNodeInfo : boolean read FIsCollectingNodeInfo;
+    property CollectingNodeInfoList : TLazSynFoldNodeInfoList read FCollectingNodeInfoList;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -365,8 +499,20 @@ type
     function FoldTypeCount: integer; virtual;
     function FoldTypeAtNodeIndex(ALineIndex, FoldIndex: Integer;
              UseCloseNodes: boolean = false): integer; virtual; // TODO: could be deprecated ./ only child-classes
-    function FoldLineLength(ALineIndex, FoldIndex: Integer): integer; virtual;
-    function FoldEndLine(ALineIndex, FoldIndex: Integer): integer; virtual;     // FoldEndLine, can be more than given by FoldLineLength, since Length my cut off early
+
+    function FindNextLineWithMinFoldLevel(ALineIndex: TLineIdx; ASearchLevel: Integer;
+                               const AFilter: TSynFoldBlockFilter): integer; virtual; overload;
+    function FindNextLineWithMinFoldLevel(ALineIndex: TLineIdx; ASearchLevel: Integer;
+                               AFoldGroup: integer = 0; AFlags: TSynFoldBlockFilterFlags = []): integer; overload;
+
+    function FoldEndLine(ALineIndex, FoldIndex: Integer): integer; virtual; overload; // deprecate // fix inherited classes
+    function FoldEndLine(ALineIndex, FoldIndex: Integer;
+                         const AFilter: TSynFoldBlockFilter): integer; virtual; overload;
+    function FoldEndLine(ALineIndex, FoldIndex: Integer;
+                         AFoldGroup: integer; AFlags: TSynFoldBlockFilterFlags): integer; overload;
+//                         AFoldGroup: integer = 0; AFlags: TSynFoldBlockFilterFlags = []): integer; overload;
+
+    function FoldLineLength(ALineIndex, FoldIndex: Integer): integer; virtual;  // only for group 0 // may be one less than FoldEndLine, if end line is a mixed end-begin
 
     // All fold-nodes
     // FoldNodeInfo: Returns a shared object
@@ -396,7 +542,7 @@ type
   private
     FAllocatedCount: integer;
     FHighlighterClass: TSynCustomHighlighterClass;
-    FItems: TAvgLvlTree;
+    FItems: TAvlTree;
   public
     constructor Create(TheHighlighterClass: TSynCustomHighlighterClass);
     destructor Destroy; override;
@@ -414,6 +560,11 @@ function AllocateHighlighterRanges(
 
 function dbgs(AFoldActions: TSynFoldActions): String; overload;
 function dbgs(ANode: TSynFoldNodeInfo):string; overload;
+function dbgs(AMode: TSynCustomFoldConfigMode): String; overload;
+function dbgs(AModes: TSynCustomFoldConfigModes): String; overload;
+function dbgs(AFoldFlag: TSynFoldBlockFilterFlag): String; overload;
+function dbgs(AFoldFlags: TSynFoldBlockFilterFlags): String; overload;
+function dbgs(ANestInfo: TLazSynEditNestedFoldsListEntry): String; overload;
 
 implementation
 
@@ -486,14 +637,66 @@ function dbgs(ANode: TSynFoldNodeInfo): string;
 begin
   with ANode do
     if sfaInvalid in FoldAction then
-      Result := Format('L=%3d I=%d  X=%2d-%2d  Fld=%d-%d Nst=%d-%d  FT=%d FTC=%d  Grp=%d  A=%s',
+      Result := Format('L=%3d I=%d  X=%2d-%2d  Fld=%d-%d Nst=%d-%d  FT=%2d FTC=%2d  Grp=%d  A=%s',
                        [LineIndex, NodeIndex, 0, 0, 0, 0, 0, 0, 0, 0, 0, dbgs(FoldAction)])
     else
-      Result := Format('L=%3d I=%d  X=%2d-%2d  Fld=%d-%d Nst=%d-%d  FT=%d FTC=%d  Grp=%d  A=%s',
+      Result := Format('L=%3d I=%d  X=%2d-%2d  Fld=%d-%d Nst=%d-%d  FT=%2d FTC=%2d  Grp=%d  A=%s',
                        [LineIndex, NodeIndex, LogXStart, LogXEnd,
                         FoldLvlStart, FoldLvlEnd, NestLvlStart, NestLvlEnd,
                         PtrUInt(FoldType), PtrUInt(FoldTypeCompatible), FoldGroup,
                         dbgs(FoldAction)]);
+end;
+
+function dbgs(AMode: TSynCustomFoldConfigMode): String;
+begin
+  WriteStr(Result{%H-}, AMode);
+end;
+
+function dbgs(AModes: TSynCustomFoldConfigModes): String;
+var
+  i: TSynCustomFoldConfigMode;
+  s: string;
+begin
+  Result:='';
+  for i := low(TSynCustomFoldConfigMode) to high(TSynCustomFoldConfigMode) do
+    if i in AModes then begin
+      WriteStr(s{%H-}, i);
+      Result := Result + s + ',';
+    end;
+  if Result <> '' then Result := '[' + copy(Result, 1, Length(Result)-1) + ']';
+end;
+
+function dbgs(AFoldFlag: TSynFoldBlockFilterFlag): String;
+begin
+  Result:='';
+  WriteStr(Result, AFoldFlag);
+end;
+
+function dbgs(AFoldFlags: TSynFoldBlockFilterFlags): String;
+var
+  i: TSynFoldBlockFilterFlag;
+begin
+  Result := '';
+  for i := low(TSynFoldBlockFilterFlag) to high(TSynFoldBlockFilterFlag) do
+    if i in AFoldFlags then
+      if Result = ''
+      then Result := dbgs(i)
+      else Result := Result + ',' + dbgs(i);
+  if Result <> '' then
+    Result := '[' + Result + ']';
+end;
+
+function dbgs(ANestInfo: TLazSynEditNestedFoldsListEntry): String;
+var
+  i: Integer;
+begin
+  Result := Format('LineIdx:%4d', [ANestInfo.LineIdx ])
+   +' HNode: '+dbgs(ANestInfo.HNode)
+   +' | PrevCnt: '+dbgs(length(ANestInfo.PrevNodeAtSameLevel))
+   +' MinLvl: [';
+  for i := 0  to high(ANestInfo.FGroupMinLevels) do
+    Result := Result+inttostr(ANestInfo.FGroupMinLevels[i])+',';
+  Result := Result+']';
 end;
 
 { TLazSynFoldNodeInfoList }
@@ -621,6 +824,17 @@ begin
   end;
   FNodeInfoList[FNodeCount] := AnInfo;
   FNodeInfoList[FNodeCount].AllNodeIndex := FNodeCount;
+  If (FNodeCount > 0) and (sfaOpen in AnInfo.FoldAction) then begin
+    c := FNodeCount-1;
+    if (sfaClose in FNodeInfoList[c].FoldAction) and
+       //(AnInfo.FoldType = FNodeInfoList[c].FoldType) and  // cfbtIfDef <> cfbtIfElse
+       (AnInfo.LogXStart = FNodeInfoList[c].LogXStart) and
+       (AnInfo.LogXEnd = FNodeInfoList[c].LogXEnd)
+    then begin
+      include(FNodeInfoList[FNodeCount].FoldAction, sfaCloseAndOpen);
+      include(FNodeInfoList[c].FoldAction, sfaCloseAndOpen);
+    end;
+  end;
   inc(FNodeCount);
 end;
 
@@ -736,6 +950,759 @@ begin
   end;
 
   InvalidateNode(Result);
+end;
+
+{ TLazSynEditNestedFoldsList }
+
+procedure TLazSynEditNestedFoldsList.SetLine(AValue: TLineIdx);
+begin
+  if FLine = AValue then Exit;
+  {$IfDef DebugTLazSynEditNestedFoldsList}
+  debugln(['TLazSynEditNestedFoldsList.SetLine ', AValue, ' from previous ', FLine]);
+  {$EndIf}
+
+  // might be able to re-use old data
+  FPreviousCount := FCount;
+  FPreviousEvaluationIndex := FEvaluationIndex;
+  FPreviousNestInfo := FNestInfo;
+  FPreviousLine := FLine;
+  FNestInfo := nil;
+  FOnLineNestInfo := nil;
+
+  FLine := AValue;
+  FCount := -1;                          // will trigger InitCount
+  //FEvaluationIndex := -1;
+  FOpeningOnLineCount := -1;
+  FGroupEndLevelsAtEval := nil;   // will trigger InitSubGroupEndLevels
+  FGroupCount := -1;
+end;
+
+procedure TLazSynEditNestedFoldsList.Clear;
+begin
+  {$IfDef DebugTLazSynEditNestedFoldsList}
+  debugln(['TLazSynEditNestedFoldsList.Clear ']);
+  {$EndIf}
+
+  FGroupCount := -1;
+  SetLength(FGroupEndLevelsAtEval, 0);
+  FCount := -1;
+  FOpeningOnLineCount := -1;
+  FEvaluationIndex := -1;
+  SetLength(FNestInfo, 0);
+  SetLength(FOnLineNestInfo, 0);
+
+  ClearPreviousCache;
+end;
+
+procedure TLazSynEditNestedFoldsList.ResetFilter;
+begin
+  if FIncludeOpeningOnLine and (FFoldFlags = []) and (FFoldGroup = 0) and
+     (FOpeningLineEndIndex = -1)
+  then
+    exit;
+  FIncludeOpeningOnLine := True;
+  FFoldFlags := [];
+  FFoldGroup := 0;
+  FOpeningLineEndIndex := -1;
+  Clear;
+end;
+
+procedure TLazSynEditNestedFoldsList.InitSubGroupEndLevels;
+var
+  i: integer;
+begin
+  if Length(FGroupEndLevelsAtEval) > 0 then
+    exit;
+  if FHighLighter = nil then exit;
+  FHighLighter.CurrentLines := FLines;
+
+  if FFoldGroup = 0 then begin
+    // special, join other groups
+    FGroupCount := FHighlighter.FoldTypeCount;
+    // start at 1, so FoldGroup can be used as index
+    SetLength(FGroupEndLevelsAtEval, FGroupCount + 1);
+    for i := 1 to FGroupCount do
+      FGroupEndLevelsAtEval[i] := FHighlighter.FoldBlockEndLevel(FLine - 1, i, FFoldFlags);
+  end
+  else begin
+    FGroupCount := 1;
+    SetLength(FGroupEndLevelsAtEval, 1);
+    FGroupEndLevelsAtEval[0] := Count - OpeningOnLineCount;
+  end;
+  // Warning: storing endlevels, not minlevels
+  FNestInfo[FCount].FGroupMinLevels := copy(FGroupEndLevelsAtEval,0, length(FGroupEndLevelsAtEval));
+  FNestInfo[FCount].LineIdx := Line - 1;
+  FNestInfo[FCount].EndLineIdx := 0;
+end;
+
+function TLazSynEditNestedFoldsList.GetHLNode(Index: Integer): TSynFoldNodeInfo;
+begin
+  if (Index < 0) or (Index >= Count) then begin
+    Result.FoldAction := [sfaInvalid];
+    exit;
+  end;
+  if Index >= FCount then
+    Result := FOnLineNestInfo[Index - FCount].HNode
+  else begin
+    InitNestInfoForIndex(Index);
+    Result := FNestInfo[Index].HNode;
+  end;
+end;
+
+function TLazSynEditNestedFoldsList.GetNodeEndLine(Index: Integer): Integer;
+var
+  nd: TSynFoldNodeInfo;
+  lvl, i, CurIdx, minlvl, grp, cnt: Integer;
+begin
+  if (Index < 0) or (Index >= Count) then
+    exit(-1);
+
+  nd := HLNode[Index]; // make sure the list/array is initialzied
+  grp := nd.FoldGroup;
+  CurIdx := Index;
+  cnt := Count;
+  while CurIdx < cnt do begin
+    nd := HLNode[CurIdx];
+    if nd.FoldGroup = grp then begin
+      if CurIdx >= FCount then
+        Result := FOnLineNestInfo[CurIdx - FCount].EndLineIdx
+      else
+        Result := FNestInfo[CurIdx].EndLineIdx;
+      if Result > 0 then
+        break;
+    end;
+    inc(CurIdx);
+  end;
+  {$IfDef DebugTLazSynEditNestedFoldsList}
+  debugln(['TLazSynEditNestedFoldsList.GetNodeEndLine  for ', Index, '    from curidx ',CurIdx, '   of cnt ', Count, '  / ', FCount ]);
+  {$EndIf}
+
+  if CurIdx = Index then
+    exit;
+
+  minlvl:= MaxInt;
+  if CurIdx < cnt then begin
+    i := Result;
+    minlvl := HighLighter.FoldBlockMinLevel(Result, nd.FoldGroup, FoldFlags);
+  end
+  else if CurIdx - 1 >= FCount then
+    i := FLine + 1
+  else
+    i := FLine;
+
+  while CurIdx > Index do begin
+    dec(CurIdx);
+    nd := HLNode[CurIdx];
+    if nd.FoldGroup <> grp then
+      continue;
+
+    if sfbIncludeDisabled in FoldFlags then
+      lvl := nd.NestLvlStart
+    else
+      lvl := nd.FoldLvlStart;
+
+    if minlvl > lvl then begin
+      Result := HighLighter.FindNextLineWithMinFoldLevel(i, lvl, nd.FoldGroup, FoldFlags);
+      minlvl := HighLighter.FoldBlockMinLevel(Result, nd.FoldGroup, FoldFlags);
+    end;
+
+    if CurIdx >= FCount then
+      FOnLineNestInfo[CurIdx - FCount].EndLineIdx := Result
+    else
+      FNestInfo[CurIdx].EndLineIdx := Result;
+
+    if minlvl >= lvl then begin
+      i := Result + 1;
+      minlvl:= MaxInt;
+    end
+    else if CurIdx = FCount then
+      minlvl:= MaxInt;
+  end;
+end;
+
+function TLazSynEditNestedFoldsList.GetNodeFoldGroup(Index: Integer): Integer;
+begin
+  if FoldGroup <> 0 then
+    Result := FoldGroup
+  else
+    Result := HLNode[Index].FoldGroup;
+end;
+
+function TLazSynEditNestedFoldsList.GetNodeLine(Index: Integer): Integer;
+begin
+  InitLineInfoForIndex(Index);
+  if Index >= FCount then
+    Result := FLine
+  else
+    Result := FNestInfo[Index].LineIdx;
+end;
+
+function TLazSynEditNestedFoldsList.GetNodeFoldType(Index: Integer): Pointer;
+begin
+  Result := nil;
+
+  if HasCount and
+     ( (Index >= Count - OpeningOnLineCount) or // OpeningOnLine
+       ( (Index >= FEvaluationIndex) and (nfeHasHNode in FNestInfo[Index].FFLags) )
+     )
+  then begin
+    Result := HLNode[Index].FoldType;
+    exit;
+  end;
+
+  if FHighLighter = nil then exit;
+  FHighLighter.CurrentLines := FLines;
+
+  // TODO: Cache
+  if (FFoldGroup > 0) and (FHighLighter.FoldBlockNestedTypes(Line - 1, Index, Result, FFoldGroup, FFoldFlags)) then
+    exit;
+
+  Result := HLNode[Index].FoldType;
+end;
+
+function TLazSynEditNestedFoldsList.GetNodeLineEx(Index, PrevCount: Integer): Integer;
+var
+  Node: TLazSynEditNestedFoldsListEntry;
+  MinLvl, SearchLvl, Grp, PCnt, PLineIdx: Integer;
+begin
+  InitLineInfoForIndex(Index);
+  Result := -1;
+
+  Node := FNestInfo[Index];
+  PCnt := length(Node.PrevNodeAtSameLevel);
+
+  if PrevCount > PCnt then begin
+    if (nfeMaxPrevReached in Node.FFLags) then
+      exit;
+    if FHighLighter = nil then exit;
+    FHighLighter.CurrentLines := FLines;
+
+    if FoldGroup = 0 then begin
+      InitNestInfoForIndex(Index);
+      Grp    := Node.HNode.FoldGroup;
+      if sfbIncludeDisabled in FFoldFlags then
+        SearchLvl := Node.HNode.NestLvlStart
+      else
+        SearchLvl := Node.HNode.FoldLvlStart;
+    end else begin
+      Grp    := FoldGroup;
+      SearchLvl := Index;
+    end;
+    if PCnt = 0 then
+      PLineIdx := Node.LineIdx - 1
+    else
+      PLineIdx := Node.PrevNodeAtSameLevel[PCnt-1].LineIdx - 1;
+
+    while true do begin
+
+      MinLvl := FHighLighter.FoldBlockMinLevel(PLineIdx, Grp, FFoldFlags);
+      while (PLineIdx >= 0) and (SearchLvl < MinLvl) do begin
+        dec(PLineIdx);
+        MinLvl := FHighLighter.FoldBlockMinLevel(PLineIdx, Grp, FFoldFlags);
+      end;
+
+      if PLineIdx >= 0 then begin
+        if length(Node.PrevNodeAtSameLevel) = PCnt then
+          SetLength(Node.PrevNodeAtSameLevel, Max(PrevCount, PCnt+1));
+        Node.PrevNodeAtSameLevel[PCnt].LineIdx := PLineIdx;
+        Node.PrevNodeAtSameLevel[PCnt].FFLags  := [];
+        inc(PCnt);
+        if PCnt = PrevCount then begin
+          if length(Node.PrevNodeAtSameLevel) > PCnt then
+            SetLength(Node.PrevNodeAtSameLevel, PCnt);
+          Result := PLineIdx;
+          exit;
+        end;
+      end;
+
+      If (PLineIdx < 0) or (MinLvl < SearchLvl) then begin
+        Include(Node.FFLags, nfeMaxPrevReached);
+        if length(Node.PrevNodeAtSameLevel) > PCnt then
+          SetLength(Node.PrevNodeAtSameLevel, PCnt);
+        exit;
+      end;
+
+    end;
+  end;
+
+  Result := Node.PrevNodeAtSameLevel[PrevCount-1].LineIdx;
+end;
+
+procedure TLazSynEditNestedFoldsList.InitNestInfoForIndex(AnIndex: Integer);
+var
+  CurLine: TLineIdx;
+  i, EvalIdx, c, t, l: Integer;
+  NFilter: TSynFoldActions;
+  nd: TSynFoldNodeInfo;
+  GrpCnt: Array of integer;
+begin
+  if HasCount and
+     ( (AnIndex >= Count - OpeningOnLineCount) or
+       ( (AnIndex >= FEvaluationIndex) and (nfeHasHNode in FNestInfo[AnIndex].FFLags) )
+     )
+  then exit;
+
+  if FHighLighter = nil then exit;
+  FHighLighter.CurrentLines := FLines;
+
+  AquireFoldNodeInfoList;
+  try
+    InitLineInfoForIndex(AnIndex);
+    if (AnIndex >= Count - OpeningOnLineCount) or
+       ( (AnIndex >= FEvaluationIndex) and (nfeHasHNode in FNestInfo[AnIndex].FFLags) )
+    then exit;
+
+    EvalIdx := AnIndex;
+    CurLine := FNestInfo[EvalIdx].LineIdx;
+    while (EvalIdx < FCount-1) and (FNestInfo[EvalIdx+1].LineIdx = CurLine) do inc(EvalIdx);
+    assert(Length(FNestInfo[EvalIdx+1].FGroupMinLevels) > 0, 'Length(FNestInfo[EvalIdx].FGroupEndLevels)');
+
+    //TODO keep groupcount allocated on the same mem / instance var
+    GrpCnt := copy(FNestInfo[EvalIdx+1].FGroupMinLevels);
+
+    NFilter := [sfaOpenFold];
+    if not(sfbIncludeDisabled in FFoldFlags) then Include(NFilter, sfaFold);
+    FFoldNodeInfoList.Line := CurLine;
+    FFoldNodeInfoList.ActionFilter := NFilter;
+    FFoldNodeInfoList.GroupFilter := FFoldGroup;
+    c := FFoldNodeInfoList.Count - 1;
+    {$IfDef DebugTLazSynEditNestedFoldsList}
+    debugln(['TLazSynEditNestedFoldsList.InitNestInfoForIndex CurLine=',CurLine, '  c=',c, '  EvalIdx=',EvalIdx]);
+    {$EndIf}
+    (* if c < 0 then it is possible that a highlighter called
+       CodeFoldRange.Pop(false); // avoid minlevel // << still triggers min level for sfbIncludeDisabled;
+       without generating foldnode info // maybe the HL tries to silently change the fold type
+    *)
+    assert(c >= 0, 'InitNestInfoForIndex: FFoldNodeInfoList.Count');
+
+    for i := c downto 0 do begin
+      nd := FFoldNodeInfoList[i];
+
+      if FFoldGroup = 0
+      then t := nd.FoldGroup
+      else t := 0;
+
+      if (sfbIncludeDisabled in FFoldFlags)
+      then l := nd.NestLvlStart
+      else l := nd.FoldLvlStart;
+      if l >= GrpCnt[t] then continue;
+
+      dec(GrpCnt[t]);
+
+      assert(GrpCnt[t] >= 0, 'TLazSynEditNestedFoldsList.InitNestInfoForIndex GroupEndLevel < 0');
+      assert(EvalIdx >= 0, 'TLazSynEditNestedFoldsList.InitNestInfoForIndex FEvaluationIndex < 0');
+      assert(FNestInfo[EvalIdx].LineIdx = CurLine, 'TLazSynEditNestedFoldsList.InitNestInfoForIndex FNestInfo[EvalIdx].LineIdx = CurLine');
+
+      //FNestInfo[EvalIdx].LineIdx := CurLine;
+      include(FNestInfo[EvalIdx].FFLags, nfeHasHNode);
+      FNestInfo[EvalIdx].HNode := nd;
+
+      dec(EvalIdx);
+    end;
+
+  finally
+    ReleaseFoldNodeInfoList;
+  end;
+  //for i := FCount-1 downto 0 do  DbgOut([', ',dbgs(nfeHasHNode in FNestInfo[i].FFLags)]); DebugLn();
+  assert(nfeHasHNode in FNestInfo[AnIndex].FFLags, 'nfeHasHNode in FNestInfo[AnIndex].FFLags');
+  assert(AnIndex >= FEvaluationIndex, 'TLazSynEditNestedFoldsList.InitNestInfoForIndex Index not found');
+end;
+
+procedure TLazSynEditNestedFoldsList.InitLineInfoForIndex(AnIndex: Integer);
+var
+  CurLine: TLineIdx;
+  i, c, c1, l: Integer;
+
+  procedure DoMergePrevious;   // TODO: copy nodeinfo if avail
+  var
+    pcnt, c, l, c1: integer;
+  begin
+    pcnt := FPreviousCount - 1;
+    {$IfDef DebugTLazSynEditNestedFoldsList}
+    debugln(['TLazSynEditNestedFoldsList.InitLineInfoForIndex() DoMergePrev (',pcnt, ' ',FPreviousEvaluationIndex ,') ', FPreviousNestInfo[pcnt].LineIdx,' to ', FPreviousNestInfo[FPreviousEvaluationIndex].LineIdx, ' FEvaluationIndex:',FEvaluationIndex, ' CurLine=',CurLine ]);
+    {$EndIf}
+    assert(FPreviousNestInfo[pcnt].LineIdx = CurLine, 'TLazSynEditNestedFoldsList.InitLineInfoForIndex.DoMergePrevious LineIdx = CurLine');
+    while  pcnt >= FPreviousEvaluationIndex do begin
+      while (pcnt > 0) and (pcnt > FPreviousEvaluationIndex) and
+            (FPreviousNestInfo[pcnt].LineIdx = FPreviousNestInfo[pcnt-1].LineIdx)
+      do
+        dec(pcnt);
+      assert(length(FPreviousNestInfo[pcnt].FGroupMinLevels) > 0, 'TLazSynEditNestedFoldsList.InitLineInfoForIndex.DoMergePrevious FGroupEndLevels > 0');
+
+      c := 0;
+      if FFoldGroup = 0 then begin
+        i := FGroupCount;
+        while (i > 0) do begin
+          l := FPreviousNestInfo[pcnt].FGroupMinLevels[i];
+          if (l < FGroupEndLevelsAtEval[i]) then begin
+            c1 := FGroupEndLevelsAtEval[i] - l;
+            FGroupEndLevelsAtEval[i] := l;
+            c := c + c1;
+          end
+          else begin
+            FPreviousNestInfo[pcnt].FGroupMinLevels[i] := FGroupEndLevelsAtEval[i];
+          end;
+          dec(i);
+        end;
+      end
+      else begin
+        l := FPreviousNestInfo[pcnt].FGroupMinLevels[0];
+        if (l < FGroupEndLevelsAtEval[0]) then begin
+          c := FGroupEndLevelsAtEval[0] - l;
+          FGroupEndLevelsAtEval[0] := l;
+        end
+        else begin
+          FPreviousNestInfo[pcnt].FGroupMinLevels[0] := FGroupEndLevelsAtEval[0];
+        end;
+      end;
+
+      while c > 0 do begin
+        dec(FEvaluationIndex);
+        FNestInfo[FEvaluationIndex].LineIdx := FPreviousNestInfo[pcnt].LineIdx;
+        FNestInfo[FEvaluationIndex].EndLineIdx := FPreviousNestInfo[pcnt].EndLineIdx;
+        FNestInfo[FEvaluationIndex].FFLags:= [];
+        FNestInfo[FEvaluationIndex].FGroupMinLevels := FPreviousNestInfo[pcnt].FGroupMinLevels;
+        dec(c);
+      end;
+
+      dec(pcnt);
+    end;
+    ClearPreviousCache;
+  end;
+
+begin
+  if HasCount and ((AnIndex >= Count - OpeningOnLineCount) or (AnIndex >= FEvaluationIndex)) then exit;
+  assert(FEvaluationIndex > 0, 'TLazSynEditNestedFoldsList.InitLineInfoForIndex already finilhed');
+
+  if FHighLighter = nil then exit;
+  FHighLighter.CurrentLines := FLines;
+
+  // prepare previous info.
+  // TODO FLine = FPreviousNestInfo[i].LineIdx or FLine = FPreviousLine;
+  if (FEvaluationIndex = FCount) then begin
+    FPreviousMergeLine := -1;
+    i := FPreviousCount; // + 1 - 1
+    if (i > 0) and (FPreviousEvaluationIndex < i) then begin
+      if i >= Length(FPreviousNestInfo) then
+        exit;
+      if (i > FPreviousEvaluationIndex) and
+         (FPreviousNestInfo[i].LineIdx = FPreviousNestInfo[i-1].LineIdx)
+      then
+        dec(i);
+      while (i >= 0) and (i >= FPreviousEvaluationIndex) do
+        if FPreviousNestInfo[i].LineIdx >= Line then
+          dec(i)
+        else
+          break;
+      FPreviousCount := i + 1;
+      if (i >= 0) and (i >= FPreviousEvaluationIndex) then
+        FPreviousMergeLine := FPreviousNestInfo[i].LineIdx;
+    end;
+  end;
+
+  AquireFoldNodeInfoList;
+  try
+    if (AnIndex >= Count - OpeningOnLineCount) or (AnIndex >= FEvaluationIndex) then exit;
+
+    InitSubGroupEndLevels;
+
+//    FNestInfo[FEvaluationIndex].FGroupMinLevels := copy(FGroupEndLevelsAtEval,0, length(FGroupEndLevelsAtEval));
+
+    if (FEvaluationIndex = FCount) then
+      CurLine := Line - 1
+    else
+      CurLine := FNestInfo[FEvaluationIndex].LineIdx - 1;
+
+    inc(CurLine);
+    while CurLine > 0 do begin
+      dec(CurLine);
+      if CurLine = FPreviousMergeLine then begin
+        FPreviousMergeLine := -1;
+        DoMergePrevious;
+        InitLineInfoForIndex(AnIndex);
+        exit;
+      end;
+
+      c := 0;
+      if FFoldGroup = 0 then begin
+        i := FGroupCount;
+        while (i > 0) do begin
+          l := FHighLighter.FoldBlockMinLevel(CurLine, i, FFoldFlags);
+          if (l < FGroupEndLevelsAtEval[i]) then begin
+            c1 := FGroupEndLevelsAtEval[i] - l;
+            FGroupEndLevelsAtEval[i] := FGroupEndLevelsAtEval[i] - c1;
+            c := c + c1;
+          end;
+          dec(i);
+        end;
+      end
+      else begin
+        l := FHighLighter.FoldBlockMinLevel(CurLine, FFoldGroup, FFoldFlags);
+        if l < FGroupEndLevelsAtEval[0] then begin
+          c := FGroupEndLevelsAtEval[0] - l;
+          FGroupEndLevelsAtEval[0] := FGroupEndLevelsAtEval[0] - c;
+        end;
+      end;
+      if c = 0 then continue;
+
+      while c > 0 do begin
+        dec(FEvaluationIndex);
+        FNestInfo[FEvaluationIndex].LineIdx := CurLine;
+        FNestInfo[FEvaluationIndex].FFLags:= [];
+        dec(c);
+      end;
+      FNestInfo[FEvaluationIndex].FGroupMinLevels := copy(FGroupEndLevelsAtEval,0, length(FGroupEndLevelsAtEval));
+
+      if (AnIndex >= FEvaluationIndex) then Break;
+    end;
+
+  finally
+    ReleaseFoldNodeInfoList;
+  end;
+  {$IfDef DebugTLazSynEditNestedFoldsList}
+  debugln(['TLazSynEditNestedFoldsList.InitLineInfoForIndex FEvaluationIndex=', FEvaluationIndex, '  AnIndex=',AnIndex]);
+  for i := FCount-1 downto 0 do begin DbgOut([', ',FNestInfo[i].LineIdx]); if length(FNestInfo[i].FGroupMinLevels) > 0 then begin DbgOut(' ('); for c := 0 to length(FNestInfo[i].FGroupMinLevels)-1 do DbgOut([',',FNestInfo[i].FGroupMinLevels[c]]);  DbgOut(') '); end; end; DebugLn();
+  {$EndIf}
+  assert(CurLine >= 0, 'TLazSynEditNestedFoldsList.InitLineInfoForIndex Curline < 0');
+  assert(AnIndex >= FEvaluationIndex, 'TLazSynEditNestedFoldsList.InitLineInfoForIndex Index not found');
+end;
+
+procedure TLazSynEditNestedFoldsList.InitCount;
+begin
+  if FHighLighter = nil then exit;
+  FHighLighter.CurrentLines := FLines;
+
+  FCount := FHighlighter.FoldBlockEndLevel(FLine - 1, FFoldGroup, FFoldFlags);
+  FEvaluationIndex := FCount;
+  SetLength(FNestInfo, FCount+1);
+end;
+
+procedure TLazSynEditNestedFoldsList.InitOpeningOnLine;
+var
+  nd: TSynFoldNodeInfo;
+  OpenIdx: Array of Array of Integer; // List of open-node-index, for each FoldCroup
+  OpenCnt: Array of Integer; // List of open-node-index, for each FoldCroup
+  Grp, c, i, j, GrpLow, GrpHigh, ListCnt: Integer;
+  oc: LongInt;
+begin
+  Assert((FOpeningLineEndIndex < 0) or (sfbIncludeDisabled in FoldFlags), 'OpeningLineEndIndex only implemented for sfbIncludeDisabled');
+
+  FOpeningOnLineCount := 0;
+  if FCount < 0 then
+    InitCount;
+
+  if not FIncludeOpeningOnLine then
+    exit;
+  // FOnLineNestInfo
+
+  if FHighLighter = nil then exit;
+  FHighLighter.CurrentLines := FLines;
+
+  AquireFoldNodeInfoList(FLine);
+  try
+    if (sfbIncludeDisabled in FFoldFlags) then
+      FFoldNodeInfoList.ActionFilter := []
+    else
+      FFoldNodeInfoList.ActionFilter := [sfaFold];
+    FFoldNodeInfoList.GroupFilter := 0;
+
+    if FFoldGroup = 0 then begin
+      FGroupCount := FHighlighter.FoldTypeCount;
+      GrpLow := 1;
+      GrpHigh := FGroupCount;
+    end
+    else begin
+      FGroupCount := 1;
+      GrpLow := FFoldGroup;
+      GrpHigh := FFoldGroup;
+    end;
+    SetLength(OpenCnt, FGroupCount);
+    for Grp := 0 to FGroupCount - 1 do
+      OpenCnt[Grp] := 0;
+    ListCnt := FFoldNodeInfoList.Count;
+    if ListCnt < 0 then
+      exit;
+    SetLength(OpenIdx, FGroupCount, ListCnt);
+
+    for Grp := GrpLow to GrpHigh do begin
+      (* Filtering group in the loop instead of the list only works, if 0 is the only special group
+         See use of NodeIndex below, if changing this *)
+      //FFoldNodeInfoList.GroupFilter := Grp;
+      for i := 0 to ListCnt - 1 do begin
+        nd := FFoldNodeInfoList[i];
+        if (sfaInvalid in nd.FoldAction) or (nd.FoldGroup <> Grp) then
+          Continue;
+        if (FOpeningLineEndIndex >= 0) and (nd.AllNodeIndex > FOpeningLineEndIndex) then
+          break;
+
+        if sfaOpen in nd.FoldAction then begin
+          inc(FOpeningOnLineCount);
+          OpenIdx[Grp - GrpLow, OpenCnt[Grp - GrpLow]] := nd.NodeIndex; // Using NodeIndex only works, because we do NOT change the filter
+          inc(OpenCnt[Grp - GrpLow]);
+        end
+        else
+        if (nd.FoldAction * [sfaClose, sfaFold, sfaSingleLine] = [sfaClose, sfaSingleLine]) then begin
+          dec(FOpeningOnLineCount);
+          dec(OpenCnt[Grp - GrpLow]);
+        end;
+      end;
+    end;
+
+    SetLength(FOnLineNestInfo, FOpeningOnLineCount);
+
+    //FFoldNodeInfoList.ActionFilter := [];
+    //FFoldNodeInfoList.GroupFilter := 0;
+    c := ListCnt - 1;
+    if (FOpeningLineEndIndex >= 0) and (c > FOpeningLineEndIndex) then
+      c := FOpeningLineEndIndex;
+    j := FOpeningOnLineCount;
+
+    For i := c downto 0 do begin
+      if j = 0 then break;
+      nd := FFoldNodeInfoList[i];
+      Grp := nd.FoldGroup;
+      if (Grp < GrpLow) or (Grp > GrpHigh) then Continue;
+      oc := OpenCnt[Grp - GrpLow];
+      Assert(oc >= 0, 'TLazSynEditNestedFoldsList.InitOpeningOnLine bad count for '+IntToStr(Grp));
+      Assert((oc=0) or (OpenIdx[Grp - GrpLow, oc-1] <= i), 'TLazSynEditNestedFoldsList.InitOpeningOnLine bad index for '+IntToStr(i)+' G='+IntToStr(Grp));
+      if (oc > 0) and (OpenIdx[Grp - GrpLow, oc-1] = i) then begin
+        dec(OpenCnt[Grp - GrpLow]);
+        dec(j);
+        FOnLineNestInfo[j].LineIdx := FLine;
+        FOnLineNestInfo[j].HNode := nd;
+        FOnLineNestInfo[j].HNode.NodeIndex := j;
+        FOnLineNestInfo[j].EndLineIdx := 0;
+      end;
+    end;
+
+    Assert(j=0, 'TLazSynEditNestedFoldsList.InitOpeningOnLine did not fill all nodes '+IntToStr(j));
+  finally
+    ReleaseFoldNodeInfoList;
+  end;
+end;
+
+procedure TLazSynEditNestedFoldsList.SetFoldFlags(AValue: TSynFoldBlockFilterFlags);
+begin
+  if FFoldFlags = AValue then Exit;
+  FFoldFlags := AValue;
+  Clear;
+end;
+
+procedure TLazSynEditNestedFoldsList.SetHighLighter(
+  AValue: TSynCustomFoldHighlighter);
+begin
+  if FHighLighter = AValue then Exit;
+  FHighLighter := AValue;
+  Clear;
+end;
+
+procedure TLazSynEditNestedFoldsList.SetIncludeOpeningOnLine(AValue: Boolean);
+begin
+  if FIncludeOpeningOnLine = AValue then Exit;
+  FIncludeOpeningOnLine := AValue;
+  //Clear; // Do not Clear, keep the data, can be re-enabled
+end;
+
+procedure TLazSynEditNestedFoldsList.AquireFoldNodeInfoList(const ALine: Integer
+  );
+begin
+  if FHighLighter = nil then exit;
+  FHighLighter.CurrentLines := FLines;
+
+  if FFoldNodeInfoListHoldCnt = 0 then begin
+    FFoldNodeInfoList := FHighlighter.FoldNodeInfo[ALine];
+    FFoldNodeInfoList.AddReference;
+  end else
+    FFoldNodeInfoList.Line := ALine;
+  inc(FFoldNodeInfoListHoldCnt);
+end;
+
+procedure TLazSynEditNestedFoldsList.ReleaseFoldNodeInfoList;
+begin
+  dec(FFoldNodeInfoListHoldCnt);
+  if FFoldNodeInfoListHoldCnt = 0 then
+    ReleaseRefAndNil(FFoldNodeInfoList);
+end;
+
+procedure TLazSynEditNestedFoldsList.SetLines(AValue: TSynEditStrings);
+begin
+  if FLines = AValue then Exit;
+  FLines := AValue;
+  Clear;
+end;
+
+procedure TLazSynEditNestedFoldsList.SetOpeningLineEndIndex(AValue: Integer);
+begin
+  if FOpeningLineEndIndex = AValue then Exit;
+  FOpeningLineEndIndex := AValue;
+  Clear; // TODO only clear current line, the rest will still be valid
+end;
+
+function TLazSynEditNestedFoldsList.HasCount: Boolean;
+begin
+  Result := (FCount >= 0) and ( (not FIncludeOpeningOnLine) or (FOpeningOnLineCount >= 0) );
+end;
+
+procedure TLazSynEditNestedFoldsList.ClearPreviousCache;
+begin
+  FPreviousCount := -1;
+  FPreviousEvaluationIndex := -1;
+  SetLength(FPreviousNestInfo, 0);
+end;
+
+procedure TLazSynEditNestedFoldsList.SetFoldGroup(AValue: Integer);
+begin
+  if FFoldGroup = AValue then Exit;
+  FFoldGroup := AValue;
+  Clear;
+end;
+
+constructor TLazSynEditNestedFoldsList.Create(ALines: TSynEditStrings;
+  AnHighLighter: TSynCustomFoldHighlighter);
+begin
+  FLines := ALines;
+  FHighLighter := AnHighLighter;
+  FIncludeOpeningOnLine := True;
+  FFoldFlags := [];
+  FFoldGroup := 0;
+  FFoldNodeInfoListHoldCnt := 0;
+end;
+
+function TLazSynEditNestedFoldsList.Count: Integer;
+begin
+  if (FCount < 0) then begin
+    InitCount;
+  end;
+  if FIncludeOpeningOnLine and (FOpeningOnLineCount < 0) then begin
+    InitOpeningOnLine;
+  end;
+
+  Result := FCount + OpeningOnLineCount;
+end;
+
+function TLazSynEditNestedFoldsList.OpeningOnLineCount: Integer;
+begin
+  if (not FIncludeOpeningOnLine) or (FLine < 0) then
+    exit(0);
+
+  if (FOpeningOnLineCount < 0) then begin
+    InitOpeningOnLine;
+  end;
+
+  Result := FOpeningOnLineCount;
+end;
+
+procedure TLazSynEditNestedFoldsList.Debug;
+var
+  i: Integer;
+begin
+  Debugln(['TLazSynEditNestedFoldsList for FFoldGroup=', FFoldGroup, ' FLine=', FLine,
+           ' FFoldFlags=', dbgs(FFoldFlags), ' FGroupCount=', FGroupCount,
+           ' FIncludeOpeningOnLine=', dbgs(FIncludeOpeningOnLine), ' FEvaluationIndex=', FEvaluationIndex,
+           ' FCount=', FCount, ' FOpeningOnLineCount=', FOpeningOnLineCount]);
+  Debugln(['FGroupEndLevelsAtEval=', length(FGroupEndLevelsAtEval), ': ']); for i := 0 to length(FGroupEndLevelsAtEval)-1 do DbgOut([FGroupEndLevelsAtEval[i]]); Debugln;
+  for i := 0 to length(FNestInfo)-1 do
+    Debugln(['N-Info ', i,': ',dbgs(FNestInfo[i])]);
 end;
 
 { TSynCustomFoldHighlighter }
@@ -922,6 +1889,7 @@ procedure TSynCustomFoldHighlighter.SetLine(const NewValue: String;
 begin
   inherited;
   FCodeFoldRange.MinimumCodeFoldBlockLevel := FCodeFoldRange.FCodeFoldStackSize;
+  FCodeFoldRange.FMinimumNestFoldBlockLevel := FCodeFoldRange.NestFoldStackSize;
 end;
 
 procedure TSynCustomFoldHighlighter.DoCurrentLinesChanged;
@@ -969,6 +1937,30 @@ begin
   Result := 0;
 end;
 
+function TSynCustomFoldHighlighter.FindNextLineWithMinFoldLevel(
+  ALineIndex: TLineIdx; ASearchLevel: Integer;
+  const AFilter: TSynFoldBlockFilter): integer;
+var
+  cnt: Integer;
+begin
+  cnt := CurrentLines.Count;
+  Result := ALineIndex; // Can return the original line
+  while (Result < cnt) and (FoldBlockMinLevel(Result, AFilter) > ASearchLevel) do inc(Result);
+  if (Result = cnt) then
+    dec(Result);
+end;
+
+function TSynCustomFoldHighlighter.FindNextLineWithMinFoldLevel(
+  ALineIndex: TLineIdx; ASearchLevel: Integer; AFoldGroup: integer;
+  AFlags: TSynFoldBlockFilterFlags): integer;
+var
+  Filter: TSynFoldBlockFilter;
+begin
+  Filter.FoldGroup := AFoldGroup;
+  Filter.Flags := AFlags;
+  Result := FindNextLineWithMinFoldLevel(ALineIndex, ASearchLevel, Filter);
+end;
+
 function TSynCustomFoldHighlighter.FoldLineLength(ALineIndex, FoldIndex: Integer): integer;
 begin
   Result := FoldEndLine(ALineIndex, FoldIndex);
@@ -980,18 +1972,30 @@ begin
 end;
 
 function TSynCustomFoldHighlighter.FoldEndLine(ALineIndex, FoldIndex: Integer): integer;
+begin
+  Result := FoldEndLine(ALineIndex, FoldIndex, 0, []);
+end;
+
+function TSynCustomFoldHighlighter.FoldEndLine(ALineIndex, FoldIndex: Integer;
+  const AFilter: TSynFoldBlockFilter): integer;
 var
-  lvl, cnt: Integer;
+  lvl: Integer;
   e, m: Integer;
 begin
-  cnt := CurrentLines.Count;
-  e := FoldBlockEndLevel(ALineIndex);
-  m := FoldBlockMinLevel(ALineIndex);
+  e := FoldBlockEndLevel(ALineIndex, AFilter);
+  m := FoldBlockMinLevel(ALineIndex, AFilter);
   lvl := Min(m+1+FoldIndex, e);
-  Result := ALineIndex + 1;
-  while (Result < cnt) and (FoldBlockMinLevel(Result) >= lvl) do inc(Result);
-  if (Result = cnt) then
-    dec(Result);
+  Result := FindNextLineWithMinFoldLevel(ALineIndex+1, lvl-1, AFilter);
+end;
+
+function TSynCustomFoldHighlighter.FoldEndLine(ALineIndex, FoldIndex: Integer;
+  AFoldGroup: integer; AFlags: TSynFoldBlockFilterFlags): integer;
+var
+  Filter: TSynFoldBlockFilter;
+begin
+  Filter.FoldGroup := AFoldGroup;
+  Filter.Flags := AFlags;
+  Result := FoldEndLine(ALineIndex, FoldIndex, Filter);
 end;
 
 function TSynCustomFoldHighlighter.GetFoldConfig(Index: Integer): TSynCustomFoldConfig;
@@ -1016,9 +2020,15 @@ begin
   Result := 0;
 end;
 
-function TSynCustomFoldHighlighter.GetFoldConfigInstance(Index: Integer): TSynCustomFoldConfig;
+function TSynCustomFoldHighlighter.CreateFoldConfigInstance(Index: Integer
+  ): TSynCustomFoldConfig;
 begin
   Result := TSynCustomFoldConfig.Create;
+end;
+
+function TSynCustomFoldHighlighter.GetFoldConfigInstance(Index: Integer): TSynCustomFoldConfig;
+begin
+  Result := CreateFoldConfigInstance(Index);
   Result.OnChange := @DoFoldConfigChanged;
   Result.Enabled := False;
 end;
@@ -1075,9 +2085,21 @@ begin
   Result.SetLineClean(Line);
 end;
 
+procedure TSynCustomFoldHighlighter.ScanFoldNodeInfo;
+begin
+  NextToEol;
+end;
+
 procedure TSynCustomFoldHighlighter.InitFoldNodeInfo(AList: TLazSynFoldNodeInfoList; Line: TLineIdx);
 begin
-  AList.Invalidate;
+  FIsCollectingNodeInfo := True;
+  try
+    FCollectingNodeInfoList := TLazSynFoldNodeInfoList(AList);
+    StartAtLineIndex(Line);
+    ScanFoldNodeInfo();
+  finally
+    FIsCollectingNodeInfo := False;
+  end;
 end;
 
 function TSynCustomFoldHighlighter.CreateFoldNodeInfoList: TLazSynFoldNodeInfoList;
@@ -1106,15 +2128,148 @@ begin
   end;
 end;
 
-function TSynCustomFoldHighlighter.StartCodeFoldBlock(ABlockType: Pointer;
-  IncreaseLevel: Boolean = True): TSynCustomCodeFoldBlock;
+procedure TSynCustomFoldHighlighter.GetTokenBounds(out LogX1, LogX2: Integer);
+var p : pchar; L : integer;
 begin
+  GetTokenEx(p,L);
+  LogX1 := GetTokenPos;
+  LogX2 := LogX1 + L ;
+end;
+
+function TSynCustomFoldHighlighter.StartCodeFoldBlock(ABlockType: Pointer;
+  IncreaseLevel: Boolean; ForceDisabled: Boolean): TSynCustomCodeFoldBlock;
+begin
+  if (PtrUInt(ABlockType) < FoldConfigCount) and (not ForceDisabled) and
+     (not FoldConfig[PtrUInt(ABlockType)].Enabled) and
+     (not FoldConfig[PtrUInt(ABlockType)].IsEssential)
+  then
+    exit(nil);
+
+  if FIsCollectingNodeInfo then
+    CollectNodeInfo(False, ABlockType, IncreaseLevel);
+
   Result:=CodeFoldRange.Add(ABlockType, IncreaseLevel);
 end;
 
 procedure TSynCustomFoldHighlighter.EndCodeFoldBlock(DecreaseLevel: Boolean = True);
+var
+  BlockType: Pointer;
 begin
+  //ABlockType required for detect whether singleline /multiline is being paired
+  BlockType := TopCodeFoldBlockType;
+  if FIsCollectingNodeInfo then
+    CollectNodeInfo(True, BlockType, DecreaseLevel);
+
   CodeFoldRange.Pop(DecreaseLevel);
+end;
+
+procedure TSynCustomFoldHighlighter.CollectNodeInfo(FinishingABlock: Boolean;
+  ABlockType: Pointer; LevelChanged: Boolean);
+var
+  //DecreaseLevel,
+  BlockTypeEnabled, BlockConfExists: Boolean;
+  act: TSynFoldActions;
+  nd: TSynFoldNodeInfo;
+begin
+  if not IsCollectingNodeInfo then exit;
+
+  BlockConfExists := (PtrUInt(ABlockType) < FoldConfigCount);  // how about pascal that has blocktype > foldconfigcount?
+  //BlockConfExists := HasFoldConfig(PtrUInt(ABlockType));
+  BlockTypeEnabled := False;
+  if BlockConfExists then
+    BlockTypeEnabled := FoldConfig[PtrUInt(ABlockType)].Enabled;
+
+  //Start
+  if not FinishingABlock then
+  begin
+    act := [sfaOpen, sfaOpenFold]; // todo deprecate sfaOpenFold
+    if BlockTypeEnabled then
+      act := act + FoldConfig[PtrUInt(ABlockType)].FoldActions
+    else
+    if not BlockConfExists then
+      act := act + [sfaFold,sfaFoldFold, sfaMarkup, sfaOutline];
+  end
+  else
+  //Finish
+  begin
+    act := [sfaClose, sfaCloseFold]; // todo deprecate sfaCloseFold
+    if BlockTypeEnabled then
+      act := act + FoldConfig[PtrUInt(ABlockType)].FoldActions
+    else
+    if not BlockConfExists then
+      act := act + [sfaFold, sfaFoldFold, sfaMarkup, sfaOutline];
+    act := act - [sfaFoldFold, sfaFoldHide]; // it is closing tag
+  end;
+
+  DoInitNode(nd{%H-}, FinishingABlock, ABlockType, act, LevelChanged);
+  FCollectingNodeInfoList.Add(nd);
+end;
+
+procedure TSynCustomFoldHighlighter.DoInitNode(var Node: TSynFoldNodeInfo;
+  FinishingABlock: Boolean; ABlockType: Pointer;
+  aActions: TSynFoldActions; AIsFold: Boolean);
+var
+  OneLine: Boolean;
+  EndOffs: Integer;
+  LogX1, LogX2: Integer;
+
+begin
+  GetTokenBounds(LogX1, LogX2);
+
+  aActions := aActions + [sfaMultiLine];
+  if FinishingABlock then
+    EndOffs := -1
+  else
+    EndOffs := +1;
+  Node.LineIndex := LineIndex;
+  Node.LogXStart := LogX1;
+  Node.LogXEnd := LogX2;
+  Node.FoldType := ABlockType;
+  Node.FoldTypeCompatible := ABlockType;
+  Node.FoldAction := aActions;
+  node.FoldGroup := 1;//FOLDGROUP_PASCAL;
+  Node.FoldLvlStart := CodeFoldRange.CodeFoldStackSize; // If "not AIsFold" then the node has no foldlevel of its own
+  Node.NestLvlStart := CodeFoldRange.NestFoldStackSize;
+  OneLine := FinishingABlock and (Node.FoldLvlStart > CodeFoldRange.MinimumCodeFoldBlockLevel);
+  Node.NestLvlEnd := Node.NestLvlStart + EndOffs;
+  if not (sfaFold in aActions) then
+    EndOffs := 0;
+  Node.FoldLvlEnd := Node.FoldLvlStart + EndOffs;
+  if OneLine then  // find opening node
+    RepairSingleLineNode(Node);
+end;
+
+procedure TSynCustomFoldHighlighter.RepairSingleLineNode(var Node: TSynFoldNodeInfo);
+var
+  nd: PSynFoldNodeInfo;
+  i : integer;
+begin
+    i := FCollectingNodeInfoList.CountAll - 1;
+    nd := FCollectingNodeInfoList.ItemPointer[i];
+    while (i >= 0) and
+          ( (nd^.FoldType <> node.FoldType) or
+            (nd^.FoldGroup <> node.FoldGroup) or
+            (not (sfaOpenFold in nd^.FoldAction))
+            or (nd^.FoldLvlEnd <> Node.FoldLvlStart)
+          )
+    do begin
+      dec(i);
+      nd := FCollectingNodeInfoList.ItemPointer[i];
+    end;
+    if i >= 0 then begin
+      nd^.FoldAction  := nd^.FoldAction + [sfaOneLineOpen, sfaSingleLine] - [sfaMultiLine];
+      Node.FoldAction := Node.FoldAction + [sfaOneLineClose, sfaSingleLine] - [sfaMultiLine];
+      if (sfaFoldHide in nd^.FoldAction) then begin
+        assert(sfaFold in nd^.FoldAction, 'sfaFoldHide without sfaFold');
+        // one liner: hide-able / not fold-able
+        nd^.FoldAction  := nd^.FoldAction - [sfaFoldFold];
+        Node.FoldAction := Node.FoldAction - [sfaFoldFold];
+      end else begin
+        // one liner: nether hide-able nore fold-able
+        nd^.FoldAction  := nd^.FoldAction - [sfaOpenFold, sfaFold, sfaFoldFold];
+        Node.FoldAction := Node.FoldAction - [sfaCloseFold, sfaFold, sfaFoldFold];
+      end;
+    end;
 end;
 
 procedure TSynCustomFoldHighlighter.CreateRootCodeFoldBlock;
@@ -1343,6 +2498,13 @@ begin
   else if Pointer(FTop) > Pointer(Range.FTop) then
     Result:= 1
   else
+    Result := FMinimumNestFoldBlockLevel - Range.FMinimumNestFoldBlockLevel;
+  if Result <> 0 then
+    exit;
+  Result := FNestFoldStackSize - Range.FNestFoldStackSize;
+  if Result <> 0 then
+    exit;
+
     Result := FMinimumCodeFoldBlockLevel - Range.FMinimumCodeFoldBlockLevel;
   if Result <> 0 then
     exit;
@@ -1360,6 +2522,7 @@ begin
     exit(nil);
   end;
   Result := FTop.Child[ABlockType];
+  inc(FNestFoldStackSize);
   if IncreaseLevel then
     inc(FCodeFoldStackSize);
   FTop:=Result;
@@ -1372,10 +2535,14 @@ begin
   //debugln('TSynCustomHighlighterRange.Pop');
   if assigned(FTop.Parent) then begin
     FTop := FTop.Parent;
-    if DecreaseLevel then
+    dec(FNestFoldStackSize);
+    if FMinimumNestFoldBlockLevel > FNestFoldStackSize then
+      FMinimumNestFoldBlockLevel := FNestFoldStackSize;
+    if DecreaseLevel then begin
       dec(FCodeFoldStackSize);
-    if FMinimumCodeFoldBlockLevel > FCodeFoldStackSize then
-      FMinimumCodeFoldBlockLevel := FCodeFoldStackSize;
+      if FMinimumCodeFoldBlockLevel > FCodeFoldStackSize then
+        FMinimumCodeFoldBlockLevel := FCodeFoldStackSize;
+    end;
   end;
 end;
 
@@ -1388,7 +2555,9 @@ procedure TSynCustomHighlighterRange.Clear;
 begin
   FRangeType:=nil;
   FCodeFoldStackSize := 0;
+  FNestFoldStackSize := 0;
   FMinimumCodeFoldBlockLevel := 0;
+  FMinimumNestFoldBlockLevel:= 0;
   FTop:=nil;
 end;
 
@@ -1398,12 +2567,16 @@ begin
     FTop := Src.FTop;
     FCodeFoldStackSize := Src.FCodeFoldStackSize;
     FMinimumCodeFoldBlockLevel := Src.FMinimumCodeFoldBlockLevel;
+    FNestFoldStackSize := Src.FNestFoldStackSize;
+    FMinimumNestFoldBlockLevel := Src.FMinimumNestFoldBlockLevel;
     FRangeType := Src.FRangeType;
   end
   else begin
     FTop := nil;
     FCodeFoldStackSize := 0;
+    FNestFoldStackSize := 0;
     FMinimumCodeFoldBlockLevel := 0;
+    FMinimumNestFoldBlockLevel := 0;
     FRangeType := nil;
   end;
 end;
@@ -1422,7 +2595,7 @@ constructor TSynCustomHighlighterRanges.Create(
   TheHighlighterClass: TSynCustomHighlighterClass);
 begin
   Allocate;
-  FItems:=TAvgLvlTree.Create(@CompareSynHighlighterRanges);
+  FItems:=TAvlTree.Create(@CompareSynHighlighterRanges);
 end;
 
 destructor TSynCustomHighlighterRanges.Destroy;
@@ -1440,7 +2613,7 @@ end;
 function TSynCustomHighlighterRanges.GetEqual(Range: TSynCustomHighlighterRange
   ): TSynCustomHighlighterRange;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   if Range=nil then exit(nil);
   Node:=FItems.Find(Range);
@@ -1484,6 +2657,7 @@ begin
   if fmFold   in AValue then FFoldActions := FFoldActions + [sfaFold, sfaFoldFold];
   if fmHide   in AValue then FFoldActions := FFoldActions + [sfaFold, sfaFoldHide];
   if fmMarkup in AValue then FFoldActions := FFoldActions + [sfaMarkup];
+  if fmOutline in AValue then FFoldActions := FFoldActions + [sfaOutline];
   DoOnChange;
 end;
 
@@ -1503,8 +2677,17 @@ end;
 constructor TSynCustomFoldConfig.Create;
 begin
   Inherited;
+  FIsEssential := True;
   FSupportedModes := [fmFold];
   Modes := [fmFold];
+end;
+
+constructor TSynCustomFoldConfig.Create(
+  ASupportedModes: TSynCustomFoldConfigModes; AnIsEssential: Boolean);
+begin
+  Create;
+  FSupportedModes := ASupportedModes;
+  FIsEssential := AnIsEssential;
 end;
 
 procedure TSynCustomFoldConfig.Assign(Src: TSynCustomFoldConfig);

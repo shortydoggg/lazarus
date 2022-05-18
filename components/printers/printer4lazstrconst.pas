@@ -1,6 +1,6 @@
 {
  *****************************************************************************
-  This file is part of the Lazarus Component Library (LCL)
+  This file is part of the Printer4Lazarus package
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
@@ -34,6 +34,19 @@ resourcestring
   p4lrsPagesPerSheet = 'Pages per sheet';
   p4lrsMargins = 'Margins';
   p4lrsAdvanced = 'Advanced';
+  p4lrsNoDefaultPrinter = 'No default printer found.';
+  p4lrsShortUnitsMm = '(mm)';
+  p4lrsShortUnitsInches = '(inches)';
+  p4lrsButtonMoreArrow = 'More >>';
+  p4lrsButtonLessArrow = '<< Less';
+  p4lrsJobStateReady = 'Ready';
+  p4lrsJobStatePrinting = 'Printing';
+  p4lrsJobStateStopped = 'Stopped';
+  p4lrsJobStateAccepting = '(Accepting jobs)';
+  p4lrsJobStateRejecting = '(Rejecting jobs)';
+  p4lrsAllPages = 'All';
+  p4lrsPageOdd = 'Odd';
+  p4lrsPageEven = 'Even';
 
 implementation
 

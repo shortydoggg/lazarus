@@ -12,7 +12,7 @@
 
   A copy of the GNU General Public License is available on the World Wide Web at
   <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing to the Free Software
-  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 unit XMouseInput;
 
@@ -34,6 +34,8 @@ type
     procedure DoDown(Button: TMouseButton); override;
     procedure DoMove(ScreenX, ScreenY: Integer); override;
     procedure DoUp(Button: TMouseButton); override;
+    procedure DoScrollUp; override;
+    procedure DoScrollDown; override;
   end;
   
 function InitializeMouseInput: TMouseInput;
@@ -82,6 +84,28 @@ var
 begin
   Display := XOpenDisplay(nil);
   XTestFakeButtonEvent(Display, MouseButtonToXButton[Button], False, 0);
+  XFlush(Display);
+  XCloseDisplay(Display);
+end;
+
+procedure TXMouseInput.DoScrollUp;
+var
+  Display: PDisplay;
+begin
+  Display := XOpenDisplay(nil);
+  XTestFakeButtonEvent(Display, 4, True, 0);
+  XTestFakeButtonEvent(Display, 4, False, 0);
+  XFlush(Display);
+  XCloseDisplay(Display);
+end;
+
+procedure TXMouseInput.DoScrollDown;
+var
+  Display: PDisplay;
+begin
+  Display := XOpenDisplay(nil);
+  XTestFakeButtonEvent(Display, 5, True, 0);
+  XTestFakeButtonEvent(Display, 5, False, 0);
   XFlush(Display);
   XCloseDisplay(Display);
 end;

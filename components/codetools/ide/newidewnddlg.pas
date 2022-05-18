@@ -5,9 +5,17 @@ unit NewIDEWndDlg;
 interface
 
 uses
-  Classes, SysUtils, LazFileUtils, LazLogger, LazUTF8, CodeCache, CodeToolManager,
-  Forms, Controls, Graphics, Dialogs, StdCtrls, ProjectIntf, MacroIntf,
-  IDEDialogs, CodyStrConsts;
+  Classes, SysUtils,
+  // LazUtils
+  LazFileUtils, LazLoggerBase, LazUTF8,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, StdCtrls,
+  // IdeIntf
+  ProjectIntf, MacroIntf, IDEDialogs,
+  // CodeTools
+  CodeCache, CodeToolManager,
+  // Cody
+  CodyStrConsts;
 
 type
 
@@ -100,11 +108,8 @@ begin
 end;
 
 function TNewIDEWndCfgDialog.IsFormNameValid: boolean;
-var
-  s: TCaption;
 begin
-  s:=FormNameEdit.Text;
-  Result:=(s<>'') and IsValidIdent(s);
+  Result:=IsValidIdent(FormNameEdit.Text);
 end;
 
 function TNewIDEWndCfgDialog.IsMenuCaptionValid: boolean;

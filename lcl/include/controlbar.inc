@@ -66,7 +66,7 @@ begin
   FBands := TCtrlBands.Create(True);
   inherited Create(AOwner);
   ControlStyle := [csAcceptsControls, csAutoSizeKeepChildLeft, csAutoSizeKeepChildTop,
-                   csCaptureMouse, csClickEvents, csDesignInteractive,
+                   csCaptureMouse, csClickEvents,
                    csDoubleClicks, csOpaque, csParentBackground];
   FAutoDrag := True;
   FAutoDock := True;
@@ -96,9 +96,12 @@ var bR2L: Boolean;
 begin
   bR2L := IsRightToLeft;
   DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomControlBar.AlignControlsToBands'){$ENDIF};
-  for aBand in FVisiBands do
-    AlignControlToBand(aBand, bR2L);
-  EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomControlBar.AlignControlsToBands'){$ENDIF};
+  try
+    for aBand in FVisiBands do
+      AlignControlToBand(aBand, bR2L);
+  finally
+    EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomControlBar.AlignControlsToBands'){$ENDIF};
+  end;
 end;
 
 procedure TCustomControlBar.AlignControlToBand(ABand: TCtrlBand; ARightToLeft: Boolean);
@@ -218,9 +221,12 @@ begin
   inherited CMBiDiModeChanged(Message);
   aWidth := Width;
   DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomControlBar.CMBiDiModeChanged'){$ENDIF};
-  for i := 0 to FBands.Count - 1 do
-    FBands[i].Left := abs(FBands[i].Left - aWidth) - FBands[i].Width;
-  EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomControlBar.CMBiDiModeChanged'){$ENDIF};
+  try
+    for i := 0 to FBands.Count - 1 do
+      FBands[i].Left := abs(FBands[i].Left - aWidth) - FBands[i].Width;
+  finally
+    EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TCustomControlBar.CMBiDiModeChanged'){$ENDIF};
+  end;
 end;
 
 procedure TCustomControlBar.CMBorderChanged(var Message: TLMessage);
@@ -272,7 +278,7 @@ begin
   if assigned(AControl) and assigned(FOnBandDrag) then
     FOnBandDrag(self, AControl, Result);
   if Result then
-    DragManager.DragStart(AControl, True, -1);
+    DragManager.DragStart(AControl, True, -1, True);
 end;
 
 procedure TCustomControlBar.DragOver(Source: TObject; X, Y: Integer; State: TDragState;
@@ -502,9 +508,6 @@ procedure TCustomControlBar.MouseMove(Shift: TShiftState; X, Y: Integer);
 var aBand: TCtrlBand;
     aCursor: TCursorDesign;
     bDragging, bGrabber: Boolean;
-    aRect: TRect;
-const
-    cUserDragArea = 64;
 begin
   inherited MouseMove(Shift, X, Y);
   if FBandMove <> bmMoving then begin
@@ -522,9 +525,7 @@ begin
       FHoveredBand := nil;
     end;
   end else begin
-    aRect := ClientRect;
-    InflateRect(aRect, cUserDragArea, cUserDragArea);
-    if PtInRect(aRect, Point(X, Y)) then begin
+    if not DragManager.CanStartDragging(self,-1,X,Y) then begin
       MoveBand(FHoveredBand, X, Y, True);
     end else begin
       bDragging := False;

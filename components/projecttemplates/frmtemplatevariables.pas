@@ -5,8 +5,11 @@ unit frmTemplateVariables;
 interface
 
 uses
-  Classes, Forms, ExtCtrls,
-  Grids, ProjectTemplates, StdCtrls, EditBtn, ButtonPanel;
+  Classes,
+  // LCL
+  Forms, ExtCtrls, Grids, StdCtrls, EditBtn, ButtonPanel,
+  // ProjectTemplates
+  ProjectTemplates;
 
 type
 
@@ -14,10 +17,10 @@ type
 
   TProjectVariablesForm = class(TForm)
     ButtonPanel1: TButtonPanel;
-    DEProject: TDirectoryEdit;
+    DEDestDir: TDirectoryEdit;
     EProjectName: TEdit;
-    Label1: TLabel;
-    Label2: TLabel;
+    ProjNameLabel: TLabel;
+    DEDestDirLabel: TLabel;
     PDescription: TPanel;
     SGVariables: TStringGrid;
     procedure BOKClick(Sender: TObject);
@@ -84,8 +87,8 @@ end;
 procedure TProjectVariablesForm.FormCreate(Sender: TObject);
 begin
   Caption := STitle;
-  Label1.Caption:= SNameforProject;
-  Label2.Caption:= SCreateinDir;
+  ProjNameLabel.Caption:= SNameforProject;
+  DEDestDirLabel.Caption:= SCreateinDir;
   PDescription.Caption:= SThisProject;
   ButtonPanel1.CancelButton.Caption:= SbtnCancel;
   ButtonPanel1.OKButton.Caption:= SbtnOK;
@@ -121,7 +124,7 @@ end;
 
 function TProjectVariablesForm.GetProjectDir: String;
 begin
-  Result:=DEProject.Text;
+  Result:=DEDestDir.Text;
 end;
 
 function TProjectVariablesForm.GetProjectName: String;

@@ -25,7 +25,7 @@
 
   You should have received a copy of the GNU Library General Public License
   along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+  Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 unit AarrePkgList;
 
@@ -35,7 +35,7 @@ interface
 
 uses
   Classes, SysUtils, zstream, Laz2_XMLCfg, LazUTF8, LConvEncoding,
-  LazFileUtils, LazUtilities;
+  LazFileUtils, LazStringUtils, LazUtilities;
 
 type
   TAPackageType = (
@@ -206,7 +206,7 @@ var
 begin
   Result:=s;
   if Result='' then exit;
-  i:=FindInvalidUTF8Character(PChar(Result),length(Result));
+  i:=FindInvalidUTF8Codepoint(PChar(Result),length(Result));
   if i<0 then exit;
   Result:=ISO_8859_1ToUTF8(Result);
 end;

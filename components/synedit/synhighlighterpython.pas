@@ -28,7 +28,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synhighlighterpython.pas 43540 2013-12-14 13:40:04Z martin $
+$Id: synhighlighterpython.pas 52753 2016-07-28 07:56:24Z mattias $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -122,7 +122,6 @@ type
     function GetIdentChars: TSynIdentChars; override;
     function GetSampleSource: string; override;
     function IdentKind(MayBe: PChar): TtkTokenKind; virtual;
-    function GetKeywordIdentifiers: TStringList; virtual;
     property Keywords: TStringlist read FKeywords;
     property TokenID: TtkTokenKind read FTokenID;
 
@@ -138,6 +137,7 @@ type
     function GetTokenID: TtkTokenKind;
     procedure SetLine(const NewValue: string;
                       LineNumber: Integer); override;
+    function GetKeywordIdentifiers: TStringList; virtual;
     function GetToken: string; override;
     function GetTokenAttribute: TSynHighlighterAttributes; override;
     function GetTokenKind: integer; override;

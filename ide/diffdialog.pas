@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -39,10 +39,17 @@ unit DiffDialog;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Buttons, StdCtrls, FileUtil,
-  lazutf8classes, LazarusIDEStrConsts, EditorOptions, LCLType, IDEWindowIntf,
-  IDEHelpIntf, InputHistory, DiffPatch, ExtCtrls, Dialogs, ComCtrls, SynEdit,
-  SynHighlighterDiff, SourceEditor;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Buttons, StdCtrls, ExtCtrls, Dialogs, ComCtrls, LCLType,
+  // LazUtils
+  FileUtil, lazutf8classes,
+  // SynEdit
+  SynEdit, SynHighlighterDiff,
+  // IdeIntf
+  IDEWindowIntf, IDEHelpIntf, IDEImagesIntf,
+  // IDE
+  LazarusIDEStrConsts, EditorOptions, InputHistory, DiffPatch, SourceEditor;
 
 type
 
@@ -135,6 +142,7 @@ type
     procedure UpdateDiff;
     procedure SetIdleConnected(const AValue: boolean);
     procedure OnIdle(Sender: TObject; var {%H-}Done: Boolean);
+    procedure UpdateProgress(aPosition: Integer);
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -345,14 +353,14 @@ begin
   end;
 
   // buttons
-  CancelScanningButton.LoadGlyphFromResourceName(hInstance, 'btn_cancel');
+  IDEImages.AssignImage(CancelScanningButton, 'btn_cancel');
   CloseButton.Caption:=lisClose;
   OpenInEditorButton.Caption:=lisDiffDlgOpenDiffInEditor;
   HelpButton.Caption:=lisMenuHelp;
 
   OpenInEditorButton.LoadGlyphFromStock(idButtonOpen);
   if OpenInEditorButton.Glyph.Empty then
-    OpenInEditorButton.LoadGlyphFromResourceName(HInstance, 'laz_open');
+    IDEImages.AssignImage(OpenInEditorButton, 'laz_open');
   
   // dialogs
   dlgOpen.Title:=lisOpenExistingFile;
@@ -370,6 +378,12 @@ end;
 procedure TDiffDlg.UpdateDiff;
 begin
   IdleConnected:=True;
+end;
+
+procedure TDiffDlg.UpdateProgress(aPosition: Integer);
+begin
+  ProgressBar1.Position := aPosition;
+  Application.ProcessMessages;
 end;
 
 procedure TDiffDlg.SetIdleConnected(const AValue: boolean);
@@ -400,9 +414,11 @@ begin
     OpenInEditorButton.Enabled := False;
     //CancelScanningButton.Enabled := True;
 
-    DiffOutput:=TDiffOutput.Create(Text1Src, Text2Src, GetDiffOptions, ProgressBar1);
+    DiffOutput := TDiffOutput.Create(Text1Src, Text2Src, GetDiffOptions);
     try
-      DiffSynEdit.Lines.Text:=DiffOutput.CreateTextDiff;
+      ProgressBar1.Max := DiffOutput.GetProgressMax;
+      DiffOutput.OnProgressPos := @UpdateProgress;
+      DiffSynEdit.Lines.Text := DiffOutput.CreateTextDiff;
     finally
       DiffOutput.Free;
     end;

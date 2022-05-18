@@ -31,7 +31,7 @@ interface
 
 uses
   StdCtrls, Classes,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -44,9 +44,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -70,15 +70,13 @@ end;
 
 procedure TfComments.Setup(ADialog: TAbstractOptionsEditorDialog);
 begin
-  cbRemoveEmptyDoubleSlashComments.Caption :=
-    lisCommentsRemoveEmptySlashComments;
-  cbRemoveEmptyCurlyBraceComments.Caption :=
-    lisCommentsRemoveEmptyCurlyBracesComments;
+  cbRemoveEmptyDoubleSlashComments.Caption := lisCommentsRemoveEmptySlashComments;
+  cbRemoveEmptyCurlyBraceComments.Caption := lisCommentsRemoveEmptyCurlyBracesComments;
 end;
 
 procedure TfComments.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Comments do
+  with FormattingSettings.Comments do
   begin
     cbRemoveEmptyDoubleSlashComments.Checked := RemoveEmptyDoubleSlashComments;
     cbRemoveEmptyCurlyBraceComments.Checked  := RemoveEmptyCurlyBraceComments;
@@ -87,7 +85,7 @@ end;
 
 procedure TfComments.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Comments do
+  with FormattingSettings.Comments do
   begin
     RemoveEmptyDoubleSlashComments := cbRemoveEmptyDoubleSlashComments.Checked;
     RemoveEmptyCurlyBraceComments  := cbRemoveEmptyCurlyBraceComments.Checked;
@@ -96,7 +94,7 @@ end;
 
 class function TfComments.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 initialization

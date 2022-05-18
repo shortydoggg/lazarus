@@ -25,7 +25,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synhighlighterxml.pas 48478 2015-03-24 17:50:59Z juha $
+$Id: synhighlighterxml.pas 50780 2015-12-13 20:38:06Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -747,6 +747,10 @@ function TSynXMLSyn.GetFoldConfigInstance(Index: Integer): TSynCustomFoldConfig;
 begin
   Result := inherited GetFoldConfigInstance(Index);
   Result.Enabled := True;
+  if TXmlCodeFoldBlockType(Index) in [cfbtXmlNode] then begin
+    Result.SupportedModes := Result.SupportedModes + [fmMarkup];
+    Result.Modes := Result.Modes + [fmMarkup];
+  end;
 end;
 
 procedure TSynXMLSyn.IdentProc;

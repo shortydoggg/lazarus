@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -53,10 +53,13 @@ unit CodeToolsCfgScript;
 interface
 
 uses
-  Classes, SysUtils, BasicCodeTools, AVL_Tree, KeywordFuncLists, FileProcs,
-  typinfo, CodeToolsStrConsts;
+  Classes, SysUtils, typinfo, Laz_AVL_Tree,
+  // Codetools
+  BasicCodeTools, KeywordFuncLists, FileProcs, CodeToolsStrConsts;
 
 type
+  ECodeToolCfgScript = class(Exception);
+
   TCTCSValueType = (
     ctcsvNone,
     ctcsvString,
@@ -298,8 +301,7 @@ var
   AtomStart: PChar;
   SrcPos: PtrUInt;
 begin
-  if (Src='') or (OldName='') or (not IsValidIdent(OldName))
-  or (NewName='') then exit;
+  if (Src='') or not IsValidIdent(OldName) or (NewName='') then exit;
   p:=PChar(Src);
   //debugln(['RenameCTCSVariable START ',dbgstr(Src)]);
   repeat
@@ -1181,7 +1183,7 @@ begin
   Clear;
   for i:=0 to Source.Count-1 do begin
     Name:=Source.Names[i];
-    if (Name='') or not IsValidIdent(Name) then continue;
+    if not IsValidIdent(Name) then continue;
     Value:=Source.ValueFromIndex[i];
     Define(PChar(Name),Value);
   end;
@@ -1315,7 +1317,7 @@ begin
   Err:=TCTCfgScriptError.Create(aMsg,Position,Line,Column);
   FErrors.Add(Err);
   if ErrorCount>=MaxErrorCount then
-    raise Exception.Create(GetErrorStr(ErrorCount-1));
+    raise ECodeToolCfgScript.Create(GetErrorStr(ErrorCount-1));
 end;
 
 procedure TCTConfigScriptEngine.AddError(const aMsg: string);
@@ -2154,7 +2156,7 @@ var
 
   procedure ErrorInvalidOperator;
   begin
-    raise Exception.Create('TCTConfigScriptEngine.ExecuteStack invalid operator: '+GetAtom(OperatorItem^.StartPos));
+    raise ECodeToolCfgScript.Create('TCTConfigScriptEngine.ExecuteStack invalid operator: '+GetAtom(OperatorItem^.StartPos));
   end;
 
 begin
@@ -2522,7 +2524,7 @@ procedure TCTCfgScriptStack.Pop(Count: integer);
 
   procedure RaiseTooManyPop;
   begin
-    raise Exception.Create('TCTCfgScriptStack.Pop too many pop');
+    raise ECodeToolCfgScript.Create('TCTCfgScriptStack.Pop too many pop');
   end;
 
 var

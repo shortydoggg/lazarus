@@ -1,20 +1,26 @@
-{
- *****************************************************************************
-  This file is part of the Lazarus Component Library (LCL)
+{ TCheckBoxThemed
+
+  Copyright (C) 2017 Lazarus team
+
+  This library is free software; you can redistribute it and/or modify it
+  under the same terms as the Lazarus Component Library (LCL)
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
- *****************************************************************************
-}
 
+}
 unit CheckBoxThemed;
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, Controls, StdCtrls, Graphics, Math, ActnList, Forms, Menus,
-  LCLIntf, LMessages, LCLProc, LResources, LCLType, Themes, Types;
+  Classes, SysUtils, Types, Math,
+  // LCL
+  Controls, StdCtrls, Graphics, ActnList, Forms,
+  LCLIntf, LMessages, LCLProc, LCLType, Themes,
+  // LazUtils
+  LazMethodList;
 
 type
   TCustomCheckBoxThemed = class;
@@ -45,8 +51,10 @@ type
     procedure SetCheckBoxHovered(AValue: Boolean);
     procedure SetChecked(AValue: Boolean);
     procedure SetState(AValue: TCheckBoxState);
+  private class var
+    FThemeCheckBoxSize: TSize;
   protected
-    class var CheckBoxSize: TSize;
+    class function GetCheckBoxSize(const PixelsPerInch: Integer): TSize;
   protected
     CheckBoxPressed: Boolean;
     KnobPosUnchecked, KnobPosChecked, KnobPosGrayed: Integer;
@@ -54,7 +62,7 @@ type
                                      {%H-}WithThemeSpace: Boolean); override;
     procedure CMBiDiModeChanged(var {%H-}Message: TLMessage); message CM_BIDIMODECHANGED;
     procedure CMEnabledChanged(var Message: TLMessage); message CM_ENABLEDCHANGED;
-    class constructor InitCheckBoxSize;
+    class procedure InitCheckBoxSize;
     function DialogChar(var Message: TLMKey): Boolean; override;
     procedure DoClick;
     procedure DoEnter; override;
@@ -151,15 +159,7 @@ type
     property OnUTF8KeyPress;
   end;
 
-procedure Register;
-
 implementation
-
-procedure Register;
-begin
-  RegisterComponents('LazControls', [TCheckBoxThemed]);
-  //RegisterPropertyEditor(TypeInfo(TCaption), TCheckBoxThemed, 'Caption', TStringMultilinePropertyEditor);
-end;
 
 { TCheckBoxThemedActionLink }
 
@@ -205,8 +205,9 @@ procedure TCustomCheckBoxThemed.CalculatePreferredSize(var PreferredWidth,
             PreferredHeight: Integer; WithThemeSpace: Boolean);
 var aDetails: TThemedElementDetails;
     aFlags: Cardinal;
-    aTextSize: TSize;
+    aTextSize, CheckBoxSize: TSize;
 begin
+  CheckBoxSize := GetCheckBoxSize(Font.PixelsPerInch);
   if Caption <> '' then begin
     aDetails := ThemeServices.GetElementDetails(tbCheckBoxCheckedNormal);
     aFlags := DT_CENTER + DT_VCENTER;
@@ -234,10 +235,10 @@ begin
   inherited CMEnabledChanged(Message);
 end;
 
-class constructor TCustomCheckBoxThemed.InitCheckBoxSize;
+class procedure TCustomCheckBoxThemed.InitCheckBoxSize;
 begin
   with ThemeServices do
-    CheckBoxSize := GetDetailSize(GetElementDetails(tbCheckBoxCheckedNormal));
+    FThemeCheckBoxSize := GetDetailSize(GetElementDetails(tbCheckBoxCheckedNormal));
 end;
 
 function TCustomCheckBoxThemed.DialogChar(var Message: TLMKey): Boolean;
@@ -282,6 +283,15 @@ end;
 function TCustomCheckBoxThemed.GetActionLinkClass: TControlActionLinkClass;
 begin
   Result := TCheckBoxThemedActionLink;
+end;
+
+class function TCustomCheckBoxThemed.GetCheckBoxSize(
+  const PixelsPerInch: Integer): TSize;
+begin
+  if FThemeCheckBoxSize.cx<=0 then
+    InitCheckBoxSize;
+  Result.cx := MulDiv(FThemeCheckBoxSize.cx, PixelsPerInch, Screen.PixelsPerInch);
+  Result.cy := MulDiv(FThemeCheckBoxSize.cy, PixelsPerInch, Screen.PixelsPerInch);
 end;
 
 procedure TCustomCheckBoxThemed.KeyDown(var Key: Word; Shift: TShiftState);
@@ -341,7 +351,7 @@ var aCaptionPoint, aCheckBoxPoint: TPoint;
     aDetails: TThemedElementDetails;
     aFlags: Cardinal;
     aHelpRect: TRect;
-    aTextSize: TSize;         { Hovered,     Pressed,     State }
+    aTextSize, CheckBoxSize: TSize;         { Hovered,     Pressed,     State }
 const caEnabledDetails: array [False..True, False..True, cbUnchecked..cbGrayed] of TThemedButton =
   (((tbCheckBoxUncheckedNormal, tbCheckBoxCheckedNormal, tbCheckBoxMixedNormal),
     (tbCheckBoxUncheckedPressed, tbCheckBoxCheckedPressed, tbCheckBoxMixedPressed)),
@@ -350,6 +360,7 @@ const caEnabledDetails: array [False..True, False..True, cbUnchecked..cbGrayed] 
 const caDisabledDetails: array [cbUnchecked..cbGrayed] of TThemedButton =
   (tbCheckBoxUncheckedDisabled, tbCheckBoxCheckedDisabled, tbCheckBoxMixedDisabled);
 begin
+  CheckBoxSize := GetCheckBoxSize(ACanvas.Font.PixelsPerInch);
   { Calculate }
   if AEnabled then
     aDetails := ThemeServices.GetElementDetails(caEnabledDetails[AHovered, False, AState])
@@ -462,7 +473,7 @@ begin
         if not (Assigned(Action) and
           CompareMethods(TMethod(Action.OnExecute), TMethod(OnClick)))
           then OnClick(self);
-      if Assigned(Action) and (Action is TCustomAction) and
+      if (Action is TCustomAction) and
         (TCustomAction(Action).Checked <> (AValue = cbChecked))
         then ActionLink.Execute(self);
     end;

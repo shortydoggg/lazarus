@@ -2,14 +2,15 @@ msgid ""
 msgstr ""
 "Project-Id-Version: objinspstrconsts\n"
 "POT-Creation-Date: \n"
-"PO-Revision-Date: 2008-11-16 19:24+0100\n"
+"PO-Revision-Date: 2019-09-30 11:56+0200\n"
 "Last-Translator: Slavko <slavino@slavino.sk>\n"
 "Language-Team: Slovenský <sk@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: KBabel 1.11.4\n"
-"Plural-Forms:  nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
+"X-Generator: Poedit 2.2.3\n"
+"Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
+"Language: sk\n"
 
 #: objinspstrconsts.cactionlisteditorallcategory
 msgid "(All)"
@@ -133,7 +134,7 @@ msgstr "Vyššie"
 
 #: objinspstrconsts.dceaddfields
 msgid "Add Fields"
-msgstr ""
+msgstr "Pridať polia"
 
 #: objinspstrconsts.dcecolumneditor
 msgid "DBGrid Columns Editor"
@@ -141,7 +142,7 @@ msgstr ""
 
 #: objinspstrconsts.dcedeleteall
 msgid "Delete All"
-msgstr ""
+msgstr "Zmazať všetko"
 
 #: objinspstrconsts.dcefetchlabels
 msgid "Fetch Labels"
@@ -181,10 +182,8 @@ msgid "&Dataset:"
 msgstr ""
 
 #: objinspstrconsts.fesfetitle
-#, fuzzy
-#| msgid "Edit Fields..."
 msgid "Edit Fields ..."
-msgstr "Upraviť polia"
+msgstr "Upraviť polia ..."
 
 #: objinspstrconsts.fesfieldcantbec
 msgid "Field %s cannot be created!"
@@ -203,11 +202,9 @@ msgid "FieldDefs"
 msgstr "FieldDefs"
 
 #: objinspstrconsts.fesformcaption
-#, fuzzy
-#| msgid "New fileld"
 msgctxt "objinspstrconsts.fesformcaption"
 msgid "New field"
-msgstr "Dialóg"
+msgstr "Nové pole"
 
 #: objinspstrconsts.feskeyfield
 msgid "&Key fields:"
@@ -265,11 +262,11 @@ msgstr "Pridať"
 
 #: objinspstrconsts.itcssearchandreplace
 msgid "Search and replace"
-msgstr ""
+msgstr "Hľadať a nahradiť"
 
 #: objinspstrconsts.liisaddvalue
 msgid "Add value"
-msgstr ""
+msgstr "Pridať hodnotu"
 
 #: objinspstrconsts.liiselse
 msgid "Else"
@@ -299,41 +296,34 @@ msgstr ""
 msgid "Unable to find parser for tool \"%s\""
 msgstr ""
 
+#: objinspstrconsts.lisunabletofindparserwithname
+msgid "Unable to find parser with name \"%s\""
+msgstr ""
+
 #: objinspstrconsts.nbcesaddpage
-#, fuzzy
-#| msgid "Add page"
+msgctxt "objinspstrconsts.nbcesaddpage"
 msgid "Add Page"
 msgstr "Pridať stránku"
 
 #: objinspstrconsts.nbcesdeletepage
-#, fuzzy
-#| msgid "Delete page"
 msgid "Delete Page"
 msgstr "Zmazať stránku"
 
 #: objinspstrconsts.nbcesinsertpage
-#, fuzzy
-#| msgid "Insert page"
 msgid "Insert Page"
 msgstr "Vložiť stránku"
 
 #: objinspstrconsts.nbcesmovepageleft
-#, fuzzy
-#| msgid "Move page left"
 msgid "Move Page Left"
 msgstr "Presunúť stránku vľavo"
 
 #: objinspstrconsts.nbcesmovepageright
-#, fuzzy
-#| msgid "Move page right"
 msgid "Move Page Right"
 msgstr "Presunúť stránku vpravo"
 
 #: objinspstrconsts.nbcesshowpage
-#, fuzzy
-#| msgid "Show page ..."
 msgid "Show Page"
-msgstr "Zobraziť stránku..."
+msgstr "Zobraziť stránku"
 
 #: objinspstrconsts.oicoleditadd
 msgctxt "objinspstrconsts.oicoleditadd"
@@ -381,6 +371,11 @@ msgstr ""
 msgid "ActionList Editor"
 msgstr "Editor zoznamu činností"
 
+#: objinspstrconsts.oisadd
+msgctxt "objinspstrconsts.oisadd"
+msgid "Add"
+msgstr "Pridať"
+
 #: objinspstrconsts.oisaddcollectionitem
 msgid "&Add Item"
 msgstr ""
@@ -392,6 +387,11 @@ msgstr ""
 #: objinspstrconsts.oisaddfieldsfromfielddefs
 msgid "Add fields from FieldDefs"
 msgstr ""
+
+#: objinspstrconsts.oisaddpage
+msgctxt "objinspstrconsts.oisaddpage"
+msgid "Add Page"
+msgstr "Pridať stránku"
 
 #: objinspstrconsts.oisaddtofavorites
 msgid "Add to Favorites"
@@ -411,19 +411,13 @@ msgstr "Boolean"
 
 #: objinspstrconsts.oisbtncomponents
 msgid "Co&mponents"
-msgstr ""
+msgstr "Ko&mponenty"
 
 #: objinspstrconsts.oisbtnproperties
 msgid "&Properties"
-msgstr ""
-
-#: objinspstrconsts.oiscadd
-msgid "&Add"
-msgstr "&Pridať"
+msgstr "&Vlastnosti"
 
 #: objinspstrconsts.oiscancel
-#, fuzzy
-#| msgid "&Cancel"
 msgctxt "objinspstrconsts.oiscancel"
 msgid "Cancel"
 msgstr "&Zrušiť"
@@ -434,7 +428,7 @@ msgstr "Kategória"
 
 #: objinspstrconsts.oiscdelete
 msgid "Delete?"
-msgstr ""
+msgstr "Zmazať?"
 
 #: objinspstrconsts.oischangeclass
 msgid "Change Class ..."
@@ -472,7 +466,7 @@ msgstr "Názov komponentu %s%s%s nie je platný identifikátor"
 
 #: objinspstrconsts.oiscomponentrestrictions
 msgid "Component restrictions: "
-msgstr "Obmedzenia komponentu:"
+msgstr "Obmedzenia komponentu: "
 
 #: objinspstrconsts.oisconfirmdelete
 msgid "Confirm delete"
@@ -487,7 +481,7 @@ msgstr "Kopírovať komponenty"
 
 #: objinspstrconsts.oiscreateanewpascalunit
 msgid "Create a new pascal unit."
-msgstr "Vytvoriť nový pascalovský unit"
+msgstr "Vytvoriť novú pascalovskú jednotku."
 
 #: objinspstrconsts.oiscreatedefaultevent
 msgid "Create default event"
@@ -495,6 +489,14 @@ msgstr "Vytvoriť predvolenú udalosť"
 
 #: objinspstrconsts.oiscreatenewfieldandadditatcurrentposition
 msgid "Create new field and add it at current position"
+msgstr ""
+
+#: objinspstrconsts.oiscurrentparent
+msgid "Current parent"
+msgstr ""
+
+#: objinspstrconsts.oiscurrentparents
+msgid "Current parents"
 msgstr ""
 
 #: objinspstrconsts.oiscutcomponents
@@ -517,10 +519,13 @@ msgid "&Delete"
 msgstr "Zmazať komponenty"
 
 #: objinspstrconsts.oisdeleteitem
-#, fuzzy,badformat
-#| msgid "Delete item %s%s%s?"
+#, object-pascal-format
 msgid "Delete item \"%s\"?"
-msgstr "Zmazať položku %s%s%s?"
+msgstr "Zmazať položku \"%s\"?"
+
+#: objinspstrconsts.oisdeletepagequestion
+msgid "Do you want to delete the page?"
+msgstr ""
 
 #: objinspstrconsts.oisdeleteselectedfields
 msgid "Delete selected field(s)"
@@ -547,10 +552,9 @@ msgid "Error loading image"
 msgstr "Chyba pri načítaní obrázka"
 
 #: objinspstrconsts.oiserrorloadingimage2
-#, fuzzy,badformat
-#| msgid "Error loading image %s%s%s:%s%s"
+#, object-pascal-format
 msgid "Error loading image \"%s\":%s%s"
-msgstr "Chyba pri načítaní obrázka %s%s%s:%s%s"
+msgstr "Chyba pri načítaní obrázka \"%s\":%s%s"
 
 #: objinspstrconsts.oiserrorwhiledeletingaction
 msgid "Error while deleting action:%s%s"
@@ -574,7 +578,7 @@ msgstr "Float"
 
 #: objinspstrconsts.oishelp
 msgid "&Help"
-msgstr ""
+msgstr "&Pomoc"
 
 #: objinspstrconsts.oisimagelistcomponenteditor
 msgid "I&mageList Editor ..."
@@ -592,6 +596,10 @@ msgstr "Nekompatibilná metóda"
 msgid "Input Mask:"
 msgstr "Vstupná maska:"
 
+#: objinspstrconsts.oisinsertpagename
+msgid "Insert Page Name"
+msgstr ""
+
 #: objinspstrconsts.oisint64
 msgid "Int64"
 msgstr "Int64"
@@ -603,6 +611,10 @@ msgstr "Integer"
 #: objinspstrconsts.oisinterface
 msgid "Interface"
 msgstr "Rozhranie"
+
+#: objinspstrconsts.oisinvalid
+msgid "(Invalid)"
+msgstr ""
 
 #: objinspstrconsts.oisinvalidpropertyvalue
 msgid "Invalid property value"
@@ -633,8 +645,6 @@ msgid "Load picture"
 msgstr "Načítať obrázok"
 
 #: objinspstrconsts.oismasks
-#, fuzzy
-#| msgid "Masks..."
 msgid "Masks ..."
 msgstr "Masky..."
 
@@ -648,24 +658,24 @@ msgstr ""
 
 #: objinspstrconsts.oismovedown
 msgid "Move &Down"
-msgstr ""
+msgstr "Presunúť &dole"
 
 #: objinspstrconsts.oismovedownhint
 msgid "Move field down"
-msgstr ""
+msgstr "Posunúť pole dole"
 
 #: objinspstrconsts.oismoveup
 msgctxt "objinspstrconsts.oismoveup"
 msgid "Move &Up"
-msgstr ""
+msgstr "Pres&unúť hore"
 
 #: objinspstrconsts.oismoveuphint
 msgid "Move field up"
-msgstr ""
+msgstr "Posunúť pole hore"
 
 #: objinspstrconsts.oisnew
 msgid "&New"
-msgstr ""
+msgstr "&Nový"
 
 #: objinspstrconsts.oisnone
 msgid "(none)"
@@ -711,6 +721,14 @@ msgstr ""
 msgid "Move to Front"
 msgstr ""
 
+#: objinspstrconsts.oispages
+msgid "Pages"
+msgstr "Stránky"
+
+#: objinspstrconsts.oispageseditordialog
+msgid "Pages Editor"
+msgstr ""
+
 #: objinspstrconsts.oispastecomponents
 #, fuzzy
 #| msgid "Paste components"
@@ -734,6 +752,10 @@ msgstr "Uložiť obrázok ako"
 msgid "Press a key ..."
 msgstr ""
 
+#: objinspstrconsts.oispressakeyegctrlp
+msgid "You can press e.g. Ctrl+P ..."
+msgstr ""
+
 #: objinspstrconsts.oisproperties
 msgid "Properties"
 msgstr "Vlastnosti"
@@ -749,6 +771,14 @@ msgstr "Záznam"
 #: objinspstrconsts.oisremovefromfavorites
 msgid "Remove from Favorites"
 msgstr "Odstrániť z Obľúbených"
+
+#: objinspstrconsts.oisrename
+msgid "Rename"
+msgstr "Premenovať"
+
+#: objinspstrconsts.oisrenamepage
+msgid "Rename Page"
+msgstr "Premenovať stránku"
 
 #: objinspstrconsts.oisrestricted
 msgid "Restricted"
@@ -784,6 +814,14 @@ msgstr ""
 
 #: objinspstrconsts.oisselectallhint
 msgid "Select All Fields"
+msgstr "Vybrať všetky polia"
+
+#: objinspstrconsts.oisselectedcontrol
+msgid "Selected control"
+msgstr ""
+
+#: objinspstrconsts.oisselectedcontrols
+msgid "Selected controls"
 msgstr ""
 
 #: objinspstrconsts.oisselectedproperties
@@ -822,6 +860,14 @@ msgstr "Nastaviť na predvolené: %s"
 msgid "Set property value to Default"
 msgstr ""
 
+#: objinspstrconsts.oisshowalloutputlines
+msgid "Show all output lines"
+msgstr ""
+
+#: objinspstrconsts.oisshowclasses
+msgid "Show classes"
+msgstr ""
+
 #: objinspstrconsts.oisshowcomponenttree
 msgid "Show Component Tree"
 msgstr "Zobraziť Strom komponentov"
@@ -836,7 +882,7 @@ msgstr ""
 
 #: objinspstrconsts.oisshowstatusbar
 msgid "Show Status Bar"
-msgstr ""
+msgstr "Zobraziť stavový riadok"
 
 #: objinspstrconsts.oissort
 msgid "Sort"
@@ -844,7 +890,7 @@ msgstr "Zoradiť"
 
 #: objinspstrconsts.oisstdactionlisteditor
 msgid "Standard Action Classes"
-msgstr "Štandardné akčné triedy:"
+msgstr "Štandardné akčné triedy"
 
 #: objinspstrconsts.oisstdactionlisteditorclass
 msgid "Available Action Classes:"
@@ -859,8 +905,6 @@ msgid "Strings Editor Dialog"
 msgstr "Dialóg Editor reťazcov"
 
 #: objinspstrconsts.oistdactcolorselect1headline
-#, fuzzy
-#| msgid "Select &Color..."
 msgid "Select &Color ..."
 msgstr "V&ybrať farbu..."
 
@@ -1043,8 +1087,6 @@ msgid "Exit"
 msgstr "Koniec"
 
 #: objinspstrconsts.oistdactfileopenheadline
-#, fuzzy
-#| msgid "&Open..."
 msgid "&Open ..."
 msgstr "&Otvoriť..."
 
@@ -1058,8 +1100,6 @@ msgid "Ctrl+O"
 msgstr "Ctrl+O"
 
 #: objinspstrconsts.oistdactfileopenwithheadline
-#, fuzzy
-#| msgid "Open with..."
 msgid "Open with ..."
 msgstr "Otvoriť pomocou ..."
 
@@ -1068,8 +1108,6 @@ msgid "Open with"
 msgstr "Otvoriť pomocou"
 
 #: objinspstrconsts.oistdactfilesaveasheadline
-#, fuzzy
-#| msgid "Save &As..."
 msgid "Save &As ..."
 msgstr "Uložiť &ako..."
 
@@ -1120,8 +1158,6 @@ msgid "Find first"
 msgstr "Hľadať prvé"
 
 #: objinspstrconsts.oistdactsearchfindheadline
-#, fuzzy
-#| msgid "&Find..."
 msgid "&Find ..."
 msgstr "&Hľadať..."
 
@@ -1217,7 +1253,7 @@ msgstr "Zobraziť restricted vlastnosti"
 
 #: objinspstrconsts.oiswidgetsetrestrictions
 msgid "General widget set restrictions: "
-msgstr "Všeobecné obmedzenia WidgetSetu"
+msgstr "Všeobecné obmedzenia WidgetSetu: "
 
 #: objinspstrconsts.oisword
 msgid "Word"
@@ -1299,10 +1335,24 @@ msgid "Sections Editor ..."
 msgstr "Editor sekcií .."
 
 #: objinspstrconsts.sccsiledtadd
-#, fuzzy
-#| msgid "Add ..."
 msgid "&Add ..."
 msgstr "Pridať..."
+
+#: objinspstrconsts.sccsiledtaddmoreresolutions
+msgid "Add more resolutions ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtaddnewresolution
+msgid "New resolution ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtaddsliced
+msgid "Add sliced ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtaddslicediconerror
+msgid "Adding sliced icons is not supported."
+msgstr ""
 
 #: objinspstrconsts.sccsiledtadjustment
 msgid "Adjustment"
@@ -1314,6 +1364,14 @@ msgstr "Doladenie"
 msgctxt "objinspstrconsts.sccsiledtapply"
 msgid "&Apply"
 msgstr "Použiť"
+
+#: objinspstrconsts.sccsiledtcannotdeleteresolution
+msgid "Cannot delete default resolution."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtcannotslice
+msgid "Source image size must be an integer multiple of the ImageList's Width and Height."
+msgstr ""
 
 #: objinspstrconsts.sccsiledtcaption
 msgid "ImageList Editor"
@@ -1335,11 +1393,17 @@ msgid "Crop"
 msgstr "Orezať"
 
 #: objinspstrconsts.sccsiledtdelete
-#, fuzzy
-#| msgid "Delete"
 msgctxt "objinspstrconsts.sccsiledtdelete"
 msgid "&Delete"
-msgstr "Zmazať"
+msgstr "&Zmazať"
+
+#: objinspstrconsts.sccsiledtdeleteresolution
+msgid "Delete resolution ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtdeleteresolutionconfirmation
+msgid "Select the resolution to delete."
+msgstr ""
 
 #: objinspstrconsts.sccsiledtgrplcaption
 msgid "Images"
@@ -1349,16 +1413,16 @@ msgstr "Obrázky"
 msgid "Selected Image"
 msgstr "Vybraný obrázok"
 
+#: objinspstrconsts.sccsiledtimagewidthofnewresolution
+msgid "Image width of the new resolution:"
+msgstr ""
+
 #: objinspstrconsts.sccsiledtmovedown
-#, fuzzy
-#| msgid "Move Down"
 msgctxt "objinspstrconsts.sccsiledtmovedown"
 msgid "Move D&own"
 msgstr "Presunúť nižšie"
 
 #: objinspstrconsts.sccsiledtmoveup
-#, fuzzy
-#| msgid "Move Up"
 msgctxt "objinspstrconsts.sccsiledtmoveup"
 msgid "Move &Up"
 msgstr "Presunúť vyššie"
@@ -1371,22 +1435,30 @@ msgstr "Žiadny"
 msgid "Add Images"
 msgstr "Pridať obrázky"
 
+#: objinspstrconsts.sccsiledtopendialogn
+msgid "New Image"
+msgstr "Nový obrázok"
+
 #: objinspstrconsts.sccsiledtransparentcolor
 msgid "Transparent Color:"
 msgstr "Transparentná farba:"
 
+#: objinspstrconsts.sccsiledtreplace
+msgid "&Replace ..."
+msgstr "Nahradiť ..."
+
+#: objinspstrconsts.sccsiledtreplaceallresolutions
+msgid "Replace all resolutions ..."
+msgstr ""
+
 #: objinspstrconsts.sccsiledtsave
-#, fuzzy
-#| msgid "Save ..."
 msgctxt "objinspstrconsts.sccsiledtsave"
 msgid "&Save ..."
-msgstr "Uložiť..."
+msgstr "Uložiť ..."
 
 #: objinspstrconsts.sccsiledtsaveall
-#, fuzzy
-#| msgid "Save All..."
 msgid "Save All ..."
-msgstr "Uložiť všetko..."
+msgstr "Uložiť všetko ..."
 
 #: objinspstrconsts.sccsiledtsavedialog
 msgid "Save Image"
@@ -1401,11 +1473,9 @@ msgid "Edit Columns ..."
 msgstr "Upraviť stĺpce ..."
 
 #: objinspstrconsts.sccslvedt
-#, fuzzy
-#| msgid "Edit Items..."
 msgctxt "objinspstrconsts.sccslvedt"
 msgid "Edit Items ..."
-msgstr "Editvať položky ListView..."
+msgstr "Editovať položky ..."
 
 #: objinspstrconsts.sccslvedtapply
 msgctxt "objinspstrconsts.sccslvedtapply"
@@ -1462,7 +1532,7 @@ msgstr "Nová podpoložka"
 
 #: objinspstrconsts.sccsmaskeditor
 msgid "Edit Mask Editor ..."
-msgstr ""
+msgstr "Editor masiek ..."
 
 #: objinspstrconsts.sccssbeditpanels
 msgid "Panels Editor ..."
@@ -1492,10 +1562,8 @@ msgid "String Grid"
 msgstr "String Grid"
 
 #: objinspstrconsts.sccssgedtload
-#, fuzzy
-#| msgid "Load..."
 msgid "Load ..."
-msgstr "Načítať..."
+msgstr "Načítať ..."
 
 #: objinspstrconsts.sccssgedtmoverowscols
 msgid "Move Rows/Cols"
@@ -1507,11 +1575,9 @@ msgid "Open"
 msgstr "Otvoriť"
 
 #: objinspstrconsts.sccssgedtsave
-#, fuzzy
-#| msgid "Save..."
 msgctxt "objinspstrconsts.sccssgedtsave"
 msgid "Save ..."
-msgstr "Uložiť..."
+msgstr "Uložiť ..."
 
 #: objinspstrconsts.sccssgedtsavedialog
 msgctxt "objinspstrconsts.sccssgedtsavedialog"
@@ -1519,11 +1585,9 @@ msgid "Save"
 msgstr "Uložiť"
 
 #: objinspstrconsts.sccstredt
-#, fuzzy
-#| msgid "Edit Items..."
 msgctxt "objinspstrconsts.sccstredt"
 msgid "Edit Items ..."
-msgstr "Editovať položky TreeView..."
+msgstr "Editovať položky ..."
 
 #: objinspstrconsts.sccstredtapply
 msgctxt "objinspstrconsts.sccstredtapply"
@@ -1608,6 +1672,10 @@ msgstr "Zachytávací kláves"
 #: objinspstrconsts.s_addassingle
 msgid "Add as single"
 msgstr "Pridať jednotlivý"
+
+#: objinspstrconsts.s_confirm_clear
+msgid "Are you sure to clear image list?"
+msgstr "Naozaj chcete vymazať zoznam obrázkov?"
 
 #: objinspstrconsts.s_splitimage
 msgid "Split image"

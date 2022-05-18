@@ -1,4 +1,4 @@
-{  $Id: basedebugmanager.pas 48234 2015-03-10 15:50:16Z mattias $  }
+{  $Id: basedebugmanager.pas 58679 2018-08-05 12:26:21Z martin $  }
 {
  /***************************************************************************
                          basedebugmanager.pp
@@ -24,7 +24,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -40,8 +40,17 @@ uses
 {$IFDEF IDE_MEM_CHECK}
   MemCheck,
 {$ENDIF}
-  Classes, SysUtils, Forms, Project, SourceMarks, DbgIntfBaseTypes, DbgIntfDebuggerBase,
-  Debugger, ProjectDefs, IDEOptionsIntf, LazarusIDEStrConsts, Laz2_XMLCfg;
+  Classes, SysUtils,
+  // LCL
+  Forms,
+  // LazUtils
+  Laz2_XMLCfg,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // DebuggerIntf
+  DbgIntfBaseTypes, DbgIntfDebuggerBase, DbgIntfPseudoTerminal,
+  // IDE
+  Debugger, SourceMarks, Project, ProjectDefs, LazarusIDEStrConsts;
 
 type
   TDebugDialogType = (
@@ -122,6 +131,7 @@ type
     FManagerStates: TDebugManagerStates;
     function  GetState: TDBGState; virtual; abstract;
     function  GetCommands: TDBGCommands; virtual; abstract;
+    function GetPseudoTerminal: TPseudoTerminal; virtual; abstract;
     {$IFDEF DBG_WITH_DEBUGGER_DEBUG}
     function GetDebugger: TDebuggerIntf; virtual; abstract;
     {$ENDIF}
@@ -144,6 +154,7 @@ type
 
     procedure DoRestoreDebuggerMarks(AnUnitInfo: TUnitInfo); virtual; abstract;
 
+    function RequiredCompilerOpts(ATargetCPU, ATargetOS: String): TDebugCompilerRequirements; virtual; abstract;
     function InitDebugger(AFlags: TDbgInitFlags = []): Boolean; virtual; abstract;
     
     function DoPauseProject: TModalResult; virtual; abstract;
@@ -170,8 +181,7 @@ type
     procedure Detach; virtual; abstract;
     function FillProcessList(AList: TRunningProcessInfoList): boolean; virtual; abstract;
 
-    function Evaluate(const AExpression: String; var AResult: String;
-                      var ATypeInfo: TDBGType;
+    function Evaluate(const AExpression: String; ACallback: TDBGEvaluateResultCallback;
                       EvalFlags: TDBGEvaluateFlags = []): Boolean; virtual; abstract; // Evaluates the given expression, returns true if valid
     function Modify(const AExpression: String; const ANewValue: String): Boolean; virtual; abstract; // Modify the given expression, returns true if valid
 
@@ -186,10 +196,12 @@ type
                                 WarnIfNoDebugger: boolean): TModalResult; virtual; abstract;
     function DoCreateBreakPoint(const AFilename: string; ALine: integer;
                                 WarnIfNoDebugger: boolean;
-                                out ABrkPoint: TIDEBreakPoint): TModalResult; virtual; abstract;
+                                out ABrkPoint: TIDEBreakPoint;
+                                AnUpdating: Boolean = False): TModalResult; virtual; abstract;
     function DoCreateBreakPoint(const AnAddr: TDBGPtr;
                                 WarnIfNoDebugger: boolean;
-                                out ABrkPoint: TIDEBreakPoint): TModalResult; virtual; abstract;
+                                out ABrkPoint: TIDEBreakPoint;
+                                AnUpdating: Boolean = False): TModalResult; virtual; abstract;
     function DoDeleteBreakPoint(const AFilename: string; ALine: integer
                                 ): TModalResult; virtual; abstract;
     function DoDeleteBreakPointAtMark(const ASourceMark: TSourceMark
@@ -225,6 +237,7 @@ type
     property Watches: TIdeWatchesMonitor read FWatches;
     property Threads: TIdeThreadsMonitor read FThreads;
     property Snapshots: TSnapshotManager read FSnapshots;
+    property PseudoTerminal: TPseudoTerminal read GetPseudoTerminal; experimental; // 'may be replaced with a more general API';
     (* TODO: workaround for http://bugs.freepascal.org/view.php?id=21834   *)
     property DebuggerClass: TDebuggerClass read GetCurrentDebuggerClass;
     {$IFDEF DBG_WITH_DEBUGGER_DEBUG}

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -143,17 +143,18 @@ begin
   MoveDownButton.Caption:=lisDown;
 
   ExtraButton.Caption:=lisMoreSub;
+  ExtraButton.Style:=tbsButtonDrop;
   MenuItemClone.Caption:=lisClone;
   MenuItemExport.Caption:=lisDlgExport;
   MenuItemImport.Caption:=lisDlgImport;
 
   ButtonPanel.HelpButton.OnClick := @HelpButtonClick;
 
-  AddButton.ImageIndex := IDEImages.LoadImage(16, 'laz_add');
-  RemoveButton.ImageIndex := IDEImages.LoadImage(16, 'laz_delete');
-  EditButton.ImageIndex := IDEImages.LoadImage(16, 'laz_edit');
-  MoveUpButton.ImageIndex := IDEImages.LoadImage(16, 'arrow_up');
-  MoveDownButton.ImageIndex := IDEImages.LoadImage(16, 'arrow_down');
+  AddButton.ImageIndex := IDEImages.LoadImage('laz_add');
+  RemoveButton.ImageIndex := IDEImages.LoadImage('laz_delete');
+  EditButton.ImageIndex := IDEImages.LoadImage('laz_edit');
+  MoveUpButton.ImageIndex := IDEImages.LoadImage('arrow_up');
+  MoveDownButton.ImageIndex := IDEImages.LoadImage('arrow_down');
 
   fExtToolList:=TExternalUserTools.Create;
 

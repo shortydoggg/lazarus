@@ -3,6 +3,7 @@
     - activate project when project is opened
     - deactivate project when project is closed
     - show active build mode
+    - auto load last group on IDE start when option enabled
 }
 unit ProjectGroupEditor;
 
@@ -11,10 +12,17 @@ unit ProjectGroupEditor;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ComCtrls, Menus,
-  ActnList, LCLProc, Clipbrd, LazIDEIntf, PackageIntf, ProjectIntf,
-  ProjectGroupIntf, MenuIntf, IDEDialogs, IDEWindowIntf, LazFileUtils,
-  LazLogger, LazFileCache, ProjectGroupStrConst, ProjectGroup;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, ComCtrls, Menus,
+  ActnList, LCLProc, Clipbrd,
+  // LazUtils
+  LazFileUtils, LazLoggerBase, LazFileCache,
+  // IdeIntf
+  LazIDEIntf, PackageIntf, ProjectIntf, ProjectGroupIntf, MenuIntf, IDEWindowIntf,
+  IDEDialogs,
+  // ProjectGroups
+  ProjectGroupStrConst, ProjectGroup;
 
 type
   TNodeType = (
@@ -366,13 +374,17 @@ begin
   ConfigAction(ATargetUninstall,iiTargetUninstall,lisTargetUninstallCaption,lisTargetUninstallHint,Nil);
   ConfigAction(ATargetActivate,iiTargetActivate,lisTargetActivateCaption,lisTargetActivateHint,Nil);
   ConfigAction(ATargetOpen,iiTargetOpen,lisTargetOpenCaption,lisTargetOpenHint,Nil);
+  ConfigAction(ATargetCopyFilename,0,lisTargetCopyFilename,'',Nil);
+  ConfigAction(ATargetCompileFromHere,0,lisTargetCompileFromHere,'',Nil);
+  ConfigAction(AProjectGroupReload,0,lisProjectGroupReload,'',Nil);
+  TBMore.Caption:=lisMore;
 end;
 
 procedure TProjectGroupEditorForm.AProjectGroupSaveUpdate(Sender: TObject);
 begin
   (Sender as TAction).Enabled:=(FProjectGroup<>nil)
     and (FProjectGroup.Modified or (FProjectGroup.FileName=''));
-  UpdateIDEMenuCommandFromAction(Sender,cmdSaveProjectGroup);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdSaveProjectGroup);
 end;
 
 procedure TProjectGroupEditorForm.ATargetEarlierExecute(Sender: TObject);
@@ -407,7 +419,7 @@ begin
     end;
   end;
   (Sender as TAction).Enabled:=I>0;
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetEarlier);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetEarlier);
 end;
 
 procedure TProjectGroupEditorForm.ATargetLaterExecute(Sender: TObject);
@@ -443,7 +455,7 @@ begin
       I:=PG.IndexOfTarget(T.Target);
   end;
   (Sender as TAction).Enabled:=(PG<>nil) and (I+1<PG.TargetCount);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetLater);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetLater);
 end;
 
 procedure TProjectGroupEditorForm.ATargetUninstallExecute(Sender: TObject);
@@ -454,7 +466,7 @@ end;
 procedure TProjectGroupEditorForm.ATargetUninstallUpdate(Sender: TObject);
 begin
   AllowPerform(taUninstall,Sender as TAction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetUninstall);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetUninstall);
 end;
 
 procedure TProjectGroupEditorForm.FormCloseQuery(Sender: TObject;
@@ -496,24 +508,28 @@ begin
   if ProjectGroupEditorForm=nil then
     ProjectGroupEditorForm:=Self;
   PGEditMenuSectionMisc.MenuItem:=PopupMenuMore.Items;
-  SetItem(cmdTargetAdd,@AProjectGroupAddExistingExecute);
-  SetItem(cmdTargetRemove,@AProjectGroupDeleteExecute);
-  SetItem(cmdTargetCompile,@ATargetCompileExecute);
-  SetItem(cmdTargetCompileClean,@ATargetCompileCleanExecute);
-  SetItem(cmdTargetCompileFromHere,@ATargetCompileFromHereExecute);
-  SetItem(cmdTargetInstall,@ATargetInstallExecute);
-  SetItem(cmdTargetUnInstall,@ATargetUnInstallExecute);
-  SetItem(cmdTargetLater,@ATargetLaterExecute);
-  SetItem(cmdTargetEarlier,@ATargetEarlierExecute);
-  SetItem(cmdTargetCopyFilename,@ATargetCopyFilenameExecute);
+  SetItem(MnuCmdTargetAdd,@AProjectGroupAddExistingExecute);
+  SetItem(MnuCmdTargetRemove,@AProjectGroupDeleteExecute);
+  SetItem(MnuCmdTargetCompile,@ATargetCompileExecute);
+  SetItem(MnuCmdTargetCompileClean,@ATargetCompileCleanExecute);
+  SetItem(MnuCmdTargetCompileFromHere,@ATargetCompileFromHereExecute);
+  SetItem(MnuCmdTargetInstall,@ATargetInstallExecute);
+  SetItem(MnuCmdTargetUninstall,@ATargetUnInstallExecute);
+  SetItem(MnuCmdTargetLater,@ATargetLaterExecute);
+  SetItem(MnuCmdTargetEarlier,@ATargetEarlierExecute);
+  SetItem(MnuCmdTargetCopyFilename,@ATargetCopyFilenameExecute);
 end;
 
 procedure TProjectGroupEditorForm.FormDestroy(Sender: TObject);
 begin
-  debugln(['TProjectGroupEditorForm.FormDestroy ',ProjectGroup<>nil]);
+  debugln(['TProjectGroupEditorForm.FormDestroy START ',ProjectGroup<>nil]);
   ProjectGroup:=nil;
   if ProjectGroupEditorForm=Self then
     ProjectGroupEditorForm:=nil;
+  if (PGEditMenuSectionMisc<>nil)
+  and (PGEditMenuSectionMisc.MenuItem=PopupMenuMore.Items) then
+    PGEditMenuSectionMisc.MenuItem:=nil;
+  debugln(['TProjectGroupEditorForm.FormDestroy END ',ProjectGroup<>nil]);
 end;
 
 procedure TProjectGroupEditorForm.PopupMenuMorePopup(Sender: TObject);
@@ -582,7 +598,7 @@ begin
       PkgName:=ND.Value;
       if PackageEditingInterface.DoOpenPackageWithName(PkgName,[pofAddToRecent],false)<>mrOk
       then begin
-        IDEMessageDialog('Package not found','Package "'+PkgName+'" not found.',mtError,[mbOk]);
+        IDEMessageDialog(lisPackageNotFound, Format(lisPackageNotFound2, [PkgName]), mtError, [mbOk]);
         exit;
       end;
     end;
@@ -631,7 +647,7 @@ begin
       s:=ND.Target.Filename;
     end else begin
       case ND.NodeType of
-      ntBuildMode: s:='Build Mode "'+ND.Value+'"';
+      ntBuildMode: s := Format(lisBuildMode2, [ND.Value]);
       ntFile: s:=ND.Value;
       end;
     end;
@@ -751,10 +767,10 @@ begin
     InitIDEFileDialog(OpenDialogTarget);
     With OpenDialogTarget do
     begin
-      Filter:='Lazarus projects (*.lpi)|*.lpi'
-       +'|Lazarus packages (*.lpk)|*.lpk'
-       +'|Lazarus project groups (*.lpg)|*.lpg'
-       +'|Pascal file (*.pas;*.pp;*.p)|*.pas;*.pp;*.p';
+      Filter := lisLazarusProjectsLpi + '|*.lpi'
+       + '|' + lisLazarusPackagesLpk + '|*.lpk'
+       + '|' + lisLazarusProjectGroupsLpg + '|*.lpg'
+       + '|' + lisPascalFilePasPpP + '|*.pas;*.pp;*.p';
       If Execute then
       begin
         aTarget:=FProjectGroup.AddTarget(FileName) as TIDECompileTarget;
@@ -778,7 +794,7 @@ Var
 begin
   T:=SelectedTarget;
   (Sender as TAction).Enabled:=Assigned(T) and Not T.Active;
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetActivate);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetActivate);
 end;
 
 procedure TProjectGroupEditorForm.ATargetActivateExecute(Sender: TObject);
@@ -800,7 +816,7 @@ begin
   begin
     PG:=TIDEProjectGroup(ProjectGroup);
     if PG.Modified then begin
-      IDEMessageDialog('Need save','Please save your changes before reloading the project group.',
+      IDEMessageDialog(lisNeedSave, lisPleaseSaveYourChangesBeforeReloadingTheProjectGrou,
         mtError,[mbOK]);
       exit;
     end;
@@ -813,7 +829,7 @@ end;
 procedure TProjectGroupEditorForm.AProjectGroupSaveAsUpdate(Sender: TObject);
 begin
   (Sender as TAction).Enabled:=(FProjectGroup<>nil);
-  UpdateIDEMenuCommandFromAction(Sender,cmdSaveProjectGroupAs);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdSaveProjectGroupAs);
 end;
 
 procedure TProjectGroupEditorForm.ATargetCompileCleanExecute(Sender: TObject);
@@ -824,7 +840,7 @@ end;
 procedure TProjectGroupEditorForm.ATargetCompileCleanUpdate(Sender: TObject);
 begin
   AllowPerform(taCompileClean,Sender as TAction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetCompileClean);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetCompileClean);
 end;
 
 function TProjectGroupEditorForm.AllowPerform(ATargetAction: TPGTargetAction; AAction: TAction = Nil): Boolean;
@@ -883,13 +899,13 @@ end;
 procedure TProjectGroupEditorForm.ATargetCompileFromHereUpdate(Sender: TObject);
 begin
   AllowPerform(taCompileFromHere,Sender as TAction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetCompile);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetCompile);
 end;
 
 procedure TProjectGroupEditorForm.ATargetCompileUpdate(Sender: TObject);
 begin
   AllowPerform(taCompile,Sender as TAction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetCompile);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetCompile);
 end;
 
 procedure TProjectGroupEditorForm.AProjectGroupDeleteExecute(Sender: TObject);
@@ -907,7 +923,7 @@ Var
 begin
   T:=SelectedTarget;
   (Sender as TAction).Enabled:=(T<>nil) and (T<>ProjectGroup.CompileTarget) and Not T.Removed;
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetRemove);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetRemove);
 end;
 
 procedure TProjectGroupEditorForm.ATargetCopyFilenameExecute(Sender: TObject);
@@ -933,7 +949,7 @@ begin
   ND:=SelectedNodeData;
   (Sender as TAction).Enabled:=(ND<>nil)
     and ((ND.Target<>nil) or (ND.NodeType in [ntFile]));
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetCopyFilename);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetCopyFilename);
 end;
 
 procedure TProjectGroupEditorForm.ATargetInstallExecute(Sender: TObject);
@@ -944,7 +960,7 @@ end;
 procedure TProjectGroupEditorForm.ATargetInstallUpdate(Sender: TObject);
 begin
   AllowPerform(taInstall,Sender as TAction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetInstall);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetInstall);
 end;
 
 procedure TProjectGroupEditorForm.ATargetOpenExecute(Sender: TObject);
@@ -955,7 +971,7 @@ end;
 procedure TProjectGroupEditorForm.ATargetOpenUpdate(Sender: TObject);
 begin
   AllowPerform(taOpen,Sender as TAction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetOpen);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetOpen);
 end;
 
 procedure TProjectGroupEditorForm.ATargetPropertiesExecute(Sender: TObject);
@@ -966,7 +982,7 @@ end;
 procedure TProjectGroupEditorForm.ATargetPropertiesUpdate(Sender: TObject);
 begin
   AllowPerform(taSettings,Sender as Taction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetProperties);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetProperties);
 end;
 
 procedure TProjectGroupEditorForm.ATargetRunExecute(Sender: TObject);
@@ -977,7 +993,7 @@ end;
 procedure TProjectGroupEditorForm.ATargetRunUpdate(Sender: TObject);
 begin
   AllowPerform(taRun,Sender as TAction);
-  UpdateIDEMenuCommandFromAction(Sender,cmdTargetRun);
+  UpdateIDEMenuCommandFromAction(Sender,MnuCmdTargetRun);
 end;
 
 procedure TProjectGroupEditorForm.AProjectGroupSaveAsExecute(Sender: TObject);

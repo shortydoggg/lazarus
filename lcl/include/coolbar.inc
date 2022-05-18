@@ -88,9 +88,9 @@ begin
     inc(Result, FTextWidth+FCoolBar.HorizontalSpacing);
   if Assigned(FCoolBar.Images) then begin
     if not FCoolBar.Vertical then
-      aImageSize := FCoolBar.Images.Width
+      aImageSize := FCoolBar.Images.WidthForPPI[FCoolBar.ImagesWidth, FCoolBar.Font.PixelsPerInch]
     else
-      aImageSize := FCoolBar.Images.Height;
+      aImageSize := FCoolBar.Images.HeightForPPI[FCoolBar.ImagesWidth, FCoolBar.Font.PixelsPerInch];
     if ImageIndex >= 0 then
       inc(Result, aImageSize+FCoolBar.HorizontalSpacing);
   end;
@@ -104,12 +104,12 @@ begin
     if Assigned(FControl) then
       Result := max(Result, FControl.Height+2*FCoolBar.VerticalSpacing);
     if Assigned(FCoolBar.Images) and (ImageIndex >= 0) then
-      Result := max(Result, FCoolBar.Images.Height+2*FCoolBar.VerticalSpacing);
+      Result := max(Result, FCoolBar.Images.HeightForPPI[FCoolBar.ImagesWidth, FCoolBar.Font.PixelsPerInch]+2*FCoolBar.VerticalSpacing);
   end else begin
     if Assigned(FControl) then
       Result := max(Result, FControl.Width+2*FCoolBar.VerticalSpacing);
     if Assigned(FCoolBar.Images) and (ImageIndex >= 0) then
-      Result := max(Result, FCoolBar.Images.Width+2*FCoolBar.VerticalSpacing);
+      Result := max(Result, FCoolBar.Images.WidthForPPI[FCoolBar.ImagesWidth, FCoolBar.Font.PixelsPerInch]+2*FCoolBar.VerticalSpacing);
   end;
   if FCoolBar.FShowText then
     Result := max(Result, FCoolBar.FTextHeight+2*FCoolBar.VerticalSpacing);
@@ -296,7 +296,17 @@ var i: Integer;
 begin
   Result := Nil;
   for i := 0 to Count-1 do
-    if GetItem(i).FControl = AControl then Exit(GetItem(i));
+    if GetItem(i).FControl = AControl then
+      Exit(GetItem(i));
+end;
+
+function TCoolBands.FindBandindex(AControl: TControl): Integer;
+var i: Integer;
+begin
+  Result := -1;
+  for i := 0 to Count-1 do
+    if GetItem(i).FControl = AControl then
+      Exit(i);
 end;
 
 procedure TCoolBands.Notify(aItem: TCollectionItem; aAction: TCollectionNotification);
@@ -361,7 +371,9 @@ begin
   FImageChangeLink := TChangeLink.Create;
   FImageChangeLink.OnChange := @BitmapOrImageListChange;
   FShowText := True;
+  FThemed := True;
   FVerticalSpacing := cDefVertSpacing;
+  UseDockManager := True;
 end;
 
 destructor TCustomCoolBar.Destroy;
@@ -453,6 +465,14 @@ begin
   Invalidate;
 end;
 
+procedure TCustomCoolBar.SetImagesWidth(const aImagesWidth: Integer);
+begin
+  if FImagesWidth = aImagesWidth then Exit;
+  FImagesWidth := aImagesWidth;
+  CalculateAndAlign;
+  Invalidate;
+end;
+
 procedure TCustomCoolBar.SetShowText(AValue: Boolean);
 begin
   if FShowText = AValue then Exit;
@@ -460,6 +480,14 @@ begin
   CalculateAndAlign;
   Invalidate;
 end;
+
+procedure TCustomCoolBar.SetThemed(AValue: Boolean);
+begin
+  if FThemed = AValue then Exit;
+  FThemed := AValue;
+  Invalidate;
+end;
+
 
 procedure TCustomCoolBar.SetVertical(AValue: Boolean);
 var aRect: TRect;
@@ -521,7 +549,7 @@ end;
 
 procedure TCustomCoolBar.CalculateAndAlign;
 var i, x, y, aBandHeight, aBorderLeft, aCountM1, aLeft,
-    aPrefSize, aStartIndex, aTop, aWidth: Integer;
+    aPrefSize, aStartIndex, aTop, aWidth, NewWidth,NewHeight: Integer;
     aRowEnd: Boolean;
 begin
   //DebugLn('CalculateAndAlign');
@@ -557,6 +585,15 @@ begin
   for i := 0 to aCountM1 do begin
     if aRowEnd or FVisiBands[i].Break then
       aLeft := aBorderLeft;
+    if FVisiBands[i].Control is TToolBar then
+    begin
+      if TToolBar(FVisiBands[i].Control).IsVertical then
+        TToolBar(FVisiBands[i].Control).WrapButtons(Height,NewWidth,NewHeight,true)
+      else
+        TToolBar(FVisiBands[i].Control).WrapButtons(Width,NewWidth,NewHeight,true);
+      FVisiBands[i].Control.Width:=NewWidth;
+      FVisiBands[i].Control.Height:=NewHeight;
+    end;
     aBandHeight := Max(aBandHeight, FVisiBands[i].CalcPreferredHeight);
     aRowEnd := (i = aCountM1);
     inc(aLeft, FVisiBands[i].Width);
@@ -667,7 +704,7 @@ begin
     if aCountM1 >= 0 then
       PreferredHeight := FVisiBands[aCountM1].FTop+FVisiBands[aCountM1].FHeight+FBorderBottom
     else
-      PreferredHeight := FBorderTop+TCoolBand.cDefMinHeight+FBorderBottom;
+      PreferredHeight := FBorderTop+FBorderBottom;
     PreferredWidth := 0
   end else begin
     PreferredHeight := 0;
@@ -681,7 +718,7 @@ begin
           FVisiBands[i].FTop := FVisiBands[i].FTop-x;
       end;
     end else
-      PreferredWidth := FBorderLeft+TCoolBand.cDefMinHeight+FBorderRight;
+      PreferredWidth := FBorderLeft+FBorderRight;
   end;
 end;
 
@@ -734,6 +771,8 @@ end;
 procedure TCustomCoolBar.DoFontChanged;
 var i: Integer;
 begin
+  if not Canvas.HandleAllocated then
+    Exit;
   FTextHeight := Canvas.TextHeight('Žy|');
   for i := 0 to FBands.Count-1 do
     FBands[i].CalcTextWidth;
@@ -856,7 +895,7 @@ begin
   end;
   MouseToBandPos(X, Y, aBand, aGrabber);
   FDraggedBandIndex := aBand;
-  if (aBand >= 0) and (length(FVisiBands) > 1) then begin  //hit any Band
+  if (aBand >= 0) and (length(FVisiBands) >= 1) then begin  //hit any Band
     if not aGrabber or IsFirstAtRow(aBand)
       or FFixedSize or FVisiBands[aBand-1].FFixedSize then begin
       if not FFixedOrder then FDragBand := dbMove;  //move Band
@@ -880,7 +919,7 @@ var aBand: Integer;
     aGrabber: Boolean;
 begin
   inherited MouseMove(Shift, X, Y);
-  if length(FVisiBands) > 1 then begin
+  if length(FVisiBands) > 0 then begin
     case FDragBand of
       dbNone: begin
         MouseToBandPos(X, Y, aBand, aGrabber);
@@ -906,7 +945,15 @@ begin
             Y-FDragInitPos-FVisiBands[FDraggedBandIndex-1].FLeft
       end;
       dbMove: begin
-        Cursor := crDrag;
+        if FDraggedBandIndex>-1 then begin
+          Cursor := crDrag;
+          if DragManager.CanStartDragging(self,-1,X,Y) then
+          begin
+            DragManager.DragStart(FVisiBands[FDraggedBandIndex].Control, True, -1, True);
+            Cursor := crDefault;
+            FDraggedBandIndex := -1;
+          end;
+        end;
       end;
     end;
   end;
@@ -955,11 +1002,33 @@ begin
 end;
 
 procedure TCustomCoolBar.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-var aBand: Integer;
-    newRowBelow, needRecalc: Boolean;
+var aBand, w, h, offs: Integer;
+    newRowBelow, needRecalc, needBandMaximize, aGrabber: Boolean;
 begin
   inherited MouseUp(Button, Shift, X, Y);
-  if FDragBand = dbMove then begin
+  if FBandMaximize<>bmNone then begin
+    case FBandMaximize of
+      bmClick:   needBandMaximize:=true;
+      bmDblClick:needBandMaximize:=ssDouble in Shift;
+      else       needBandMaximize:=false;
+    end;
+    if needBandMaximize then begin
+      MouseToBandPos(X, Y, aBand, aGrabber);
+      if aGrabber and Assigned(FVisiBands[aBand].control) then begin
+        w:=0;
+        h:=0;
+        FVisiBands[aBand].control.GetPreferredSize(w,h);
+        offs:=FVisiBands[aBand].CalcControlLeft
+             +FVisiBands[aBand].cDivider + HorizontalSpacing;
+        if vertical then
+          FVisiBands[aBand].width:=offs+h
+        else
+          FVisiBands[aBand].width:=offs+w;
+        FDraggedBandIndex:=-1;
+      end;
+    end;
+  end;
+  if (FDragBand = dbMove) and (FDraggedBandIndex <> -1) then begin
     needRecalc := False;
     MouseToBandPos(X, Y, aBand, newRowBelow);  //newRowBelow is NOT used here
     if aBand >= cNewRowAbove then begin
@@ -1160,15 +1229,20 @@ var k, x, aCountM1, aLeft, aTop: Integer;
     aColor: TColor;
     aDetails: TThemedElementDetails;
     aFlags: Cardinal;
+    aImageSize: TSize;
 begin
   inherited Paint;
+  if Assigned(FImages) then
+    aImageSize := FImages.SizeForPPI[ImagesWidth, Font.PixelsPerInch];
   //DebugLn('TCoolBar.Paint');
   //draw Bitmap Background
   if FBitmap.Width > 0 then
     DrawTiledBitmap(ClientRect, FBitmap)
   else begin
-    aBackground:=ThemeServices.GetElementDetails(trRebarRoot);
-    ThemeServices.DrawElement(Canvas.Handle,aBackground,ClientRect);
+    if FThemed then begin
+      aBackground:=ThemeServices.GetElementDetails(trRebarRoot);
+      ThemeServices.DrawElement(Canvas.Handle,aBackground,ClientRect);
+    end;
   end;
   aCountM1 := length(FVisiBands)-1;
   if aCountM1 >= 0 then begin
@@ -1236,17 +1310,17 @@ begin
         x := x-HorizontalSpacing;
       //paint Image
       if Assigned(FImages) and (FVisiBands[i].ImageIndex >= 0) then begin
-        if FRightToLeft and not Vertical then dec(x, FImages.Width);
+        if FRightToLeft and not Vertical then dec(x, aImageSize.cx);
         if not Vertical then
           ThemeServices.DrawIcon(Canvas, aDetails,
-            Point(x, aTop+(FVisiBands[i].FHeight-FImages.Height) div 2),
+            Point(x, aTop+(FVisiBands[i].FHeight-aImageSize.cy) div 2),
             FImages, FVisiBands[i].ImageIndex)
         else
           ThemeServices.DrawIcon(Canvas, aDetails,
-            Point(aTop+(FVisiBands[i].FHeight-FImages.Width) div 2, x),
+            Point(aTop+(FVisiBands[i].FHeight-aImageSize.cx) div 2, x),
             FImages, FVisiBands[i].ImageIndex);
         if not FRightToLeft or Vertical then
-          inc(x, FImages.Width+HorizontalSpacing)
+          inc(x, aImageSize.cx+HorizontalSpacing)
         else
           dec(x, HorizontalSpacing);
       end;
@@ -1264,14 +1338,14 @@ begin
         Canvas.Brush.Style := bsClear;
         Canvas.TextOut(aRect.Left, aRect.Top, FVisiBands[i].Text);
       end;
+      if not FRightToLeft or Vertical then
+        aRowEnd := IsRowEnd(aLeft, i)
+      else
+        aRowEnd := IsRowEnd(Width-x, i);
       if BandBorderStyle = bsSingle then begin
         //paint a Separator border below the row of bands ____
         x := aLeft;
         inc(aLeft, FVisiBands[i].Width);
-        if not FRightToLeft or Vertical then
-          aRowEnd := IsRowEnd(aLeft, i)
-        else
-          aRowEnd := IsRowEnd(Width-x, i);
         if (aRowEnd or ((i = aCountM1) and not AutoSize)) then begin
           if not Vertical or not FRightToLeft then
            PaintSeparator(aTop+FVisiBands[i].FHeight)
@@ -1298,13 +1372,17 @@ begin
 end;
 
 procedure TCustomCoolBar.RemoveControl(AControl: TControl);
-var aBand: TCoolBand;
+var aBandIndex:Integer;
 begin
   inherited RemoveControl(AControl);
-  aBand := Bands.FindBand(AControl);
-  if Assigned(aBand) then begin
+  aBandIndex := Bands.FindBandIndex(AControl);
+  if aBandIndex > -1 then
+  begin
     //DebugLn('TCoolBar.RemoveControl: Comp=' + AControl.Name + ', class=' + AControl.ClassName);
-    aBand.FControl := Nil;
+    Bands.Items[aBandIndex].Control := Nil;
+    FDragBand:=dbNone;
+    FDraggedBandIndex:=-1;
+    Bands.Delete(aBandIndex);
     CalculateAndAlign;
     Invalidate;
   end;
@@ -1325,9 +1403,7 @@ procedure TCustomCoolBar.WMSize(var Message: TLMSize);
 begin
   //DebugLn('WMSize');
   inherited WMSize(Message);
-  if not Autosize then begin
-    CalculateAndAlign;
-    Invalidate;  //required by GTK2
-  end;
+  CalculateAndAlign;
+  Invalidate;  //required by GTK2 and WINDOWS
 end;
 

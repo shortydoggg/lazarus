@@ -18,7 +18,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -71,6 +71,7 @@ type
     destructor Destroy; override;
     function DebugDump(AWithResults: Boolean = False): String;
     procedure ResetEvaluation;
+    property TextExpression: String read FTextExpression;
     property Error: TFpError read FError;
     property Valid: Boolean read GetValid;
     // Set by GetResultValue
@@ -599,7 +600,7 @@ end;
 
 function TFpPasParserValueCastToPointer.GetFieldFlags: TFpDbgValueFieldFlags;
 begin
-  if (FValue.FieldFlags * [svfAddress, svfCardinal] <> [])
+  if (FValue.FieldFlags * [svfAddress, svfOrdinal] <> [])
   then
     Result := [svfOrdinal, svfCardinal, svfSizeOfPointer, svfDataAddress]
   else
@@ -617,7 +618,7 @@ var
 begin
   Result := 0;
   f := FValue.FieldFlags;
-  if svfCardinal in f then
+  if svfOrdinal in f then
     Result := FValue.AsCardinal
   else
   if svfAddress in f then begin
@@ -1024,6 +1025,8 @@ var
   Offs: Int64;
   ti: TFpDbgSymbol;
   IsPChar: Boolean;
+  v: String;
+  w: WideString;
 begin
   Result := nil;
   assert(Count >= 2, 'TFpPascalExpressionPartBracketIndex.DoGetResultValue: Count >= 2');
@@ -1087,12 +1090,54 @@ begin
             SetError('Error dereferencing'); // TODO: set correct error
           if TmpVal2 <> nil then TmpVal2.AddReference;
         end;
-      skString: begin
-          //TODO
-          SetError('Not implemented');
-          TmpVal.ReleaseReference;
-          exit;
-        end
+      skString, skAnsiString: begin
+          //TODO: move to FpDwarfValue.member ??
+          if (svfInteger in TmpIndex.FieldFlags) then
+            Offs := TmpIndex.AsInteger
+          else
+          if (svfOrdinal in TmpIndex.FieldFlags) and (TmpIndex.AsCardinal <= high(Int64))
+          then
+            Offs := Int64(TmpIndex.AsCardinal)
+          else
+          begin
+            SetError('Can not calculate Index');
+            TmpVal.ReleaseReference;
+            exit;
+          end;
+
+          v := TmpVal.AsString;
+          if (Offs < 1) or (Offs > Length(v)) then begin
+            SetError('Index out of range');
+            TmpVal.ReleaseReference;
+            exit;
+          end;
+
+          TmpVal2 := TFpDbgValueConstChar.Create(v[Offs]);
+        end;
+      skWideString: begin
+          //TODO: move to FpDwarfValue.member ??
+          if (svfInteger in TmpIndex.FieldFlags) then
+            Offs := TmpIndex.AsInteger
+          else
+          if (svfOrdinal in TmpIndex.FieldFlags) and (TmpIndex.AsCardinal <= high(Int64))
+          then
+            Offs := Int64(TmpIndex.AsCardinal)
+          else
+          begin
+            SetError('Can not calculate Index');
+            TmpVal.ReleaseReference;
+            exit;
+          end;
+
+          w := TmpVal.AsWideString;
+          if (Offs < 1) or (Offs > Length(w)) then begin
+            SetError('Index out of range');
+            TmpVal.ReleaseReference;
+            exit;
+          end;
+
+          TmpVal2 := TFpDbgValueConstChar.Create(w[Offs]);
+        end;
       else
         begin
           SetError(fpErrTypeHasNoIndex, [GetText]);

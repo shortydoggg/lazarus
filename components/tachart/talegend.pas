@@ -35,6 +35,7 @@ type
     FOrder: Integer;
     FOwner: TIndexedComponent;
     FText: String;
+    FTextFormat: TChartTextFormat;
   public
     constructor Create(const AText: String; AColor: TColor = clTAColor);
     procedure Draw(ADrawer: IChartDrawer; const ARect: TRect); virtual;
@@ -47,6 +48,7 @@ type
     property Order: Integer read FOrder write FOrder;
     property Owner: TIndexedComponent read FOwner write FOwner;
     property Text: String read FText write FText;
+    property TextFormat: TChartTextFormat read FTextFormat write FTextFormat;
   end;
 
   { TLegendItemGroupTitle }
@@ -77,7 +79,7 @@ type
   { TLegendItemLine }
 
   TLegendItemLine = class(TLegendItem)
-  strict private
+  strict protected
     FPen: TFPCustomPen;
   public
     constructor Create(APen: TFPCustomPen; const AText: String);
@@ -89,9 +91,13 @@ type
   TLegendItemLinePointer = class(TLegendItemLine)
   strict protected
     FPointer: TSeriesPointer;
+    FBrush: TBrush;
+    FPresetBrush: Boolean;
   public
     constructor Create(
       APen: TPen; APointer: TSeriesPointer; const AText: String);
+    constructor CreateWithBrush(
+      APen: TPen; ABrush: TBrush; APointer: TSeriesPointer; const AText: String);
     procedure Draw(ADrawer: IChartDrawer; const ARect: TRect); override;
   end;
 
@@ -164,12 +170,14 @@ type
     FGridVertical: TChartLegendGridPen;
     FGroupFont: TFont;
     FGroupTitles: TStrings;
+    FInverted: Boolean;
     FItemFillOrder: TLegendItemFillOrder;
     FMarginX: TChartDistance;
     FMarginY: TChartDistance;
     FSpacing: TChartDistance;
     FSymbolFrame: TChartPen;
     FSymbolWidth: TChartDistance;
+    FTextFormat: TChartTextFormat;
     FTransparency: TChartTransparency;
     FUseSidebar: Boolean;
 
@@ -186,6 +194,7 @@ type
     procedure SetGridVertical(AValue: TChartLegendGridPen);
     procedure SetGroupFont(AValue: TFont);
     procedure SetGroupTitles(AValue: TStrings);
+    procedure SetInverted(AValue: Boolean);
     procedure SetItemFillOrder(AValue: TLegendItemFillOrder);
     procedure SetMargin(AValue: TChartDistance);
     procedure SetMarginX(AValue: TChartDistance);
@@ -193,6 +202,7 @@ type
     procedure SetSpacing(AValue: TChartDistance);
     procedure SetSymbolFrame(AValue: TChartPen);
     procedure SetSymbolWidth(AValue: TChartDistance);
+    procedure SetTextFormat(AValue: TChartTextFormat);
     procedure SetTransparency(AValue: TChartTransparency);
     procedure SetUseSidebar(AValue: Boolean);
   public
@@ -222,10 +232,9 @@ type
       read FGridVertical write SetGridVertical;
     property GroupFont: TFont read FGroupFont write SetGroupFont;
     property GroupTitles: TStrings read FGroupTitles write SetGroupTitles;
+    property Inverted: Boolean read FInverted write SetInverted default false;
     property ItemFillOrder: TLegendItemFillOrder
       read FItemFillOrder write SetItemFillOrder default lfoColRow;
-    property Margin: TChartDistance
-      read FMarginX write SetMargin stored false; deprecated;
     property MarginX: TChartDistance
       read FMarginX write SetMarginX default DEF_LEGEND_MARGIN;
     property MarginY: TChartDistance
@@ -235,6 +244,8 @@ type
     property SymbolFrame: TChartPen read FSymbolFrame write SetSymbolFrame;
     property SymbolWidth: TChartDistance
       read FSymbolWidth write SetSymbolWidth default DEF_LEGEND_SYMBOL_WIDTH;
+    property TextFormat: TChartTextFormat
+      read FTextFormat write SetTextFormat default tfNormal;
     property Transparency: TChartTransparency
       read FTransparency write SetTransparency default 0;
     property UseSidebar: Boolean read FUseSidebar write SetUseSidebar default true;
@@ -256,6 +267,7 @@ type
     FOnCreate: TLegendItemCreateEvent;
     FOnDraw: TLegendItemDrawEvent;
     FOrder: Integer;
+    FTextFormat: TChartTextFormat;
     FUserItemsCount: Integer;
     procedure SetFormat(AValue: String);
     procedure SetGroupIndex(AValue: Integer);
@@ -263,6 +275,7 @@ type
     procedure SetOnCreate(AValue: TLegendItemCreateEvent);
     procedure SetOnDraw(AValue: TLegendItemDrawEvent);
     procedure SetOrder(AValue: Integer);
+    procedure SetTextFormat(AValue: TChartTextFormat);
     procedure SetUserItemsCount(AValue: Integer);
   public
     constructor Create(AOwner: TCustomChart);
@@ -278,6 +291,8 @@ type
       read FMultiplicity write SetMultiplicity default lmSingle;
     property Order: Integer
       read FOrder write SetOrder default LEGEND_ITEM_ORDER_AS_ADDED;
+    property TextFormat: TChartTextFormat
+      read FTextFormat write SetTextFormat default tfNormal;
     property UserItemsCount: Integer
       read FUserItemsCount write SetUserItemsCount default 1;
     property Visible default true;
@@ -290,7 +305,8 @@ type
 implementation
 
 uses
-  Math, PropEdits, Types, TADrawerCanvas, TAGeometry;
+  Math, PropEdits, Types, LResources,
+  TADrawerCanvas, TAGeometry;
 
 const
   SYMBOL_TEXT_SPACING = 4;
@@ -303,6 +319,16 @@ begin
   Result := Sign(li1.GroupIndex - li2.GroupIndex);
   if Result = 0 then
     Result := Sign(li1.Order - li2.Order);
+end;
+
+function LegendItemCompare_Inverted(AItem1, AItem2: Pointer): Integer;
+var
+  li1: TLegendItem absolute AItem1;
+  li2: TLegendItem absolute AItem2;
+begin
+  Result := Sign(li1.GroupIndex - li2.GroupIndex);
+  if Result = 0 then
+    Result := Sign(li2.Order - li1.Order);
 end;
 
 { TLegendItemsEnumerator }
@@ -346,11 +372,14 @@ begin
   symTextSpc := ADrawer.Scale(SYMBOL_TEXT_SPACING);
   if ADrawer.GetRightToLeft then
     ADrawer.TextOut.
-      Pos(ARect.Left - symTextSpc - ADrawer.TextExtent(FText).X, ARect.Top).
+      TextFormat(FTextFormat).
+      Pos(ARect.Left - symTextSpc - ADrawer.TextExtent(FText, FTextFormat).X, ARect.Top).
       Text(FText).Done
   else
     ADrawer.TextOut.
-      Pos(ARect.Right + symTextSpc, ARect.Top).Text(FText).Done;
+      TextFormat(FTextFormat).
+      Pos(ARect.Right + symTextSpc, ARect.Top).
+      Text(FText).Done;
 end;
 
 function TLegendItem.HasSymbol: Boolean;
@@ -371,10 +400,14 @@ procedure TLegendItemGroupTitle.Draw(ADrawer: IChartDrawer; const ARect: TRect);
 begin
   if ADrawer.GetRightToLeft then
     ADrawer.TextOut.
-      Pos(ARect.Right - ADrawer.TextExtent(Text).X, ARect.Top).Text(Text).Done
+      TextFormat(TextFormat).
+      Pos(ARect.Right - ADrawer.TextExtent(Text, TextFormat).X, ARect.Top).
+      Text(Text).Done
   else
     ADrawer.TextOut.
-      Pos(ARect.Left, ARect.Top).Text(Text).Done;
+      TextFormat(TextFormat).
+      Pos(ARect.Left, ARect.Top).
+      Text(Text).Done;
 end;
 
 function TLegendItemGroupTitle.HasSymbol: Boolean;
@@ -429,6 +462,14 @@ begin
   FPointer := APointer;
 end;
 
+constructor TLegendItemLinePointer.CreateWithBrush(
+  APen: TPen; ABrush: TBrush; APointer: TSeriesPointer; const AText: String);
+begin
+  Create(APen, APointer, AText);
+  FBrush := ABrush;
+  FPresetBrush := true;
+end;
+
 procedure TLegendItemLinePointer.Draw(
   ADrawer: IChartDrawer; const ARect: TRect);
 var
@@ -440,7 +481,9 @@ begin
   // Max width slightly narrower then ARect to leave place for the line.
   sz.X := Min(ADrawer.Scale(FPointer.HorizSize), (ARect.Right - ARect.Left) div 3);
   sz.Y := Min(ADrawer.Scale(FPointer.VertSize), (ARect.Bottom - ARect.Top) div 2);
-  FPointer.DrawSize(ADrawer, c, sz, Color);
+  if FPresetBrush then
+    ADrawer.SetBrush(FBrush);
+  FPointer.DrawSize(ADrawer, c, sz, Color, 0.0, FPresetBrush);
 end;
 
 { TLegendItemBrushRect }
@@ -481,6 +524,7 @@ begin
       g := TLegendItemGroupTitle.Create(GroupTitles[gi]);
       g.GroupIndex := gi;
       g.Font := GroupFont;
+      g.TextFormat := FTextFormat;
       AItems.Insert(i, g);
     end;
   end;
@@ -505,6 +549,7 @@ begin
       Self.FSpacing := Spacing;
       Self.FSymbolFrame.Assign(SymbolFrame);
       Self.FSymbolWidth := SymbolWidth;
+      Self.FTextFormat := TextFormat;
       Self.FUseSidebar := UseSidebar;
     end;
 
@@ -566,6 +611,7 @@ var
       space := FDrawer.Scale(Spacing);
       symwid := FDrawer.Scale(SymbolWidth);
       for i := 0 to FItems.Count - 1 do begin
+        FItems[i].TextFormat := FTextFormat;
         FItems[i].UpdateFont(drawer, prevFont);
         drawer.Brush := BackgroundBrush;
         if SymbolFrame.Visible then
@@ -650,9 +696,9 @@ begin
   for li in AItems do begin
     li.UpdateFont(ADrawer, prevFont);
     if li.Text = '' then
-      p := Point(0, ADrawer.TextExtent('I').Y)
+      p := Point(0, ADrawer.TextExtent('I', FTextFormat).Y)
     else
-      p := ADrawer.TextExtent(li.Text);
+      p := ADrawer.TextExtent(li.Text, FTextFormat);
     if li.HasSymbol then
       p.X += ADrawer.Scale(SYMBOL_TEXT_SPACING + SymbolWidth);
     Result := MaxPoint(p, Result);
@@ -785,6 +831,13 @@ begin
   StyleChanged(Self);
 end;
 
+procedure TChartLegend.SetInverted(AValue: Boolean);
+begin
+  if FInverted = AValue then exit;
+  FInverted := AValue;
+  StyleChanged(Self);
+end;
+
 procedure TChartLegend.SetItemFillOrder(AValue: TLegendItemFillOrder);
 begin
   if FItemFillOrder = AValue then exit;
@@ -833,6 +886,13 @@ begin
   StyleChanged(Self);
 end;
 
+procedure TChartLegend.SetTextFormat(AValue: TChartTextFormat);
+begin
+  if FTextFormat = AValue then exit;
+  FTextFormat := AValue;
+  StyleChanged(self);
+end;
+
 procedure TChartLegend.SetTransparency(AValue: TChartTransparency);
 begin
   if FTransparency = AValue then exit;
@@ -857,7 +917,10 @@ begin
       AItems[i].Order := j;
       j -= 1;
     end;
-  AItems.Sort(@LegendItemCompare);
+  if FInverted then
+    AItems.Sort(@LegendItemCompare_Inverted)
+  else
+    AItems.Sort(@LegendItemCompare);
 end;
 
 procedure TChartLegend.UpdateBidiMode;
@@ -872,6 +935,7 @@ begin
   end;
 end;
 
+
 { TChartSeriesLegend }
 
 procedure TChartSeriesLegend.Assign(Source: TPersistent);
@@ -880,6 +944,7 @@ begin
     with TChartSeriesLegend(Source) do begin
       Self.FMultiplicity := FMultiplicity;
       Self.FOnDraw := FOnDraw;
+      Self.FTextFormat := FTextFormat;
       Self.FUserItemsCount := FUserItemsCount;
     end;
 
@@ -906,6 +971,7 @@ begin
     AItem.GroupIndex := GroupIndex;
   if AItem.Order = LEGEND_ITEM_ORDER_AS_ADDED then
     AItem.Order := Order;
+  AItem.TextFormat := ALegend.TextFormat;
 end;
 
 procedure TChartSeriesLegend.SetFormat(AValue: String);
@@ -950,6 +1016,13 @@ begin
   StyleChanged(Self);
 end;
 
+procedure TChartSeriesLegend.SetTextFormat(AValue: TChartTextFormat);
+begin
+  if FTextFormat = AValue then exit;
+  FTextFormat := AValue;
+  StyleChanged(Self);
+end;
+
 procedure TChartSeriesLegend.SetUserItemsCount(AValue: Integer);
 begin
   if FUserItemsCount = AValue then exit;
@@ -958,9 +1031,10 @@ begin
 end;
 
 procedure SkipObsoleteProperties;
+const
+  MARGIN_NOTE = 'Obsolete, use Legend.MarginX instead';
 begin
-  RegisterPropertyEditor(
-    TypeInfo(TChartDistance), TChartLegend, 'Margin', THiddenPropertyEditor);
+  RegisterPropertyToSkip(TChartLegend, 'Margin', MARGIN_NOTE, '');
 end;
 
 initialization

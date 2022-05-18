@@ -31,7 +31,7 @@ interface
 
 uses
   Classes, StdCtrls,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -47,9 +47,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -81,7 +81,7 @@ end;
 
 procedure TfReplace.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Replace do
+  with FormattingSettings.Replace do
   begin
     cbEnable.Checked := Enabled;
     mWords.Lines.Assign(Words);
@@ -91,7 +91,7 @@ end;
 
 procedure TfReplace.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Replace do
+  with FormattingSettings.Replace do
   begin
     Enabled := cbEnable.Checked;
     Words.Assign(mWords.Lines);
@@ -101,7 +101,7 @@ end;
 
 class function TfReplace.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 {-------------------------------------------------------------------------------

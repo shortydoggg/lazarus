@@ -12,8 +12,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 }
 
 unit SVNUpdateForm;
@@ -24,7 +24,8 @@ interface
 
 uses
   Classes, SysUtils, FileUtil, UTF8Process, LResources, Forms, Controls,
-  Graphics, Dialogs, ComCtrls, ButtonPanel, Process, Buttons, Menus, LCLProc;
+  Graphics, Dialogs, ComCtrls, ButtonPanel, Process, Buttons, Menus, LCLProc,
+  IDEImagesIntf;
 
 type
 
@@ -84,7 +85,7 @@ begin
 
   ButtonPanel.OKButton.OnClick := @OKButtonClick;
   ButtonPanel.HelpButton.Caption := rsShowLog;
-  ButtonPanel.HelpButton.LoadGlyphFromResourceName(HInstance, 'tsynsyncroedit');
+  IDEImages.AssignImage(ButtonPanel.HelpButton, 'tsynsyncroedit');
   mnuShowDiff.Caption:=rsShowDiff;
 end;
 

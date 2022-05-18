@@ -5,11 +5,50 @@ License: The same modified LGPL as the Free Pascal RTL
          See the file COPYING.modifiedLGPL for more details
 
 AUTHORS: Felipe Monteiro de Carvalho
+
+SVG Coordinates vs FPVectorial coordinates:
+
+SVG by default has [0, 0] at the top-left and coordinates grow downwards and to the right
+Text is drawn upwards (towards negative Y)
+
+* Example of a supported SVG image:
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with fpVectorial (http://wiki.lazarus.freepascal.org/fpvectorial) -->
+
+<svg
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:cc="http://creativecommons.org/ns#"
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:svg="http://www.w3.org/2000/svg"
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+  width="100mm"
+  height="100mm"
+  id="svg2"
+  version="1.1"
+  sodipodi:docname="New document 1">
+  <g id="layer1">
+  <path
+    style="fill:none;stroke:#000000;stroke-width:10px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+    d="m 0,283.486888731396 l 106.307583274274,-35.4358610914245 "
+  id="path0" />
+  <path
+    style="fill:none;stroke:#000000;stroke-width:10px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+    d="m 0,354.358610914245 l 354.358610914245,0 l 0,-354.358610914245 l -354.358610914245,0 l 0,354.358610914245 "
+  id="path1" />
+  <path
+    style="fill:none;stroke:#000000;stroke-width:10px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+    d="m 0,354.358610914245 l 35.4358610914245,-35.4358610914245 c 0,-35.4358610914246 35.4358610914245,-35.4358610914246 35.4358610914245,0 l 35.4358610914245,35.4358610914245 "
+  id="path2" />
+  </g>
+</svg>
 }
 unit svgvectorialreader;
 
 {$mode objfpc}{$H+}
 {$define SVG_MERGE_LAYER_STYLES}
+{$define FPVECTORIAL_SVG_SPLIT_PATHS}
 
 interface
 
@@ -64,6 +103,17 @@ type
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
+  TvSVGVectorialReader = class;
+
+  { TSVG_CSS_Style }
+
+  TSVG_CSS_Style = class(TvStyle)
+  public
+    CSSName, CSSData: string;
+    function MatchesClass(AClassName: string): Boolean;
+    procedure ParseCSSData(AReader: TvSVGVectorialReader);
+  end;
+
   { TSVGPathTokenizer }
 
   TSVGPathTokenizer = class
@@ -85,11 +135,27 @@ type
 
   TSVGUnit = (suPX, suMM, suPT {Points});
 
+  { TvSVGPathList }
+
+  TvSVGPathList = class(TFPObjectList)
+  public
+    // parsing temporary info
+    IsFirstPathMove: Boolean;
+    LastPathClosed: Boolean;
+    CurTokenIndex: Integer;
+    CurX, CurY: Double;
+    Data: TvVectorialPage;
+    Doc: TvVectorialDocument;
+    // Path support for multiple polygons
+    LastPathStart: T2DPoint;
+    function GetPath(AIndex: Integer): TPath;
+  end;
+
   { TvSVGVectorialReader }
 
   TvSVGVectorialReader = class(TvCustomVectorialReader)
   private
-    FPointSeparator, FCommaSeparator: TFormatSettings;
+    FPointSeparator: TFormatSettings;
     FSVGPathTokenizer: TSVGPathTokenizer;
     FLayerStylesKeys, FLayerStylesValues: TFPList; // of TStringList;
     // View box adjustment
@@ -97,16 +163,20 @@ type
     ViewBox_Left, ViewBox_Top, ViewBox_Width, ViewBox_Height, Page_Width, Page_Height: Double;
     // Defs section
     FBrushDefs: TFPList; // of TvEntityWithPenAndBrush;
+    FCSSDefs: TFPList; // of TSVG_CSS_Style;
     // debug symbols
     FPathNumber: Integer;
+    // BrushDefs functions
+    function FindBrushDef_WithName(AName: string): TvEntityWithPenAndBrush;
+    //
     function ReadSVGColor(AValue: string): TFPColor;
     function ReadSVGGradientColorStyle(AValue: String): TFPColor;
     function ReadSVGStyle(AData: TvVectorialPage; AValue: string;
       ADestEntity: TvEntityWithPen; ADestStyle: TvStyle = nil;
       AUseFillAsPen: Boolean = False): TvSetPenBrushAndFontElements;
     function ReadSVGStyleToStyleLists(AValue: string; AStyleKeys, AStyleValues: TStringList): TvSetPenBrushAndFontElements;
-    function ReadSVGPenStyleWithKeyAndValue(AKey, AValue: string; ADestEntity: TvEntityWithPen): TvSetPenBrushAndFontElements;
-    function ReadSVGBrushStyleWithKeyAndValue(AKey, AValue: string; ADestEntity: TvEntityWithPenAndBrush): TvSetPenBrushAndFontElements;
+    function ReadSVGPenStyleWithKeyAndValue(AKey, AValue: string; ADestEntity: TvEntityWithPen; ADestStyle: TvStyle = nil): TvSetPenBrushAndFontElements;
+    function ReadSVGBrushStyleWithKeyAndValue(AKey, AValue: string; ADestEntity: TvEntityWithPenAndBrush; ADestStyle: TvStyle = nil): TvSetPenBrushAndFontElements;
     function ReadSVGFontStyleWithKeyAndValue(AKey, AValue: string; ADestEntity: TvEntityWithPenBrushAndFont; ADestStyle: TvStyle = nil): TvSetPenBrushAndFontElements;
     procedure ReadSVGGeneralStyleWithKeyAndValue(AData: TvVectorialPage;
         AKey, AValue: string; ADestEntity: TvEntity);
@@ -114,8 +184,15 @@ type
     procedure ApplyLayerStyles(AData: TvVectorialPage; ADestEntity: TvEntity);
     function ReadSpaceSeparatedFloats(AInput: string; AOtherSeparators: string): TDoubleArray;
     procedure ReadSVGTransformationMatrix(AMatrix: string; out AA, AB, AC, AD, AE, AF: Double);
+    procedure ApplyCSSClass(AData: TvVectorialPage; AValue: string;
+      ADestEntity: TvEntityWithPen);
+    function IsEntityStyleField(AFieldName: string): Boolean;
+    function ReadEntityStyleField(AData: TvVectorialPage; AFieldName, AFieldValue: string; ADestEntity: TvEntityWithPen; ADestStyle: TvStyle = nil;
+      AUseFillAsPen: Boolean = False): TvSetPenBrushAndFontElements;
     //
     function GetTextContentFromNode(ANode: TDOMNode): string;
+    procedure ReadDefs_LinearGradient(ADest: TvEntityWithPenAndBrush; ANode: TDOMNode; AData: TvVectorialPage);
+    procedure ReadDefs_CSS(ANode: TDOMNode);
     procedure ReadDefsFromNode(ANode: TDOMNode; AData: TvVectorialPage; ADoc: TvVectorialDocument);
     //
     function ReadEntityFromNode(ANode: TDOMNode; AData: TvVectorialPage; ADoc: TvVectorialDocument): TvEntity;
@@ -127,8 +204,8 @@ type
     procedure ReadLayerFromNode(ANode: TDOMNode; AData: TvVectorialPage; ADoc: TvVectorialDocument);
     function ReadLineFromNode(ANode: TDOMNode; AData: TvVectorialPage; ADoc: TvVectorialDocument): TvEntity;
     function ReadPathFromNode(ANode: TDOMNode; AData: TvVectorialPage; ADoc: TvVectorialDocument): TvEntity;
-    procedure ReadPathFromString(AStr: string; AData: TvVectorialPage; ADoc: TvVectorialDocument);
-    procedure ReadNextPathCommand(ACurTokenType: TSVGTokenType; var i: Integer; var CurX, CurY: Double; AData: TvVectorialPage; ADoc: TvVectorialDocument);
+    function ReadPathFromString(AStr: string; AData: TvVectorialPage; ADoc: TvVectorialDocument): TvSVGPathList;
+    procedure ReadNextPathCommand(ACurTokenType: TSVGTokenType; APaths: TvSVGPathList; var CurX, CurY: Double);
     procedure ReadPointsFromString(AStr: string; AData: TvVectorialPage; ADoc: TvVectorialDocument; AClosePath: Boolean);
     function ReadPolyFromNode(ANode: TDOMNode; AData: TvVectorialPage; ADoc: TvVectorialDocument): TvEntity;
     function ReadRectFromNode(ANode: TDOMNode; AData: TvVectorialPage; ADoc: TvVectorialDocument): TvEntity;
@@ -182,6 +259,32 @@ const
 
   FLOAT_POINTS_PER_PIXEL = 0.75; // For conversion
   FLOAT_PIXEL_PER_POINT = 1 / FLOAT_POINTS_PER_PIXEL; // For conversion
+
+{ TSVG_CSS_Style }
+
+function TSVG_CSS_Style.MatchesClass(AClassName: string): Boolean;
+var
+  lNameModified: string;
+begin
+  lNameModified := '.' + AClassName;
+  Result := (lNameModified = CSSName);
+end;
+
+{
+<style type="text/css">
+ <![CDATA[
+  .strr3 {stroke:#C7C7A2;stroke-width:0.793701}
+  .str1 {stroke:#8C8C60;stroke-width:1.70079}
+  .strr2 {stroke:#636347;stroke-width:2.26772}
+  .str0 {stroke:#2B2A29;stroke-width:3.9685}
+  .fil1 {fill:none}
+  .fil0 {fill:#EEEED4}
+ ]]>
+}
+procedure TSVG_CSS_Style.ParseCSSData(AReader: TvSVGVectorialReader);
+begin
+  SetElements += AReader.ReadSVGStyle(nil, CSSData, nil, Self, False);
+end;
 
 { TSVGTextSpanStyle }
 
@@ -330,23 +433,21 @@ begin
         AddToken(lTmpStr);
         lTmpStr := lCurChar;
       end
+      // Check for a break, from letter to number
+      // Note: But don't forget that we need to support 3.799e-4 !!
+      // So e is not a valid letter for commands here
+      // Note 2: Letters don't need space between them as in "zm"
+      else if (lCurChar in ListOfCommandLetters) then
+      begin
+        if Length(lTmpStr) > 0 then
+        begin
+          AddToken(lTmpStr);
+        end;
+        AddToken(lCurChar);
+        lTmpStr := '';
+      end
       else
       begin
-        // Check for a break, from letter to number
-        // But don't forget that we need to support 3.799e-4 !!
-        // So e is not a valid letter for commands here
-        if (Length(lTmpStr) >= 1) then
-        begin
-          lFirstTmpStrChar := lTmpStr[1];
-          if ((lFirstTmpStrChar in ListOfCommandLetters) and not (lCurChar  in ListOfCommandLetters)) or
-             (not (lFirstTmpStrChar in ListOfCommandLetters) and (lCurChar  in ListOfCommandLetters)) then
-          begin
-            AddToken(lTmpStr);
-            lTmpStr := '';
-            Continue;
-          end;
-        end;
-
         lTmpStr := lTmpStr + lCurChar;
       end;
 
@@ -425,41 +526,30 @@ begin
       + Format('(%f) ', [Tokens.Items[i].Value]);
 end;
 
-{ Example of a supported SVG image:
+{ TvSVGPathList }
 
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with fpVectorial (http://wiki.lazarus.freepascal.org/fpvectorial) -->
-
-<svg
-  xmlns:dc="http://purl.org/dc/elements/1.1/"
-  xmlns:cc="http://creativecommons.org/ns#"
-  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-  xmlns:svg="http://www.w3.org/2000/svg"
-  xmlns="http://www.w3.org/2000/svg"
-  xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-  width="100mm"
-  height="100mm"
-  id="svg2"
-  version="1.1"
-  sodipodi:docname="New document 1">
-  <g id="layer1">
-  <path
-    style="fill:none;stroke:#000000;stroke-width:10px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-    d="m 0,283.486888731396 l 106.307583274274,-35.4358610914245 "
-  id="path0" />
-  <path
-    style="fill:none;stroke:#000000;stroke-width:10px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-    d="m 0,354.358610914245 l 354.358610914245,0 l 0,-354.358610914245 l -354.358610914245,0 l 0,354.358610914245 "
-  id="path1" />
-  <path
-    style="fill:none;stroke:#000000;stroke-width:10px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-    d="m 0,354.358610914245 l 35.4358610914245,-35.4358610914245 c 0,-35.4358610914246 35.4358610914245,-35.4358610914246 35.4358610914245,0 l 35.4358610914245,35.4358610914245 "
-  id="path2" />
-  </g>
-</svg>
-}
+function TvSVGPathList.GetPath(AIndex: Integer): TPath;
+begin
+  Result := TPath(Self.Items[AIndex]);
+end;
 
 { TvSVGVectorialReader }
+
+function TvSVGVectorialReader.FindBrushDef_WithName(AName: string): TvEntityWithPenAndBrush;
+var
+  i: Integer;
+begin
+  Result := nil;
+  for i := 0 to FBrushDefs.Count-1 do
+  begin
+    Result := TvEntityWithPenAndBrush(FBrushDefs.Items[i]);
+    if Result.Name = AName then
+    begin
+      Exit;
+    end;
+  end;
+  Result := nil;
+end;
 
 function TvSVGVectorialReader.ReadSVGColor(AValue: string): TFPColor;
 var
@@ -763,7 +853,7 @@ function TvSVGVectorialReader.ReadSVGStyle(AData: TvVectorialPage; AValue: strin
 var
   lStr, lStyleKeyStr, lStyleValueStr: String;
   lStrings: TStringList;
-  i, lPosEqual: Integer;
+  i: Integer;
 begin
   Result := [];
   if AValue = '' then Exit;
@@ -773,14 +863,12 @@ begin
   try
     lStrings.Delimiter := ';';
     lStrings.StrictDelimiter := True;
-    lStrings.DelimitedText := LowerCase(AValue);
+    lStrings.DelimitedText := AValue;
     for i := 0 to lStrings.Count-1 do
     begin
       lStr := lStrings.Strings[i];
-      lPosEqual := Pos(':', lStr);
-      lStyleKeyStr := Copy(lStr, 0, lPosEqual-1);
-      lStyleKeyStr := Trim(lStyleKeyStr);
-      lStyleValueStr := Copy(lStr, lPosEqual+1, Length(lStr));
+      SeparateStringInTwo(lStr, ':', lStyleKeyStr, lStyleValueStr);
+      lStyleKeyStr := LowerCase(Trim(lStyleKeyStr));
       lStyleValueStr := Trim(lStyleValueStr);
       if ADestEntity <> nil then
       begin
@@ -795,11 +883,12 @@ begin
       end;
       if ADestStyle <> nil then
       begin
-        {ReadSVGPenStyleWithKeyAndValue(lStyleKeyStr, lStyleValueStr, ADestEntity);
-        ReadSVGGeneralStyleWithKeyAndValue(lStyleKeyStr, lStyleValueStr, ADestEntity);
-        Result := Result + ReadSVGPenStyleWithKeyAndValue('stroke', lStyleValueStr, ADestEntity)}
-        Result := Result + ReadSVGFontStyleWithKeyAndValue(lStyleKeyStr, lStyleValueStr, nil, ADestStyle);
-        //Result := Result + ReadSVGBrushStyleWithKeyAndValue(lStyleKeyStr, lStyleValueStr, ADestEntity as TvEntityWithPenAndBrush);
+        Result += ReadSVGPenStyleWithKeyAndValue(lStyleKeyStr, lStyleValueStr, nil, ADestStyle);
+        //Result += ReadSVGGeneralStyleWithKeyAndValue(AData, lStyleKeyStr, lStyleValueStr, nil, ADestStyle);
+        if AUseFillAsPen and (lStyleKeyStr = 'fill') then
+          Result += ReadSVGPenStyleWithKeyAndValue('stroke', lStyleValueStr, nil, ADestStyle);
+        Result += ReadSVGFontStyleWithKeyAndValue(lStyleKeyStr, lStyleValueStr, nil, ADestStyle);
+        Result += ReadSVGBrushStyleWithKeyAndValue(lStyleKeyStr, lStyleValueStr, nil, ADestStyle);
       end;
     end;
   finally
@@ -813,7 +902,7 @@ function TvSVGVectorialReader.ReadSVGStyleToStyleLists(AValue: string;
 var
   lStr, lStyleKeyStr, lStyleValueStr: String;
   lStrings: TStringList;
-  i, lPosEqual: Integer;
+  i: Integer;
 begin
   Result := [];
   if AValue = '' then Exit;
@@ -826,9 +915,7 @@ begin
     for i := 0 to lStrings.Count-1 do
     begin
       lStr := lStrings.Strings[i];
-      lPosEqual := Pos(':', lStr);
-      lStyleKeyStr := Copy(lStr, 0, lPosEqual-1);
-      lStyleValueStr := Copy(lStr, lPosEqual+1, Length(lStr));
+      SeparateStringInTwo(lStr, ':', lStyleKeyStr, lStyleValueStr);
       AStyleKeys.Add(lStyleKeyStr);
       AStyleValues.Add(lStyleValueStr);
     end;
@@ -838,33 +925,58 @@ begin
 end;
 
 function TvSVGVectorialReader.ReadSVGPenStyleWithKeyAndValue(AKey,
-  AValue: string; ADestEntity: TvEntityWithPen): TvSetPenBrushAndFontElements;
+  AValue: string; ADestEntity: TvEntityWithPen; ADestStyle: TvStyle = nil): TvSetPenBrushAndFontElements;
 var
   OldAlpha: Word;
+  lValueInt: Int64;
 begin
   Result := [];
   if AKey = 'stroke' then
   begin
     // We store and restore the old alpha to support the "-opacity" element
-    OldAlpha := ADestEntity.Pen.Color.Alpha;
-    if ADestEntity.Pen.Style = psClear then ADestEntity.Pen.Style := psSolid;
+    if ADestEntity <> nil then
+    begin
+      OldAlpha := ADestEntity.Pen.Color.Alpha;
+      if ADestEntity.Pen.Style = psClear then ADestEntity.Pen.Style := psSolid;
+    end;
+    if ADestStyle <> nil then
+    begin
+      OldAlpha := ADestStyle.Pen.Color.Alpha;
+      if ADestStyle.Pen.Style = psClear then ADestStyle.Pen.Style := psSolid;
+    end;
 
-    if AValue = 'none'  then ADestEntity.Pen.Style := fpcanvas.psClear
+    if AValue = 'none'  then
+    begin
+      if ADestEntity <> nil then ADestEntity.Pen.Style := fpcanvas.psClear;
+      if ADestStyle <> nil then ADestStyle.Pen.Style := fpcanvas.psClear;
+    end
     else
     begin
-      ADestEntity.Pen.Color := ReadSVGColor(AValue);
-      ADestEntity.Pen.Color.Alpha := OldAlpha;
+      if ADestEntity <> nil then
+      begin
+        ADestEntity.Pen.Color := ReadSVGColor(AValue);
+        ADestEntity.Pen.Color.Alpha := OldAlpha;
+      end;
+      if ADestStyle <> nil then
+      begin
+        ADestStyle.Pen.Color := ReadSVGColor(AValue);
+        ADestStyle.Pen.Color.Alpha := OldAlpha;
+      end;
     end;
     Result := Result + [spbfPenColor, spbfPenStyle];
   end
   else if AKey = 'stroke-width' then
   begin
-    ADestEntity.Pen.Width := Round(StringWithUnitToFloat(AValue, sckXSize));
+    lValueInt := Round(StringWithUnitToFloat(AValue, sckXSize));
+    if ADestEntity <> nil then ADestEntity.Pen.Width := lValueInt;
+    if ADestStyle <> nil then ADestStyle.Pen.Width := lValueInt;
     Result := Result + [spbfPenWidth];
   end
   else if AKey = 'stroke-opacity' then
   begin
-    ADestEntity.Pen.Color.Alpha := Round(StrToFloat(AValue, FPointSeparator)*$FFFF);
+    lValueInt := Round(StrToFloat(AValue, FPointSeparator)*$FFFF);
+    if ADestEntity <> nil then ADestEntity.Pen.Color.Alpha := lValueInt;
+    if ADestStyle <> nil then ADestStyle.Pen.Color.Alpha := lValueInt;
   end
   else if AKey = 'stroke-linecap' then
   begin
@@ -879,15 +991,27 @@ begin
 end;
 
 function TvSVGVectorialReader.ReadSVGBrushStyleWithKeyAndValue(AKey,
-  AValue: string; ADestEntity: TvEntityWithPenAndBrush): TvSetPenBrushAndFontElements;
+  AValue: string; ADestEntity: TvEntityWithPenAndBrush; ADestStyle: TvStyle = nil): TvSetPenBrushAndFontElements;
 var
   OldAlpha: Word;
   Len: Integer;
   lDefName: String;
-  i: Integer;
   lCurBrush: TvEntityWithPenAndBrush;
+  lDestBrush: PvBrush;
 begin
   Result := [];
+
+  if ADestEntity <> nil then
+  begin
+    lDestBrush := @ADestEntity.Brush;
+  end
+  else if ADestStyle <> nil then
+  begin
+    lDestBrush := @ADestStyle;
+  end;
+  if not ((ADestEntity <> nil) xor (ADestStyle <> nil)) then
+    raise Exception.Create('[TvSVGVectorialReader.ReadSVGBrushStyleWithKeyAndValue] Invalid arguments');
+
   if AKey = 'fill' then
   begin
     // Support for fill="url(#grad2)"
@@ -898,46 +1022,53 @@ begin
       lDefName := StringReplace(lDefName, ')', '', []);
       if lDefName = '' then Exit;
 
-      for i := 0 to FBrushDefs.Count-1 do
+      lCurBrush := FindBrushDef_WithName(lDefName);
+      if lCurBrush <> nil then
       begin
-        lCurBrush := TvEntityWithPenAndBrush(FBrushDefs.Items[i]);
-        if lCurBrush.Name = lDefName then
-        begin
-          ADestEntity.Brush := lCurBrush.Brush;
-          Exit;
-        end;
+        lDestBrush^ := lCurBrush.Brush;
+        Exit;
       end;
       Exit;
     end;
 
     // We store and restore the old alpha to support the "-opacity" element
-    OldAlpha := ADestEntity.Brush.Color.Alpha;
-    if ADestEntity.Brush.Style = bsClear then ADestEntity.Brush.Style := bsSolid;
+    OldAlpha := lDestBrush^.Color.Alpha;
+    if lDestBrush^.Style = bsClear then lDestBrush^.Style := bsSolid;
 
-    if AValue = 'none'  then ADestEntity.Brush.Style := fpcanvas.bsClear
+    if AValue = 'none'  then
+    begin
+      lDestBrush^.Style := fpcanvas.bsClear;
+    end
     else
     begin
-      ADestEntity.Brush.Color := ReadSVGColor(AValue);
-      ADestEntity.Brush.Color.Alpha := OldAlpha;
+      lDestBrush^.Color := ReadSVGColor(AValue);
+      lDestBrush^.Color.Alpha := OldAlpha;
     end;
 
     Result := Result + [spbfBrushColor, spbfBrushStyle];
   end
   else if AKey = 'fill-rule' then
   begin
-    if AValue = 'evenodd' then
-      ADestEntity.WindingRule := vcmEvenOddRule else
-    if AValue = 'nonzero' then
-      ADestEntity.WindingRule  := vcmNonzeroWindingRule;  // to do: "inherit" missing here
+    if ADestEntity <> nil then
+    begin
+      if AValue = 'evenodd' then
+        ADestEntity.WindingRule := vcmEvenOddRule
+      else if AValue = 'nonzero' then
+        ADestEntity.WindingRule  := vcmNonzeroWindingRule;  // to do: "inherit" missing here
+    end;
   end
   else if AKey = 'fill-opacity' then
-    ADestEntity.Brush.Color.Alpha := StringFloatZeroToOneToWord(AValue)
+  begin
+    lDestBrush^.Color.Alpha := StringFloatZeroToOneToWord(AValue);
+    if lDestBrush^.Color.Alpha = 0 then
+      lDestBrush^.Style := bsClear;
+  end
   // For linear gradient => stop-color:rgb(255,255,0);stop-opacity:1
   else if AKey = 'stop-color' then
   begin
-    Len := Length(ADestEntity.Brush.Gradient_colors);
-    SetLength(ADestEntity.Brush.Gradient_colors, Len+1);
-    ADestEntity.Brush.Gradient_colors[Len].Color := ReadSVGColor(AValue);
+    Len := Length(lDestBrush^.Gradient_colors);
+    SetLength(lDestBrush^.Gradient_colors, Len+1);
+    lDestBrush^.Gradient_colors[Len].Color := ReadSVGColor(AValue);
   end;
 end;
 
@@ -1225,6 +1356,51 @@ begin
   AF := lMatrixElements[5];
 end;
 
+procedure TvSVGVectorialReader.ApplyCSSClass(AData: TvVectorialPage;
+  AValue: string; ADestEntity: TvEntityWithPen);
+var
+  i, j: Integer;
+  lCurStyle: TSVG_CSS_Style;
+  lAllClasses: T10Strings;
+begin
+  lAllClasses := SeparateString(AValue, ' ');
+  for i := 0 to High(lAllClasses)-1 do
+  begin
+    if lAllClasses[i] = '' then Break;
+    for j := 0 to FCSSDefs.Count-1 do
+    begin
+      lCurStyle := TSVG_CSS_Style(FCSSDefs.Items[j]);
+      if lCurStyle.MatchesClass(lAllClasses[i]) then
+      begin
+        lCurStyle.ApplyIntoEntity(ADestEntity);
+        Break;
+      end;
+    end;
+  end;
+end;
+
+function TvSVGVectorialReader.IsEntityStyleField(AFieldName: string): Boolean;
+begin
+  Result := (AFieldName = 'style') or (AFieldName = 'class') or
+    IsAttributeFromStyle(AFieldName);
+end;
+
+function TvSVGVectorialReader.ReadEntityStyleField(AData: TvVectorialPage;
+  AFieldName, AFieldValue: string; ADestEntity: TvEntityWithPen;
+  ADestStyle: TvStyle; AUseFillAsPen: Boolean): TvSetPenBrushAndFontElements;
+begin
+  case AFieldName of
+  'style': Result := ReadSVGStyle(AData, AFieldValue, ADestEntity, ADestStyle,
+             AUseFillAsPen);
+  'class': ApplyCSSClass(AData, AFieldValue, ADestEntity);
+  else
+    ReadSVGPenStyleWithKeyAndValue(AFieldName, AFieldValue, ADestEntity);
+    if ADestEntity is TvEntityWithPenAndBrush then
+      ReadSVGBrushStyleWithKeyAndValue(AFieldName, AFieldValue, TvEntityWithPenAndBrush(ADestEntity));
+    ReadSVGGeneralStyleWithKeyAndValue(AData, AFieldName, AFieldValue, ADestEntity);
+  end;
+end;
+
 function TvSVGVectorialReader.GetTextContentFromNode(ANode: TDOMNode): string;
 var
   i: Integer;
@@ -1237,76 +1413,232 @@ begin
   end;
 end;
 
+// <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+procedure TvSVGVectorialReader.ReadDefs_LinearGradient(ADest: TvEntityWithPenAndBrush;
+  ANode: TDOMNode; AData: TvVectorialPage);
+var
+  lAttrName, lAttrValue, lNodeName: DOMString;
+  i, len: Integer;
+  lCurSubNode: TDOMNode;
+  lBrushEntity, lCurBrush: TvEntityWithPenAndBrush;
+  lGradientColor: TvGradientColor;
+  x1, y1, x2, y2: Double;
+begin
+  x1 := 0;
+  x2 := 0;
+  y1 := 0;
+  y2 := 0;
+  for i := 0 to ANode.Attributes.Length - 1 do
+  begin
+    lAttrName := lowercase(ANode.Attributes.Item[i].NodeName);
+    lAttrValue := ANode.Attributes.Item[i].NodeValue;
+    if lAttrName = 'id' then
+      ADest.Name := lAttrValue
+    else
+    if lAttrName = 'x1' then
+    begin
+      if lAttrValue[Length(lAttrValue)] = '%' then
+        Include(ADest.Brush.Gradient_flags, gfRelStartX);
+      x1 := StringWithPercentToFloat(lAttrValue);
+    end else
+    if lAttrName = 'x2' then
+    begin
+      if lAttrValue[Length(lAttrValue)] = '%' then
+        Include(ADest.Brush.Gradient_flags, gfRelEndX);
+      x2 := StringWithPercentToFloat(lAttrValue);
+    end else
+    if lAttrName = 'y1' then
+    begin
+      if lAttrValue[Length(lAttrValue)] = '%' then
+        Include(ADest.Brush.Gradient_flags, gfRelStartY);
+      y1 := StringWithPercentToFloat(lAttrValue);
+    end else
+    if lAttrName = 'y2' then
+    begin
+      if lAttrValue[Length(lAttrValue)] = '%' then
+        Include(ADest.Brush.Gradient_flags, gfRelEndY);
+      y2 := StringWithPercentToFloat(lAttrValue);
+    end else
+    if lAttrName = 'gradientunits' then
+    begin
+      lAttrValue := LowerCase(lAttrValue);
+      if lAttrValue = 'userspaceonuse' then
+        Include(ADest.Brush.Gradient_flags, gfRelToUserSpace)
+      else if lAttrValue = 'objectboundingbox' then
+        Exclude(ADest.Brush.Gradient_flags, gfRelToUserSpace);
+    end;
+  end;
+  ADest.Brush.Gradient_start.X := x1;
+  ADest.Brush.Gradient_end.X := x2;
+  ADest.Brush.Gradient_start.Y := y1;
+  ADest.Brush.Gradient_end.Y := y2;
+  ConvertSVGCoordinatesToFPVCoordinates(AData, x1, y1, x1, y1);
+  ConvertSVGCoordinatesToFPVCoordinates(AData, x2, y2, x2, y2);
+  if not (gfRelStartX in ADest.Brush.Gradient_flags) then
+    ADest.Brush.Gradient_start.X := x1;
+  if not (gfRelEndX in ADest.Brush.Gradient_flags) then
+    ADest.Brush.Gradient_end.X := x2;
+  if not (gfRelStartY in ADest.Brush.Gradient_flags) then
+    ADest.Brush.Gradient_start.Y := y1;
+  if not (gfRelEndY in ADest.Brush.Gradient_flags) then
+    ADest.Brush.Gradient_end.Y := y2;
+  if (ADest.Brush.Gradient_start.X = 0) and
+     (ADest.Brush.Gradient_start.Y = 0) and
+     (ADest.Brush.Gradient_end.X = 0) and
+     (ADest.Brush.Gradient_end.Y = 0) then
+  begin
+    ADest.Brush.Gradient_start.X := 0.0;
+    ADest.Brush.Gradient_start.Y := 0.0;
+    ADest.Brush.Gradient_end.X := 1.0;
+    ADest.Brush.Gradient_end.Y := 1.0;
+  end;
+  if ADest.Brush.Gradient_start.X = ADest.Brush.Gradient_end.X then
+    ADest.Brush.Kind := bkVerticalGradient
+  else if ADest.Brush.Gradient_start.Y = ADest.Brush.Gradient_end.Y then
+    ADest.Brush.Kind := bkHorizontalGradient
+  else
+    ADest.Brush.Kind := bkOtherLinearGradient;
+
+  // <stop offset="0%" style="stop-color:rgb(255,255,0);stop-opacity:1" />
+  // <stop offset="100%" style="stop-color:rgb(255,0,0);stop-opacity:1" />
+  lCurSubNode := ANode.FirstChild;
+  while Assigned(lCurSubNode) do
+  begin
+    lNodeName := LowerCase(lCurSubNode.NodeName);
+    if lNodeName = 'stop' then begin
+      for i := 0 to lCurSubNode.Attributes.Length - 1 do
+      begin
+        lAttrName := lCurSubNode.Attributes.Item[i].NodeName;
+        lAttrValue := lCurSubNode.Attributes.Item[i].NodeValue;
+        if lAttrName = 'offset' then
+          lGradientColor.Position := StringWithPercentToFloat(lAttrValue)
+          // use as fraction 0..1
+        else if lAttrName = 'style' then
+          lGradientColor.Color := ReadSVGGradientColorStyle(lAttrValue)
+        else if lAttrName = 'stop-color' then
+          lGradientColor.Color := ReadSVGColor(lAttrValue);
+      end;
+      len := Length(ADest.Brush.Gradient_colors);
+      SetLength(ADest.Brush.Gradient_colors, Len+1);
+      ADest.Brush.Gradient_colors[len] := lGradientColor;
+    end;
+    lCurSubNode := lCurSubNode.NextSibling;
+  end;
+end;
+
+procedure TvSVGVectorialReader.ReadDefs_CSS(ANode: TDOMNode);
+var
+  lContent, lCurName, lCurData: string;
+  lCurChar: AnsiChar;
+  i, lParserState: Integer;
+  lCurStyle: TSVG_CSS_Style;
+begin
+  lContent := Trim(ANode.TextContent);
+  lContent := StringReplace(lContent, '<![CDATA[', '', []);
+  lContent := StringReplace(lContent, ']]>', '', []);
+  lContent := Trim(lContent);
+  lParserState := 0;
+  for i := 1 to Length(lContent) do
+  begin
+    lCurChar := lContent[i];
+    case lParserState of
+    0: // filling class name
+    begin
+      if lCurChar = '{' then lParserState := 1
+      else lCurName += lCurChar;
+    end;
+    1: // filling class data
+    begin
+      if lCurChar = '}' then
+      begin
+        lCurStyle := TSVG_CSS_Style.Create;
+        lCurStyle.CSSName := Trim(lCurName);
+        lCurStyle.CSSData := Trim(lCurData);
+        FCSSDefs.Add(lCurStyle);
+        lCurStyle.ParseCSSData(Self);
+        lParserState := 0;
+        lCurName := '';
+        lCurData := '';
+      end
+      else lCurData += lCurChar;
+    end;
+    end;
+  end;
+end;
+
 procedure TvSVGVectorialReader.ReadDefsFromNode(ANode: TDOMNode;
   AData: TvVectorialPage; ADoc: TvVectorialDocument);
 var
   lEntityName: DOMString;
   lBlock: TvBlock;
   lPreviousLayer: TvEntityWithSubEntities;
-  lAttrName, lAttrValue, lNodeName: DOMString;
+  lAttrName, lAttrValue, lNodeName, lEntityValue: DOMString;
   lLayerName: String;
   i, len: Integer;
   lCurNode, lCurSubNode: TDOMNode;
-  lBrushEntity: TvEntityWithPenAndBrush;
+  lBrushEntity, lCurBrush: TvEntityWithPenAndBrush;
   lCurEntity: TvEntity;
-  lGradientColor: TvGradientColor;
-  x1, y1, x2, y2: Double;
+  lAttrValue_Double: Double;
 begin
   lCurNode := ANode.FirstChild;
   while Assigned(lCurNode) do
   begin
     lEntityName := LowerCase(lCurNode.NodeName);
+    lEntityValue := lCurNode.NodeValue;
     case lEntityName of
       'radialgradient':
       begin
         lBrushEntity := TvEntityWithPenAndBrush.Create(nil);
+
+        // First copy everything we can from any xlink:href
+        for i := 0 to lCurNode.Attributes.Length - 1 do
+        begin
+          lAttrName := LowerCase(lCurNode.Attributes.Item[i].NodeName);
+          lAttrValue := lCurNode.Attributes.Item[i].NodeValue;
+          if lAttrName = 'xlink:href' then
+          begin
+            lAttrValue := StringReplace(Trim(lAttrValue), '#', '', []);
+            lCurBrush := FindBrushDef_WithName(lAttrValue);
+            if lCurBrush <> nil then
+              lBrushEntity.Brush := lCurBrush.Brush;
+          end;
+        end;
+
+        // Now linear gradient properties
+        ReadDefs_LinearGradient(lBrushEntity, lCurNode, AData);
+
+        // Now process our own properties
+
         lBrushEntity.Brush.Kind := bkRadialGradient;
 
         // <radialGradient id="grad1" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+        // or
+        // <linearGradient id="linearGradient6038">
+        // <stop style="stop-color:#ffffff;stop-opacity:1;" offset="0" id="stop6040" />
+        // <stop style="stop-color:#000000;stop-opacity:0;" offset="1" id="stop6042" />
+        // </linearGradient>
+        // <radialGradient inkscape:collect="always" xlink:href="#linearGradient6038"
+        //  id="radialGradient3333" gradientUnits="userSpaceOnUse"
+        //  gradientTransform="matrix(0.05999054,1.120093,-1.0249935,0.05489716,995.9708,109.4759)"
+        //  cx="406.62762" cy="567.12799" fx="406.62762" fy="567.12799" r="37.15749" />
         for i := 0 to lCurNode.Attributes.Length - 1 do
         begin
           lAttrName := lCurNode.Attributes.Item[i].NodeName;
           lAttrValue := lCurNode.Attributes.Item[i].NodeValue;
-          if lAttrName = 'id' then
-          begin
-            lBrushEntity.Name := lAttrValue;
+          case lAttrName of
+          'cx', 'cy', 'fx', 'fy', 'r':
+            lAttrValue_Double := StringWithUnitToFloat(lAttrValue, sckUnknown, suMM, suMM);
           end;
-          {else if lAttrName = 'cx' then
-          begin
-            lLayerName := lCurNode.Attributes.Item[i].NodeValue;
-            lBlock.Name := lLayerName;
+
+          case lAttrName of
+          'id': lBrushEntity.Name := lAttrValue;
+          'cx': lBrushEntity.Brush.Gradient_cx := lAttrValue_Double;
+          'cy': lBrushEntity.Brush.Gradient_cy := lAttrValue_Double;
+          'r':  lBrushEntity.Brush.Gradient_r  := lAttrValue_Double;
+          'fx': lBrushEntity.Brush.Gradient_fx := lAttrValue_Double;
+          'fy': lBrushEntity.Brush.Gradient_fy := lAttrValue_Double;
           end;
-          }
-        end;
-
-{        Gradient_cx, Gradient_cy, Gradient_r, Gradient_fx, Gradient_fy: Double;
-        Gradient_cx_Unit, Gradient_cy_Unit, Gradient_r_Unit, Gradient_fx_Unit, Gradient_fy_Unit: TvCoordinateUnit;
-        Gradient_colors: array of TFPColor;}
-
-        //  <stop offset="0%" style="stop-color:rgb(255,255,255); stop-opacity:0" />
-        //  <stop offset="100%" style="stop-color:rgb(0,0,255);stop-opacity:1" />
-        //</radialGradient>}
-        lCurSubNode := lCurNode.FirstChild;
-        while Assigned(lCurSubNode) do
-        begin
-          {lNodeName := LowerCase(lCurSubNode.NodeName);
-
-          for i := 0 to lCurSubNode.Attributes.Length - 1 do
-          begin
-            lAttrName := lCurSubNode.Attributes.Item[i].NodeName;
-            lAttrValue := lCurSubNode.Attributes.Item[i].NodeValue;
-            if lAttrName = 'offset' then
-            begin
-              //lOffset := lAttrName;
-            end;
-            else if lAttrName = 'cx' then
-            begin
-              lLayerName := lCurNode.Attributes.Item[i].NodeValue;
-              lBlock.Name := lLayerName;
-            end;
-          end;}
-
-          lCurSubNode := lCurSubNode.NextSibling;
+          //lBrushEntity.Gradient_cx_Unit, Gradient_cy_Unit, Gradient_r_Unit, Gradient_fx_Unit, Gradient_fy_Unit
         end;
 
         FBrushDefs.Add(lBrushEntity);
@@ -1321,106 +1653,7 @@ begin
       begin
         lBrushEntity := TvEntityWithPenAndBrush.Create(nil);
 
-        // <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
-        x1 := 0;
-        x2 := 0;
-        y1 := 0;
-        y2 := 0;
-        for i := 0 to lCurNode.Attributes.Length - 1 do
-        begin
-          lAttrName := lowercase(lCurNode.Attributes.Item[i].NodeName);
-          lAttrValue := lowercase(lCurNode.Attributes.Item[i].NodeValue);
-          if lAttrName = 'id' then
-            lBrushEntity.Name := lAttrValue
-          else
-          if lAttrName = 'x1' then
-          begin
-            if lAttrValue[Length(lAttrValue)] = '%' then
-              Include(lBrushEntity.Brush.Gradient_flags, gfRelStartX);
-            x1 := StringWithPercentToFloat(lAttrValue);
-          end else
-          if lAttrName = 'x2' then
-          begin
-            if lAttrValue[Length(lAttrValue)] = '%' then
-              Include(lBrushEntity.Brush.Gradient_flags, gfRelEndX);
-            x2 := StringWithPercentToFloat(lAttrValue);
-          end else
-          if lAttrName = 'y1' then
-          begin
-            if lAttrValue[Length(lAttrValue)] = '%' then
-              Include(lBrushEntity.Brush.Gradient_flags, gfRelStartY);
-            y1 := StringWithPercentToFloat(lAttrValue);
-          end else
-          if lAttrName = 'y2' then
-          begin
-            if lAttrValue[Length(lAttrValue)] = '%' then
-              Include(lBrushEntity.Brush.Gradient_flags, gfRelEndY);
-            y2 := StringWithPercentToFloat(lAttrValue);
-          end else
-          if lAttrName = 'gradientunits' then
-          begin
-            if lAttrValue = 'userspaceonuse' then
-              Include(lBrushEntity.Brush.Gradient_flags, gfRelToUserSpace)
-            else if lAttrValue = 'objectboundingbox' then
-              Exclude(lBrushEntity.Brush.Gradient_flags, gfRelToUserSpace);
-          end;
-        end;
-        lBrushEntity.Brush.Gradient_start.X := x1;
-        lBrushEntity.Brush.Gradient_end.X := x2;
-        lBrushEntity.Brush.Gradient_start.Y := y1;
-        lBrushEntity.Brush.Gradient_end.Y := y2;
-        ConvertSVGCoordinatesToFPVCoordinates(AData, x1, y1, x1, y1);
-        ConvertSVGCoordinatesToFPVCoordinates(AData, x2, y2, x2, y2);
-        if not (gfRelStartX in lBrushEntity.Brush.Gradient_flags) then
-          lBrushEntity.Brush.Gradient_start.X := x1;
-        if not (gfRelEndX in lBrushEntity.Brush.Gradient_flags) then
-          lBrushEntity.Brush.Gradient_end.X := x2;
-        if not (gfRelStartY in lBrushEntity.Brush.Gradient_flags) then
-          lBrushEntity.Brush.Gradient_start.Y := y1;
-        if not (gfRelEndY in lBrushEntity.Brush.Gradient_flags) then
-          lBrushEntity.Brush.Gradient_end.Y := y2;
-        if (lBrushEntity.Brush.Gradient_start.X = 0) and
-           (lBrushEntity.Brush.Gradient_start.Y = 0) and
-           (lBrushEntity.Brush.Gradient_end.X = 0) and
-           (lBrushEntity.Brush.Gradient_end.Y = 0) then
-        begin
-          lBrushEntity.Brush.Gradient_start.X := 0.0;
-          lBrushEntity.Brush.Gradient_start.Y := 0.0;
-          lBrushEntity.Brush.Gradient_end.X := 1.0;
-          lBrushEntity.Brush.Gradient_end.Y := 1.0;
-        end;
-        if lBrushEntity.Brush.Gradient_start.X = lBrushEntity.Brush.Gradient_end.X then
-          lBrushEntity.Brush.Kind := bkVerticalGradient
-        else if lBrushEntity.Brush.Gradient_start.Y = lBrushEntity.Brush.Gradient_end.Y then
-          lBrushEntity.Brush.Kind := bkHorizontalGradient
-        else
-          lBrushEntity.Brush.Kind := bkOtherLinearGradient;
-
-        // <stop offset="0%" style="stop-color:rgb(255,255,0);stop-opacity:1" />
-        // <stop offset="100%" style="stop-color:rgb(255,0,0);stop-opacity:1" />
-        lCurSubNode := lCurNode.FirstChild;
-        while Assigned(lCurSubNode) do
-        begin
-          lNodeName := LowerCase(lCurSubNode.NodeName);
-          if lNodeName = 'stop' then begin
-            for i := 0 to lCurSubNode.Attributes.Length - 1 do
-            begin
-              lAttrName := lCurSubNode.Attributes.Item[i].NodeName;
-              lAttrValue := lCurSubNode.Attributes.Item[i].NodeValue;
-              if lAttrName = 'offset' then
-                lGradientColor.Position := StringWithPercentToFloat(lAttrValue)
-                // use as fraction 0..1
-              else if lAttrName = 'style' then
-                lGradientColor.Color := ReadSVGGradientColorStyle(lAttrValue)
-              else if lAttrName = 'stop-color' then
-                lGradientColor.Color := ReadSVGColor(lAttrValue);
-            end;
-            len := Length(lBrushEntity.Brush.Gradient_colors);
-            SetLength(lBrushEntity.Brush.Gradient_colors, Len+1);
-            lBrushEntity.Brush.Gradient_colors[len] := lGradientColor;
-          end;
-          lCurSubNode := lCurSubNode.NextSibling;
-        end;
+        ReadDefs_LinearGradient(lBrushEntity, lCurNode, AData);
 
         FBrushDefs.Add(lBrushEntity);
       end;
@@ -1467,6 +1700,19 @@ begin
           AData.AddEntity(lCurEntity);
         //
         AData.SetCurrentLayer(lPreviousLayer);
+      end;
+      // CSS styles
+      'style':
+      begin
+        for i := 0 to lCurNode.Attributes.Length - 1 do
+        begin
+          lAttrName := LowerCase(lCurNode.Attributes.Item[i].NodeName);
+          lAttrValue := lCurNode.Attributes.Item[i].NodeValue;
+          if (lAttrName = 'type') and (lAttrValue = 'text/css') then
+          begin
+            ReadDefs_CSS(lCurNode);
+          end;
+        end;
       end;
     end;
 
@@ -2038,9 +2284,11 @@ function TvSVGVectorialReader.ReadPathFromNode(ANode: TDOMNode;
   AData: TvVectorialPage; ADoc: TvVectorialDocument): TvEntity;
 var
   lNodeName, lDStr: WideString;
-  i: Integer;
-  lPath: TPath;
+  i, j: Integer;
+  lCurPath: TPath;
+  lPaths: TvSVGPathList;
 begin
+  Result := nil;
   for i := 0 to ANode.Attributes.Length - 1 do
   begin
     lNodeName := ANode.Attributes.Item[i].NodeName;
@@ -2048,65 +2296,96 @@ begin
       lDStr := ANode.Attributes.Item[i].NodeValue;
   end;
 
-  AData.StartPath();
   Inc(FPathNumber);
   FSVGPathTokenizer.ExtraDebugStr := Format(' [TvSVGVectorialReader.ReadPathFromNode] path#(1-based)=%d', [FPathNumber]);
-  ReadPathFromString(UTF8Encode(lDStr), AData, ADoc);
+  lPaths := ReadPathFromString(UTF8Encode(lDStr), AData, ADoc);
   FSVGPathTokenizer.ExtraDebugStr := '';
-  lPath := AData.EndPath(True);
-  Result := lPath;
-  // Add default SVG pen/brush
-  lPath.Pen.Style := psClear;
-  lPath.Brush.Color := colBlack;
-  lPath.Brush.Style := bsClear;
-  // Apply the layer style
-  ApplyLayerStyles(AData, lPath);
-  // Add the pen/brush/name
-  for i := 0 to ANode.Attributes.Length - 1 do
+  for j := 0 to lPaths.Count-1 do
   begin
-    lNodeName := ANode.Attributes.Item[i].NodeName;
-    if lNodeName = 'id' then
-      lPath.Name := ANode.Attributes.Item[i].NodeValue
-    else if lNodeName = 'style' then
-      ReadSVGStyle(AData, ANode.Attributes.Item[i].NodeValue, lPath)
-    else if IsAttributeFromStyle(lNodeName) then
+    lCurPath := lPaths.GetPath(j);
+
+    // Add default SVG pen/brush
+    lCurPath.Pen.Style := psClear;
+    lCurPath.Brush.Color := colBlack;
+    lCurPath.Brush.Style := bsClear;
+    // Apply the layer style
+    ApplyLayerStyles(AData, lCurPath);
+    // name
+    if lPaths.Count > 1 then
+      lCurPath.Name := Format('[%d]', [i]);
+    // Add the pen/brush/name
+    for i := 0 to ANode.Attributes.Length - 1 do
     begin
-      ReadSVGPenStyleWithKeyAndValue(lNodeName,
-        ANode.Attributes.Item[i].NodeValue, lPath);
-      ReadSVGBrushStyleWithKeyAndValue(lNodeName,
-        ANode.Attributes.Item[i].NodeValue, lPath);
-      ReadSVGGeneralStyleWithKeyAndValue(AData, lNodeName,
-        ANode.Attributes.Item[i].NodeValue, lPath);
+      lNodeName := ANode.Attributes.Item[i].NodeName;
+      if lNodeName = 'id' then
+      begin
+        if lPaths.Count = 1 then
+          lCurPath.Name := ANode.Attributes.Item[i].NodeValue;
+      end
+      else if lNodeName = 'style' then
+        ReadSVGStyle(AData, ANode.Attributes.Item[i].NodeValue, lCurPath)
+      else if IsAttributeFromStyle(lNodeName) then
+      begin
+        ReadSVGPenStyleWithKeyAndValue(lNodeName,
+          ANode.Attributes.Item[i].NodeValue, lCurPath);
+        ReadSVGBrushStyleWithKeyAndValue(lNodeName,
+          ANode.Attributes.Item[i].NodeValue, lCurPath);
+        ReadSVGGeneralStyleWithKeyAndValue(AData, lNodeName,
+          ANode.Attributes.Item[i].NodeValue, lCurPath);
+      end;
+    end;
+  end;
+
+  if lPaths.Count = 1 then
+  begin
+    Result := lPaths.GetPath(0);
+  end
+  else if lPaths.Count > 1 then
+  begin
+    Result := TvEntityWithSubEntities.Create(nil);
+
+    for j := 0 to lPaths.Count-1 do
+    begin
+      lCurPath := lPaths.GetPath(j);
+      TvEntityWithSubEntities(Result).AddEntity(lCurPath);
+    end;
+
+    // Add thename
+    for i := 0 to ANode.Attributes.Length - 1 do
+    begin
+      lNodeName := ANode.Attributes.Item[i].NodeName;
+      if lNodeName = 'id' then
+        TvEntityWithSubEntities(Result).Name := ANode.Attributes.Item[i].NodeValue;
     end;
   end;
 end;
 
 // Documentation: http://www.w3.org/TR/SVG/paths.html
-procedure TvSVGVectorialReader.ReadPathFromString(AStr: string;
-  AData: TvVectorialPage; ADoc: TvVectorialDocument);
+function TvSVGVectorialReader.ReadPathFromString(AStr: string;
+  AData: TvVectorialPage; ADoc: TvVectorialDocument): TvSVGPathList;
 var
-  i: Integer;
-  X, Y, X2, Y2, X3, Y3: Double;
-  CurX, CurY: Double;
   lCurTokenType, lLastCommandToken: TSVGTokenType;
-  lDebugStr: String;
   lTmpTokenType: TSVGTokenType;
 begin
+  Result := TvSVGPathList.Create;
   FSVGPathTokenizer.ClearTokens;
   FSVGPathTokenizer.TokenizePathString(AStr);
   //lDebugStr := FSVGPathTokenizer.DebugOutTokensAsString();
-  CurX := 0;
-  CurY := 0;
+  Result.IsFirstPathMove := true;
+  Result.Data := AData;
+  Result.Doc := ADoc;
   lLastCommandToken := sttFloatValue;
+  AData.StartPath();
 
-  i := 0;
-  while i < FSVGPathTokenizer.Tokens.Count do
+  Result.CurTokenIndex := 0;
+  while Result.CurTokenIndex < FSVGPathTokenizer.Tokens.Count do
   begin
-    lCurTokenType := FSVGPathTokenizer.Tokens.Items[i].TokenType;
+    Result.LastPathClosed := False;
+    lCurTokenType := FSVGPathTokenizer.Tokens.Items[Result.CurTokenIndex].TokenType;
     if not (lCurTokenType = sttFloatValue) then
     begin
       lLastCommandToken := lCurTokenType;
-      ReadNextPathCommand(lCurTokenType, i, CurX, CurY, AData, ADoc);
+      ReadNextPathCommand(lCurTokenType, Result, Result.CurX, Result.CurY);
     end
     // In this case we are getting a command without a starting letter
     // It is a copy of the last one, or something related to it
@@ -2116,30 +2395,36 @@ begin
       if lLastCommandToken = sttMoveTo then lTmpTokenType := sttLineTo;
       if lLastCommandToken = sttRelativeMoveTo then lTmpTokenType := sttRelativeLineTo;
       // For bezier I checked that a sttBezierTo upon repetition expects a sttBezierTo
-      Dec(i);// because there is no command token in this command
-      ReadNextPathCommand(lTmpTokenType, i, CurX, CurY, AData, ADoc);
+      Dec(Result.CurTokenIndex);// because there is no command token in this command
+      ReadNextPathCommand(lTmpTokenType, Result, Result.CurX, Result.CurY);
     end;
   end;
+  if not Result.LastPathClosed then
+    Result.Add(AData.EndPath(True));
 end;
 
 procedure TvSVGVectorialReader.ReadNextPathCommand(ACurTokenType: TSVGTokenType;
-  var i: Integer; var CurX, CurY: Double; AData: TvVectorialPage;
-  ADoc: TvVectorialDocument);
+  APaths: TvSVGPathList; var CurX, CurY: Double);
 var
   X, Y, X2, Y2, X3, Y3, XQ, YQ, Xnew, Ynew, cx, cy, phi, tmp: Double;
+  PathEndX, PathEndY: Double;
   LargeArcFlag, SweepFlag, LeftmostEllipse, ClockwiseArc: Boolean;
   lCurTokenType: TSVGTokenType;
-  lDebugStr: String;
   lToken5Before, lToken7Before: TSVGTokenType;
   lCorrectPreviousToken: Boolean;
   lPrevRelative, lCurRelative: Boolean;
+  AData: TvVectorialPage;
+  i: Integer;
 begin
   lCurTokenType := ACurTokenType;
+  AData := APaths.Data;
+  i := APaths.CurTokenIndex;
   // --------------
   // Moves
   // --------------
   if lCurTokenType in [sttMoveTo, sttRelativeMoveTo] then
   begin
+    // The point at which the polygon starts.
     X := FSVGPathTokenizer.Tokens.Items[i+1].Value;
     Y := FSVGPathTokenizer.Tokens.Items[i+2].Value;
 
@@ -2158,25 +2443,40 @@ begin
       CurX := X;
       CurY := Y;
     end;
-    AData.AddMoveToPath(CurX, CurY);
+    APaths.Data.AddMoveToPath(CurX, CurY);
+    // Since there may be several subpolygons we must store the start point
+    // to close the subpolygon correctly later.
+    if APaths.IsFirstPathMove then
+    begin
+      APaths.LastPathStart.X := APaths.CurX;
+      APaths.LastPathStart.Y := APaths.CurY;
+      APaths.IsFirstPathMove := False;
+      APaths.LastPathClosed := False;
+    end;
 
-    Inc(i, 3);
+    Inc(APaths.CurTokenIndex, 3);
   end
   // --------------
   // Close Path
   // --------------
   else if lCurTokenType = sttClosePath then
   begin
-    // Get the first point
-    AData.GetTmpPathStartPos(X, Y);
+    // Repeat the first point of the subpolygon
+    PathEndX := APaths.LastPathStart.X;
+    PathEndY := APaths.LastPathStart.Y;
+    CurX := PathEndX;
+    CurY := PathEndY;
+    APaths.LastPathStart.X := 0;
+    APaths.LastPathStart.Y := 0;
+    APaths.Data.AddLineToPath(PathEndX, PathEndY);
+    {$IFDEF FPVECTORIAL_SVG_SPLIT_PATHS}
+    APaths.LastPathClosed := True;
+    APaths.IsFirstPathMove := True;
+    APaths.Add(AData.EndPath(True));
+    AData.StartPath();
+    {$ENDIF}
 
-    // And repeat it
-    CurX := X;
-    CurY := Y;
-    AData.AddLineToPath(CurX, CurY);
-
-    Inc(i, 1);
-//    Inc(i, 3);
+    Inc(APaths.CurTokenIndex, 1);
   end
   // --------------
   // Lines
@@ -2189,34 +2489,36 @@ begin
       X := FSVGPathTokenizer.Tokens.Items[i+1].Value;
       Y := FSVGPathTokenizer.Tokens.Items[i+2].Value;
       if lCurTokenType = sttLineTo then
-        ConvertSVGCoordinatesToFPVCoordinates(AData, X,Y, CurX,CurY)
+        ConvertSVGCoordinatesToFPVCoordinates(APaths.Data, X,Y, CurX,CurY)
       else
       begin
-        ConvertSVGDeltaToFPVDelta(AData, X,Y, X,Y);
+        ConvertSVGDeltaToFPVDelta(APaths.Data, X,Y, X,Y);
         CurX := CurX + X;
         CurY := CurY + Y;
       end;
-      inc(i, 3);
-    end else
-    if lCurTokenType in [sttHorzLineTo, sttVertLineTo] then
+      inc(APaths.CurTokenIndex, 3);
+    end
+    else if lCurTokenType in [sttHorzLineTo, sttVertLineTo] then
     begin
       tmp := FSVGPathTokenizer.Tokens.Items[i+1].Value;
-      ConvertSVGCoordinatesToFPVCoordinates(AData, tmp, tmp, X, Y);
+      ConvertSVGCoordinatesToFPVCoordinates(APaths.Data, tmp, tmp, X, Y);
       if lCurTokenType = sttHorzLineTo then
-        CurX := X else
+        CurX := X
+      else
         CurY := Y;
-      inc(i, 2);
+      inc(APaths.CurTokenIndex, 2);
     end else
     if lCurTokenType in [sttRelativeHorzLineTo, sttRelativeVertLineTo] then
     begin
       tmp := FSVGPathTokenizer.Tokens.Items[i+1].Value;
-      ConvertSVGDeltaToFPVDelta(AData, tmp, tmp, X, Y);
+      ConvertSVGDeltaToFPVDelta(APaths.Data, tmp, tmp, X, Y);
       if lCurTokenType = sttRelativeHorzLineTo then
-        CurX := CurX + X else
+        CurX := CurX + X
+      else
         CurY := CurY + Y;
-      inc(i, 2);
+      inc(APaths.CurTokenIndex, 2);
     end;
-    AData.AddLineToPath(CurX, CurY);
+    APaths.Data.AddLineToPath(CurX, CurY);
   end
   // --------------
   // Cubic Bezier
@@ -2328,15 +2630,17 @@ begin
     else
     begin
       if lPrevRelative then
-        AData.AddBezierToPath(X2 + CurX, Y2 + CurY, X3, Y3, X, Y) else
+        AData.AddBezierToPath(X2 + CurX, Y2 + CurY, X3, Y3, X, Y)
+      else
         AData.AddBezierToPath(X2, Y2, X3, Y3, X, Y);
       CurX := X;
       CurY := Y;
     end;
 
     if lCurTokenType in [sttBezierTo, sttRelativeBezierTo] then
-      Inc(i, 7) else
-      Inc(i, 5);
+      Inc(APaths.CurTokenIndex, 7)
+    else
+      Inc(APaths.CurTokenIndex, 5);
   end
   // --------------
   // Quadratic Bezier
@@ -2351,8 +2655,8 @@ begin
     // Careful that absolute coordinates require using ConvertSVGCoordinatesToFPVCoordinates
     if lCurTokenType in [sttRelativeQuadraticBezierTo] then
     begin
-      ConvertSVGDeltaToFPVDelta(AData, XQ, YQ, XQ, YQ);
-      ConvertSVGDeltaToFPVDelta(AData, X, Y, X, Y);
+      ConvertSVGDeltaToFPVDelta(APaths.Data, XQ, YQ, XQ, YQ);
+      ConvertSVGDeltaToFPVDelta(APaths.Data, X, Y, X, Y);
 
       XQ := XQ + CurX;
       YQ := YQ + CurY;
@@ -2361,8 +2665,8 @@ begin
     end
     else
     begin
-      ConvertSVGCoordinatesToFPVCoordinates(AData, XQ, YQ, XQ, YQ);
-      ConvertSVGCoordinatesToFPVCoordinates(AData, X, Y, X, Y);
+      ConvertSVGCoordinatesToFPVCoordinates(APaths.Data, XQ, YQ, XQ, YQ);
+      ConvertSVGCoordinatesToFPVCoordinates(APaths.Data, X, Y, X, Y);
     end;
 
     // Convert quadratic to cubic bezier
@@ -2376,11 +2680,11 @@ begin
     X3 := X + (2/3) * (XQ-X);
     Y3 := Y + (2/3) * (YQ-Y);
 
-    AData.AddBezierToPath(X2, Y2, X3, Y3, X, Y);
+    APaths.Data.AddBezierToPath(X2, Y2, X3, Y3, X, Y);
     CurX := X;
     CurY := Y;
 
-    Inc(i, 5);
+    Inc(APaths.CurTokenIndex, 5);
   end
   // --------------
   // Elliptical arcs
@@ -2419,24 +2723,24 @@ begin
 
     // Careful that absolute coordinates require using ConvertSVGCoordinatesToFPVCoordinates
     if lCurTokenType in [sttRelativeEllipticArcTo] then
-      ConvertSVGDeltaToFPVDelta(AData, X, Y, X, Y)
-    else
-      ConvertSVGCoordinatesToFPVCoordinates(AData, X, Y, X, Y);
-
-    if lCurTokenType = sttRelativeEllipticArcTo then
     begin
+      ConvertSVGDeltaToFPVDelta(AData, X, Y, X, Y);
       Xnew := CurX + X;
       Ynew := CurY + Y;
     end else
     begin
+      ConvertSVGCoordinatesToFPVCoordinates(AData, X, Y, X, Y);
       Xnew := X;
       Ynew := Y;
     end;
 
     // in svg the y axis increases downward, in fpv upward. Therefore, angles
     // change their sign!
-    phi := -phi;
-    SweepFlag := not SweepFlag;  // i.e. "clockwise" turns into "counter-clockwise"!
+    if vrfSVG_UseBottomLeftCoords in Settings.VecReaderFlags then
+    begin
+      phi := -phi;
+      SweepFlag := not SweepFlag;  // i.e. "clockwise" turns into "counter-clockwise"!
+    end;
 
     if CalcEllipseCenter(CurX, CurY, Xnew, Ynew, X2, Y2, phi, LargeArcFlag, SweepFlag, cx, cy, tmp) then
       AData.AddEllipticalArcWithCenterToPath(X2*tmp, Y2*tmp, phi, Xnew, Ynew, cx, cy, SweepFlag)
@@ -2469,11 +2773,11 @@ begin
     end;
      }
 
-    Inc(i, 8);
+    Inc(APaths.CurTokenIndex, 8);
   end
   else
   begin
-    Inc(i);
+    Inc(APaths.CurTokenIndex);
   end;
 end;
 
@@ -2523,7 +2827,7 @@ function TvSVGVectorialReader.ReadPolyFromNode(ANode: TDOMNode;
 var
   lPointsStr: string = '';
   i: Integer;
-  lNodeName: DOMString;
+  lNodeName, lNodeValue: DOMString;
   lPath: TPath;
   lIsPolygon: Boolean = False;
 begin
@@ -2553,23 +2857,15 @@ begin
   for i := 0 to ANode.Attributes.Length - 1 do
   begin
     lNodeName := ANode.Attributes.Item[i].NodeName;
+    lNodeValue := ANode.Attributes.Item[i].NodeValue;
     if lNodeName = 'id' then
-      lPath.Name := ANode.Attributes.Item[i].NodeValue
-    else if lNodeName = 'style' then
-      ReadSVGStyle(AData, ANode.Attributes.Item[i].NodeValue, lPath)
-    else if IsAttributeFromStyle(lNodeName) then
-    begin
-      ReadSVGPenStyleWithKeyAndValue(lNodeName,
-        ANode.Attributes.Item[i].NodeValue, lPath);
-      ReadSVGBrushStyleWithKeyAndValue(lNodeName,
-        ANode.Attributes.Item[i].NodeValue, lPath);
-      ReadSVGGeneralStyleWithKeyAndValue(AData, lNodeName,
-        ANode.Attributes.Item[i].NodeValue, lPath);
-    end;
+      lPath.Name := lNodeValue
+    else if IsEntityStyleField(lNodeName) then
+      ReadEntityStyleField(AData, lNodeName, lNodeValue, lPath);
   end;
 end;
 
-//          <rect width="90" height="90" stroke="green" stroke-width="3" fill="yellow" filter="url(#f1)" />
+// <rect width="90" height="90" stroke="green" stroke-width="3" fill="yellow" filter="url(#f1)" />
 function TvSVGVectorialReader.ReadRectFromNode(ANode: TDOMNode;
   AData: TvVectorialPage; ADoc: TvVectorialDocument): TvEntity;
 var
@@ -2653,6 +2949,7 @@ var
   lAttrName: DOMString;
   lCurNode: TDOMNode;
 begin
+  Result := nil;
   lBlock := TvBlock.Create(nil);
 
   // pre-load attribute reader, to get the block name
@@ -2727,13 +3024,12 @@ var
 
   procedure ReadTextSpans(ACurNode: TDOMNode);
   var
-    i,j: Integer;
+    j: Integer;
     lCurNode: TDOMNode;
     lTextStr: string;
     lText: TvText;
     lCText: TvCurvedText;
     lInsertedEntity, lInsertedSubEntity: TvEntity;
-    s: String;
   begin
     lCurNode := ACurNode.FirstChild;
     while lCurNode <> nil do
@@ -2846,6 +3142,7 @@ begin
   // text spans
 
   lParagraph := TvParagraph.Create(AData);
+  lParagraph.YPos_NeedsAdjustment_DelFirstLineBodyHeight := True;
   lTextSpanStack := TSVGObjectStack.Create;
   lCurStyle := TSVGTextSpanStyle.Create;
   lTextSpanStack.Push(lCurStyle);
@@ -2971,7 +3268,8 @@ begin
   // We need to add this hack here, otherwise the Height is added twice
   // to inserted items: Once in the Insert and yet another time in the
   // coordinates of the inserted item!
-  lInsert.Y := lInsert.Y - AData.Height;
+  if vrfSVG_UseBottomLeftCoords in Settings.VecReaderFlags then
+    lInsert.Y := lInsert.Y - AData.Height;
 
   Result := lInsert;
 end;
@@ -3037,17 +3335,33 @@ var
         sckX:      Result := (Result - ViewBox_Left) * Page_Width / ViewBox_Width;
         sckXDelta,
         sckXSize:  Result := Result * Page_Width / ViewBox_Width;
-        sckY:      Result := Page_Height - (Result - ViewBox_Top) * Page_Height / ViewBox_Height;
-        sckYDelta: Result := - (Result - ViewBox_Top) * Page_Height / ViewBox_Height;
-        sckYSize:  Result := Result * Page_Height / ViewBox_Height;
+      end;
+      if not (vrfSVG_UseBottomLeftCoords in Settings.VecReaderFlags) then
+      begin
+        case ACoordKind of
+          sckY:      Result := (Result - ViewBox_Top) * Page_Height / ViewBox_Height;
+          sckYDelta,
+          sckYSize:  Result := Result * Page_Height / ViewBox_Height;
+        end;
+      end
+      else
+      begin
+        case ACoordKind of
+          sckY:      Result := Page_Height - (Result - ViewBox_Top) * Page_Height / ViewBox_Height;
+          sckYDelta: Result := - (Result - ViewBox_Top) * Page_Height / ViewBox_Height;
+          sckYSize:  Result := Result * Page_Height / ViewBox_Height;
+        end;
       end;
       ViewPortApplied := True;
     end
     else
     begin
-      case ACoordKind of
-        sckY:      Result := Page_Height - Result;
-        sckYDelta: Result := - Result;
+      if vrfSVG_UseBottomLeftCoords in Settings.VecReaderFlags then
+      begin
+        case ACoordKind of
+          sckY:      Result := Page_Height - Result;
+          sckYDelta: Result := - Result;
+        end;
       end;
     end;
   end;
@@ -3153,11 +3467,26 @@ procedure TvSVGVectorialReader.ConvertSVGCoordinatesToFPVCoordinates(
   var ADestX,ADestY: Double; ADoViewBoxAdjust: Boolean = True);
 begin
   ADestX := ASrcX * FLOAT_MILLIMETERS_PER_PIXEL;
-  ADestY := AData.Height - ASrcY * FLOAT_MILLIMETERS_PER_PIXEL;
   if ViewBoxAdjustment and ADoViewBoxAdjust then
   begin
     ADestX := (ASrcX - ViewBox_Left) * Page_Width / ViewBox_Width;
-    ADestY := AData.Height - (ASrcY - ViewBox_Top) * Page_Height / ViewBox_Height;
+  end;
+
+  if not (vrfSVG_UseBottomLeftCoords in Settings.VecReaderFlags) then
+  begin
+    ADestY := ASrcY * FLOAT_MILLIMETERS_PER_PIXEL;
+    if ViewBoxAdjustment and ADoViewBoxAdjust then
+    begin
+      ADestY := (ASrcY - ViewBox_Top) * Page_Height / ViewBox_Height;
+    end;
+  end
+  else
+  begin
+    ADestY := AData.Height - ASrcY * FLOAT_MILLIMETERS_PER_PIXEL;
+    if ViewBoxAdjustment and ADoViewBoxAdjust then
+    begin
+      ADestY := AData.Height - (ASrcY - ViewBox_Top) * Page_Height / ViewBox_Height;
+    end;
   end;
 end;
 
@@ -3166,11 +3495,26 @@ procedure TvSVGVectorialReader.ConvertSVGDeltaToFPVDelta(
   ADestY: Double; ADoViewBoxAdjust: Boolean = True);
 begin
   ADestX := ASrcX * FLOAT_MILLIMETERS_PER_PIXEL;
-  ADestY := - ASrcY * FLOAT_MILLIMETERS_PER_PIXEL;
   if ViewBoxAdjustment and ADoViewBoxAdjust then
   begin
     ADestX := ASrcX * Page_Width / ViewBox_Width;
-    ADestY := - ASrcY * Page_Height / ViewBox_Height;
+  end;
+
+  if not (vrfSVG_UseBottomLeftCoords in Settings.VecReaderFlags) then
+  begin
+    ADestY := ASrcY * FLOAT_MILLIMETERS_PER_PIXEL;
+    if ViewBoxAdjustment and ADoViewBoxAdjust then
+    begin
+      ADestY := ASrcY * Page_Height / ViewBox_Height;
+    end;
+  end
+  else
+  begin
+    ADestY := -ASrcY * FLOAT_MILLIMETERS_PER_PIXEL;  // fpc y coords grow upward, svg downward
+    if ViewBoxAdjustment and ADoViewBoxAdjust then
+    begin
+      ADestY := -ASrcY * Page_Height / ViewBox_Height;
+    end;
   end;
 end;
 
@@ -3242,7 +3586,7 @@ begin
   if lStr[Length(lStr)] = '%' then
   begin
     lStr := Copy(lStr, 1, Length(lStr)-1);
-    Result := StrToInt(lStr) * $FFFF div 100;
+    Result := Round(StrToFloat(lStr, FPointSeparator) * $FFFF / 100);
   end
   else Result := StrToInt(lStr) * $101;
 end;
@@ -3259,18 +3603,20 @@ begin
   FLayerStylesKeys := TFPList.Create;
   FLayerStylesValues := TFPList.Create;
   FBrushDefs := TFPList.Create;
+  FCSSDefs := TFPList.Create;
 end;
 
 destructor TvSVGVectorialReader.Destroy;
 var
   i: Integer;
 begin
+  FSVGPathTokenizer.Free;
   FLayerStylesKeys.Free;
   FLayerStylesValues.Free;
-
   for i:=FBrushDefs.Count-1 downto 0 do TObject(FBrushDefs[i]).Free;
   FBrushDefs.Free;
-  FSVGPathTokenizer.Free;
+  for i:=FCSSDefs.Count-1 downto 0 do TObject(FCSSDefs[i]).Free;
+  FCSSDefs.Free;
 
   inherited Destroy;
 end;
@@ -3399,7 +3745,7 @@ begin
   // Now process the elements
   // ----------------
   lCurNode := Doc.DocumentElement.FirstChild;
-  lPage := AData.AddPage();
+  lPage := AData.AddPage(not (vrfSVG_UseBottomLeftCoords in Settings.VecReaderFlags));
   lPage.Width := AData.Width;
   lPage.Height := AData.Height;
   while Assigned(lCurNode) do

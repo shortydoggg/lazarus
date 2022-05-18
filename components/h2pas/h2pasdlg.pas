@@ -12,8 +12,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 }
 unit H2PasDlg;
 
@@ -22,12 +22,21 @@ unit H2PasDlg;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LCLType, LResources, Forms, Controls, Graphics,
+  Classes, SysUtils,
+  // LCL
+  LCLProc, LCLType, LResources, Forms, Controls, Graphics,
   Dialogs, ComCtrls, Buttons, StdCtrls, ExtCtrls,
-  LazConfigStorage, LazFileUtils, LazFileCache, SynEdit,
-  FileProcs, IDEMsgIntf, MenuIntf, IDECommands, BaseIDEIntf,
-  IDEDialogs, LazIDEIntf, SrcEditorIntf, IDEExternToolIntf, CompOptsIntf,
-  IDETextConverter, H2PasStrConsts, H2PasConvert, IDETextConvListEdit;
+  // LazUtils
+  LazConfigStorage, LazFileUtils, LazFileCache,
+  // SynEdit
+  SynEdit,
+  // CodeTools
+  FileProcs,
+  // IdeIntf
+  BaseIDEIntf, IDEMsgIntf, MenuIntf, IDECommands, IDEDialogs, LazIDEIntf,
+  SrcEditorIntf, IDEExternToolIntf, CompOptsIntf, IDETextConverter,
+  // H2Pas
+  H2PasStrConsts, H2PasConvert, IDETextConvListEdit;
 
 type
 
@@ -202,9 +211,9 @@ begin
   // register IDE shortcut and menu item
   Key := IDEShortCut(VK_UNKNOWN,[],VK_UNKNOWN,[]);
   Cat:=IDECommandList.FindCategoryByName(CommandCategoryToolMenuName);
-  CmdH2PasTool := RegisterIDECommand(Cat                 ,
-         h2pH2Pas, h2pCreateUnitsFromCHeaderFiles, Key, nil, @ExecuteH2PasTool);
-  RegisterIDEMenuCommand(itmSecondaryTools, h2pH2PasTool, h2pH2Pas, nil, nil,
+  CmdH2PasTool := RegisterIDECommand(Cat,
+         'H2Pas ...', h2pCreateUnitsFromCHeaderFiles, Key, nil, @ExecuteH2PasTool);
+  RegisterIDEMenuCommand(itmSecondaryTools, 'H2PasTool', h2pH2Pas, nil, nil,
                          CmdH2PasTool);
 
   // register text converter tools
@@ -839,7 +848,7 @@ begin
   // add a menu item to easily create a Search and replace from the current
   // selection or line of the source editor.
   fSrcEditAddSearchReplaceMenuItem:=RegisterIDEMenuCommand(SrcEditSection,
-      h2pAddSearchAndReplaceToolBeforeH2pas,
+      'Add "search and replace" tool before H2Pas',
       h2pAddSearchAndReplaceToolBeforeH2pas,
       @OnAddSearchAndReplaceBeforeH2PasClick);
 end;

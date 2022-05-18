@@ -1,13 +1,15 @@
 msgid ""
 msgstr ""
-"Last-Translator: Lucas Martin <codedeep@hotmail.com>\n"
-"PO-Revision-Date: 2012-10-02 20:21+0100\n"
+"Last-Translator: Alonso Cárdenas <acardenas@bsd-peru.org>\n"
+"PO-Revision-Date: 2018-09-19 13:52-0500\n"
 "Language-Team: \n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Project-Id-Version: lcl\n"
 "POT-Creation-Date: \n"
 "MIME-Version: 1.0\n"
+"Language: es\n"
+"X-Generator: Poedit 2.1.1\n"
 
 #: lclstrconsts.hhshelpbrowsernotexecutable
 msgid "Browser \"%s\" not executable."
@@ -45,210 +47,30 @@ msgstr "Alt"
 msgid "Ctrl"
 msgstr "Ctrl"
 
-#: lclstrconsts.ifsvk_accept
-msgid "Accept"
-msgstr "Aceptar"
-
-#: lclstrconsts.ifsvk_apps
-msgid "application key"
-msgstr "tecla de aplicación"
-
-#: lclstrconsts.ifsvk_back
-msgid "Backspace"
-msgstr "Retroceso"
-
-#: lclstrconsts.ifsvk_cancel
-msgctxt "lclstrconsts.ifsvk_cancel"
-msgid "Cancel"
-msgstr "Cancelar"
-
-#: lclstrconsts.ifsvk_capital
-msgid "Capital"
-msgstr "Mayúscula"
-
-#: lclstrconsts.ifsvk_clear
-msgid "Clear"
-msgstr "Limpiar"
-
 #: lclstrconsts.ifsvk_cmd
 msgid "Cmd"
 msgstr "Cmd"
 
-#: lclstrconsts.ifsvk_control
-msgid "Control"
-msgstr "Control"
-
-#: lclstrconsts.ifsvk_convert
-msgid "Convert"
-msgstr "Convertir"
-
-#: lclstrconsts.ifsvk_delete
-msgctxt "lclstrconsts.ifsvk_delete"
-msgid "Delete"
-msgstr "Borrar"
-
-#: lclstrconsts.ifsvk_down
-msgctxt "lclstrconsts.ifsvk_down"
-msgid "Down"
-msgstr "Abajo"
-
-#: lclstrconsts.ifsvk_end
-msgctxt "lclstrconsts.ifsvk_end"
-msgid "End"
-msgstr "Fin"
-
-#: lclstrconsts.ifsvk_escape
-msgid "Escape"
-msgstr "Escape"
-
-#: lclstrconsts.ifsvk_execute
-msgid "Execute"
-msgstr "Ejecutar"
-
-#: lclstrconsts.ifsvk_final
-msgid "Final"
-msgstr "Final"
-
-#: lclstrconsts.ifsvk_hanja
-msgid "Hanja"
-msgstr "Hanja"
-
 #: lclstrconsts.ifsvk_help
+msgctxt "lclstrconsts.ifsvk_help"
 msgid "Help"
 msgstr "Ayuda"
-
-#: lclstrconsts.ifsvk_home
-msgctxt "lclstrconsts.ifsvk_home"
-msgid "Home"
-msgstr "Inicio"
-
-#: lclstrconsts.ifsvk_insert
-msgctxt "lclstrconsts.ifsvk_insert"
-msgid "Insert"
-msgstr "Insertar"
-
-#: lclstrconsts.ifsvk_junja
-msgid "Junja"
-msgstr "Junja"
-
-#: lclstrconsts.ifsvk_kana
-msgid "Kana"
-msgstr "Kana"
-
-#: lclstrconsts.ifsvk_lbutton
-msgid "Mouse Button Left"
-msgstr "Botón Izquierdo del Ratón"
-
-#: lclstrconsts.ifsvk_left
-msgctxt "lclstrconsts.ifsvk_left"
-msgid "Left"
-msgstr "Izquierdo"
-
-#: lclstrconsts.ifsvk_lwin
-msgid "left windows key"
-msgstr "tecla windows izquierda"
-
-#: lclstrconsts.ifsvk_mbutton
-msgid "Mouse Button Middle"
-msgstr "Botón del Medio del Ratón"
-
-#: lclstrconsts.ifsvk_menu
-msgctxt "lclstrconsts.ifsvk_menu"
-msgid "Menu"
-msgstr "Menú"
 
 #: lclstrconsts.ifsvk_meta
 msgid "Meta"
 msgstr "Meta"
 
-#: lclstrconsts.ifsvk_modechange
-msgid "Mode Change"
-msgstr "Cambio de modo"
-
-#: lclstrconsts.ifsvk_next
-msgctxt "lclstrconsts.ifsvk_next"
-msgid "Next"
-msgstr "Siguiente"
-
-#: lclstrconsts.ifsvk_nonconvert
-msgid "Nonconvert"
-msgstr "No convertir"
-
-#: lclstrconsts.ifsvk_numlock
-msgid "Numlock"
-msgstr "BloqNum"
-
-#: lclstrconsts.ifsvk_numpad
-msgid "Numpad %d"
-msgstr "Tecla numérica %d"
-
-#: lclstrconsts.ifsvk_pause
-msgid "Pause key"
-msgstr "Tecla Pause"
-
-#: lclstrconsts.ifsvk_print
-msgid "Print"
-msgstr "Imprimir"
-
-#: lclstrconsts.ifsvk_prior
-msgctxt "lclstrconsts.ifsvk_prior"
-msgid "Prior"
-msgstr "Anterior"
-
-#: lclstrconsts.ifsvk_rbutton
-msgid "Mouse Button Right"
-msgstr "Botón Derecho del Ratón"
-
-#: lclstrconsts.ifsvk_return
-msgid "Return"
-msgstr "Enter"
-
-#: lclstrconsts.ifsvk_right
-msgctxt "lclstrconsts.ifsvk_right"
-msgid "Right"
-msgstr "Derecha"
-
-#: lclstrconsts.ifsvk_rwin
-msgid "right windows key"
-msgstr "tecla windows derecha"
-
-#: lclstrconsts.ifsvk_scroll
-msgid "Scroll"
-msgstr "Scroll"
-
-#: lclstrconsts.ifsvk_select
-msgid "Select"
-msgstr "Selección"
-
 #: lclstrconsts.ifsvk_shift
 msgid "Shift"
 msgstr "Shift"
-
-#: lclstrconsts.ifsvk_snapshot
-msgid "Snapshot"
-msgstr "Instantánea"
-
-#: lclstrconsts.ifsvk_space
-msgid "Space key"
-msgstr "Tecla espaciadora"
 
 #: lclstrconsts.ifsvk_super
 msgid "Super"
 msgstr "Super"
 
-#: lclstrconsts.ifsvk_tab
-msgctxt "lclstrconsts.ifsvk_tab"
-msgid "Tab"
-msgstr "Tabulador"
-
 #: lclstrconsts.ifsvk_unknown
 msgid "Unknown"
 msgstr "Desconocido"
-
-#: lclstrconsts.ifsvk_up
-msgctxt "lclstrconsts.ifsvk_up"
-msgid "Up"
-msgstr "Arriba"
 
 #: lclstrconsts.lislclresourcesnotfound
 msgctxt "lclstrconsts.lislclresourcesnotfound"
@@ -286,6 +108,10 @@ msgstr "Espacio de trabajo de la Aplicación"
 #: lclstrconsts.rsaquacolorcaption
 msgid "Aqua"
 msgstr "Agua"
+
+#: lclstrconsts.rsascannothaveasparent
+msgid "Class %s cannot have %s as parent."
+msgstr "Clase %s no pude tener a %s como padre"
 
 #: lclstrconsts.rsbackgroundcolorcaption
 msgid "Desktop"
@@ -356,6 +182,10 @@ msgstr "Sensible a mayúsculas/minúsculas"
 msgid "Control of class '%s' can't have control of class '%s' as a child"
 msgstr "El control de clase '%s' no puede tener al control de clase '%s' como hijo"
 
+#: lclstrconsts.rscontrolhasnoparentformorframe
+msgid "Control '%s' has no parent form or frame"
+msgstr "Control '%s' no tiene un formulario o frame padre"
+
 #: lclstrconsts.rscontrolhasnoparentwindow
 msgid "Control '%s' has no parent window"
 msgstr "El control '%s' no tiene ventana padre"
@@ -367,10 +197,6 @@ msgstr "'%s' no es un padre de '%s'"
 #: lclstrconsts.rscreamcolorcaption
 msgid "Cream"
 msgstr "Crema"
-
-#: lclstrconsts.rscreatinggdbcatchableerror
-msgid "Creating gdb catchable error:"
-msgstr "Creando un error capturable por gdb:"
 
 #: lclstrconsts.rscursor
 msgid "Cursor"
@@ -405,17 +231,13 @@ msgstr "Dirección"
 msgid "&Directory"
 msgstr "&Directorio"
 
-#: lclstrconsts.rsdocking
-msgid "Docking"
-msgstr "Anclado"
-
 #: lclstrconsts.rsdocopy
 msgid "Copy"
-msgstr ""
+msgstr "Copiar"
 
 #: lclstrconsts.rsdopaste
 msgid "Paste"
-msgstr ""
+msgstr "Pegar"
 
 #: lclstrconsts.rsduplicateiconformat
 msgid "Duplicate icon format."
@@ -437,10 +259,6 @@ msgstr "Error"
 #: lclstrconsts.rserrorcreatingdevicecontext
 msgid "Error creating device context for %s.%s"
 msgstr "Error creando contexto de dispositivo para %s.%s"
-
-#: lclstrconsts.rserrorinlcl
-msgid "ERROR in LCL: "
-msgstr "ERROR en LCL"
 
 #: lclstrconsts.rserroroccurredinataddressframe
 msgid "Error occurred in %s at %sAddress %s%s Frame %s"
@@ -663,6 +481,11 @@ msgstr "--no-xshm            Desactivar el uso de Extensión de Memoria Comparti
 msgid "--sync                Call XSynchronize (display, True) after the Xserver connection has been established. This makes debugging X protocol errors easier, because X request buffering will be disabled and X errors will be received immediately after the protocol request that generated the error has been processed by the X server."
 msgstr "--sync                Llama a XSynchronize (display, True) después que se haya establecido la conexión el servidor X. Esto hace más fácil depurar los errores de protocolo de X, porque se desactivará la solicitud de buffer y los errores de X serán recibidos inmediatamente después que el protocolo que generó el error haya sido procesado por el servidor X."
 
+#: lclstrconsts.rshelp
+msgctxt "lclstrconsts.rshelp"
+msgid "Help"
+msgstr "Ayuda"
+
 #: lclstrconsts.rshelpalreadyregistered
 msgid "%s: Already registered"
 msgstr "%s: Ya está registrado"
@@ -867,9 +690,25 @@ msgstr "Lima"
 msgid "List index exceeds bounds (%d)"
 msgstr "El índice de lista excede los límites (%d)"
 
-#: lclstrconsts.rslistmustbeempty
-msgid "List must be empty"
-msgstr "La lista debe estar vacía"
+#: lclstrconsts.rsmacosmenuhide
+msgid "Hide %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuhideothers
+msgid "Hide Others"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuquit
+msgid "Quit %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuservices
+msgid "Services"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenushowall
+msgid "Show All"
+msgstr ""
 
 #: lclstrconsts.rsmarooncolorcaption
 msgid "Maroon"
@@ -1043,9 +882,9 @@ msgstr "Portable PixMap"
 msgid "Post"
 msgstr "Enviar"
 
-#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpresscanceltok
-msgid "%s%sPress OK to ignore and risk data corruption.%sPress Cancel to kill the program."
-msgstr "%s%sPulse Aceptar para ignorar y correr el riesgo de corromper datos.%sPulse Cancelar para terminar el programa."
+#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpressaborttok
+msgid "%s%sPress OK to ignore and risk data corruption.%sPress Abort to kill the program."
+msgstr "%s%sPresionar OK para ignorar y arriesgarse a una corrupción de datos.%sPresionar Abortar para detener el programa"
 
 #: lclstrconsts.rspriorrecordhint
 msgctxt "lclstrconsts.rspriorrecordhint"
@@ -1225,6 +1064,10 @@ msgstr "Turquesa"
 msgid "Text"
 msgstr "Texto"
 
+#: lclstrconsts.rsthebuiltinurlisreadonlychangethebaseurlinstead
+msgid "The built-in URL is read only. Change the BaseURL instead."
+msgstr "La URL incorporada es de solo lectura. Cambie el BaseURL en su lugar."
+
 #: lclstrconsts.rstiff
 msgid "Tagged Image File Format"
 msgstr "Formato de Archivo de Imagen Etiquetado"
@@ -1323,6 +1166,10 @@ msgstr "Amarillo"
 #: lclstrconsts.scannotfocus
 msgid "Cannot focus a disabled or invisible window"
 msgstr "No se puede establecer el foco en una ventana desactivada o invisible"
+
+#: lclstrconsts.scannotsetdesigntimeppi
+msgid "Cannot set design time PPI."
+msgstr "No se puede establecer el PPI en tiempo de diseño."
 
 #: lclstrconsts.sduplicatemenus
 msgid "Duplicate menus"
@@ -1454,10 +1301,6 @@ msgstr "Tabulador"
 msgctxt "lclstrconsts.smkcup"
 msgid "Up"
 msgstr "Arriba"
-
-#: lclstrconsts.snomdiform
-msgid "No MDI form present."
-msgstr "No hay un formulario MDI presente"
 
 #: lclstrconsts.snotimers
 msgid "No timers available"

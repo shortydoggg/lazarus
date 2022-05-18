@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,7 +30,6 @@ unit BasicCodeTools;
 {$ifdef FPC}
   {$mode objfpc}
 {$else}
-  // delphi? if so then Windows is not defined but instead MSWindows is defined => define Windows in this case
   {$ifdef MSWindows}
     {$define Windows}
   {$endif}
@@ -40,8 +39,11 @@ unit BasicCodeTools;
 interface
 
 uses
-  Classes, SysUtils, AVL_Tree, SourceLog, KeywordFuncLists, FileProcs,
-  LazFileUtils, LazUTF8, strutils;
+  Classes, SysUtils, strutils, Laz_AVL_Tree,
+  // LazUtils
+  LazFileUtils, LazUTF8,
+  // Codetools
+  SourceLog, KeywordFuncLists, FileProcs;
 
 //----------------------------------------------------------------------------
 { These functions are used by the codetools }
@@ -70,7 +72,8 @@ function FindNextIncludeDirective(const ASource: string;
 function FindNextIDEDirective(const ASource: string; StartPos: integer;
     NestedComments: boolean; EndPos: integer = 0): integer;
 function CleanCodeFromComments(const Src: string;
-    NestedComments: boolean; KeepDirectives: boolean = false): string;
+    NestedComments: boolean; KeepDirectives: boolean = false;
+    KeepVerbosityDirectives: boolean = false): string;
 function ExtractCommentContent(const ASource: string; CommentStart: integer;
     NestedComments: boolean;
     TrimStart: boolean = false; TrimEnd: boolean = false;
@@ -109,8 +112,8 @@ function FindNextIdentifier(const Source: string; StartPos, MaxPos: integer): in
 function FindNextIdentifierSkipStrings(const Source: string;
     StartPos, MaxPos: integer): integer;
 function IsValidIdentPair(const NamePair: string): boolean;
-function IsValidIdentPair(const NamePair: string;
-    out First, Second: string): boolean;
+function IsValidIdentPair(const NamePair: string; out First, Second: string): boolean;
+function ExtractPasIdentifier(const Ident: string; AllowDots: Boolean): string;
 
 // line/code ends
 function SrcPosToLineCol(const s: string; Position: integer;
@@ -190,6 +193,7 @@ function DottedIdentifierLength(Identifier: PChar): integer;
 function GetDottedIdentifier(Identifier: PChar): string;
 function IsDottedIdentifier(const Identifier: string): boolean;
 function CompareDottedIdentifiers(Identifier1, Identifier2: PChar): integer;
+function ChompDottedIdentifier(const Identifier: string): string;
 
 // space and special chars
 function TrimCodeSpace(const ACode: string): string;
@@ -235,6 +239,8 @@ type
     property IdentifierStartInUnitName: Integer read GetIdentifierStartInUnitName;
   end;
 
+  { TNameSpaceInfo }
+
   TNameSpaceInfo = class
   private
     FUnitName: string;
@@ -247,7 +253,7 @@ type
     property IdentifierStartInUnitName: Integer read FIdentifierStartInUnitName;
   end;
 
-
+function ExtractFileNamespace(const Filename: string): string;
 procedure AddToTreeOfUnitFilesOrNamespaces(
   var TreeOfUnitFiles, TreeOfNameSpaces: TAVLTree;
   const NameSpacePath, Filename: string;
@@ -269,6 +275,10 @@ function CompareUnitNameAndUnitFileInfo(UnitnamePAnsiString,
 function CompareNameSpaceAndNameSpaceInfo(NamespacePAnsiString,
                                         NamespaceInfo: Pointer): integer;
 
+// function filled by CodeToolManager to find inc files
+var
+  FindIncFileInCfgCache: function(const Name: string; out ExpFilename: string): boolean;
+
 //-----------------------------------------------------------------------------
 // functions / procedures
 
@@ -278,7 +288,13 @@ function CompareNameSpaceAndNameSpaceInfo(NamespacePAnsiString,
 
 // source type
 function FindSourceType(const Source: string;
-  var SrcNameStart, SrcNameEnd: integer): string;
+  var SrcNameStart, SrcNameEnd: integer; NestedComments: boolean = false): string;
+
+// identifier
+function ReadDottedIdentifier(const Source: string; var Position: integer;
+  NestedComments: boolean = false): string;
+function ReadDottedIdentifier(var Position: PChar; SrcEnd: PChar;
+  NestedComments: boolean = false): string;
 
 // program name
 function RenameProgramInSource(Source:TSourceLog;
@@ -289,7 +305,10 @@ function FindProgramNameInSource(const Source:string;
 // unit name
 function RenameUnitInSource(Source:TSourceLog;const NewUnitName:string):boolean;
 function FindUnitNameInSource(const Source:string;
-   var UnitNameStart,UnitNameEnd:integer):string;
+   out UnitNameStart,UnitNameEnd: integer; NestedComments: boolean = false):string;
+function FindModuleNameInSource(const Source:string;
+   out ModuleType: string; out NameStart,NameEnd: integer;
+   NestedComments: boolean = false):string;
 
 // uses sections
 function UnitIsUsedInSource(const Source,SrcUnitName:string):boolean;
@@ -319,6 +338,8 @@ function RemoveUnitFromUsesSection(Source:TSourceLog;
 // compiler directives
 function FindIncludeDirective(const Source,Section:string; Index:integer;
    out IncludeStart,IncludeEnd:integer):boolean;
+function ExtractLongParamDirective(const Source: string; CommentStartPos: integer;
+   out DirectiveName, FileParam: string): boolean;
 function SplitCompilerDirective(const Directive:string;
    out DirectiveName,Parameters:string):boolean;
 
@@ -432,6 +453,36 @@ begin
   until Atom='';
 end;
 
+function ExtractLongParamDirective(const Source: string; CommentStartPos: integer;
+  out DirectiveName, FileParam: string): boolean;
+var
+  p, StartPos: PChar;
+begin
+  Result:=false;
+  FileParam:='';
+  if CommentStartPos>length(Source) then exit;
+  p:=@Source[CommentStartPos];
+  if (p^<>'{') or (p[1]<>'$') then exit;
+  inc(p,2);
+  StartPos:=p;
+  if not IsIdentStartChar[p^] then exit;
+  while IsIdentChar[p^] do inc(p);
+  DirectiveName:=copy(Source,StartPos-PChar(Source)+1,p-StartPos);
+  Result:=true;
+  while p^ in [' ',#9] do inc(p);
+  if p^='''' then begin
+    // 'param with spaces'
+    inc(p);
+    StartPos:=p;
+    while not (p^ in [#0,#10,#13,'''']) do inc(p);
+  end else begin
+    // param without spaces
+    StartPos:=p;
+    while not (p^ in [#0,#9,#10,#13,' ','}']) do inc(p);
+  end;
+  FileParam:=copy(Source,StartPos-PChar(Source)+1,p-StartPos);
+end;
+
 function SplitCompilerDirective(const Directive:string;
    out DirectiveName,Parameters:string):boolean;
 var EndPos,DirStart,DirEnd:integer;
@@ -454,15 +505,38 @@ begin
     Result:=false;
 end;
 
-function FindSourceType(const Source: string;
-  var SrcNameStart, SrcNameEnd: integer): string;
+function FindSourceType(const Source: string; var SrcNameStart,
+  SrcNameEnd: integer; NestedComments: boolean): string;
+var
+  u: String;
+  p, AtomStart: Integer;
 begin
   // read first atom for type
-  SrcNameEnd:=1;
-  Result:=ReadNextPascalAtom(Source,SrcNameEnd,SrcNameStart);
-  // read second atom for name
-  if Result<>'' then
-    ReadNextPascalAtom(Source,SrcNameEnd,SrcNameStart);
+  SrcNameStart:=0;
+  SrcNameEnd:=0;
+  p:=1;
+  Result:=ReadNextPascalAtom(Source,p,AtomStart,NestedComments);
+  u:=Uppercase(Result);
+  if (u='UNIT') or (u='PROGRAM') or (u='LIBRARY') or (u='PACKAGE') then begin
+    // read name
+    ReadNextPascalAtom(Source,p,AtomStart,NestedComments);
+    if p<=AtomStart then exit;
+    if not IsIdentStartChar[Source[AtomStart]] then exit;
+    SrcNameStart:=AtomStart;
+    SrcNameEnd:=p;
+    repeat
+      ReadRawNextPascalAtom(Source,p,AtomStart,NestedComments);
+      if (AtomStart=p+1) and (Source[AtomStart]='.') then begin
+        ReadRawNextPascalAtom(Source,p,AtomStart,NestedComments);
+        if p<=AtomStart then exit;
+        if not IsIdentStartChar[Source[AtomStart]] then exit;
+        SrcNameEnd:=p;
+      end else
+        break;
+    until false;
+  end else begin
+    Result:='';
+  end;
 end;
 
 function RenameUnitInSource(Source:TSourceLog;const NewUnitName:string):boolean;
@@ -475,13 +549,71 @@ begin
     Source.Replace(UnitNameStart,UnitNameEnd-UnitNameStart,NewUnitName);
 end;
 
-function FindUnitNameInSource(const Source:string;
-  var UnitNameStart,UnitNameEnd:integer):string;
+function FindUnitNameInSource(const Source: string; out UnitNameStart,
+  UnitNameEnd: integer; NestedComments: boolean): string;
+var
+  ModuleType: string;
 begin
-  if uppercasestr(FindSourceType(Source,UnitNameStart,UnitNameEnd))='UNIT' then
-    Result:=copy(Source,UnitNameStart,UnitNameEnd-UnitNameStart)
-  else
+  Result:=FindModuleNameInSource(Source,ModuleType,UnitNameStart,UnitNameEnd,NestedComments);
+  if CompareText(ModuleType,'UNIT')<>0 then
     Result:='';
+end;
+
+function FindModuleNameInSource(const Source: string; out ModuleType: string;
+  out NameStart, NameEnd: integer; NestedComments: boolean): string;
+var
+  u: String;
+  p, AtomStart: Integer;
+begin
+  // read first atom for type
+  Result:='';
+  NameStart:=0;
+  NameEnd:=0;
+  p:=1;
+  ModuleType:=ReadNextPascalAtom(Source,p,AtomStart,NestedComments);
+  u:=UpperCase(ModuleType);
+  if (u='UNIT') or (u='PROGRAM') or (u='LIBRARY') or (u='PACKAGE') then begin
+    // read name
+    ReadNextPascalAtom(Source,p,AtomStart,NestedComments);
+    if p<=AtomStart then exit;
+    if not IsIdentStartChar[Source[AtomStart]] then exit;
+    NameStart:=AtomStart;
+    NameEnd:=AtomStart;
+    Result:=ReadDottedIdentifier(Source,NameEnd,NestedComments);
+  end else
+    ModuleType:='';
+end;
+
+function ReadDottedIdentifier(const Source: string; var Position: integer;
+  NestedComments: boolean): string;
+var
+  p: PChar;
+begin
+  if (Position<1) or (Position>length(Source)) then exit('');
+  p:=@Source[Position];
+  Result:=ReadDottedIdentifier(p,PChar(Source)+length(Source),NestedComments);
+  Position:=p-PChar(Source)+1;
+end;
+
+function ReadDottedIdentifier(var Position: PChar; SrcEnd: PChar;
+  NestedComments: boolean): string;
+var
+  AtomStart, p: PChar;
+begin
+  Result:='';
+  p:=Position;
+  ReadRawNextPascalAtom(p,AtomStart,SrcEnd,NestedComments);
+  Position:=AtomStart;
+  if (AtomStart>=p) or not IsIdentStartChar[AtomStart^] then exit;
+  Result:=GetIdentifier(AtomStart);
+  repeat
+    ReadRawNextPascalAtom(p,AtomStart,SrcEnd,NestedComments);
+    if (AtomStart+1<>p) or (AtomStart^<>'.') then exit;
+    ReadRawNextPascalAtom(p,AtomStart,SrcEnd,NestedComments);
+    if (AtomStart>=p) or not IsIdentStartChar[AtomStart^] then exit;
+    Position:=AtomStart;
+    Result:=Result+'.'+GetIdentifier(AtomStart);
+  until false;
 end;
 
 function RenameProgramInSource(Source: TSourceLog;
@@ -1076,7 +1208,7 @@ begin
   if SearchCodeInSource(Source,FormClassName+'=class(',1,SrcPos,false)<1 then
     exit;
   Result:=ReadNextPascalAtom(Source,SrcPos,AtomStart);
-  if (Result<>'') and (not IsValidIdent(Result)) then
+  if not IsValidIdent(Result) then
     Result:='';
 end;
 
@@ -1473,6 +1605,7 @@ end;
 function FindCommentEnd(const ASource: string; StartPos: integer;
   NestedComments: boolean): integer;
 // returns position after the comment end, e.g. after }
+// failure: returns length(ASource)+1
 var
   CommentLvl: integer;
   p: PChar;
@@ -1691,11 +1824,13 @@ begin
   while (IdentEnd<=length(Source))
   and (IsIdentChar[Source[IdentEnd]]) do
     inc(IdentEnd);
-  while (IdentStart<IdentEnd)
+  while (IdentStart<Position)
   and (not IsIdentStartChar[Source[IdentStart]]) do
     inc(IdentStart);
   if (IdentStart>1) and (Source[IdentStart-1]='&') then
     dec(IdentStart);
+  if (IdentStart>length(Source)) or not IsIdentStartChar[Source[IdentStart]] then
+    IdentEnd:=IdentStart;
 end;
 
 function GetIdentStartPosition(const Source: string; Position: integer
@@ -1808,6 +1943,8 @@ begin
   Result:=copy(Source,AtomStart,Position-AtomStart);
 end;
 
+{$IFOPT R+}{$DEFINE RangeChecking}{$ENDIF}
+{$R-}
 procedure ReadRawNextPascalAtom(const Source: string;
   var Position: integer; out AtomStart: integer; NestedComments: boolean;
   SkipDirectives: boolean);
@@ -1815,8 +1952,6 @@ var
   Len:integer;
   SrcPos, SrcStart, SrcAtomStart: PChar;
 begin
-  {$IFOPT R+}{$DEFINE RangeChecking}{$ENDIF}
-  {$R-}
   Len:=length(Source);
   if Position>Len then begin
     Position:=Len+1;
@@ -1828,8 +1963,8 @@ begin
   ReadRawNextPascalAtom(SrcPos,SrcAtomStart,SrcStart+len,NestedComments,SkipDirectives);
   Position:=SrcPos-SrcStart+1;
   AtomStart:=SrcAtomStart-SrcStart+1;
-  {$IFDEF RangeChecking}{$R+}{$UNDEF RangeChecking}{$ENDIF}
 end;
+{$IFDEF RangeChecking}{$R+}{$UNDEF RangeChecking}{$ENDIF}
 
 procedure ReadRawNextPascalAtom(var Position: PChar; out AtomStart: PChar;
   const SrcEnd: PChar; NestedComments: boolean; SkipDirectives: boolean);
@@ -2869,7 +3004,7 @@ begin
   else
     if Result>1 then begin
       c2:=Source[Result-1];
-      // test for double char operators :=, +=, -=, /=, *=, <>, <=, >=, **, ><, ..
+      // test for double char operators :=, +=, -=, /=, *=, <>, <=, >=, **, ><, @@ ..
       if ((c2='=') and  (IsEqualOperatorStartChar[c]))
       or ((c='<') and (c2='>'))
       or ((c='>') and (c2='<'))
@@ -3864,8 +3999,7 @@ function FindNextIncludeDirective(const ASource: string; StartPos: integer;
   NestedComments: boolean; out FilenameStartPos, FileNameEndPos,
   CommentStartPos, CommentEndPos: integer): integer;
 var
-  MaxPos: Integer;
-  Offset: Integer;
+  MaxPos, Offset: Integer;
 begin
   Result:=StartPos;
   MaxPos:=length(ASource);
@@ -3880,7 +4014,7 @@ begin
       Offset:=-1;
     if (Offset>0) then begin
       if ((UpChars[ASource[Result+Offset]]='I')
-           and (ASource[Result+Offset+1]=' '))
+              and (ASource[Result+Offset+1]=' '))
       or (CompareIdentifiers('include',@ASource[Result+Offset])=0) then begin
         CommentEndPos:=FindCommentEnd(ASource,Result,NestedComments);
         if ASource[Result]='{' then
@@ -3898,30 +4032,31 @@ begin
         and (IsSpaceChar[ASource[FilenameStartPos]]) do
           inc(FilenameStartPos);
         // find end of filename
-        FilenameEndPos:=FilenameStartPos;
-        if (FilenameEndPos<=CommentEndPos) and (ASource[FilenameEndPos]='''')
+        if (FilenameStartPos<=CommentEndPos) and (ASource[FilenameStartPos]='''')
         then begin
           // quoted filename
           inc(FilenameStartPos);
+          FilenameEndPos:=FilenameStartPos;
           while (FilenameEndPos<=CommentEndPos) do begin
             if (ASource[FilenameEndPos]<>'''') then
               inc(FilenameEndPos)
-            else begin
-              inc(FilenameEndPos);
+            else
               break;
-            end;
           end;
+          CommentStartPos:=FilenameEndPos+1;
         end else begin
           // normal filename
+          FilenameEndPos:=FilenameStartPos;
           while (FilenameEndPos<=CommentEndPos)
           and (not IsSpaceChar[ASource[FilenameEndPos]])
           and (not (ASource[FilenameEndPos] in ['*','}'])) do
             inc(FilenameEndPos);
+          CommentStartPos:=FilenameEndPos;
         end;
         // skip space behind filename
-        CommentStartPos:=FilenameEndPos;
         while (CommentStartPos<=CommentEndPos)
-        and (IsSpaceChar[ASource[CommentStartPos]]) do inc(CommentStartPos);
+        and (IsSpaceChar[ASource[CommentStartPos]]) do
+          inc(CommentStartPos);
         // success
         exit;
       end;
@@ -3990,8 +4125,9 @@ begin
   Result:=-1;
 end;
 
-function CleanCodeFromComments(const Src: string;
-  NestedComments: boolean; KeepDirectives: boolean): string;
+function CleanCodeFromComments(const Src: string; NestedComments: boolean;
+  KeepDirectives: boolean; KeepVerbosityDirectives: boolean): string;
+// KeepVerbosityDirectives=true requires KeepDirectives=true
 var
   SrcPos: Integer;
   ResultPos: Integer;
@@ -4009,14 +4145,19 @@ begin
       System.Move(Src[SrcPos],Result[ResultPos],l);
       inc(ResultPos,l);
     end;
+    if StartPos>length(Src) then break;
     SrcPos:=FindCommentEnd(Src,StartPos,NestedComments);
-    if KeepDirectives and (StartPos<=length(Src)) then begin
+    if KeepDirectives then begin
       p:=@Src[StartPos];
-      if (p^='{') and (p[1]='$') then begin
-        l:=SrcPos-StartPos;
-        System.Move(Src[StartPos],Result[ResultPos],l);
-        inc(ResultPos,l);
+      if (p^<>'{') or (p[1]<>'$') then continue;
+      if not KeepVerbosityDirectives then begin
+        inc(p,2);
+        if (CompareIdentifiers(p,'warn')=0)
+        or (CompareIdentifiers(p,'hint')=0) then continue;
       end;
+      l:=SrcPos-StartPos;
+      System.Move(Src[StartPos],Result[ResultPos],l);
+      inc(ResultPos,l);
     end;
   end;
   SetLength(Result,ResultPos-1);
@@ -4282,8 +4423,8 @@ function IdentifierPos(Search, Identifier: PChar): PtrInt;
 var
   i: Integer;
 begin
-  if (Search=nil) or (Search^=#0) then exit(-1);
   if Identifier=nil then exit(-1);
+  if (Search=nil) or (Search^=#0) then exit(0);
   Result:=0;
   while (IsIdentChar[Identifier[Result]]) do begin
     if UpChars[Search^]=UpChars[Identifier[Result]] then begin
@@ -4367,6 +4508,7 @@ function CompareStringConstants(p1, p2: PChar): integer;
 // 1: 'aa' 'ab' because bigger
 // 1: 'aa' 'a'  because longer
 begin
+  Result := 0;
   if (p1^='''') and (p2^='''') then begin
     inc(p1);
     inc(p2);
@@ -4675,6 +4817,38 @@ begin
     end;
     if not IsIdentChar[NamePair[p]] then exit;
   until false;
+end;
+
+function ExtractPasIdentifier(const Ident: string; AllowDots: Boolean): string;
+var
+  p: Integer;
+begin
+  p:=1;
+  Result:=Ident;
+  while p<=length(Result) do begin
+    if Result[p] in ['a'..'z','A'..'Z','_'] then begin
+      inc(p);
+      while p<=length(Result) do begin
+        case Result[p] of
+        'a'..'z','A'..'Z','_','0'..'9': inc(p);
+        '.':
+          if AllowDots then
+            break
+          else
+            Delete(Result,p,1);
+        else
+          Delete(Result,p,1);
+        end;
+      end;
+      if p>length(Result) then exit;
+      // p is now on the '.'
+      inc(p);
+    end else
+      Delete(Result,p,1);
+  end;
+  p:=length(Result);
+  if (p>0) and (Result[p]='.') then
+    Delete(Result,p,1);
 end;
 
 function GetLineIndentWithTabs(const Source: string; Position: integer;
@@ -4997,6 +5171,15 @@ begin
   end;
 end;
 
+function ChompDottedIdentifier(const Identifier: string): string;
+var
+  p: Integer;
+begin
+  p:=length(Identifier);
+  while (p>0) and (Identifier[p]<>'.') do dec(p);
+  Result:=LeftStr(Identifier,p-1);
+end;
+
 function TrimCodeSpace(const ACode: string): string;
 // turn all lineends and special chars to space
 // space is combined to one char
@@ -5191,7 +5374,7 @@ var
     var
       l: LongInt;
     begin
-      l:=UTF8CharacterLength(@Src[APos]);
+      l:=UTF8CodepointSize(@Src[APos]);
       inc(APos);
       dec(l);
       while (l>0) and (APos<ParsedLen) do begin
@@ -5678,20 +5861,27 @@ begin
   System.Move(p^,Result[1],l);
 end;
 
+function ExtractFileNamespace(const Filename: string): string;
+begin
+  Result:=ExtractFileNameOnly(Filename);
+  if Result='' then exit;
+  Result:=ChompDottedIdentifier(Result);
+end;
+
 procedure AddToTreeOfUnitFilesOrNamespaces(var TreeOfUnitFiles,
   TreeOfNameSpaces: TAVLTree; const NameSpacePath, Filename: string;
   CaseInsensitive, KeepDoubles: boolean);
 
-  procedure FileAndNameSpaceFits(const UnitName: string; out FileNameFits, NameSpaceFits: Boolean);
+  procedure FileAndNameSpaceFits(const UnitName: string;
+    out FileNameFits, NameSpaceFits: Boolean);
   var
     CompareCaseInsensitive: Boolean;
   begin
     FileNameFits := False;
     NameSpaceFits := False;
     if NameSpacePath = '' then begin
-      //we search for files without namespace path
-      FileNameFits := pos('.', UnitName) = 0;
-      NameSpaceFits := not FileNameFits;
+      FileNameFits := true;
+      NameSpaceFits := true;
       Exit;
     end;
     if Length(UnitName) < Length(NameSpacePath) then Exit;
@@ -5713,26 +5903,25 @@ var
   UnitName: string;
 begin
   UnitName := ExtractFileNameOnly(Filename);
+  if not IsDottedIdentifier(UnitName) then exit;
   FileAndNameSpaceFits(UnitName, FileNameFits, NameSpaceFits);
   if FileNameFits then
-    AddToTreeOfUnitFiles(TreeOfUnitFiles,FileName,UnitName,
-                       KeepDoubles);
+    AddToTreeOfUnitFiles(TreeOfUnitFiles,FileName,UnitName,KeepDoubles);
   if NameSpaceFits then
-    AddToTreeOfNamespaces(TreeOfNamespaces,UnitName,NameSpacePath,
-                          KeepDoubles)
+    AddToTreeOfNamespaces(TreeOfNamespaces,UnitName,NameSpacePath,KeepDoubles)
 end;
 
 function GatherUnitFiles(const BaseDir, SearchPath, Extensions,
   NameSpacePath: string; KeepDoubles, CaseInsensitive: boolean;
   var TreeOfUnitFiles, TreeOfNamespaces: TAVLTree): boolean;
-// BaseDir: base directory, used when SearchPath is relative
-// SearchPath: semicolon separated list of directories
-// Extensions: semicolon separated list of extensions (e.g. 'pas;.pp;ppu')
-// NameSpacePath: gather files only from this namespace path
-// KeepDoubles: false to return only the first match of each unit
-// CaseInsensitive: true to ignore case on comparing extensions
-// TreeOfUnitFiles: tree of TUnitFileInfo
-// TreeOfNamespaces: tree of TNameSpaceInfo
+{ BaseDir: base directory, used when SearchPath is relative
+ SearchPath: semicolon separated list of directories
+ Extensions: semicolon separated list of extensions (e.g. 'pas;.pp;ppu')
+ NameSpacePath: gather files only from this namespace path, empty '' for all
+ KeepDoubles: false to return only the first match of each unit
+ CaseInsensitive: true to ignore case on comparing extensions
+ TreeOfUnitFiles: tree of TUnitFileInfo
+ TreeOfNamespaces: tree of TNameSpaceInfo }
 var
   SearchedDirectories: TAVLTree; // tree of AnsiString
 

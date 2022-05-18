@@ -9,7 +9,7 @@
  ---------------------------------------------------------------------------
 
  @created(Mon Aug 1st WET 2006)
- @lastmod($Date: 2015-12-17 22:59:20 +0100 (Do, 17 Dez 2015) $)
+ @lastmod($Date: 2019-01-24 10:46:36 +0100 (Do, 24 Jan 2019) $)
  @author(Marc Weustink <marc@@dommelstein.nl>)
  @author(Martin Friebe)
 
@@ -28,7 +28,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -395,13 +395,17 @@ type
 
   TDWarfLineMap = object
   private
-    NextAFterHighestLine: Cardinal;
-    AddressList: array of QWord;
-    //Count: Integer;
+    // FLineIndexList[ line div 256 ]
+    FLineIndexList: Array of record
+      LineOffsets: Array of Byte;
+      Addresses: Array of TDBGPtr;
+    end;
   public
     procedure Init;
-    procedure SetAddressForLine(ALine: Cardinal; AnAddress: QWord); inline;
-    function  GetAddressForLine(ALine: Cardinal): QWord; inline;
+    procedure SetAddressForLine(ALine: Cardinal; AnAddress: TDBGPtr); inline;
+    function  GetAddressesForLine(ALine: Cardinal; var AResultList: TDBGPtrArray;
+      NoData: Boolean = False): Boolean; inline;
+      // NoData: only return True/False, but nothing in AResultList
     procedure Compress;
   end;
   PDWarfLineMap = ^TDWarfLineMap;
@@ -496,6 +500,7 @@ type
 
     FAbbrevList: TDwarfAbbrevList;
 
+    {$IFDEF DwarfTestAccess} public {$ENDIF}
     FLineInfo: record
       Header: Pointer;
       DataStart: Pointer;
@@ -514,10 +519,11 @@ type
       StateMachine: TDwarfLineInfoStateMachine;
       StateMachines: TFPObjectList; // list of state machines to be freed
     end;
-    
+    {$IFDEF DwarfTestAccess} private {$ENDIF}
+
     FLineNumberMap: TStringList;
 
-    FAddressMap: TMap;
+    FAddressMap: TMap; // Holds a key for each DW_TAG_subprogram, stores TDwarfAddressInfo
     FAddressMapBuild: Boolean;
     
     FMinPC: QWord;  // the min and max PC value found in this unit.
@@ -529,7 +535,8 @@ type
     procedure BuildAddressMap;
     function GetAddressMap: TMap;
     function GetUnitName: String;
-    function  ReadAddressAtPointer(var AData: Pointer; AIncPointer: Boolean = False): TFpDbgMemLocation;
+    function  ReadTargetAddressFromDwarfSection(var AData: Pointer; AIncPointer: Boolean = False): TFpDbgMemLocation;
+    function  ReadDwarfSectionOffsetOrLenFromDwarfSection(var AData: Pointer; AIncPointer: Boolean = False): TFpDbgMemLocation;
   protected
     function LocateEntry(ATag: Cardinal; out AResultScope: TDwarfScopeInfo): Boolean;
     function InitLocateAttributeList(AEntry: Pointer; var AList: TAttribPointerList): Boolean;
@@ -554,7 +561,7 @@ type
     procedure ScanAllEntries; inline;
     function GetDefinition(AAbbrevPtr: Pointer; out ADefinition: TDwarfAbbrev): Boolean; inline;
     function GetLineAddressMap(const AFileName: String): PDWarfLineMap;
-    function GetLineAddress(const AFileName: String; ALine: Cardinal): TDbgPtr;
+    function GetLineAddresses(const AFileName: String; ALine: Cardinal; var AResultList: TDBGPtrArray): boolean;
     procedure BuildLineInfo(AAddressInfo: PDwarfAddressInfo; ADoAll: Boolean);
     function FullFileName(const AFileName:string): String;
     // On Darwin it could be that the debug-information is not included into the executable by the linker.
@@ -570,6 +577,14 @@ type
     property Version: Word read FVersion;
     //property AbbrevOffset: QWord read FAbbrevOffset;
     property AddressSize: Byte read FAddressSize;  // the address size of the target in bytes
+    (* IsDwarf64, From the spec:
+     In the 64-bit DWARF format, all values that
+ *** "represent lengths of DWARF sections and offsets relative to the beginning of DWARF sections" ***
+     are represented using 64-bits.
+
+     A special convention applies to the initial length field of certain DWARF sections, as well as the CIE and FDE structures,
+     so that the 32-bit and 64-bit DWARF formats can coexist and be distinguished within a single linked object.
+    *)
     property IsDwarf64: Boolean read FIsDwarf64; // Set if the dwarf info in this unit is 64bit
     property Owner: TFpDwarfInfo read FOwner;
     property DebugFile: PDwarfDebugFile read FDebugFile;
@@ -591,6 +606,7 @@ type
   private
     FCompilationUnits: TList;
     FImageBase: QWord;
+    FImage64Bit: Boolean;
     FMemManager: TFpDbgMemManager;
     FFiles: array of TDwarfDebugFile;
     function GetCompilationUnit(AIndex: Integer): TDwarfCompilationUnit;
@@ -605,7 +621,7 @@ type
     function FindContext(AAddress: TDbgPtr): TFpDbgInfoContext; override;
     function FindSymbol(AAddress: TDbgPtr): TFpDbgSymbol; override;
     //function FindSymbol(const AName: String): TDbgSymbol; override;
-    function GetLineAddress(const AFileName: String; ALine: Cardinal): TDbgPtr; override;
+    function GetLineAddresses(const AFileName: String; ALine: Cardinal; var AResultList: TDBGPtrArray): Boolean; override;
     function GetLineAddressMap(const AFileName: String): PDWarfLineMap;
     function LoadCompilationUnits: Integer;
     function PointerFromRVA(ARVA: QWord): Pointer;
@@ -614,6 +630,7 @@ type
     property MemManager: TFpDbgMemManager read FMemManager write FMemManager;
 
     property ImageBase: QWord read FImageBase;
+    property Image64Bit: Boolean read FImage64Bit;
   end;
 
   { TDwarfLocationStack }
@@ -1056,8 +1073,8 @@ var
     else
     begin // append to existing
       GapAvail := FTableListGaps[ATableListIndex].EndTable;
-      assert(AEntry^.EndIndex + AEntry^.LeadHigh - AEntry^.LeadLow + 1 + GapAvail <= FEndTableNextFreeIndex);
-      AtEnd := AEntry^.EndIndex + AEntry^.EndHigh - AEntry^.EndLow + 1 + GapAvail = FEndTableNextFreeIndex;
+      assert(Int64(AEntry^.EndIndex) + Int64(AEntry^.LeadHigh) - Int64(AEntry^.LeadLow) + 1 + GapAvail <= FEndTableNextFreeIndex);
+      AtEnd := Int64(AEntry^.EndIndex) + Int64(AEntry^.EndHigh) - Int64(AEntry^.EndLow) + 1 + GapAvail = FEndTableNextFreeIndex;
       ANeeded := ALeadByte - AEntry^.EndHigh;
 
       if ANeeded <= GapAvail then begin
@@ -1850,7 +1867,7 @@ begin
     inc(CurData);
     case CurInstr^ of
       DW_OP_nop: ;
-      DW_OP_addr:  FStack.Push(FCU.ReadAddressAtPointer(CurData, True), lseValue);
+      DW_OP_addr:  FStack.Push(FCU.ReadTargetAddressFromDwarfSection(CurData, True), lseValue);
       DW_OP_deref: begin
           if not AssertAddressOnStack then exit;
           if not ReadAddressFromMemory(FStack.Pop.Value, AddrSize, NewLoc) then exit;
@@ -2780,37 +2797,138 @@ end;
 
 procedure TDWarfLineMap.Init;
 begin
-  NextAFterHighestLine := 0;
-  //Count := 0;
 end;
 
-procedure TDWarfLineMap.SetAddressForLine(ALine: Cardinal; AnAddress: QWord);
+procedure TDWarfLineMap.SetAddressForLine(ALine: Cardinal; AnAddress: TDBGPtr);
 var
-  i: Integer;
+  SectLen, SectCnt, i, j, o, o2: Integer;
+  idx, offset: TDBGPtr;
+  LineOffsets: Array of Byte;
+  Addresses: Array of TDBGPtr;
 begin
-  i := Length(AddressList);
-  if i <= ALine then
-    SetLength(AddressList, ALine + 2000);
+  idx := ALine div 256;
+  offset := ALine mod 256;
+  i := Length(FLineIndexList);
+  if idx >= i then
+    SetLength(FLineIndexList, idx+4);
 
-  if AddressList[ALine] = 0 then begin
-    AddressList[ALine] := AnAddress;
-    //inc(Count);
+  LineOffsets := FLineIndexList[idx].LineOffsets;
+  Addresses := FLineIndexList[idx].Addresses;
+
+  if Addresses = nil then begin
+    SectLen := 192;
+    SectCnt := 0;
+    SetLength(FLineIndexList[idx].Addresses, 193);
+    SetLength(FLineIndexList[idx].LineOffsets, 192);
+    LineOffsets := FLineIndexList[idx].LineOffsets;
+    Addresses := FLineIndexList[idx].Addresses;
+  end
+  else begin
+    SectLen := Length(LineOffsets);
+    SectCnt := Integer(Addresses[SectLen]);
+    if SectCnt >= SectLen then begin
+      SectLen := SectCnt + 64;
+      SetLength(FLineIndexList[idx].Addresses, SectLen+1);
+      SetLength(FLineIndexList[idx].LineOffsets, SectLen);
+      LineOffsets := FLineIndexList[idx].LineOffsets;
+      Addresses := FLineIndexList[idx].Addresses;
+    end;
   end;
-  if ALine > NextAFterHighestLine then
-    NextAFterHighestLine := ALine+1;
+
+
+  i := 0;
+  o := 0;
+  while (i < SectCnt) do begin
+    o2 := o + LineOffsets[i];
+    if o2 > offset then break;
+    o := o2;
+    inc(i);
+  end;
+
+  j := SectCnt;
+  while j > i do begin
+    LineOffsets[j] := LineOffsets[j-1];
+    Addresses[j]   := Addresses[j-1];
+    dec(j);
+  end;
+
+  offset := offset - o;
+  LineOffsets[i] := offset;
+  Addresses[i]   := AnAddress;
+
+  if i < SectCnt then begin
+    assert(LineOffsets[i+1] >= offset, 'TDWarfLineMap.SetAddressForLine LineOffsets[i+1] > offset');
+    LineOffsets[i+1] := LineOffsets[i+1] - offset;
+  end;
+
+  Addresses[SectLen] := SectCnt + 1;
 end;
 
-function TDWarfLineMap.GetAddressForLine(ALine: Cardinal): QWord;
+function TDWarfLineMap.GetAddressesForLine(ALine: Cardinal;
+  var AResultList: TDBGPtrArray; NoData: Boolean): Boolean;
+var
+  idx, offset: TDBGPtr;
+  LineOffsets: Array of Byte;
+  Addresses: Array of TDBGPtr;
+  o: Byte;
+  i, j, k, l: Integer;
 begin
-  Result := 0;
-  if ALine < Length(AddressList) then
-    Result := AddressList[ALine];
+  Result := False;
+  idx := ALine div 256;
+  offset := ALine mod 256;
+  if idx >= Length(FLineIndexList) then
+    exit;
+
+  LineOffsets := FLineIndexList[idx].LineOffsets;
+  Addresses := FLineIndexList[idx].Addresses;
+  if Addresses = nil then
+    exit;
+
+  l := Length(LineOffsets);
+  i := 0;
+  while (i < l) do begin
+    o := LineOffsets[i];
+    if o > offset then exit;
+    offset := offset - o;
+    if offset = 0 then break;
+    inc(i);
+  end;
+
+  If (offset > 0) then
+    exit;
+
+  if NoData then begin
+    Result := True;
+    exit;
+  end;
+
+  j := i + 1;
+  while (j < l) and (LineOffsets[j] = 0) do inc(j);
+
+  k := Length(AResultList);
+  SetLength(AResultList, k + (j-i));
+  while i < j do begin
+    AResultList[k] := Addresses[i];
+    inc(i);
+    inc(k);
+  end;
+
+  Result := True;
 end;
 
 procedure TDWarfLineMap.Compress;
+var
+  i, j: Integer;
 begin
-  SetLength(AddressList, NextAFterHighestLine);
-//DebugLn(['#### ',NextAFterHighestLine, ' / ',Count]);
+  for i := 0 to high(FLineIndexList) do begin
+    j := Length(FLineIndexList[i].LineOffsets);
+    if j <> 0 then begin
+      j := FLineIndexList[i].Addresses[j];
+      SetLength(FLineIndexList[i].Addresses, j+1);
+      FLineIndexList[i].Addresses[j] := j;
+      SetLength(FLineIndexList[i].LineOffsets, j);
+    end;
+  end;
 end;
 
 { TFpDwarfInfo }
@@ -2822,6 +2940,7 @@ var
   i: Integer;
 begin
   inherited Create(ALoaderList);
+  FImage64Bit := ALoaderList.Image64Bit;
   FCompilationUnits := TList.Create;
   FImageBase := ALoaderList.ImageBase;
 
@@ -2838,6 +2957,7 @@ begin
       FFiles[i].Sections[Section].Size := p^.Size;
       FFiles[i].Sections[Section].VirtualAddress := p^.VirtualAddress;
     end;
+    ALoaderList[i].CloseFileLoader;
   end;
 end;
 
@@ -2894,6 +3014,7 @@ begin
   Result := nil;
   l := 0;
   h := FCompilationUnits.Count - 1;
+  m := h;
   while h > l do begin
     p := TDwarfCompilationUnit(FCompilationUnits[m]).DebugFile^.Sections[dsInfo].RawData + AOffs;
     m := (h + l + 1) div 2;
@@ -2967,18 +3088,18 @@ begin
   end;
 end;
 
-function TFpDwarfInfo.GetLineAddress(const AFileName: String; ALine: Cardinal): TDbgPtr;
+function TFpDwarfInfo.GetLineAddresses(const AFileName: String;
+  ALine: Cardinal; var AResultList: TDBGPtrArray): Boolean;
 var
   n: Integer;
   CU: TDwarfCompilationUnit;
 begin
+  Result := False;
   for n := 0 to FCompilationUnits.Count - 1 do
   begin
     CU := TDwarfCompilationUnit(FCompilationUnits[n]);
-    Result := CU.GetLineAddress(AFileName, ALine);
-    if Result <> 0 then Exit;
+    Result := CU.GetLineAddresses(AFileName, ALine, AResultList) or Result;
   end;
-  Result := 0;
 end;
 
 function TFpDwarfInfo.GetLineAddressMap(const AFileName: String): PDWarfLineMap;
@@ -3197,6 +3318,7 @@ begin
             DW_LNE_end_sequence: begin
               FEndSequence := True;
               Result := True;
+              Inc(pbyte(FLineInfoPtr), instrlen);
               Exit;
             end;
             DW_LNE_set_address: begin
@@ -3344,7 +3466,10 @@ begin
     end;
 
     addr := FLineInfo.StateMachine.Address;
-    LineMap^.SetAddressForLine(Line, addr);
+    if (not FLineInfo.StateMachine.EndSequence) and (FLineInfo.StateMachine.IsStmt)
+    and (Line > 0)
+    then
+      LineMap^.SetAddressForLine(Line, addr);
 
     if (Info = nil) or
        (addr < Info^.StartPC) or
@@ -3382,7 +3507,7 @@ begin
   Result := FAddressMap;
 end;
 
-function TDwarfCompilationUnit.FullFileName(const AFileName: String): String;
+function TDwarfCompilationUnit.FullFileName(const AFileName: string): String;
 begin
   Result := AFileName;
   if FCompDir = '' then exit;
@@ -3500,7 +3625,6 @@ constructor TDwarfCompilationUnit.Create(AOwner: TFpDwarfInfo; ADebugFile: PDwar
     then begin
       if FVersion < 3 then
         DebugLn(FPDBG_DWARF_WARNINGS, ['Unexpected 64 bit signature found for DWARF version 2']); // or version 1...
-      FLineInfo.Addr64 := True;
       UnitLength := LNP64^.UnitLength;
       FLineInfo.DataEnd := Pointer(@LNP64^.Version) + UnitLength;
       Version := LNP64^.Version;
@@ -3508,10 +3632,6 @@ constructor TDwarfCompilationUnit.Create(AOwner: TFpDwarfInfo; ADebugFile: PDwar
       Info := @LNP64^.Info;
     end
     else begin
-      if (FVersion < 3) and (FAddressSize = 8) then
-        FLineInfo.Addr64 := True
-      else
-        FLineInfo.Addr64 := False;
       UnitLength := LNP32^.UnitLength;
       FLineInfo.DataEnd := Pointer(@LNP32^.Version) + UnitLength;
       Version := LNP32^.Version;
@@ -3519,6 +3639,7 @@ constructor TDwarfCompilationUnit.Create(AOwner: TFpDwarfInfo; ADebugFile: PDwar
       Info := @LNP32^.Info;
     end;
     if Version=0 then ;
+    FLineInfo.Addr64 := FAddressSize = 8;
     FLineInfo.DataStart := PByte(Info) + HeaderLength;
 
     FLineInfo.MinimumInstructionLength := Info^.MinimumInstructionLength;
@@ -3731,14 +3852,15 @@ begin
   Result := PDWarfLineMap(FLineNumberMap.Objects[idx]);
 end;
 
-function TDwarfCompilationUnit.GetLineAddress(const AFileName: String; ALine: Cardinal): TDbgPtr;
+function TDwarfCompilationUnit.GetLineAddresses(const AFileName: String;
+  ALine: Cardinal; var AResultList: TDBGPtrArray): boolean;
 var
   Map: PDWarfLineMap;
 begin
-  Result := 0;
+  Result := False;
   Map := GetLineAddressMap(AFileName);
   if Map = nil then exit;
-  Result := Map^.GetAddressForLine(ALine);
+  Result := Map^.GetAddressesForLine(ALine, AResultList);
 end;
 
 function TDwarfCompilationUnit.InitLocateAttributeList(AEntry: Pointer;
@@ -3986,7 +4108,18 @@ begin
 
 end;
 
-function TDwarfCompilationUnit.ReadAddressAtPointer(var AData: Pointer;
+function TDwarfCompilationUnit.ReadTargetAddressFromDwarfSection(var AData: Pointer;
+  AIncPointer: Boolean): TFpDbgMemLocation;
+begin
+  // do not need mem reader, address is in dwarf. Should be in correct format
+  if (FAddressSize = 8) then
+    Result := TargetLoc(PQWord(AData)^)
+  else
+    Result := TargetLoc(PLongWord(AData)^);
+  if AIncPointer then inc(AData, FAddressSize);
+end;
+
+function TDwarfCompilationUnit.ReadDwarfSectionOffsetOrLenFromDwarfSection(var AData: Pointer;
   AIncPointer: Boolean): TFpDbgMemLocation;
 begin
   // do not need mem reader, address is in dwarf. Should be in correct format
@@ -4024,9 +4157,10 @@ function TDwarfCompilationUnit.ReadValue(AAttribute: Pointer; AForm: Cardinal; o
 begin
   Result := True;
   case AForm of
-    DW_FORM_addr,
+    DW_FORM_addr:
+      AValue := LocToAddrOrNil(ReadTargetAddressFromDwarfSection(AAttribute));
     DW_FORM_ref_addr : begin
-      AValue := LocToAddrOrNil(ReadAddressAtPointer(AAttribute));
+      AValue := LocToAddrOrNil(ReadDwarfSectionOffsetOrLenFromDwarfSection(AAttribute));
     end;
     DW_FORM_flag,
     DW_FORM_ref1,
@@ -4061,9 +4195,10 @@ function TDwarfCompilationUnit.ReadValue(AAttribute: Pointer; AForm: Cardinal; o
 begin
   Result := True;
   case AForm of
-    DW_FORM_addr,
+    DW_FORM_addr:
+      AValue := LocToAddrOrNil(ReadTargetAddressFromDwarfSection(AAttribute));
     DW_FORM_ref_addr : begin
-      AValue := LocToAddrOrNil(ReadAddressAtPointer(AAttribute));
+      AValue := LocToAddrOrNil(ReadDwarfSectionOffsetOrLenFromDwarfSection(AAttribute));
     end;
     DW_FORM_flag,
     DW_FORM_ref1,
@@ -4098,9 +4233,10 @@ function TDwarfCompilationUnit.ReadValue(AAttribute: Pointer; AForm: Cardinal; o
 begin
   Result := True;
   case AForm of
-    DW_FORM_addr,
+    DW_FORM_addr:
+      AValue := LocToAddrOrNil(ReadTargetAddressFromDwarfSection(AAttribute));
     DW_FORM_ref_addr : begin
-      AValue := LocToAddrOrNil(ReadAddressAtPointer(AAttribute));
+      AValue := LocToAddrOrNil(ReadDwarfSectionOffsetOrLenFromDwarfSection(AAttribute));
     end;
     DW_FORM_flag,
     DW_FORM_ref1,
@@ -4139,7 +4275,10 @@ begin
       AValue := PChar(AAttribute);
     end;
     DW_FORM_strp:   begin
-      AValue := pchar(PtrUInt(FDebugFile^.Sections[dsStr].RawData)+PDWord(AAttribute)^);
+      if IsDwarf64 then
+        AValue := pchar(PtrUInt(FDebugFile^.Sections[dsStr].RawData)+PQWord(AAttribute)^)
+      else
+        AValue := pchar(PtrUInt(FDebugFile^.Sections[dsStr].RawData)+PDWord(AAttribute)^);
     end;
   else
     Result := False;
@@ -4150,9 +4289,10 @@ function TDwarfCompilationUnit.ReadValue(AAttribute: Pointer; AForm: Cardinal; o
 begin
   Result := True;
   case AForm of
-    DW_FORM_addr,
+    DW_FORM_addr:
+      AValue := LocToAddrOrNil(ReadTargetAddressFromDwarfSection(AAttribute));
     DW_FORM_ref_addr : begin
-      AValue := LocToAddrOrNil(ReadAddressAtPointer(AAttribute));
+      AValue := LocToAddrOrNil(ReadDwarfSectionOffsetOrLenFromDwarfSection(AAttribute));
     end;
     DW_FORM_flag,
     DW_FORM_ref1,
@@ -4191,7 +4331,10 @@ begin
       AValue := PChar(AAttribute);
     end;
     DW_FORM_strp:   begin
-      AValue := PChar(PtrUInt(FDebugFile^.Sections[dsStr].RawData)+PDWord(AAttribute)^);
+      if IsDwarf64 then
+        AValue := pchar(PtrUInt(FDebugFile^.Sections[dsStr].RawData)+PQWord(AAttribute)^)
+      else
+        AValue := pchar(PtrUInt(FDebugFile^.Sections[dsStr].RawData)+PDWord(AAttribute)^);
     end;
   else
     Result := False;

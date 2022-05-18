@@ -72,6 +72,10 @@ msgstr ""
 msgid "bracket open expected, but %s found"
 msgstr ""
 
+#: codetoolsstrconsts.ctscannotaddaunittotheimplementationbecauseonlyaunith
+msgid "cannot add a unit to the implementation, because only a unit has one"
+msgstr ""
+
 #: codetoolsstrconsts.ctscharacterconstantoutofrange
 msgid "character constant out of range"
 msgstr ""
@@ -90,6 +94,10 @@ msgstr ""
 
 #: codetoolsstrconsts.ctsclassnotfound
 msgid "class \"%s\" not found"
+msgstr ""
+
+#: codetoolsstrconsts.ctsclassnotfound2
+msgid "class not found \"%s\""
 msgstr ""
 
 #: codetoolsstrconsts.ctsclassofdefinitionnotresolved
@@ -130,10 +138,6 @@ msgstr ""
 
 #: codetoolsstrconsts.ctsconverterdirectory
 msgid "Converter Directory"
-msgstr ""
-
-#: codetoolsstrconsts.ctscpudirectory
-msgid "CPU directory"
 msgstr ""
 
 #: codetoolsstrconsts.ctscursorposoutsideofcode
@@ -212,28 +216,8 @@ msgstr ""
 msgid "Define LCLwidgetset, e.g. LCLgtk"
 msgstr ""
 
-#: codetoolsstrconsts.ctsdefinemacrocarbon1
-msgid "Define macro carbon1"
-msgstr ""
-
-#: codetoolsstrconsts.ctsdefinemacrogtk1
-msgid "Define macro gtk1"
-msgstr ""
-
-#: codetoolsstrconsts.ctsdefinemacrogtk2
-msgid "Define macro gtk2"
-msgstr ""
-
 #: codetoolsstrconsts.ctsdefinemacroname
 msgid "Define Macro %s"
-msgstr ""
-
-#: codetoolsstrconsts.ctsdefinemacroqt1
-msgid "Define macro qt1"
-msgstr ""
-
-#: codetoolsstrconsts.ctsdefinemacrowince1
-msgid "Define macro wince1"
 msgstr ""
 
 #: codetoolsstrconsts.ctsdefineprocessortype
@@ -246,18 +230,6 @@ msgstr ""
 
 #: codetoolsstrconsts.ctsdesignerdirectory
 msgid "Designer Directory"
-msgstr ""
-
-#: codetoolsstrconsts.ctsdesignerunitsdirectory
-msgid "Designer Units"
-msgstr ""
-
-#: codetoolsstrconsts.ctsdircomponentdoesnotexistsorisdanglingsymlink
-msgid "a directory component in %s does not exist or is a dangling symlink"
-msgstr ""
-
-#: codetoolsstrconsts.ctsdircomponentisnotdir
-msgid "a directory component in %s is not a directory"
 msgstr ""
 
 #: codetoolsstrconsts.ctsdispidparameterexpectedbutatomfound
@@ -324,10 +296,6 @@ msgstr ""
 msgid "error in paramlist"
 msgstr ""
 
-#: codetoolsstrconsts.ctsexecuteaccessdeniedforfile
-msgid "execute access denied for %s"
-msgstr ""
-
 #: codetoolsstrconsts.ctsexpected
 msgid "\"%s\" expected"
 msgstr ""
@@ -362,10 +330,6 @@ msgstr ""
 
 #: codetoolsstrconsts.ctsexprtypemustbeclassorrecord
 msgid "expression type must be class or record type"
-msgstr ""
-
-#: codetoolsstrconsts.ctsfilehascircularsymlink
-msgid "%s has a circular symbolic link"
 msgstr ""
 
 #: codetoolsstrconsts.ctsfileisreadonly
@@ -414,10 +378,6 @@ msgstr ""
 msgid "generic identifier"
 msgstr ""
 
-#: codetoolsstrconsts.ctsgtk2intfdirectory
-msgid "gtk2 interface directory"
-msgstr ""
-
 #: codetoolsstrconsts.ctshaserror
 msgid "HasError"
 msgstr ""
@@ -428,10 +388,6 @@ msgstr ""
 
 #: codetoolsstrconsts.ctsidedirectory
 msgid "IDE Directory"
-msgstr ""
-
-#: codetoolsstrconsts.ctsideintfdirectory
-msgid "IDEIntf Directory"
 msgstr ""
 
 #: codetoolsstrconsts.ctsidentexpectedbutatomfound
@@ -534,16 +490,8 @@ msgstr ""
 msgid "Installer directories"
 msgstr ""
 
-#: codetoolsstrconsts.ctsinsufficientmemory
-msgid "insufficient memory"
-msgstr ""
-
 #: codetoolsstrconsts.ctsinterfacesectionnotfound
 msgid "interface section not found"
-msgstr ""
-
-#: codetoolsstrconsts.ctsintfdirectory
-msgid "interface directory"
 msgstr ""
 
 #: codetoolsstrconsts.ctsinvalidclassname
@@ -570,6 +518,10 @@ msgstr ""
 msgid "invalid operator %s"
 msgstr ""
 
+#: codetoolsstrconsts.ctsinvalidpositionforinsertionofstatements
+msgid "invalid position for insertion of statements"
+msgstr ""
+
 #: codetoolsstrconsts.ctsinvalidsubrange
 msgid "invalid subrange"
 msgstr ""
@@ -584,10 +536,6 @@ msgstr ""
 
 #: codetoolsstrconsts.ctsinvalidvariabletype
 msgid "invalid variable type \"%s\""
-msgstr ""
-
-#: codetoolsstrconsts.ctsjitformdirectory
-msgid "JITForm Directory"
 msgstr ""
 
 #: codetoolsstrconsts.ctskeyword
@@ -608,6 +556,10 @@ msgstr ""
 
 #: codetoolsstrconsts.ctslazarussources
 msgid "Lazarus Sources"
+msgstr ""
+
+#: codetoolsstrconsts.ctsmethodhasnodeclaration
+msgid "method \"%s\" has no declaration"
 msgstr ""
 
 #: codetoolsstrconsts.ctsmethodname
@@ -812,10 +764,6 @@ msgstr ""
 msgid "source not found: unit %s. Check your FPC source directory."
 msgstr ""
 
-#: codetoolsstrconsts.ctssrcpathforcompiledunits
-msgid "src path for compiled units"
-msgstr ""
-
 #: codetoolsstrconsts.ctssrcpathinitialization
 msgid "SrcPath Initialization"
 msgstr ""
@@ -830,10 +778,6 @@ msgstr ""
 
 #: codetoolsstrconsts.ctssyntaxerrorinexpr
 msgid "Syntax Error in expression \"%s\""
-msgstr ""
-
-#: codetoolsstrconsts.ctstcodetoolmanagerconsistencycheck
-msgid "TCodeToolManager.ConsistencyCheck=%d"
 msgstr ""
 
 #: codetoolsstrconsts.ctstermnotsimple
@@ -900,6 +844,10 @@ msgstr ""
 msgid "unexpected keyword \"%s\" found while reading blocks backwards"
 msgstr ""
 
+#: codetoolsstrconsts.ctsunexpectedsectionkeyword
+msgid "unexpected section keyword %s found"
+msgstr ""
+
 #: codetoolsstrconsts.ctsunexpectedsubrangeoperatorfound
 msgid "unexpected subrange operator '..' found"
 msgstr ""
@@ -920,10 +868,6 @@ msgstr ""
 msgid "(unknown mainfilename)"
 msgstr ""
 
-#: codetoolsstrconsts.ctsunknownsectionkeyword
-msgid "unknown section keyword %s found"
-msgstr ""
-
 #: codetoolsstrconsts.ctsunknownsubdescriptor
 msgid "(unknown subdescriptor %s)"
 msgstr ""
@@ -942,10 +886,6 @@ msgstr ""
 
 #: codetoolsstrconsts.ctsvarisonlyallowedingenericsendofclassnotfound
 msgid "var is only allowed in generics, end of class not found"
-msgstr ""
-
-#: codetoolsstrconsts.ctswidgetdirectory
-msgid "Widget Directory"
 msgstr ""
 
 #: codetoolsstrconsts.ctswordnotfound

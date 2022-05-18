@@ -37,6 +37,7 @@ Type
 procedure TUpDownButton.MouseDown(Button: TMouseButton; Shift: TShiftState; X,
   Y: Integer);
 begin
+  inherited MouseDown(Button, Shift, X, Y);
   if Button = mbLeft then begin
     With FUpDown do begin
       FMouseTimerEvent := @Self.Click;
@@ -57,6 +58,7 @@ end;
 procedure TUpDownButton.MouseUp(Button: TMouseButton; Shift: TShiftState; X,
   Y: Integer);
 begin
+  inherited MouseUp(Button, Shift, X, Y);
   With FUpDown do
     If Assigned(FMouseTimer) then begin
       FreeAndNil(FMouseTimer);
@@ -82,11 +84,11 @@ begin
         begin
           FCanChangeDir := updDown;
 
-          if Position - Increment >= Min then
-            FCanChangePos := Position - Increment
+          if FCanChangePos - Increment >= Min then
+            FCanChangePos := FCanChangePos - Increment
           else
             if Wrap then
-              FCanChangePos := Max + (Position - Increment - Min) + 1
+              FCanChangePos := Max + (FCanChangePos - Increment - Min) + 1
           else
             FCanChangePos := Min;
         end;
@@ -94,11 +96,11 @@ begin
         begin
           FCanChangeDir := updUp;
 
-          if Position + Increment <= Max then
-            FCanChangePos := Position + Increment
+          if FCanChangePos + Increment <= Max then
+            FCanChangePos := FCanChangePos + Increment
           else
             If Wrap then
-              FCanChangePos := Min + (Position + Increment - Max) - 1
+              FCanChangePos := Min + (FCanChangePos + Increment - Max) - 1
           else
             FCanChangePos := Max;
         end;
@@ -129,7 +131,6 @@ var
   j : integer;
 begin
   Inherited Paint;
-
   if Enabled then
     Canvas.Pen.Color := clBtnText //Not perfect, but it works
   else
@@ -208,13 +209,18 @@ begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle  - [csDoubleClicks] +
                   [csClickEvents, csOpaque, csReplicatable, csNoFocus];
+  FUseWS := IsWSComponentInheritsFrom(TCustomUpDown, TWSCustomUpDown);
   FOrientation := udVertical;
-  FMinBtn := TUpDownButton.CreateWithParams(Self, btPrev);
-  FMaxBtn := TUpDownButton.CreateWithParams(Self, btNext);
+
+  if not FUseWS then begin
+    FMinBtn := TUpDownButton.CreateWithParams(Self, btPrev);
+    FMaxBtn := TUpDownButton.CreateWithParams(Self, btNext);
+  end;
   with GetControlClassDefaultSize do
     SetInitialBounds(0, 0, CX, CY);
   FArrowKeys := True;
   FMax := 100;
+  FMinRepeatInterval := 100;
   FIncrement := 1;
   FAlignButton := udRight;
   FThousands := True;
@@ -227,18 +233,24 @@ begin
 end;
 
 procedure TCustomUpDown.BTimerExec(Sender : TObject);
+var
+  AInterval:Integer;
 begin
   If Assigned(FMouseTimerEvent)
      and PtInRect(FMouseDownBounds,Mouse.CursorPos) then begin
-    if TTimer(Sender).Interval > 100
-      then TTimer(Sender).Interval := TTimer(Sender).Interval - 25;
+    AInterval := TTimer(Sender).Interval;
+    if AInterval > FMinRepeatInterval then begin
+      AInterval := AInterval - 25;
+      if AInterval < FMinRepeatInterval then AInterval := FMinRepeatInterval;
+      TTimer(Sender).Interval := AInterval;
+    end;
     FMouseTimerEvent;
   end;
 end;
 
 procedure TCustomUpDown.UpdateUpDownPositionText;
 begin
-  if (not (csDesigning in ComponentState)) and (FAssociate <> nil) 
+  if (not (csDesigning in ComponentState)) and (FAssociate <> nil)
   then begin
     if Thousands 
     then FAssociate.Caption := FloatToStrF(FPosition, ffNumber, 0, 0)
@@ -252,10 +264,24 @@ begin
   RegisterCustomUpDown;
 end;
 
+procedure TCustomUpDown.InitializeWnd;
+begin
+  inherited InitializeWnd;
+  if not FUseWS then Exit;
+  TWSCustomUpDownClass(WidgetSetClass).SetMaxPosition(Self, FMax);
+  TWSCustomUpDownClass(WidgetSetClass).SetPosition(Self, FPosition);
+  TWSCustomUpDownClass(WidgetSetClass).SetIncrement(Self, FIncrement);
+  TWSCustomUpDownClass(WidgetSetClass).SetWrap(Self, FWrap);
+  TWSCustomUpDownClass(WidgetSetClass).SetOrientation(Self, FOrientation);
+  TWSCustomUpDownClass(WidgetSetClass).SetUseArrowKeys(Self, FArrowKeys);
+end;
+
 procedure TCustomUpDown.UpdateOrientation;
 var
   d, r: Integer;
 begin
+  if FUseWS then Exit;
+
   If FOrientation = udHorizontal then begin
     d:=ClientWidth div 2;
     r:=ClientWidth mod 2;
@@ -350,7 +376,26 @@ begin
     FAssociate.AddHandlerOnChangeBounds(@OnAssociateChangeBounds,true);
     FAssociate.AddHandlerOnEnabledChanged(@OnAssociateChangeEnabled,true);
     FAssociate.AddHandlerOnVisibleChanged(@OnAssociateChangeVisible,true);
+    FAssociate.AddHandlerOnMouseWheel(@AssociateMouseWheel,true);
   end;
+end;
+
+procedure TCustomUpDown.AdjustPos(incPos: Boolean);
+var
+  anewpos: Integer;
+begin
+  if FUseWS then begin
+    if incPos then anewpos := Position + Increment
+    else anewpos := Position - Increment;
+
+    if (anewpos < Min) then anewpos := Min
+    else if (anewpos > Max) then anewpos := Max;
+    SetPosition(anewpos);
+  end else begin
+    if incPos then TCustomSpeedButton(FMaxBtn).Click
+    else TCustomSpeedButton(FMinBtn).Click;
+  end;
+
 end;
 
 procedure TCustomUpDown.AssociateKeyDown(Sender: TObject; var Key: Word;
@@ -365,21 +410,52 @@ begin
       udVertical:
         case Key of
           VK_Up:
-            begin TCustomSpeedButton(FMaxBtn).Click; ConsumeKey := True; end;
+            begin
+              AdjustPos(True);
+              ConsumeKey := True;
+            end;
           VK_Down:
-            begin TCustomSpeedButton(FMinBtn).Click; ConsumeKey := True; end;
+            begin
+              AdjustPos(False);
+              ConsumeKey := True;
+            end;
         end;
       udHorizontal:
         case Key of
           VK_Left:
-            begin TCustomSpeedButton(FMinBtn).Click; ConsumeKey := True; end;
+            begin
+              AdjustPos(False);
+              ConsumeKey := True;
+            end;
           VK_Right:
-            begin TCustomSpeedButton(FMaxBtn).Click; ConsumeKey := True; end;
+            begin
+              AdjustPos(True);
+              ConsumeKey := True;
+            end;
         end;
     end;
   end;
   if ConsumeKey then
     Key := 0;
+end;
+
+procedure TCustomUpDown.AssociateMouseWheel(Sender: TObject;
+  Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint;
+  var Handled: Boolean);
+
+begin
+  //debugln('TCustomUpDown.AssociateMouseWheel A: Handled = ',DbgS(Handled));
+  if (WheelDelta > 0) then
+  begin
+    AdjustPos(True);
+    Handled := True;
+  end
+  else if (WheelDelta < 0) then
+  begin
+    AdjustPos(False);
+    Handled := True;
+  end;
+  //debugln('TCustomUpDown.AssociateMouseWheel End: Handled = ',DbgS(Handled));
 end;
 
 procedure TCustomUpDown.OnAssociateChangeBounds(Sender: TObject);
@@ -399,6 +475,36 @@ begin
     SetVisible(FAssociate.Visible);
 end;
 
+function TCustomUpDown.DoMouseWheelDown(Shift: TShiftState; MousePos: TPoint): Boolean;
+begin
+  Result := inherited DoMouseWheelDown(Shift, MousePos);
+  if not Result and not FUseWS then
+    TCustomSpeedButton(FMinBtn).Click;
+end;
+
+function TCustomUpDown.DoMouseWheelUp(Shift: TShiftState; MousePos: TPoint): Boolean;
+begin
+  Result := inherited DoMouseWheelUp(Shift, MousePos);
+  if not Result and not FUseWS then
+    TCustomSpeedButton(FMaxBtn).Click;
+end;
+
+function TCustomUpDown.DoMouseWheelLeft(Shift: TShiftState; MousePos: TPoint): Boolean;
+begin
+  Result := inherited DoMouseWheelLeft(Shift, MousePos);
+  if not Result then
+    if (Orientation=udHorizontal) and not FUseWS  then
+      TCustomSpeedButton(FMinBtn).Click;
+end;
+
+function TCustomUpDown.DoMouseWheelRight(Shift: TShiftState; MousePos: TPoint): Boolean;
+begin
+  Result := inherited DoMouseWheelRight(Shift, MousePos);
+  if not Result then
+    if (Orientation=udHorizontal) and not FUseWS then
+      TCustomSpeedButton(FMaxBtn).Click;
+end;
+
 procedure TCustomUpDown.DoSetBounds(ALeft, ATop, AWidth, AHeight: integer);
 begin
   inherited;
@@ -407,8 +513,11 @@ end;
 
 procedure TCustomUpDown.SetEnabled(Value: Boolean);
 begin
-  FMinBtn.Enabled := Value;
-  FMaxBtn.Enabled := Value;
+  if not FUseWS then
+  begin
+    FMinBtn.Enabled := Value;
+    FMaxBtn.Enabled := Value;
+  end;
   inherited SetEnabled(Value);
 end;
 
@@ -445,27 +554,19 @@ end;
 
 function TCustomUpDown.GetPosition: SmallInt;
 var
-  av,I : Smallint;
+  av,I : Integer;
   str : string;
   InvalidNumber : Boolean;
 begin
   If Associate <> nil then begin
     str := Trim(Associate.Caption);
-    InvalidNumber := str = '';
-    For I := Length(str) downto 1 do
-      if str[I] = DefaultFormatSettings.ThousandSeparator then
-        Delete(Str,I,1)
-      else if str[I] in ['0'..'9'] then
-      else begin
-        InvalidNumber := True;
-        Break;
-      end;
-    If not InvalidNumber then
-      AV := SmallInt(TruncToInt(StrToFloat(str)))
-    else begin
+    str := StringReplace(str, DefaultFormatSettings.ThousandSeparator, '', [rfReplaceAll]);
+    if not TryStrToInt(str, AV) then
+    begin
       Result := FPosition;
       Exit;
     end;
+    //this will also correct for AV > High(SmallInt) or AV < Low(SMallInt)
     If AV > FMax then
       AV := FMax;
     If AV < FMin then
@@ -475,6 +576,16 @@ begin
   Result := FPosition;
 end;
 
+function TCustomUpDown.GetFlat: Boolean;
+begin
+  if FUseWS then
+    Result := false
+  else if FMinBtn<>nil then
+    Result := (FMinBtn as TSpeedButton).Flat
+  else
+    Result := False;
+end;
+
 procedure TCustomUpDown.SetMin(Value: SmallInt);
 begin
   if Value <> FMin then
@@ -482,7 +593,16 @@ begin
     FMin := Value;
     If FPosition < FMin then
       Position := FMin;
+    if FUseWS then
+      TWSCustomUpDownClass(WidgetSetClass).SetMinPosition(Self, FMin);
   end;
+end;
+
+procedure TCustomUpDown.SetMinRepeatInterval(AValue: Byte);
+begin
+  if FMinRepeatInterval = AValue then Exit;
+  FMinRepeatInterval := AValue;
+  if FMinRepeatInterval < 25 then FMinRepeatInterval := 25;
 end;
 
 procedure TCustomUpDown.SetMax(Value: SmallInt);
@@ -492,19 +612,26 @@ begin
     FMax := Value;
     If FPosition > FMax then
       Position := FMax;
+    if FUseWS then
+      TWSCustomUpDownClass(WidgetSetClass).SetMaxPosition(Self, FMax);
   end;
 end;
 
 procedure TCustomUpDown.SetIncrement(Value: Integer);
 begin
-  if Value <> FIncrement then
+  if Value <> FIncrement then begin
     FIncrement := Value;
+    if FUseWS then
+      TWSCustomUpDownClass(WidgetSetClass).SetIncrement(Self, FIncrement);
+  end;
 end;
 
 procedure TCustomUpDown.SetPosition(Value: SmallInt);
 begin
   if FPosition = Value then exit;
   FPosition := Value;
+  if FUseWS then
+    TWSCustomUpDownClass(WidgetSetClass).SetPosition(Self, FPosition);
   UpdateUpDownPositionText;
 end;
 
@@ -512,6 +639,9 @@ procedure TCustomUpDown.SetOrientation(Value: TUDOrientation);
 begin
   if FOrientation = Value then exit;
   FOrientation := Value;
+  if FUseWS then
+    TWSCustomUpDownClass(WidgetSetClass).SetOrientation(Self, FOrientation);
+
   UpdateOrientation;
 end;
 
@@ -524,8 +654,11 @@ end;
 
 procedure TCustomUpDown.SetArrowKeys(Value: Boolean);
 begin
-  if Value <> FArrowKeys then
+  if Value <> FArrowKeys then begin
     FArrowKeys := Value;
+    if FUseWS then
+      TWSCustomUpDownClass(WidgetSetClass).SetUseArrowKeys(Self, Value);
+  end;
 end;
 
 procedure TCustomUpDown.SetThousands(Value: Boolean);
@@ -534,10 +667,21 @@ begin
     FThousands := Value;
 end;
 
+procedure TCustomUpDown.SetFlat(Value: Boolean);
+begin
+  if FUseWS then Exit; // todo: not supported by WS yet
+  if Flat = Value then Exit;
+
+  (FMinBtn as TSpeedButton).Flat := Value;
+  (FMaxBtn as TSpeedButton).Flat := Value;
+end;
+
 procedure TCustomUpDown.SetWrap(Value: Boolean);
 begin
   if Value <> FWrap then
     FWrap := Value;
+  if FUseWS then
+    TWSCustomUpDownClass(WidgetSetClass).SetWrap(Self, FWrap);
 end;
 
 // included by comctrls.pp

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,10 +30,16 @@ unit CleanDirDlg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Buttons, StdCtrls,
-  FileUtil, Laz2_XMLCfg, LazFileUtils, LCLProc, SynRegExpr, ButtonPanel,
-  IDEWindowIntf, IDEHelpIntf, IDEDialogs, LazarusIDEStrConsts, LazConf,
-  IDEProcs, TransferMacros, InputHistory, ShowDeletingFilesDlg;
+  Classes, SysUtils, RegExpr,
+  // LCL
+  LCLProc, Forms, Controls, Graphics, Dialogs, StdCtrls, ButtonPanel,
+  // LazUtils
+  FileUtil, LazFileUtils, Laz2_XMLCfg, LazStringUtils,
+  // IdeIntf
+  IDEWindowIntf, IDEHelpIntf, IDEDialogs,
+  // IDE
+  IDEProcs, LazarusIDEStrConsts, LazConf, TransferMacros, InputHistory,
+  ShowDeletingFilesDlg;
 
 type
 
@@ -42,16 +48,16 @@ type
   TCleanDirectoryDialog = class(TForm)
     ButtonPanel: TButtonPanel;
     DirBrowseButton: TButton;
-    KeepTextFilesCheckbox: TCHECKBOX;
-    SubDirsCheckbox: TCHECKBOX;
-    SimpleSyntaxKeepCheckbox: TCHECKBOX;
-    KeepCombobox: TCOMBOBOX;
-    KeepGroupbox: TGROUPBOX;
-    SimpleSyntaxRemoveCheckbox: TCHECKBOX;
-    RemoveCombobox: TCOMBOBOX;
-    DirCombobox: TCOMBOBOX;
-    DirGroupbox: TGROUPBOX;
-    RemoveGroupbox: TGROUPBOX;
+    KeepTextFilesCheckbox: TCheckBox;
+    SubDirsCheckbox: TCheckBox;
+    SimpleSyntaxKeepCheckbox: TCheckBox;
+    KeepCombobox: TComboBox;
+    KeepGroupbox: TGroupBox;
+    SimpleSyntaxRemoveCheckbox: TCheckBox;
+    RemoveCombobox: TComboBox;
+    DirCombobox: TComboBox;
+    DirGroupbox: TGroupBox;
+    RemoveGroupbox: TGroupBox;
     procedure CleanDirectoryDialogCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure HelpButtonClick(Sender: TObject);

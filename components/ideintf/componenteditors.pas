@@ -19,10 +19,15 @@ unit ComponentEditors;
 interface
 
 uses
-  Classes, SysUtils, LResources, TypInfo, Maps, LCLProc, Forms, Controls, Menus,
-  ExtCtrls, CustomTimer, Graphics, Grids, CheckLst, Buttons, ComCtrls, Dialogs,
-  LazStringGridEdit, CheckListboxEditorDlg, CheckGroupEditorDlg, GraphType,
-  PropEdits, PropEditUtils,
+  Classes, SysUtils, TypInfo,
+  // LCL
+  LCLProc, LResources, Forms, Controls, Menus, ExtCtrls, CustomTimer, Graphics,
+  Grids, CheckLst, Buttons, ComCtrls, Dialogs, GraphType,
+  // LazUtils
+  Maps, LazMethodList, LazLoggerBase,
+  // IdeIntf
+  LazStringGridEdit, CheckListboxEditorDlg, CheckGroupEditorDlg,
+  PropEdits, PropEditUtils, ComponentReg,
   ObjInspStrConsts;
 
 type
@@ -59,6 +64,8 @@ type
     function GetHandlerCount(HookType: TComponentEditorDesignerHookType): integer;
     procedure AddHandler(HookType: TComponentEditorDesignerHookType; const Handler: TMethod);
     procedure RemoveHandler(HookType: TComponentEditorDesignerHookType; const Handler: TMethod);
+    function GetShowNonVisualComponents: boolean; virtual; abstract;
+    procedure SetShowNonVisualComponents(AValue: boolean); virtual; abstract;
   public
     FUndoState: TUndoCompState;
 
@@ -69,13 +76,12 @@ type
     function CanCopy: Boolean; virtual; abstract;
     function CanPaste: Boolean; virtual; abstract;
     function PasteSelection(Flags: TComponentPasteSelectionFlags): boolean; virtual; abstract;
+    function ClearSelection: boolean; virtual; abstract;
     function DeleteSelection: boolean; virtual; abstract;
     function CopySelectionToStream(s: TStream): boolean; virtual; abstract;
     function InsertFromStream(s: TStream; Parent: TWinControl;
                               Flags: TComponentPasteSelectionFlags
                               ): Boolean; virtual; abstract;
-    function InvokeComponentEditor(AComponent: TComponent;
-                                   {%H-}MenuIndex: integer): boolean; deprecated;
     function InvokeComponentEditor(AComponent: TComponent): boolean; virtual; abstract;
     function ChangeClass: boolean; virtual; abstract;
 
@@ -86,8 +92,16 @@ type
     function AddUndoAction(const aPersistent: TPersistent; aOpType: TUndoOpType;
       IsSetNewId: boolean; aFieldName: string; const aOldVal, aNewVal: variant): boolean; virtual; abstract;
     function IsUndoLocked: boolean; virtual; abstract;
+    procedure AddComponent(const NewRegisteredComponent: TRegisteredComponent;
+      const NewComponentClass: TComponentClass;
+      const NewParent: TComponent;
+      const NewLeft,NewTop,NewWidth,NewHeight: Integer); virtual; abstract;
+    procedure AddComponentCheckParent(var NewParent: TComponent;
+      const OriginComponent: TComponent; const OriginWinControl: TWinControl;
+      const NewComponentClass: TComponentClass); virtual; abstract;
 
     procedure DrawDesignerItems(OnlyIfNeeded: boolean); virtual; abstract;
+    property ShowNonVisualComponents: boolean read GetShowNonVisualComponents write SetShowNonVisualComponents;
     function CreateUniqueComponentName(const AClassName: string
                                        ): string; virtual; abstract;
     property PropertyEditorHook: TPropertyEditorHook read GetPropertyEditorHook;
@@ -1016,7 +1030,7 @@ procedure TUntabbedNotebookComponentEditor.DoAddPage;
 begin
   if not HasHook then exit;
   NoteBook.Pages.Add('');
-  AddNewPageToDesigner(NoteBook.Pages.Count-1);
+  AddNewPageToDesigner(NoteBook.PageCount - 1);
 end;
 
 procedure TUntabbedNotebookComponentEditor.DoDeletePage;
@@ -1529,12 +1543,6 @@ begin
   else
     FChangeStamp:=Low(FChangeStamp);
   FHandlers[cedhtModified].CallNotifyEvents(Self);
-end;
-
-function TComponentEditorDesigner.InvokeComponentEditor(AComponent: TComponent;
-  MenuIndex: integer): boolean;
-begin
-  Result:=InvokeComponentEditor(AComponent,-1){%H-};
 end;
 
 procedure TComponentEditorDesigner.DisconnectComponent;

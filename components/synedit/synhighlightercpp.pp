@@ -27,7 +27,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synhighlightercpp.pp 46388 2014-09-30 23:57:55Z martin $
+$Id: synhighlightercpp.pp 57288 2018-02-12 14:55:20Z mattias $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -175,6 +175,7 @@ type
     function Func110: TtkTokenKind;
     function Func115: TtkTokenKind;
     function Func116: TtkTokenKind;
+    function Func121: TtkTokenKind;
     function Func123: TtkTokenKind;
     function Func125: TtkTokenKind;
     function Func141: TtkTokenKind;
@@ -284,11 +285,11 @@ begin
       '_', '0'..'9', 'a'..'z', 'A'..'Z': Identifiers[I] := True;
     else Identifiers[I] := False;
     end;
-    Case I in['_', 'a'..'z', 'A'..'Z'] of
+    Case I in['a'..'z', 'A'..'Z'] of { Bug fix: mHashTable['_'] was uninitialised. [Kit] }
       True:
         begin
           if (I > #64) and (I < #91) then mHashTable[I] := Ord(I) - 64 else
-            if (I > #96) then mHashTable[I] := Ord(I) - 95;
+            mHashTable[I] := Ord(I) - 95;
         end;
     else mHashTable[I] := 0;
     end;
@@ -355,6 +356,7 @@ begin
   fIdentFuncTable[110] := @Func110;
   fIdentFuncTable[115] := @Func115;
   fIdentFuncTable[116] := @Func116;
+  fIdentFuncTable[121] := @Func121;
   fIdentFuncTable[123] := @Func123;
   fIdentFuncTable[125] := @Func125;
   fIdentFuncTable[141] := @Func141;
@@ -684,6 +686,13 @@ end;
 function TSynCppSyn.Func116: TtkTokenKind;
 begin
   if KeyComp('operator') then Result := tkKey else Result := tkIdentifier;
+end;
+
+function TSynCppSyn.Func121: TtkTokenKind;
+begin
+  if KeyComp('_vectorcall') then Result := tkKey else
+    if KeyComp('__vectorcall') then Result := tkKey else
+      Result := tkIdentifier;
 end;
 
 function TSynCppSyn.Func123: TtkTokenKind;

@@ -30,28 +30,31 @@ unit frFiles;
 interface
 
 uses
-  { delphi }
-  SysUtils, Classes, Controls, Forms, StdCtrls, Graphics,
-  { lazarus }
-  IDEOptionsIntf;
+  SysUtils,
+  Controls, StdCtrls, Graphics, Dialogs,
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
   { TfFiles }
 
   TfFiles = class(TAbstractIDEOptionsEditor)
+    bOpenFolder: TButton;
+    cbConfirmFormat: TCheckBox;
+    edFormatFile: TEdit;
     lblStatus: TLabel;
     lblDate: TLabel;
     lblVersion: TLabel;
     lblDescription: TLabel;
     mDescription: TMemo;
-    lblFormatFileName: TLabel;
+    lblSettingsFileName: TLabel;
+    procedure bOpenFolderClick(Sender: TObject);
     procedure FrameResize(Sender: TObject);
   public
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -61,7 +64,7 @@ implementation
 
 uses
   { local }
-  JcfFileUtils, JcfRegistrySettings, JcfSettings, jcfuiconsts, LazFileUtils;
+  JcfFileUtils, JcfRegistrySettings, JcfSettings, jcfuiconsts, LazFileUtils, LCLIntf;
 
 procedure TfFiles.ReadSettings(AOptions: TAbstractIDEOptions);
 var
@@ -69,8 +72,13 @@ var
 begin
   { from the registry, about the file }
   lcSet := GetRegSettings;
-  lblFormatFileName.Caption := Format(lisFrFilesFormatFileIs, [lcSet.FormatConfigFileName]);
-  //lblFormatFileName.Caption := PathCompactPath(lblFormatFileName.Canvas.Handle, 'Format file is ' + lcSet.FormatConfigFileName, 450, cpCenter);
+
+  cbConfirmFormat.Caption := lisFrFileConfirmFormat;
+  cbConfirmFormat.Checked := FormattingSettings.ConfirmFormat;
+
+  lblSettingsFileName.Caption := lisFrFilesSettingsFileIs;
+  edFormatFile.Text := lcSet.FormatConfigFileName;
+  bOpenFolder.Caption := lisFrFilesOpenFolder;
 
   lblDate.Caption := '';
   lblVersion.Caption := '';
@@ -96,17 +104,18 @@ begin
 
     { from the file, about itself}
     lblDate.Caption := Format(lisFrFilesDateFileWritten,
-      [FormatDateTime(ShortDateFormat + ' ' + ShortTimeFormat,
-      FormatSettings.WriteDateTime)]);
-    lblVersion.Caption := Format(lisFrFilesVersionThatWroteThisFile, [FormatSettings.WriteVersion]);
-    mDescription.Text  := FormatSettings.Description;
+      [FormatDateTime(DefaultFormatSettings.ShortDateFormat + ' ' + DefaultFormatSettings.ShortTimeFormat,
+      FormattingSettings.WriteDateTime)]);
+    lblVersion.Caption := Format(lisFrFilesVersionThatWroteThisFile, [FormattingSettings.WriteVersion]);
+    mDescription.Text  := FormattingSettings.Description;
 
   end;
 end;
 
 procedure TfFiles.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  FormatSettings.Description := mDescription.Text;
+  FormattingSettings.Description := mDescription.Text;
+  FormattingSettings.ConfirmFormat := cbConfirmFormat.Checked;
 end;
 
 procedure TfFiles.FrameResize(Sender: TObject);
@@ -114,13 +123,24 @@ const
   SPACING = 8;
 begin
   inherited;
+  cbConfirmFormat.Left := SPACING;
+  cbConfirmFormat.Top := 2;
 
-  lblFormatFileName.Left  := SPACING;
-  lblFormatFileName.Width := ClientWidth - (lblFormatFileName.Left + SPACING);
+  lblSettingsFileName.Left  := SPACING;
+  lblSettingsFileName.Top := cbConfirmFormat.Top + cbConfirmFormat.Height + SPACING;
 
-  // file name is varaible height due to wrap. Rest go below
+  edFormatFile.Left := lblSettingsFileName.Left + lblSettingsFileName.Width + 3;
+  edFormatFile.Width := ClientWidth - (lblSettingsFileName.Left +lblSettingsFileName.Width + bOpenFolder.Width + 2*SPACING);
+  edFormatFile.Top := lblSettingsFileName.Top - (edFormatFile.Height - lblSettingsFileName.Height) div 2;
+
+  bOpenFolder.Left := edFormatFile.Left + edFormatFile.Width + 3;
+  if bOpenFolder.Height < edFormatFile.Height then
+    bOpenFolder.Height := edFormatFile.Height;
+  bOpenFolder.Top := lblSettingsFileName.Top - (bOpenFolder.Height - lblSettingsFileName.Height) div 2;
+
+  // file name is variable height due to wrap. Rest go below
   lblStatus.Left := SPACING;
-  lblStatus.Top  := lblFormatFileName.Top + lblFormatFileName.Height + SPACING;
+  lblStatus.Top  := lblSettingsFileName.Top + lblSettingsFileName.Height + SPACING;
 
   lblDate.Left := SPACING;
   lblDate.Top  := lblStatus.Top + lblStatus.Height + SPACING;
@@ -139,9 +159,14 @@ begin
   mDescription.Width := ClientWidth - (mDescription.Left + SPACING);
 end;
 
+procedure TfFiles.bOpenFolderClick(Sender: TObject);
+begin
+  OpenDocument(ExtractFilePath(edFormatFile.Text));
+end;
+
 function TfFiles.GetTitle: String;
 begin
-  Result := lisFrFilesFormatFile;
+  Result := lisFrFilesSettingsFile;
 end;
 
 procedure TfFiles.Setup(ADialog: TAbstractOptionsEditorDialog);
@@ -151,7 +176,7 @@ end;
 
 class function TfFiles.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 initialization

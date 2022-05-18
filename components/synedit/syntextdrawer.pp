@@ -55,7 +55,7 @@
                         Added BaseStyle property to TheFontFont class.
  ==============================================================================}
 
-// $Id: syntextdrawer.pp 49612 2015-08-07 17:20:40Z juha $
+// $Id: syntextdrawer.pp 58255 2018-06-14 09:05:50Z juha $
 
 // SynEdit note: The name had to be changed to get SynEdit to install 
 //   together with mwEdit into the same Delphi installation
@@ -67,7 +67,12 @@ unit SynTextDrawer;
 interface
 
 uses
-  Classes, Types, SysUtils, LCLProc, LCLType, LCLIntf, Graphics, GraphUtil,
+  Classes, Types, SysUtils,
+  // LCL
+  LCLType, LCLIntf, Graphics, GraphUtil,
+  // LazUtils
+  LazMethodList, LazLoggerBase, LazTracer,
+  // SynEdit
   SynEditTypes, SynEditMiscProcs;
 
 type

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -41,16 +41,22 @@ uses
   {$IFDEF IDE_MEM_CHECK}
   MemCheck,
   {$ENDIF}
-  Classes, SysUtils, contnrs, FileUtil, LazUTF8, LCLType, Controls, Forms, Buttons,
-  StdCtrls, Dialogs, ExtCtrls, LCLProc, ButtonPanel, EditBtn,
-  IDEExternToolIntf, IDEHelpIntf, PropEdits, IDEDialogs, IDECommands,
-  FileProcs, LazFileUtils, TransferMacros, LazarusIDEStrConsts, EnvironmentOpts,
-  KeyMapping, IDEProcs, LazConfigStorage, IDEUtils;
+  Classes, SysUtils, contnrs,
+  // LCL
+  LCLType, Controls, Forms, StdCtrls, Dialogs, LCLProc, ButtonPanel, EditBtn,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8, LazConfigStorage,
+  // Codetools
+  FileProcs,
+  // IdeIntf
+  IDEExternToolIntf, IDEHelpIntf, PropEdits, IDEDialogs, IDECommands, IDEUtils,
+  // IDE
+  TransferMacros, LazarusIDEStrConsts, EnvironmentOpts, KeyMapping;
 
 const
   ExternalToolOptionsVersion = 3;
-  // 3: changed ScanOutputForFPCMessages to scanner SubToolFPC
-  //    changed ScanOutputForMakeMessages to scanner SubToolMake
+  // 3: changed ScanOutputForFPCMessages to parser SubToolFPC
+  //    changed ScanOutputForMakeMessages to parser SubToolMake
 type
 
   { TExternalUserTool - the options of an external tool in the IDE menu Tools }
@@ -61,23 +67,25 @@ type
     fCmdLineParams: string;
     FEnvironmentOverrides: TStringList;
     fFilename: string;
-    FHideMainForm: boolean;
+    FHideWindow: boolean;
     FKey: word;
-    FScanners: TStrings;
+    FParsers: TStrings;
     FShift: TShiftState;
+    FShowConsole: boolean;
     fTitle: string;
     fWorkingDirectory: string;
     fSavedChangeStamp: integer;
-    function GetHasScanner(aName: string): boolean;
+    function GetHasParser(aName: string): boolean;
     function GetModified: boolean;
     procedure SetChangeStamp(AValue: integer);
     procedure SetCmdLineParams(AValue: string);
     procedure SetEnvironmentOverrides(AValue: TStringList);
     procedure SetFilename(AValue: string);
-    procedure SetHasScanner(aName: string; AValue: boolean);
-    procedure SetHideMainForm(AValue: boolean);
+    procedure SetHasParser(aName: string; AValue: boolean);
+    procedure SetHideWindow(AValue: boolean);
     procedure SetModified(AValue: boolean);
-    procedure SetScanners(AValue: TStrings);
+    procedure SetParsers(AValue: TStrings);
+    procedure SetShowConsole(AValue: boolean);
     procedure SetTitle(AValue: string);
     procedure SetWorkingDirectory(AValue: string);
   public
@@ -88,17 +96,18 @@ type
     procedure Assign(Source: TPersistent); override;
     function Load(Config: TConfigStorage; CfgVersion: integer): TModalResult; virtual;
     function Save(Config: TConfigStorage): TModalResult; virtual;
+    procedure IncreaseChangeStamp; inline;
     property CmdLineParams: string read fCmdLineParams write SetCmdLineParams;
     property Filename: string read fFilename write SetFilename;
     property Title: string read fTitle write SetTitle;
     property WorkingDirectory: string read fWorkingDirectory write SetWorkingDirectory;
     property EnvironmentOverrides: TStringList read FEnvironmentOverrides write SetEnvironmentOverrides;
-    property HideMainForm: boolean read FHideMainForm write SetHideMainForm default true;
-    property Scanners: TStrings read FScanners write SetScanners;
-    property HasScanner[aName: string]: boolean read GetHasScanner write SetHasScanner;
+    property Parsers: TStrings read FParsers write SetParsers;
+    property HasParser[aName: string]: boolean read GetHasParser write SetHasParser;
+    property ShowConsole: boolean read FShowConsole write SetShowConsole;
+    property HideWindow: boolean read FHideWindow write SetHideWindow;
     property Modified: boolean read GetModified write SetModified;
     property ChangeStamp: integer read FChangeStamp write SetChangeStamp;
-    procedure IncreaseChangeStamp; inline;
   public
     // these properties are saved in the keymappings, not in the config
     property Key: word read FKey write FKey;
@@ -127,11 +136,9 @@ type
     function Run(Index: integer; {%H-}ShowAbort: boolean): TModalResult;
     // load/save
     function Load(Config: TConfigStorage): TModalResult;
-    function Load(Config: TConfigStorage; const Path: string): TModalResult;
-      override;
+    function Load(Config: TConfigStorage; const Path: string): TModalResult; override;
     function Save(Config: TConfigStorage): TModalResult;
-    function Save(Config: TConfigStorage; const Path: string): TModalResult;
-      override;
+    function Save(Config: TConfigStorage; const Path: string): TModalResult; override;
     procedure LoadShortCuts(KeyCommandRelationList: TKeyCommandRelationList);
     procedure SaveShortCuts(KeyCommandRelationList: TKeyCommandRelationList);
   end;
@@ -144,23 +151,24 @@ type
 
   TExternalToolOptionDlg = class(TForm)
     ButtonPanel: TButtonPanel;
-    WorkingDirEdit: TDirectoryEdit;
     FileNameEdit: TFileNameEdit;
-    MemoParameters: TMemo;
-    ScannersButton: TButton;
-    TitleLabel: TLabel;
-    TitleEdit: TEdit;
     FilenameLabel: TLabel;
-    ParametersLabel: TLabel;
-    WorkingDirLabel: TLabel;
-    OptionsGroupBox: TGroupBox;
-    OptionScanOutputForFPCMessagesCheckBox: TCheckBox;
-    OptionScanOutputForMakeMessagesCheckBox: TCheckBox;
+    HideWindowCheckBox: TCheckBox;
     KeyGroupBox: TGroupBox;
     MacrosGroupbox: TGroupbox;
-    MacrosListbox: TListbox;
     MacrosInsertButton: TButton;
-    chkHideMainForm: TCheckBox;
+    MacrosListbox: TListbox;
+    MemoParameters: TMemo;
+    OptionsGroupBox: TGroupBox;
+    ParametersLabel: TLabel;
+    ScannersButton: TButton;
+    ScanOutputForFPCMessagesCheckBox: TCheckBox;
+    ScanOutputForMakeMessagesCheckBox: TCheckBox;
+    ShowConsoleCheckBox: TCheckBox;
+    TitleEdit: TEdit;
+    TitleLabel: TLabel;
+    WorkingDirEdit: TDirectoryEdit;
+    WorkingDirLabel: TLabel;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure HelpButtonClick(Sender: TObject);
@@ -168,6 +176,7 @@ type
     procedure MacrosListboxClick(Sender: TObject);
     procedure MacrosListboxDblClick(Sender: TObject);
     procedure OKButtonClick(Sender: TObject);
+    procedure ShowConsoleCheckBoxChange(Sender: TObject);
   private
     fAllKeys: TKeyCommandRelationList;
     fOptions: TExternalUserTool;
@@ -231,9 +240,9 @@ begin
   Result:=FChangeStamp=fSavedChangeStamp;
 end;
 
-function TExternalUserTool.GetHasScanner(aName: string): boolean;
+function TExternalUserTool.GetHasParser(aName: string): boolean;
 begin
-  Result:=IndexInStringList(FScanners,cstCaseInsensitive,aName)>=0;
+  Result:=IndexInStringList(FParsers,cstCaseInsensitive,aName)>=0;
 end;
 
 procedure TExternalUserTool.SetChangeStamp(AValue: integer);
@@ -265,25 +274,25 @@ begin
   IncreaseChangeStamp;
 end;
 
-procedure TExternalUserTool.SetHasScanner(aName: string; AValue: boolean);
+procedure TExternalUserTool.SetHasParser(aName: string; AValue: boolean);
 var
   i: Integer;
 begin
-  i:=IndexInStringList(FScanners,cstCaseInsensitive,aName);
+  i:=IndexInStringList(FParsers,cstCaseInsensitive,aName);
   if i>=0 then begin
     if AValue then exit;
-    FScanners.Delete(i);
+    FParsers.Delete(i);
   end else begin
     if not AValue then exit;
-    FScanners.Add(aName);
+    FParsers.Add(aName);
   end;
   IncreaseChangeStamp;
 end;
 
-procedure TExternalUserTool.SetHideMainForm(AValue: boolean);
+procedure TExternalUserTool.SetHideWindow(AValue: boolean);
 begin
-  if FHideMainForm=AValue then Exit;
-  FHideMainForm:=AValue;
+  if FHideWindow=AValue then Exit;
+  FHideWindow:=AValue;
   IncreaseChangeStamp;
 end;
 
@@ -295,10 +304,17 @@ begin
     fSavedChangeStamp:=FChangeStamp;
 end;
 
-procedure TExternalUserTool.SetScanners(AValue: TStrings);
+procedure TExternalUserTool.SetParsers(AValue: TStrings);
 begin
-  if (FScanners=AValue) or FScanners.Equals(AValue) then Exit;
-  FScanners.Assign(AValue);
+  if (FParsers=AValue) or FParsers.Equals(AValue) then Exit;
+  FParsers.Assign(AValue);
+  IncreaseChangeStamp;
+end;
+
+procedure TExternalUserTool.SetShowConsole(AValue: boolean);
+begin
+  if FShowConsole=AValue then Exit;
+  FShowConsole:=AValue;
   IncreaseChangeStamp;
 end;
 
@@ -322,7 +338,7 @@ constructor TExternalUserTool.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   FEnvironmentOverrides:=TStringList.Create;
-  FScanners:=TStringList.Create;
+  FParsers:=TStringList.Create;
   fSavedChangeStamp:=CTInvalidChangeStamp;
   Clear;
 end;
@@ -330,7 +346,7 @@ end;
 destructor TExternalUserTool.Destroy;
 begin
   FreeAndNil(FEnvironmentOverrides);
-  FreeAndNil(FScanners);
+  FreeAndNil(FParsers);
   inherited Destroy;
 end;
 
@@ -343,14 +359,15 @@ begin
     FEnvironmentOverrides.Clear;
   end;
   Filename:='';
-  HideMainForm:=true;
-  if FScanners.Count>0 then
+  if FParsers.Count>0 then
   begin
-    FScanners.Clear;
+    FParsers.Clear;
     IncreaseChangeStamp;
   end;
   Title:='';
   WorkingDirectory:='';
+  ShowConsole:=false;
+  HideWindow:=true;
 end;
 
 function TExternalUserTool.Equals(Obj: TObject): boolean;
@@ -362,8 +379,9 @@ begin
     Result:=(CmdLineParams=Src.CmdLineParams)
       and EnvironmentOverrides.Equals(Src.EnvironmentOverrides)
       and (Filename=Src.Filename)
-      and (HideMainForm=Src.HideMainForm)
-      and Scanners.Equals(Src.Scanners)
+      and Parsers.Equals(Src.Parsers)
+      and (ShowConsole=Src.ShowConsole)
+      and (HideWindow=Src.HideWindow)
       and (Title=Src.Title)
       and (WorkingDirectory=Src.WorkingDirectory)
       and (Key=Src.Key)
@@ -383,8 +401,9 @@ begin
     WorkingDirectory:=Src.WorkingDirectory;
     EnvironmentOverrides:=Src.EnvironmentOverrides;
     Filename:=Src.Filename;
-    HideMainForm:=Src.HideMainForm;
-    Scanners:=Src.Scanners;
+    Parsers:=Src.Parsers;
+    ShowConsole:=Src.ShowConsole;
+    HideWindow:=Src.HideWindow;
     Title:=Src.Title;
     Key:=Src.Key;
     Shift:=Src.Shift;
@@ -401,18 +420,19 @@ begin
   fCmdLineParams:=Config.GetValue('CmdLineParams/Value','');
   fWorkingDirectory:=Config.GetValue('WorkingDirectory/Value','');
   Config.GetValue('EnvironmentOverrides/',FEnvironmentOverrides);
-  HideMainForm:=Config.GetValue('HideMainForm/Value',true);
+  ShowConsole:=Config.GetValue('ShowConsole/Value',false);
+  HideWindow:=Config.GetValue('HideWindow/Value',true);
 
   if CfgVersion<3 then
   begin
     if Config.GetValue('ScanOutputForFPCMessages/Value',false) then
-      FScanners.Add(SubToolFPC);
+      FParsers.Add(SubToolFPC);
     if Config.GetValue('ScanOutputForMakeMessages/Value',false) then
-      FScanners.Add(SubToolMake);
+      FParsers.Add(SubToolMake);
     if Config.GetValue('ShowAllOutput/Value',false) then
-      FScanners.Add(SubToolDefault);
+      FParsers.Add(SubToolDefault);
   end else
-    Config.GetValue('Scanners/',FScanners);
+    Config.GetValue('Scanners/',FParsers);
 
   Modified:=false;
   Result:=mrOk;
@@ -425,8 +445,9 @@ begin
   Config.SetDeleteValue('CmdLineParams/Value',CmdLineParams,'');
   Config.SetDeleteValue('WorkingDirectory/Value',WorkingDirectory,'');
   Config.SetValue('EnvironmentOverrides/',FEnvironmentOverrides);
-  Config.SetValue('Scanners/',FScanners);
-  Config.SetDeleteValue('HideMainForm/Value',HideMainForm,true);
+  Config.SetValue('Scanners/',FParsers);
+  Config.SetDeleteValue('ShowConsole/Value',ShowConsole,false);
+  Config.SetDeleteValue('HideWindow/Value',HideWindow,true);
   Modified:=false;
   Result:=mrOk;
 end;
@@ -534,7 +555,9 @@ begin
     Tool.WorkingDirectory:=Item.WorkingDirectory;
     Tool.CmdLineParams:=Item.CmdLineParams;
     Tool.EnvironmentOverrides:=Item.EnvironmentOverrides;
-    Tool.Scanners:=Item.Scanners;
+    Tool.Parsers:=Item.Parsers;
+    Tool.ShowConsole:=Item.ShowConsole;
+    Tool.HideWindow:=Item.HideWindow;
     Tool.ResolveMacros:=true;
     if not RunExternalTool(Tool) then exit;
   finally
@@ -660,10 +683,11 @@ begin
   WorkingDirEdit.Text:=fOptions.WorkingDirectory;
   fKeyBox.Key:=fOptions.Key;
   fKeyBox.ShiftState:=fOptions.Shift;
-  OptionScanOutputForFPCMessagesCheckBox.Checked:=fOptions.HasScanner[SubToolFPC];
-  OptionScanOutputForMakeMessagesCheckBox.Checked:=fOptions.HasScanner[SubToolMake];
-  chkHideMainForm.Checked:=FOptions.HideMainForm;
-  fScanners.Assign(fOptions.Scanners);
+  ScanOutputForFPCMessagesCheckBox.Checked:=fOptions.HasParser[SubToolFPC];
+  ScanOutputForMakeMessagesCheckBox.Checked:=fOptions.HasParser[SubToolMake];
+  ShowConsoleCheckBox.Checked:=FOptions.ShowConsole;
+  HideWindowCheckBox.Checked:=FOptions.HideWindow;
+  fScanners.Assign(fOptions.Parsers);
   UpdateButtons;
 end;
 
@@ -675,14 +699,19 @@ begin
   fOptions.WorkingDirectory:=WorkingDirEdit.Text;
   fOptions.Key:=fKeyBox.Key;
   fOptions.Shift:=fKeyBox.ShiftState;
-  FOptions.HideMainForm := chkHideMainForm.Checked;
-  fOptions.HasScanner[SubToolFPC]:=OptionScanOutputForFPCMessagesCheckBox.Checked;
-  fOptions.HasScanner[SubToolMake]:=OptionScanOutputForMakeMessagesCheckBox.Checked;
+  FOptions.ShowConsole := ShowConsoleCheckBox.Checked;
+  FOptions.HideWindow := HideWindowCheckBox.Checked;
+  fOptions.HasParser[SubToolFPC]:=ScanOutputForFPCMessagesCheckBox.Checked;
+  fOptions.HasParser[SubToolMake]:=ScanOutputForMakeMessagesCheckBox.Checked;
 end;
 
 procedure TExternalToolOptionDlg.UpdateButtons;
 begin
   ScannersButton.Visible:=false;
+  {$IFDEF Windows}
+  HideWindowCheckBox.Visible:=true;
+  ShowConsoleCheckBox.Visible:=true;
+  {$ENDIF}
 end;
 
 function TExternalToolOptionDlg.ScannersToString(List: TStrings): string;
@@ -721,13 +750,14 @@ begin
   WorkingDirLabel.Caption:=lisEdtExtToolWorkingDirectory;
   OptionsGroupBox.Caption:=lisLazBuildOptions;
 
-  with OptionScanOutputForFPCMessagesCheckBox do
+  with ScanOutputForFPCMessagesCheckBox do
     Caption:=lisEdtExtToolScanOutputForFreePascalCompilerMessages;
-
-  with OptionScanOutputForMakeMessagesCheckBox do
+  with ScanOutputForMakeMessagesCheckBox do
     Caption:=lisEdtExtToolScanOutputForMakeMessages;
-
-  chkHideMainForm.Caption := lisEdtExtToolHideMainForm;
+  ShowConsoleCheckBox.Caption:=lisShowConsole;
+  ShowConsoleCheckBox.Hint:=lisOnlyAvailableOnWindowsRunToolInANewConsole;
+  HideWindowCheckBox.Caption:=lisHideWindow;
+  HideWindowCheckBox.Hint:=lisOnlyAvailableOnWindowsRunTheToolHidden;
 
   with KeyGroupBox do
     Caption:=lisEdtExtToolKey;
@@ -828,10 +858,10 @@ begin
         ConflictName:=GetCategoryAndName;
         if ct=ctConflictKeyA then
           ConflictName:=ConflictName
-                    +' ('+KeyAndShiftStateToEditorKeyString(ShortcutA)
+                    +' ('+KeyAndShiftStateToEditorKeyString(ShortcutA)+')'
         else
           ConflictName:=ConflictName
-                   +' ('+KeyAndShiftStateToEditorKeyString(ShortcutB);
+                   +' ('+KeyAndShiftStateToEditorKeyString(ShortcutB)+')';
         case IDEMessageDialog(lisPEConflictFound,
            Format(lisTheKeyIsAlreadyAssignedToRemoveTheOldAssignmentAnd,
                   [KeyAndShiftStateToKeyString(Key,Shift), LineEnding,
@@ -878,7 +908,7 @@ begin
   else
     s:='$'+fTransferMacros[i].Name+'()';
   ALine := MemoParameters.CaretPos.Y;
-  If MemoParameters.Lines.Count = 0 Then
+  if ALine >= MemoParameters.Lines.Count then
     MemoParameters.Lines.Add('');
   AStr := MemoParameters.Lines[Aline];
   MemoParameters.Lines[Aline] := AStr + s;
@@ -915,6 +945,12 @@ begin
                   mtError, [mbCancel]);
     ModalResult:=mrCancel;
   end;
+end;
+
+procedure TExternalToolOptionDlg.ShowConsoleCheckBoxChange(Sender: TObject);
+begin
+  if ShowConsoleCheckBox.Checked then
+    HideWindowCheckBox.Checked:=false;
 end;
 
 initialization

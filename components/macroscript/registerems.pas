@@ -5,8 +5,13 @@ unit RegisterEMS;
 interface
 
 uses
-  Classes, SysUtils, SrcEditorIntf, IDEOptionsIntf, EMScriptMacro, EMSSelfTest,
-  EMSIdeOptions, EMSStrings, Dialogs;
+  Classes, SysUtils,
+  // LCL
+  Dialogs,
+  // IdeIntf
+  SrcEditorIntf, IDEOptionsIntf, IDEOptEditorIntf,
+  // MacroScript
+  EMScriptMacro, EMSSelfTest, EMSIdeOptions, EMSStrings;
 
 procedure Register;
 
@@ -22,7 +27,7 @@ begin
   RegisterIDEOptionsGroup(OptionsGroup, TEMSConfig);
   RegisterIDEOptionsEditor(OptionsGroup, TEMSIdeOptionsFrame, 1);
 
-  if not EMSSupported then exit;
+  if not EMSSupported then {%H-}exit;
 
   conf := GetEMSConf;
   try

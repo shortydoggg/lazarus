@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,9 +25,15 @@ unit debugger_eventlog_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Graphics, Forms, StdCtrls, Spin, CheckLst,
-  ComCtrls, LCLType, LCLIntf, ColorBox, Debugger, LazarusIDEStrConsts,
-  IDEOptionsIntf, DbgIntfDebuggerBase, EnvironmentOpts, BaseDebugManager;
+  Classes, SysUtils,
+  // LCL
+  LCLType, LCLIntf, Forms, StdCtrls, Spin, CheckLst, ComCtrls, ColorBox, Graphics,
+  // DebuggerIntf
+  DbgIntfDebuggerBase,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  Debugger, LazarusIDEStrConsts, EnvironmentOpts, BaseDebugManager;
 
 type
   { TDebuggerEventLogOptionsFrame }
@@ -96,7 +102,7 @@ begin
   end
   else
   begin
-    Sender.Canvas.Brush.Color := Sender.BackgroundColor;
+    Sender.Canvas.Brush.Color := Sender.Color;
     Sender.Canvas.Font.Color := Sender.Font.Color;
   end;
   NodeRect := Node.DisplayRect(True);

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -31,16 +31,19 @@ unit MissingUnits;
 interface
 
 uses
-  // FCL+LCL
-  Classes, SysUtils, LCLProc, LResources, Forms, Controls, Graphics,
-  Dialogs, Buttons, StdCtrls, FileUtil, CheckLst, Menus, ExtCtrls,
-  // Components
-  SynEdit, CodeToolManager, DefineTemplates,
-  // IDEIntf
-  LazIDEIntf,
-  // IDE
-  CompilerOptions,
-  PackageDefs, Project, IDEProcs, LazarusIDEStrConsts;
+  // FCL
+  Classes, SysUtils,
+  // LCL
+  LCLProc, LResources, Forms, Controls, Graphics, Dialogs, Buttons, StdCtrls,
+  CheckLst, Menus, ExtCtrls,
+  // LazUtils
+  FileUtil,
+  // CodeTools
+  DefineTemplates,
+  // IdeIntf
+  IDEImagesIntf,
+   // IDE
+  PackageDefs, Project, LazarusIDEStrConsts;
 
 type
 
@@ -132,10 +135,10 @@ begin
     MissingUnitsGroupBox.Caption:=lisTheseUnitsWereNotFound;
     ChoicesLabel.Caption:=lisMissingUnitsChoices;
     SearchButton.Caption:=lisMissingUnitsSearch;
-    SearchButton.LoadGlyphFromResourceName(HInstance, 'menu_search_find');
+    IDEImages.AssignImage(SearchButton, 'menu_search_find');
     SkipButton.Caption:=lisMissingUnitsSkip;
-    SkipButton.LoadGlyphFromResourceName(HInstance, 'debugger_current_line_breakpoint');
-    CommentButton.LoadGlyphFromResourceName(HInstance, 'menu_comment'); // or insertremark
+    IDEImages.AssignImage(SkipButton, 'debugger_current_line_breakpoint');
+    IDEImages.AssignImage(CommentButton, 'menu_comment'); // or insertremark
     if ATargetDelphi then begin
       CommentButton.Caption:=lisMissingUnitsForDelphi;
       Info1Label.Caption:=lisMissingUnitsInfo1b;

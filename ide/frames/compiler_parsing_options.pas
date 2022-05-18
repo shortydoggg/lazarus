@@ -5,8 +5,15 @@ unit compiler_parsing_options;
 interface
 
 uses
-  ExtCtrls, StdCtrls, SysUtils, IDEOptionsIntf, CompilerOptions,
-  LinkScanner, PackageDefs, LazarusIDEStrConsts;
+  SysUtils,
+  // LCL
+  ExtCtrls, StdCtrls,
+  // CodeTools
+  LinkScanner,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  CompilerOptions, PackageDefs, LazarusIDEStrConsts;
 
 type
 
@@ -34,12 +41,14 @@ implementation
 const
   // CompilerMode names to be shown after -M...
   CompilerModesPretty: array[TCompilerMode] of shortstring = (
-      'fpc', 'Delphi', 'DelphiUnicode', 'gpc', 'tp', 'ObjFPC', 'MacPas', 'iso'
+      'fpc', 'Delphi', 'DelphiUnicode', 'gpc', 'tp', 'ObjFPC', 'MacPas', 'iso',
+      'ExtPas'
     );
   // CompilerMode descriptions.
   CompilerModesDescr: array[TCompilerMode] of shortstring = (
       'Free Pascal', 'Delphi', 'Delphi Unicode', 'GNU Pascal', 'Turbo Pascal',
-      'Object Pascal', 'Mac Pascal', 'ISO/IEC 7185 Pascal'
+      'Object Pascal', 'Mac Pascal', 'ISO/IEC 7185 Pascal',
+      'Extended Pascal, ISO 10206'
     );
 
 function SyntaxModeToCaption(const ModeStr: string): string;

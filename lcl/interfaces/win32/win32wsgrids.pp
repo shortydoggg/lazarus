@@ -1,4 +1,4 @@
-{ $Id: win32wsgrids.pp 50855 2015-12-17 10:51:30Z ondrej $}
+{ $Id: win32wsgrids.pp 58155 2018-06-06 14:05:31Z ondrej $}
 {
  *****************************************************************************
  *                              Win32WSGrids.pp                              * 
@@ -56,6 +56,8 @@ begin
   Result:=ACellRect;
   Dec(Result.Right);
   Dec(Result.Bottom);
+  Inc(Result.Left, constCellPadding);
+  Dec(Result.Right, constCellPadding);
   TextHeight := ACanvas.TextHeight(' ');
   case AColumnLayout of
     tlTop: EditorTop:=Result.Top+constCellPadding;
@@ -73,17 +75,12 @@ var
   WChar: WPARAM;
 begin
   WChar:=WPARAM(Ord(Ch[1]));
-  if UnicodeEnabledOS then begin
-    if Length(Ch)>1 then begin
-      S := UTF8ToUTF16(Ch);
-      if S='' then WChar := WPARAM(Ord('?'))
-      else         WChar := WPARAM(S[1]);
-    end;
-    PostMessageW(AEditor.Handle, WM_CHAR, WChar, 0);
-    exit;
-  end else
-    WChar := WPARAM(Ord(UTF8ToAnsi(Ch)[1]));
-  PostMessage(AEditor.Handle, WM_CHAR, WChar, 0);
+  if Length(Ch)>1 then begin
+    S := UTF8ToUTF16(Ch);
+    if S='' then WChar := WPARAM(Ord('?'))
+    else         WChar := WPARAM(S[1]);
+  end;
+  PostMessageW(AEditor.Handle, WM_CHAR, WChar, 0);
 end;
 
 end.

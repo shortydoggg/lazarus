@@ -1,5 +1,5 @@
 {%MainUnit ../interfacebase.pp}
-{ $Id: interfacebase.inc 41389 2013-05-25 09:22:25Z juha $
+{ $Id: interfacebase.inc 58108 2018-06-04 01:03:43Z ondrej $
 ******************************************************************************
                                   TWidgetSet
 
@@ -31,13 +31,13 @@ end;
 
 function TWidgetSet.GetAppHandle: THandle;
 begin
-  DebugLn('Warning: AppHandle is not implemented for this widgetset yet');
+  // DebugLn('Warning: AppHandle is not implemented for this widgetset yet');
   Result := 0;
 end;
 
 procedure TWidgetSet.SetAppHandle(const AValue: THandle);
 begin
-  DebugLn('Warning: AppHandle is not implemented for this widgetset yet');
+  // DebugLn('Warning: AppHandle is not implemented for this widgetset yet');
 end;
 
 procedure TWidgetSet.PassCmdLineOptions;
@@ -89,11 +89,8 @@ begin
     lcFormIcon,
     lcModalWindow,
     lcReceivesLMClearCutCopyPasteReliably,
-    lcEmulatedMDI:
-      Result := LCL_CAPABILITY_YES;
-    lcSendsUTF8KeyPress:
-      Result := LCL_CAPABILITY_YES;
-    lcAccessibilitySupport: Result := LCL_CAPABILITY_NO;
+    lcSendsUTF8KeyPress,
+    lcEmulatedMDI: Result := LCL_CAPABILITY_YES;
   else
     Result := LCL_CAPABILITY_NO;
   end;

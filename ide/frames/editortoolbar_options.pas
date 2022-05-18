@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
  Author: Juha Manninen
@@ -28,9 +28,15 @@ unit editortoolbar_options;
 interface
 
 uses
-  Classes, SysUtils, ExtCtrls, Buttons, Controls, StdCtrls, DividerBevel,
-  LazarusIDEStrConsts, LCLProc, IDEOptionsIntf, EnvironmentOpts,
-  EditorToolbarStatic, ToolbarConfig;
+  Classes, SysUtils,
+  // LCL
+  LCLProc, ExtCtrls, Buttons, Controls, StdCtrls,
+  // LazControls
+  DividerBevel,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf,
+  // IDE
+  LazarusIDEStrConsts, EnvironmentOpts, EditorToolbarStatic, ToolbarConfig;
 
 type
 
@@ -104,7 +110,9 @@ begin
   cbCoolBarVisible.Caption := lisEditorToolbarVisible;
   lblpos.Caption := lisPosition;
   bDefaultToolbar.Caption := lisCmpRestoreDefaults;
+  IDEImages.AssignImage(bDefaultToolbar, 'restore_defaults');
   bConfig.Caption := lisCoolbarConfigure;
+  IDEImages.AssignImage(bConfig, 'preferences');
 end;
 
 procedure TEditorToolbarOptionsFrame.ReadSettings(AOptions: TAbstractIDEOptions);

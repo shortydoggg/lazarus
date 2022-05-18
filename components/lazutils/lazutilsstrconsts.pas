@@ -1,18 +1,12 @@
 {
- /***************************************************************************
-                            LazUtilsStrConsts.pas
-                            ----------------
-     This unit contains all resource strings from LazUtils
-
-
- ***************************************************************************/
-
  *****************************************************************************
-  This file is part of the Lazarus Component Library (LCL)
+  This file is part of LazUtils.
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
  *****************************************************************************
+
+  This unit contains all resource strings from LazUtils.
 }
 unit LazUtilsStrConsts;
 
@@ -43,6 +37,10 @@ resourceString
   lrsUnableToCreateConfigDirectoryS = 'Unable to create config directory "%s"';
   lrsProgramFileNotFound = 'program file not found %s';
   lrsCanNotExecute = 'can not execute %s';
+  lrsListMustBeEmpty = 'List must be empty';
+  lrsListIndexExceedsBounds = 'List index exceeds bounds (%d)';
+  lrsERRORInCode = 'ERROR in code: ';
+  lrsCreatingGdbCatchableError = 'Creating gdb catchable error:';
 
   // XPath
   lrsNodeSet = 'node set';

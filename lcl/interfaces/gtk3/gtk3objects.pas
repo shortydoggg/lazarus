@@ -21,7 +21,7 @@ unit gtk3objects;
 interface
 
 uses
-  Classes, SysUtils, Graphics, types, LCLType, LCLProc, LazUTF8,
+  Classes, SysUtils, Graphics, types, LCLType, LCLProc, LazUTF8, IntegerList,
   LazGtk3, LazGdk3, LazGObject2, LazPango1, LazPangoCairo1, LazGdkPixbuf2,
   LazGLib2, LazCairo1, FPCanvas;
 
@@ -219,6 +219,7 @@ type
     Parent: PGtkWidget;
     Window: PGdkWindow;
     ParentPixmap: PGdkPixbuf;
+    fncOrigin:TPoint; // non-client area offsets surface origin
     constructor Create(AWidget: PGtkWidget; const APaintEvent: Boolean = False); virtual;
     constructor Create(AWindow: PGdkWindow; const APaintEvent: Boolean); virtual;
     constructor CreateFromCairo(AWidget: PGtkWidget; ACairo: PCairo_t); virtual;
@@ -468,7 +469,7 @@ begin
   FLogFont := ALogFont;
   FFontName := ALogFont.lfFaceName;
   AContext := gdk_pango_context_get;
-  if (LowerCase(FFontName) = 'default') or (FFontName = '') then
+  if IsFontNameDefault(FFontName) or (FFontName = '') then
   begin
     if Gtk3WidgetSet.DefaultAppFontName <> '' then
       FHandle := pango_font_description_from_string(PgChar(Gtk3WidgetSet.DefaultAppFontName))
@@ -802,6 +803,7 @@ begin
   FStyle := psSolid;
   FEndCap := pecFlat;
   FJoinStyle := pjsRound;
+  FPenMode := pmCopy; // default pen mode
 end;
 
 procedure TGtk3Pen.setCosmetic(b: Boolean);
@@ -964,7 +966,7 @@ begin
   if FBkMode = TRANSPARENT then
   begin
     DebugLn('TGtk3DeviceContext.ApplyBrush setting transparent source');
-    cairo_set_source_surface(Widget, CairoSurface, 0 , 0);
+    //cairo_set_source_surface(Widget, CairoSurface, 0 , 0);
   end else
     SetSourceColor(FCurrentBrush.Color);
 end;
@@ -990,7 +992,6 @@ var
   w: Double;
 begin
   SetSourceColor(FCurrentPen.Color);
-
   case FCurrentPen.Mode of
     pmBlack: begin
       SetSourceColor(clBlack);
@@ -1094,6 +1095,7 @@ begin
   begin
     AWindow := gdk_get_default_root_window;
     AWindow^.get_geometry(@x, @y, @w, @h);
+    w:=1; h:=1;
     // ParentPixmap := gdk_pixbuf_get_from_window(AWindow, x, y, w, h);
     // Widget := gdk_cairo_create(AWindow);
     // gdk_cairo_set_source_pixbuf(Widget, ParentPixmap, 0, 0);
@@ -1208,6 +1210,8 @@ begin
 end;
 
 procedure TGtk3DeviceContext.CreateObjects;
+var
+  Matrix:cairo_matrix_t;
 begin
   FBkMode := TRANSPARENT;
   FCurrentImage := nil;
@@ -1225,6 +1229,10 @@ begin
   FCurrentFont := FFont;
   FvImage := TGtk3Image.Create(nil, 1, 1, 8, CAIRO_FORMAT_ARGB32);
   FCurrentImage := FvImage;
+
+  cairo_get_matrix(Widget, @Matrix);
+  // widget with menu or other non-client exclusions have offset in trasform matrix
+  fncOrigin:=Point(round(Matrix.x0),round(Matrix.y0));
 end;
 
 procedure TGtk3DeviceContext.DeleteObjects;
@@ -1294,7 +1302,7 @@ begin
     //  [dx, dy, x, y, s]));
     // pango_renderer_activate();
     // pango_cairo_show_layout(Widget, Layout);
-    ColorToCairoRGB(CurrentTextColor, R, G , B);
+    ColorToCairoRGB(TColor(CurrentTextColor), R, G , B);
     cairo_set_source_rgb(Widget, R, G, B);
     // writeln('DRAWINGTEXT ',S,' WITH R=',dbgs(R),' G=',dbgs(G),' B=',dbgs(B));
     FCurrentFont.Layout^.set_text(PChar(S), length(S));
@@ -1545,13 +1553,14 @@ begin
   if ABrush <> 0 then
   begin
     ATempBrush := FCurrentBrush;
+    fBkMode:=OPAQUE;
     SetCurrentBrush(TGtk3Brush(ABrush));
   end;
 
   applyBrush;
   cairo_rectangle(Widget, x, y, w, h);
+  cairo_stroke_preserve(Widget);
   cairo_fill(Widget);
-  cairo_stroke(Widget);
   // cairo_clip(Widget);
 
   // cairo_fill_preserve(Widget);
@@ -2015,7 +2024,7 @@ var
         Result:=LineStart;
         LineWidth:=0;
         repeat
-          charLen:=UTF8CharacterLength(@AText[result]);
+          charLen:=UTF8CodepointSize(@AText[result]);
           CharWidth:=GetLineWidthInPixel(Result,charLen);
           inc(LineWidth,CharWidth);
           if LineWidth>MaxWidthInPixel then break;
@@ -2024,7 +2033,7 @@ var
         until false;
         // at least one char
         if Result=LineStart then begin
-          charLen:=UTF8CharacterLength(@AText[result]);
+          charLen:=UTF8CodepointSize(@AText[result]);
           inc(Result,charLen);
         end;
       end;
@@ -2050,7 +2059,7 @@ var
   end;
 
 var
-  LinesList: TFPList;
+  LinesList: TIntegerList;
   LineStart, LineEnd, LineLen: integer;
   ArraySize, TotalSize: integer;
   i: integer;
@@ -2064,15 +2073,15 @@ begin
     exit;
   end;
   InitFont;
-  LinesList:=TFPList.Create;
+  LinesList:=TIntegerList.Create;
   LineStart:=0;
 
   // find all line starts and line ends
   repeat
-    LinesList.Add({%H-}Pointer(PtrInt(LineStart)));
+    LinesList.Add(LineStart);
     // find line end
     LineEnd:=FindLineEnd(LineStart);
-    LinesList.Add({%H-}Pointer(PtrInt(LineEnd)));
+    LinesList.Add(LineEnd);
     // find next line start
     LineStart:=LineEnd;
     if AText[LineStart] in [#10,#13] then
@@ -2099,7 +2108,7 @@ begin
   while i<LinesList.Count do
   begin
     // add  LineEnd - LineStart + 1 for the #0
-    LineLen:={%H-}PtrUInt(LinesList[i+1])-{%H-}PtrUInt(LinesList[i])+1;
+    LineLen:=LinesList[i+1]-LinesList[i]+1;
     inc(TotalSize,LineLen);
     inc(i,2);
   end;
@@ -2115,8 +2124,8 @@ begin
     // set the pointer to the start of the current line
     CurLineEntry[i shr 1]:=CurLineStart;
     // copy the line
-    LineStart:=integer({%H-}PtrUInt(LinesList[i]));
-    LineEnd:=integer({%H-}PtrUInt(LinesList[i+1]));
+    LineStart:=LinesList[i];
+    LineEnd:=LinesList[i+1];
     LineLen:=LineEnd-LineStart;
     if LineLen>0 then
       Move(AText[LineStart],CurLineStart^,LineLen);

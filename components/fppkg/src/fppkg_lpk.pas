@@ -50,17 +50,17 @@ function LPKFindPackage(PackageName: string): string;
   //do we need to add a target to each LPK file?
   //or do we split the package in multiple ones
 var
-  BuildDir: string;
-  P: TFPPackage;
+//  BuildDir: string;
+//  P: TFPPackage;
   files: TStrings;
 begin
   if PackageName = '' then
     pkgglobals.Error(SErrNoPackageSpecified);
 
-  P := AvailableRepository.PackageByName(PackageName);
+{  P := AvailableRepository.PackageByName(PackageName);
   BuildDir := PackageBuildPath(P);
   files := FindAllFiles(BuildDir, '*.lpk');
-
+ }
   if files.Count > 0 then
     Result := files[0]
   else

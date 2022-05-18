@@ -4,13 +4,14 @@
 
 unit sparta_DockedFormEditor;
 
+{$warn 5023 off : no warning about unused units}
 interface
 
 uses
   sparta_reg_DockedFormEditor, sparta_DesignedForm, sparta_Resizer, 
   sparta_ResizerFrame, SpartaAPI, sparta_FakeCustom, sparta_FakeForm, 
   sparta_FakeFrame, sparta_FakeNonControl, sparta_MainIDE, sparta_HashUtils, 
-  LazarusPackageIntf;
+  sparta_strconsts, LazarusPackageIntf;
 
 implementation
 

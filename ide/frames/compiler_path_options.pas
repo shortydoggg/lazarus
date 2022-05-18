@@ -5,10 +5,16 @@ unit compiler_path_options;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LazFileUtils, LazFileCache, Controls, Dialogs,
-  Buttons, StdCtrls, LCLType, IDEOptionsIntf, MacroIntf, IDEDialogs,
-  CompOptsIntf, Project, CompilerOptions, LazarusIDEStrConsts, PathEditorDlg,
-  IDEProcs, CheckCompilerOpts, ShowCompilerOpts, ImExportCompilerOpts;
+  Classes, SysUtils,
+  // LCL
+  LCLProc, LCLType,Controls, Dialogs, Buttons, StdCtrls,
+  // LazUtils
+  LazFileUtils, LazFileCache,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, MacroIntf, CompOptsIntf, IDEImagesIntf, IDEDialogs,
+  // IDE
+  Project, CompilerOptions, LazarusIDEStrConsts, PathEditorDlg, IDEProcs,
+  CheckCompilerOpts, ShowCompilerOpts, ImExportCompilerOpts;
 
 type
 
@@ -73,7 +79,7 @@ implementation
 
 {$R *.lfm}
 
-function CheckSearchPath(const Context, ExpandedPath: string; Level: TCheckCompileOptionsMsgLvl): boolean;
+function CheckSearchPath(const Context, ExpandedPath: string; Level: TCheckCompileOptionsMsgLvl; Hint: string = ''): boolean;
 var
   CurPath: string;
   p: integer;
@@ -82,13 +88,15 @@ var
 begin
   Result := False;
 
+  if Hint<>'' then Hint:=#13#13+Hint;
+
   // check for *
   if Ord(Level) <= Ord(ccomlHints) then
   begin
     if System.Pos('*', ExpandedPath) > 0 then
     begin
       if IDEMessageDialog(lisHint, Format(
-        lisTheContainsAStarCharacterLazarusUsesThisAsNormalCh, [Context, LineEnding]),
+        lisTheContainsAStarCharacterLazarusUsesThisAsNormalCh, [Context, LineEnding])+Hint,
         mtWarning, [mbOK, mbCancel]) <> mrOk then
         exit;
     end;
@@ -107,7 +115,7 @@ begin
         if not DirPathExistsCached(CurPath) then
         begin
           if IDEMessageDialog(lisCCOWarningCaption, Format(
-            lisTheContainsANotExistingDirectory, [Context, LineEnding, CurPath]),
+            lisTheContainsANotExistingDirectory, [Context, LineEnding, CurPath])+Hint,
             mtWarning, [mbIgnore, mbCancel]) <> mrIgnore then
             Exit;
         end;
@@ -127,7 +135,7 @@ begin
         ErrorMsg := SpecialCharsToStr(HasChars);
       if ErrorMsg <> '' then
       begin
-        if IDEMessageDialog(lisCCOWarningCaption, Context + LineEnding + ErrorMsg,
+        if IDEMessageDialog(lisCCOWarningCaption, Context + LineEnding + ErrorMsg+Hint,
           mtWarning, [mbOK, mbCancel]) <> mrOk then
           exit;
       end;
@@ -159,7 +167,7 @@ var
     if NewParsedOutputDir<>'' then
       p:=RemoveSearchPaths(p,NewParsedOutputDir);
 
-    Result := CheckSearchPath(Context, p, Level);
+    Result := CheckSearchPath(Context, p, Level, lisHintClickOnShowOptionsToFindOutWhereInheritedPaths);
   end;
 
 var
@@ -393,8 +401,8 @@ begin
       if IDEQuestionDialog(lisDuplicateSearchPath,
         Format(lisTheOtherSourcesContainsADirectoryWhichIsAlreadyInT,
               [LineEnding+LineEnding, Duplicates.DelimitedText]),
-        mtError, [mrCancel, mrYes, lisRemoveThePathsFromOtherSources, 'IsDefault']
-        )=mrYes
+        mtError, [mrCancel,
+                  mrYes, lisRemoveThePathsFromOtherSources, 'IsDefault']) = mrYes
       then begin
         // remove paths from SrcPath
         OldUnparsedSrcPath:=FCompilerOpts.SrcPath;
@@ -435,7 +443,7 @@ function TCompilerPathOptionsFrame.PathEditBtnExecuted(Context: String; var NewP
 var
   ExpandedPath: string;
 begin
-  NewPath := FCompilerOpts.ShortenPath(NewPath, False);
+  NewPath := FCompilerOpts.ShortenPath(NewPath);
   ExpandedPath := TrimSearchPath(NewPath, FCompilerOpts.BaseDirectory, true);
   Result := CheckSearchPath(Context, ExpandedPath, ccomlHints);
 end;
@@ -464,7 +472,7 @@ begin
     if OpenDialog.Execute then
     begin
       NewFilename := TrimFilename(OpenDialog.Filename);
-      NewFilename := FCompilerOpts.ShortenPath(NewFilename, False);
+      NewFilename := FCompilerOpts.ShortenPath(NewFilename);
       if Sender = btnUnitOutputDir then
         UnitOutputDirEdit.Text := OpenDialog.Filename;
     end;
@@ -500,7 +508,7 @@ begin
     AnchorParallel(akTop, 0, OtherUnitsEdit);
     AnchorParallel(akBottom, 0, OtherUnitsEdit);
     AnchorParallel(akRight, 0, Self);
-    AutoSize := True;
+    Width := Height;
     AssociatedEdit := OtherUnitsEdit;
     ContextCaption := OtherUnitsLabel.Caption;
     Templates:='$(LazarusDir)/lcl/units/$(TargetCPU)-$(TargetOS)' +
@@ -527,7 +535,7 @@ begin
     AnchorParallel(akTop, 0, IncludeFilesEdit);
     AnchorParallel(akBottom, 0, IncludeFilesEdit);
     AnchorParallel(akRight, 0, Self);
-    AutoSize := True;
+    Width := Height;
     AssociatedEdit := IncludeFilesEdit;
     ContextCaption := IncludeFilesLabel.Caption;
     Templates := 'include;inc';
@@ -550,7 +558,7 @@ begin
     AnchorParallel(akTop, 0, OtherSourcesEdit);
     AnchorParallel(akBottom, 0, OtherSourcesEdit);
     AnchorParallel(akRight, 0, Self);
-    AutoSize := True;
+    Width := Height;
     AssociatedEdit := OtherSourcesEdit;
     ContextCaption := OtherSourcesLabel.Caption;
     Templates := '$(LazarusDir)/lcl' +
@@ -576,7 +584,7 @@ begin
     AnchorParallel(akTop, 0, LibrariesEdit);
     AnchorParallel(akBottom, 0, LibrariesEdit);
     AnchorParallel(akRight, 0, Self);
-    AutoSize := True;
+    Width := Height;
     AssociatedEdit := LibrariesEdit;
     ContextCaption := LibrariesLabel.Caption;
     Templates := '/usr/X11R6/lib;/sw/lib';
@@ -599,7 +607,7 @@ begin
     AnchorParallel(akTop, 0, UnitOutputDirEdit);
     AnchorParallel(akBottom, 0, UnitOutputDirEdit);
     AnchorParallel(akRight, 0, Self);
-    AutoSize := True;
+    Width := Height;
     OnClick := @FileBrowseBtnClick;
   end;
   UnitOutputDirEdit.AnchorToNeighbour(akRight, 0, btnUnitOutputDir);
@@ -618,7 +626,7 @@ begin
     AnchorParallel(akTop, 0, DebugPathEdit);
     AnchorParallel(akBottom, 0, DebugPathEdit);
     AnchorParallel(akRight, 0, Self);
-    AutoSize := True;
+    Width := Height;
     AssociatedEdit := DebugPathEdit;
     ContextCaption := DebugPathLabel.Caption;
     Templates := '$(LazarusDir)/lcl/include' +
@@ -633,8 +641,8 @@ begin
 
   // register special buttons in the dialog itself
   btnShowOptions := CreateButton(dlgCOShowOptions);
-  btnShowOptions.LoadGlyphFromResourceName(HInstance, 'menu_compiler_options');
-  btnShowOptions.OnClick  := @DoShowOptions;
+  IDEImages.AssignImage(btnShowOptions, 'menu_compiler_options');
+  btnShowOptions.OnClick := @DoShowOptions;
   // Check
   btnCheck := CreateButton(lisCompTest);
   btnCheck.ModalResult := mrNone;
@@ -645,16 +653,16 @@ begin
 
   // Export
   btnExport := CreateButton(lisExport);
-  btnExport.OnClick  := @DoExport;
+  btnExport.OnClick := @DoExport;
   btnExport.Hint := dlgCOLoadSaveHint;
   btnExport.LoadGlyphFromStock(idButtonSave);
   // Import
   btnLoadSave := CreateButton(lisImport);
-  btnLoadSave.OnClick  := @DoImport;
+  btnLoadSave.OnClick := @DoImport;
   btnLoadSave.Hint := dlgCOLoadSaveHint;
   btnLoadSave.LoadGlyphFromStock(idButtonOpen);
   if btnLoadSave.Glyph.Empty then
-    btnLoadSave.LoadGlyphFromResourceName(HInstance, 'laz_save');
+    IDEImages.AssignImage(btnLoadSave, 'laz_save');
 
   ADialog.AddButtonSeparator;
 

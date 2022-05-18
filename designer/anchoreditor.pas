@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -36,23 +36,27 @@ interface
 
 uses
   Classes, SysUtils, LCLProc, Forms, Controls, Dialogs, StdCtrls, Buttons, Spin,
-  IDECommands, PropEdits, IDEDialogs, LazarusIDEStrConsts, IDEOptionDefs;
+  ExtCtrls, Graphics, IDECommands, PropEdits, IDEDialogs, LazarusIDEStrConsts,
+  IDEOptionDefs, IDEImagesIntf;
 
 type
+
+  TAnchorSideRefSet = set of TAnchorSideReference;
 
   { TAnchorDesignerSideValues }
 
   TAnchorDesignerSideValues = class
-  private
-    FAmbiguousBorderSpace: boolean;
-    FAmbiguousEnabled: boolean;
-    FAmbiguousSide: boolean;
-    FAmbiguousSibling: boolean;
+  strict private
+    FBorderSpace_IsAmbiguous: boolean;
+    FEnabled_IsAmbiguous: boolean;
+    FSibling_IsAmbiguous: boolean;
     FAnchorKind: TAnchorKind;
-    FBorderSpace: integer;
-    FEnabled: boolean;
+    FBorderSpace: Integer;
+    FCount: Integer;
+    FEnabled: Boolean;
     FSibling: string;
-    FSide: TAnchorSideReference;
+    FSideRefs: TAnchorSideRefSet;
+    function GetSideRef_IsAmbiguous: Boolean;
   public
     constructor Create(TheKind: TAnchorKind);
     procedure SetValues(AControl: TControl);
@@ -60,20 +64,20 @@ type
   public
     property AnchorKind: TAnchorKind read FAnchorKind;
     property Enabled: boolean read FEnabled write FEnabled;
-    property AmbiguousEnabled: boolean read FAmbiguousEnabled write FAmbiguousEnabled;
+    property Enabled_IsAmbiguous: boolean read FEnabled_IsAmbiguous write FEnabled_IsAmbiguous;
     property Sibling: string read FSibling write FSibling;
-    property AmbiguousSibling: boolean read FAmbiguousSibling write FAmbiguousSibling;
-    property Side: TAnchorSideReference read FSide write FSide;
-    property AmbiguousSide: boolean read FAmbiguousSide write FAmbiguousSide;
+    property Sibling_IsAmbiguous: boolean read FSibling_IsAmbiguous write FSibling_IsAmbiguous;
+    property SideRef_IsAmbiguous: Boolean read GetSideRef_IsAmbiguous;
     property BorderSpace: integer read FBorderSpace write FBorderSpace;
-    property AmbiguousBorderSpace: boolean read FAmbiguousBorderSpace write FAmbiguousBorderSpace;
+    property BorderSpace_IsAmbiguous: boolean read FBorderSpace_IsAmbiguous write FBorderSpace_IsAmbiguous;
+    property SideRefs: TAnchorSideRefSet read FSideRefs;
+    property Count: Integer read FCount;
   end;
-  
 
   { TAnchorDesignerValues }
 
   TAnchorDesignerValues = class
-  private
+  strict private
     FAmbiguousBorderspaceAround: boolean;
     FBorderspaceAround: integer;
     FSides: array[TAnchorKind] of TAnchorDesignerSideValues;
@@ -90,7 +94,33 @@ type
     property BorderspaceAround: integer read FBorderspaceAround write SetBorderspaceAround;
     property AmbiguousBorderspaceAround: boolean read FAmbiguousBorderspaceAround write SetAmbiguousBorderspaceAround;
   end;
-  
+
+  { TAnchorDesignerSideControls }
+
+  TAnchorDesigner = class;
+
+  TAnchorDesignerSideControls = class
+  strict private
+    FForm: TAnchorDesigner;
+    {Controls}
+    FEnabled_CheckBox: TCheckBox;
+    FSibling_ComboBox: TComboBox;
+    FSideRef_SButtons: array [TAnchorSideReference] of TSpeedButton;
+    FBorderSpace_SpinEdit: TSpinEdit;
+    {Frames}
+    FEnabled_Frame: TShape;
+    FSibling_Frame: TShape;
+    FSideRef_Frames: array [TAnchorSideReference] of TShape;
+    FBorderSpace_Frame: TShape;
+  public
+    constructor Create(
+        AEnabled: TCheckBox;
+        ASibling: TComboBox;
+        ABorderSpace_SpinEdit: TSpinEdit;
+        ASideRefTop{Left}, ASideRefCenter, ASideRefBottom{Right}: TSpeedButton;
+        AForm: TAnchorDesigner);
+    procedure Refresh(ASideValues: TAnchorDesignerSideValues);
+  end;
 
   { TAnchorDesigner }
 
@@ -129,9 +159,9 @@ type
     TopRefTopSpeedButton: TSpeedButton;
     TopSiblingComboBox: TComboBox;
     TopSiblingLabel: TLabel;
-    procedure AnchorDesignerCreate(Sender: TObject);
-    procedure AnchorDesignerDestroy(Sender: TObject);
-    procedure AnchorDesignerShow(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure FormShow(Sender: TObject);
     procedure AnchorEnabledCheckBoxChange(Sender: TObject);
     procedure BorderSpaceSpinEditChange(Sender: TObject);
     procedure FormDeactivate(Sender: TObject);
@@ -142,7 +172,8 @@ type
     FSelection: TPersistentSelectionList;
     FSelectedControlsList: TList;
     FUpdating: Boolean;
-    fNeedUpdate: boolean;
+    FNeedUpdate: boolean;
+    FSideControls: array[TAnchorKind] of TAnchorDesignerSideControls;
     procedure Refresh;
     procedure OnRefreshPropertyValues;
     procedure OnSetSelection(const ASelection: TPersistentSelectionList);
@@ -154,6 +185,9 @@ type
     procedure CollectValues(const ASelection: TList;
                             out TheValues: TAnchorDesignerValues;
                             out SelectedControlCount: integer);
+    procedure SetCaptionsAndHints;
+    procedure LoadGlyphs;
+    procedure CreateSideControls;
   protected
     procedure KeyUp(var Key: Word; Shift: TShiftState); override;
     procedure UpdateShowing; override;
@@ -179,17 +213,211 @@ implementation
 
 {$R *.lfm}
 
+type
+  TFrameStyle=(fsNormal, fsAmbigous, fsIgnored, fsNone);
+
+const
+  FrameMargin = 1;
+
+  clNormal=clRed;             // color for fsNormal
+  clAmbigous=clRed;           // color for fsAmbigous
+  clIgnored=clBtnShadow;      // color for fsIgnored
+
+  psNormal=psSolid;           // pen style for fsNormal
+  psAmbigous=psDot;           // pen style for fsAmbigous
+  psIgnored=psSolid;          // pen style for fsIgnored
+
+
+function CreateFrameForControl(AControl: TControl; AFrameMargin: Integer=FrameMargin): TShape;
+begin
+  Result:=TShape.Create(AControl.Owner);
+  with Result do
+  begin
+    Brush.Style:=bsClear;
+    Brush.Color:=clNone;
+    Shape:=stRectangle;
+    Pen.Cosmetic:=True;
+    Height:=AControl.Height+AFrameMargin*2;
+    Width:=AControl.Width+AFrameMargin*2;
+    Parent:=AControl.Parent;
+    AnchorVerticalCenterTo(AControl);
+    AnchorHorizontalCenterTo(AControl);
+    SendToBack;
+    Visible:=False;
+  end;
+end;
+
+procedure SetEnabledControls(AEnabled: Boolean; AControls: array of TControl);
+var
+  i: Integer;
+begin
+  for i:=Low(AControls) to High(AControls) do
+    AControls[i].Enabled:=AEnabled;
+end;
+
+procedure SetFrameStyle(AFrame: TShape; AStyle: TFrameStyle);
+begin
+  case AStyle of
+    fsNormal:
+    begin
+      AFrame.Pen.Color:=clNormal;
+      AFrame.Pen.Style:=psNormal;
+      AFrame.Visible:=True;
+    end;
+
+    fsAmbigous:
+    begin
+      AFrame.Pen.Color:=clAmbigous;
+      AFrame.Pen.Style:=psAmbigous;
+      AFrame.Visible:=True;
+    end;
+
+    fsIgnored:
+    begin
+      AFrame.Pen.Color:=clIgnored;
+      AFrame.Pen.Style:=psIgnored;
+      AFrame.Visible:=True;
+    end;
+
+    fsNone:
+    begin
+      AFrame.Visible:=False;
+    end;
+  end;
+end;
+
+{ TAnchorDesignerSideControls }
+
+constructor TAnchorDesignerSideControls.Create(
+    AEnabled: TCheckBox;
+    ASibling: TComboBox;
+    ABorderSpace_SpinEdit: TSpinEdit;
+    ASideRefTop{Left}, ASideRefCenter, ASideRefBottom{Right}: TSpeedButton;
+    AForm: TAnchorDesigner);
+var
+  SideRefIndex: TAnchorSideReference;
+begin
+  inherited Create;
+  FForm:=AForm;
+  // Assign controls
+  FEnabled_CheckBox:=AEnabled;
+  FSibling_ComboBox:=ASibling;
+  FBorderSpace_SpinEdit:=ABorderSpace_SpinEdit;
+  FSideRef_SButtons[asrTop]:=ASideRefTop;
+  FSideRef_SButtons[asrCenter]:=ASideRefCenter;
+  FSideRef_SButtons[asrBottom]:=ASideRefBottom;
+  // Create and assign frames
+  FEnabled_Frame:=CreateFrameForControl(FEnabled_CheckBox);
+  FSibling_Frame:=CreateFrameForControl(FSibling_ComboBox);
+  FBorderSpace_Frame:=CreateFrameForControl(FBorderSpace_SpinEdit);
+  for SideRefIndex:=Low(SideRefIndex) to High(SideRefIndex) do
+    FSideRef_Frames[SideRefIndex]:=CreateFrameForControl(FSideRef_SButtons[SideRefIndex]);
+end;
+
+procedure TAnchorDesignerSideControls.Refresh(ASideValues: TAnchorDesignerSideValues);
+var
+  SiblingText: String;
+  SideRefIndex: TAnchorSideReference;
+begin
+  // Enabled
+  FEnabled_CheckBox.AllowGrayed:=ASideValues.Enabled_IsAmbiguous;
+  if ASideValues.Enabled_IsAmbiguous then
+    FEnabled_CheckBox.State:=cbGrayed
+  else
+    FEnabled_CheckBox.Checked:=ASideValues.Enabled;
+
+  // BorderSpace
+  if ASideValues.BorderSpace_IsAmbiguous then
+    FBorderSpace_SpinEdit.Value:=-1
+  else
+    FBorderSpace_SpinEdit.Value:=ASideValues.BorderSpace;
+  FBorderSpace_SpinEdit.ValueEmpty:=ASideValues.BorderSpace_IsAmbiguous;
+
+  // Sibling
+  SiblingText:=ASideValues.Sibling;
+  FSibling_ComboBox.Text:=SiblingText;
+  FForm.FillComboBoxWithSiblings(FSibling_ComboBox);
+
+  // SideRefs                (after Enabled & Sibling)
+  for SideRefIndex:=Low(SideRefIndex) to High(SideRefIndex) do
+  begin
+    // Set Down
+    FSideRef_SButtons[SideRefIndex].Down:=(SideRefIndex in ASideValues.SideRefs);
+
+    // Not Down => fsNone
+    if not FSideRef_SButtons[SideRefIndex].Down then
+    begin
+      SetFrameStyle(FSideRef_Frames[SideRefIndex], fsNone);
+      Continue;
+    end;
+
+    // Single select
+    if ASideValues.Count=1 then
+      if FEnabled_CheckBox.Checked and (FSibling_ComboBox.Text<>'') then
+      begin
+        SetFrameStyle(FSideRef_Frames[SideRefIndex], fsNormal);
+        Continue;
+      end
+      else
+      begin
+        SetFrameStyle(FSideRef_Frames[SideRefIndex], fsIgnored);
+        Continue;
+      end;
+
+    // Multiselect
+    if ASideValues.SideRef_IsAmbiguous then
+    begin
+      SetFrameStyle(FSideRef_Frames[SideRefIndex], fsAmbigous);
+      Continue;
+    end
+    else
+      if (FEnabled_CheckBox.State<>cbUnchecked) then
+      begin
+        SetFrameStyle(FSideRef_Frames[SideRefIndex], fsNormal);
+        Continue;
+      end
+      else
+      begin
+        SetFrameStyle(FSideRef_Frames[SideRefIndex], fsIgnored);
+        Continue;
+      end;
+  end;
+end;
+
 { TAnchorDesigner }
 
-procedure TAnchorDesigner.AnchorDesignerCreate(Sender: TObject);
-var
-  AnchorEnabledHint: String;
+procedure TAnchorDesigner.FormCreate(Sender: TObject);
 begin
   Name:=NonModalIDEWindowNames[nmiwAnchorEditor];
   KeyPreview:=true;
   FSelection:=TPersistentSelectionList.Create;
   FSelectedControlsList := TList.Create;
 
+  SetCaptionsAndHints;
+  LoadGlyphs;
+  CreateSideControls;
+
+  GlobalDesignHook.AddHandlerRefreshPropertyValues(@OnRefreshPropertyValues);
+  GlobalDesignHook.AddHandlerSetSelection(@OnSetSelection);
+end;
+
+procedure TAnchorDesigner.FormDestroy(Sender: TObject);
+  var
+  i: TAnchorKind;
+begin
+  FreeAndNil(Values);
+  GlobalDesignHook.RemoveAllHandlersForObject(Self);
+  FreeAndNil(FSelection);
+  FreeAndNil(FSelectedControlsList);
+
+  for i:=Low(i) to High(i) do
+    FSideControls[i].Free;
+end;
+
+procedure TAnchorDesigner.SetCaptionsAndHints;
+var
+  AnchorEnabledHint: String;
+begin
   AnchorEnabledHint:=lisAnchorEnabledHint;
 
   AroundBorderSpaceSpinEdit.Hint:=lisAroundBorderSpaceHint;
@@ -234,43 +462,64 @@ begin
   TopRefTopSpeedButton.Hint:= lisAnchorTopToTopSide;
   TopSiblingComboBox.Hint:=lisTopSiblingComboBoxHint;
   TopSiblingLabel.Caption:=lisSibling;
-
-  LeftRefLeftSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_left');
-  LeftRefCenterSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_center_horizontal');
-  LeftRefRightSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_left_right');
-  RightRefLeftSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_left_right');
-  RightRefCenterSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_center_horizontal');
-  RightRefRightSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_right');
-  TopRefTopSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_top');
-  TopRefCenterSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_center_vertical');
-  TopRefBottomSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_top_bottom');
-  BottomRefTopSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_top_bottom');
-  BottomRefCenterSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_center_vertical');
-  BottomRefBottomSpeedButton.LoadGlyphFromResourceName(HInstance, 'anchor_bottom');
-
-  // autosizing
-  BottomSiblingLabel.AnchorToNeighbour(akLeft,10,BottomAnchoredCheckBox);
-  BottomSiblingComboBox.AnchorToNeighbour(akLeft,5,BottomSiblingLabel);
-  BottomSiblingLabel.AnchorVerticalCenterTo(BottomSiblingComboBox);
-  BottomAnchoredCheckBox.AnchorVerticalCenterTo(BottomSiblingComboBox);
-  TopSiblingLabel.AnchorToNeighbour(akLeft,10,TopAnchoredCheckBox);
-  TopSiblingComboBox.AnchorToNeighbour(akLeft,5,TopSiblingLabel);
-  TopSiblingLabel.AnchorVerticalCenterTo(TopSiblingComboBox);
-  TopAnchoredCheckBox.AnchorVerticalCenterTo(TopSiblingComboBox);
-
-  GlobalDesignHook.AddHandlerRefreshPropertyValues(@OnRefreshPropertyValues);
-  GlobalDesignHook.AddHandlerSetSelection(@OnSetSelection);
 end;
 
-procedure TAnchorDesigner.AnchorDesignerDestroy(Sender: TObject);
+procedure TAnchorDesigner.LoadGlyphs;
 begin
-  FreeAndNil(Values);
-  GlobalDesignHook.RemoveAllHandlersForObject(Self);
-  FreeAndNil(FSelection);
-  FreeAndNil(FSelectedControlsList);
+  IDEImages.AssignImage(LeftRefLeftSpeedButton, 'anchor_left_left');
+  IDEImages.AssignImage(LeftRefCenterSpeedButton, 'anchor_left_center');
+  IDEImages.AssignImage(LeftRefRightSpeedButton, 'anchor_left_right');
+  IDEImages.AssignImage(RightRefLeftSpeedButton, 'anchor_right_left');
+  IDEImages.AssignImage(RightRefCenterSpeedButton, 'anchor_right_center');
+  IDEImages.AssignImage(RightRefRightSpeedButton, 'anchor_right_right');
+  IDEImages.AssignImage(TopRefTopSpeedButton, 'anchor_top_top');
+  IDEImages.AssignImage(TopRefCenterSpeedButton, 'anchor_top_center');
+  IDEImages.AssignImage(TopRefBottomSpeedButton, 'anchor_top_bottom');
+  IDEImages.AssignImage(BottomRefTopSpeedButton, 'anchor_bottom_top');
+  IDEImages.AssignImage(BottomRefCenterSpeedButton, 'anchor_bottom_center');
+  IDEImages.AssignImage(BottomRefBottomSpeedButton, 'anchor_bottom_bottom');
 end;
 
-procedure TAnchorDesigner.AnchorDesignerShow(Sender: TObject);
+procedure TAnchorDesigner.CreateSideControls;
+begin
+  FSideControls[akTop]:=TAnchorDesignerSideControls.Create(
+      TopAnchoredCheckBox,
+      TopSiblingComboBox,
+      TopBorderSpaceSpinEdit,
+      TopRefTopSpeedButton,
+      TopRefCenterSpeedButton,
+      TopRefBottomSpeedButton,
+      Self);
+
+  FSideControls[akBottom]:=TAnchorDesignerSideControls.Create(
+      BottomAnchoredCheckBox,
+      BottomSiblingComboBox,
+      BottomBorderSpaceSpinEdit,
+      BottomRefTopSpeedButton,
+      BottomRefCenterSpeedButton,
+      BottomRefBottomSpeedButton,
+      Self);
+
+  FSideControls[akLeft]:=TAnchorDesignerSideControls.Create(
+      LeftAnchoredCheckBox,
+      LeftSiblingComboBox,
+      LeftBorderSpaceSpinEdit,
+      LeftRefLeftSpeedButton,     // Left <-> Top
+      LeftRefCenterSpeedButton,
+      LeftRefRightSpeedButton,    // Right <-> Bottom
+      Self);
+
+  FSideControls[akRight]:=TAnchorDesignerSideControls.Create(
+      RightAnchoredCheckBox,
+      RightSiblingComboBox,
+      RightBorderSpaceSpinEdit,
+      RightRefLeftSpeedButton,    // Left <-> Top
+      RightRefCenterSpeedButton,
+      RightRefRightSpeedButton,   // Right <-> Bottom
+      Self);
+end;
+
+procedure TAnchorDesigner.FormShow(Sender: TObject);
 begin
   Refresh;
 end;
@@ -287,7 +536,6 @@ var
   ReferenceSide: TAnchorSideReference;
   CheckPosition: Integer;
 begin
-  //debugln('TAnchorDesigner.AnchorEnabledCheckBoxChange ',DbgSName(Sender),' ',dbgs(TCheckBox(Sender).Checked));
   if FUpdating or (Values=nil) then exit;
   if Sender=LeftAnchoredCheckBox then
     Kind:=akLeft
@@ -301,9 +549,7 @@ begin
     exit;
   NewValue:=TCheckBox(Sender).Checked;
   CurSide:=Values.Sides[Kind];
-  //debugln('TAnchorDesigner.AnchorEnabledCheckBoxChange CurSide.AmbiguousEnabled=',dbgs(CurSide.AmbiguousEnabled),' CurSide.Enabled=',dbgs(CurSide.Enabled),' NewValue=',dbgs(NewValue));
-  if CurSide.AmbiguousEnabled or (CurSide.Enabled<>NewValue) then begin
-    //debugln('TAnchorDesigner.AnchorEnabledCheckBoxChange ',DbgSName(Sender),' NewValue=',dbgs(NewValue));
+  if CurSide.Enabled_IsAmbiguous or (CurSide.Enabled<>NewValue) then begin
     // user changed an anchor
     SelectedControls:=GetSelectedControls;
     if SelectedControls=nil then exit;
@@ -316,9 +562,8 @@ begin
         CurControl.AnchorSide[Kind].Side,
         ReferenceControl,ReferenceSide,CheckPosition))
       then begin
-        if IDEMessageDialog(lisCCOWarningCaption,
-          lisThisWillCreateACircularDependency, mtWarning, [mbIgnore, mbCancel])<>
-            mrIgnore
+        if IDEMessageDialog(lisCCOWarningCaption, lisThisWillCreateACircularDependency,
+                            mtWarning, [mbIgnore, mbCancel]) <> mrIgnore
         then begin
           Refresh;
           exit;
@@ -335,7 +580,7 @@ begin
       else
         CurControl.Anchors:=CurControl.Anchors-[Kind];
     end;
-    GlobalDesignHook.Modified(Self);
+    GlobalDesignHook.Modified(Self, 'Anchors');
     GlobalDesignHook.RefreshPropertyValues;
   end;
 end;
@@ -350,7 +595,6 @@ var
   CurControl: TControl;
   Kind: TAnchorKind;
 begin
-  //debugln('TAnchorDesigner.BorderSpaceSpinEditChange ',DbgSName(Sender),' ',dbgs(TSpinEdit(Sender).Value));
   if FUpdating or (Values=nil) then exit;
   Around:=false;
   if Sender=LeftBorderSpaceSpinEdit then
@@ -370,10 +614,9 @@ begin
   CurSide:=Values.Sides[Kind];
   if (Around and (Values.AmbiguousBorderspaceAround
                   or (Values.BorderspaceAround<>NewValue)))
-  or ((not Around) and (CurSide.AmbiguousBorderSpace
+  or ((not Around) and (CurSide.BorderSpace_IsAmbiguous
                         or (CurSide.BorderSpace<>NewValue)))
   then begin
-    //debugln('TAnchorDesigner.BorderSpaceSpinEditChange ',DbgSName(Sender),' NewValue=',dbgs(NewValue));
     // user changed a BorderSpace
     SelectedControls:=GetSelectedControls;
     if SelectedControls=nil then exit;
@@ -384,7 +627,7 @@ begin
       else
         CurControl.BorderSpacing.Space[Kind]:=NewValue;
     end;
-    GlobalDesignHook.Modified(Self);
+    GlobalDesignHook.Modified(Self, 'Anchors');
     GlobalDesignHook.RefreshPropertyValues;
   end;
 end;
@@ -398,7 +641,7 @@ end;
 
 function compareControlTop(Item1, Item2: pointer): Integer;
 begin
-  if TControl(Item1).Top<TControl(TControl).Top then Result:=-1
+  if TControl(Item1).Top<TControl(Item2).Top then Result:=-1
   else if TControl(Item1).Top>TControl(Item2).Top then Result:=1
   else Result:=0;
 end;
@@ -437,13 +680,14 @@ var
   UseNeighbours: boolean;
   OldPositions,OldPositions2: array of Integer;
 
-  function NeighbourPosition(c: TControl):Integer;
+  function NeighbourPosition(c: TControl): Integer;
   begin
+    result:=0;
     case CurNeighbour of
-    akTop: result:=c.top;
-    akLeft: result:=c.Left;
-    akRight: result:=c.left+c.Width;
-    akBottom: result:=c.Top+c.Height;
+      akTop: result:=c.top;
+      akLeft: result:=c.Left;
+      akRight: result:=c.left+c.Width;
+      akBottom: result:=c.Top+c.Height;
     end;
   end;
 
@@ -472,7 +716,6 @@ var
   ReferenceSide: TAnchorSideReference;
   CheckPosition: Integer;
 begin
-  //debugln('TAnchorDesigner.SiblingComboBoxChange ',DbgSName(Sender),' ',TComboBox(Sender).Text);
   if FUpdating or (Values=nil) then exit;
   if Sender=LeftSiblingComboBox then
     Kind:=akLeft
@@ -486,9 +729,8 @@ begin
     exit;
   NewValue:=TComboBox(Sender).Caption;
   CurSide:=Values.Sides[Kind];
-  if CurSide.AmbiguousSibling or (CompareText(CurSide.Sibling,NewValue)<>0) then
+  if CurSide.Sibling_IsAmbiguous or (CompareText(CurSide.Sibling,NewValue)<>0) then
   begin
-    //debugln('TAnchorDesigner.SiblingComboBoxChange ',DbgSName(Sender),' NewSibling=',DbgSName(NewSibling));
     // user changed a sibling
     SelectedControls:=GetSelectedControls;
     if SelectedControls=nil then exit;
@@ -570,17 +812,17 @@ begin
       end;
     end;
 
-    GlobalDesignHook.Modified(Self);
+    GlobalDesignHook.Modified(Self, 'Anchors');
     GlobalDesignHook.RefreshPropertyValues;
-    if UseNeighbours then TComboBox(Sender).Caption:=NewValue;
+    if UseNeighbours then
+      TComboBox(Sender).Caption:=NewValue;
   end;
 end;
 
 procedure TAnchorDesigner.ReferenceSideButtonClicked(Sender: TObject);
 var
-  CurSide: TAnchorDesignerSideValues;
   Kind: TAnchorKind;
-  Side: TAnchorSideReference;
+  SideRef: TAnchorSideReference;
   SelectedControls: TList;
   i: Integer;
   CurControl: TControl;
@@ -588,90 +830,89 @@ var
   ReferenceSide: TAnchorSideReference;
   CheckPosition: Integer;
 begin
-  //debugln('TAnchorDesigner.ReferenceSideButtonClicked ',DbgSName(Sender),' ',dbgs(TSpeedButton(Sender).Down));
-  if FUpdating or (Values=nil) then exit;
+  if FUpdating or (Values=nil) then Exit;
+
+  // Get Kind and SideRef
   if Sender=LeftRefCenterSpeedButton then begin
     Kind:=akLeft;
-    Side:=asrCenter;
+    SideRef:=asrCenter;
   end
   else if Sender=LeftRefLeftSpeedButton then begin
     Kind:=akLeft;
-    Side:=asrLeft;
+    SideRef:=asrLeft;
   end
   else if Sender=LeftRefRightSpeedButton then begin
     Kind:=akLeft;
-    Side:=asrRight;
+    SideRef:=asrRight;
   end
   else if Sender=RightRefCenterSpeedButton then begin
     Kind:=akRight;
-    Side:=asrCenter;
+    SideRef:=asrCenter;
   end
   else if Sender=RightRefLeftSpeedButton then begin
     Kind:=akRight;
-    Side:=asrLeft;
+    SideRef:=asrLeft;
   end
   else if Sender=RightRefRightSpeedButton then begin
     Kind:=akRight;
-    Side:=asrRight;
+    SideRef:=asrRight;
   end
   else if Sender=TopRefCenterSpeedButton then begin
     Kind:=akTop;
-    Side:=asrCenter;
+    SideRef:=asrCenter;
   end
   else if Sender=TopRefTopSpeedButton then begin
     Kind:=akTop;
-    Side:=asrTop;
+    SideRef:=asrTop;
   end
   else if Sender=TopRefBottomSpeedButton then begin
     Kind:=akTop;
-    Side:=asrBottom;
+    SideRef:=asrBottom;
   end
   else if Sender=BottomRefCenterSpeedButton then begin
     Kind:=akBottom;
-    Side:=asrCenter;
+    SideRef:=asrCenter;
   end
   else if Sender=BottomRefTopSpeedButton then begin
     Kind:=akBottom;
-    Side:=asrTop;
+    SideRef:=asrTop;
   end
   else if Sender=BottomRefBottomSpeedButton then begin
     Kind:=akBottom;
-    Side:=asrBottom;
+    SideRef:=asrBottom;
   end else
-    exit;
-  CurSide:=Values.Sides[Kind];
-  if CurSide.AmbiguousSide or (CurSide.Side<>Side) then
-  begin
-    //debugln('TAnchorDesigner.ReferenceSideButtonClicked ',DbgSName(Sender));
-    // user changed a sibling
+    Exit;
+
+    // User changed a sibling
     SelectedControls:=GetSelectedControls;
-    if SelectedControls=nil then exit;
-    // check
-    for i:=0 to SelectedControls.Count-1 do begin
+    if SelectedControls=nil then Exit;
+    // Check
+    for i:=0 to SelectedControls.Count-1 do
+    begin
       CurControl:=TControl(SelectedControls[i]);
       if (Kind in CurControl.Anchors)
-      and (not CurControl.AnchorSide[Kind].CheckSidePosition(
-        CurControl.AnchorSide[Kind].Control,Side,
-        ReferenceControl,ReferenceSide,CheckPosition))
-      then begin
+          and (not CurControl.AnchorSide[Kind].CheckSidePosition(
+          CurControl.AnchorSide[Kind].Control, SideRef,
+          ReferenceControl, ReferenceSide, CheckPosition)) then
+      begin
         if IDEMessageDialog(lisCCOWarningCaption,
-          lisThisWillCreateACircularDependency, mtWarning, [mbIgnore, mbCancel])<>
-            mrIgnore
-        then begin
+            lisThisWillCreateACircularDependency,
+            mtWarning, [mbIgnore, mbCancel]) <> mrIgnore then
+        begin
           Refresh;
-          exit;
+          Exit;
         end;
-        break;
+        Break;
       end;
     end;
-    // commit
-    for i:=0 to SelectedControls.Count-1 do begin
+    // Commit
+    for i:=0 to SelectedControls.Count-1 do
+    begin
       CurControl:=TControl(SelectedControls[i]);
-      CurControl.AnchorSide[Kind].Side:=Side;
+      CurControl.AnchorSide[Kind].Side:=SideRef;
     end;
-    GlobalDesignHook.Modified(Self);
+    GlobalDesignHook.Modified(Self, 'Anchors');
     GlobalDesignHook.RefreshPropertyValues;
-  end;
 end;
 
 procedure TAnchorDesigner.KeyUp(var Key: Word; Shift: TShiftState);
@@ -683,7 +924,7 @@ end;
 procedure TAnchorDesigner.UpdateShowing;
 begin
   inherited UpdateShowing;
-  if IsVisible and fNeedUpdate then
+  if IsVisible and FNeedUpdate then
     Refresh;
 end;
 
@@ -708,7 +949,6 @@ var
     if SelectedControls.IndexOf(AControl)>=0 then exit;
     NewControlStr:=ControlToStr(AControl);
     if sl.IndexOf(NewControlStr)>=0 then exit;
-    //debugln('TAnchorDesigner.FillComboBoxWithSiblings.AddSibling ',NewControlStr);
     sl.Add(NewControlStr);
     Result:=true;
   end;
@@ -722,7 +962,9 @@ begin
     for i:=0 to SelectedControls.Count-1 do begin
       if TObject(SelectedControls[i]) is TControl then begin
         CurControl:=TControl(SelectedControls[i]);
-        if (CurControl.Parent<>nil) then begin
+        if (CurControl.Parent<>nil) 
+          and not (csDesignInstance in CurControl.ComponentState)
+        then begin
           AddSibling(CurControl.Parent);
           for j:=0 to CurControl.Parent.ControlCount-1 do begin
             Sibling:=CurControl.Parent.Controls[j];
@@ -740,7 +982,6 @@ begin
   if HasSelectedSiblings then
     for Kind:=akTop to akBottom do
       sl.add(AnchorDesignerNeighbourText(Kind));
-  //debugln('TAnchorDesigner.FillComboBoxWithSiblings ',sl.Text);
   OldText:=AComboBox.Text;
   AComboBox.Items.Assign(sl);
   AComboBox.Text:=OldText;
@@ -754,6 +995,7 @@ end;
 
 function TAnchorDesigner.AnchorDesignerNeighbourText(direction: TAnchorKind): string;
 begin
+  result:='';
   case direction of
     akLeft: result:=lisSelectedLeftNeighbour;
     akRight: result:=lisSelectedRightNeighbour;
@@ -771,130 +1013,50 @@ end;
 procedure TAnchorDesigner.Refresh;
 var
   SelectedControlCount: Integer;
-  CurSide: TAnchorDesignerSideValues;
-  Sibling: String;
   CurSelection: TList;
+  AnchorKindIndex: TAnchorKind;
 begin
-  //debugln('TAnchorDesigner.Refresh A ');
-  // check if update is needed
-  if not IsVisible then begin
-    fNeedUpdate:=true;
-    exit;
+  // Check if update is needed
+  if not IsVisible then
+  begin
+    FNeedUpdate:=True;
+    Exit;
   end;
-  if FUpdating then exit;
-  FUpdating:=true;
-  fNeedUpdate:=false;
+  if FUpdating then Exit;
+  FUpdating:=True;
+  FNeedUpdate:=False;
   try
     FreeAndNil(Values);
     CurSelection:=GetSelectedControls;
-    {if (CurSelection<>nil) and (CurSelection.Count>0) then
-      debugln(['TAnchorDesigner.Refresh Item0=',DbgSName(TObject(CurSelection[0]))])
-    else
-      debugln(['TAnchorDesigner.Refresh empty selection']);}
-    CollectValues(CurSelection,Values,SelectedControlCount);
-    //debugln('TAnchorDesigner.Refresh B ',dbgs(SelectedControlCount));
+    CollectValues(CurSelection,Values,SelectedControlCount);  // out TheValues
 
-    if (Values=nil) then begin
+    SetEnabledControls(Assigned(Values), [BorderSpaceGroupBox, TopGroupBox,
+      LeftGroupBox, RightGroupBox, BottomGroupBox]);
+
+    if (Values=nil) then
+    begin
       Caption:=lisAnchorEditorNoControlSelected;
-      BorderSpaceGroupBox.Enabled:=false;
-      TopGroupBox.Enabled:=false;
-      LeftGroupBox.Enabled:=false;
-      RightGroupBox.Enabled:=false;
-      BottomGroupBox.Enabled:=false;
-    end else begin
-      Caption:=lisAnchorsOfSelectedControls;
+    end
+    else
+    begin
+      if CurSelection.Count=1 then
+        Caption:=Format(lisAnchorsOf,[TControl(CurSelection[0]).Name])
+      else
+        Caption:=lisAnchorsOfSelectedControls;
 
-      // all
+      // All
       BorderSpaceGroupBox.Enabled:=true;
       if Values.AmbiguousBorderspaceAround then
         AroundBorderSpaceSpinEdit.Value:=-1
       else
         AroundBorderSpaceSpinEdit.Value:=Values.BorderspaceAround;
 
-      // Top
-      TopGroupBox.Enabled:=true;
-      CurSide:=Values.Sides[akTop];
-      TopAnchoredCheckBox.AllowGrayed:=CurSide.AmbiguousEnabled;
-      if CurSide.AmbiguousEnabled then
-        TopAnchoredCheckBox.State:=cbGrayed
-      else
-        TopAnchoredCheckBox.Checked:=CurSide.Enabled;
-      if CurSide.AmbiguousBorderSpace then
-        TopBorderSpaceSpinEdit.Value:=-1
-      else
-        TopBorderSpaceSpinEdit.Value:=CurSide.BorderSpace;
-      TopBorderSpaceSpinEdit.ValueEmpty:=CurSide.AmbiguousBorderSpace;
-      Sibling:=CurSide.Sibling;
-      TopSiblingComboBox.Text:=Sibling;
-      //debugln('TAnchorDesigner.Refresh A TopSiblingComboBox.Text=',TopSiblingComboBox.Text,' Sibling=',Sibling);
-      FillComboBoxWithSiblings(TopSiblingComboBox);
-      //debugln('TAnchorDesigner.Refresh B TopSiblingComboBox.Text=',TopSiblingComboBox.Text,' Sibling=',Sibling);
-      TopRefBottomSpeedButton.Down:=(CurSide.Side=asrBottom);
-      TopRefCenterSpeedButton.Down:=(CurSide.Side=asrCenter);
-      TopRefTopSpeedButton.Down:=(CurSide.Side=asrTop);
-
-      // Bottom
-      BottomGroupBox.Enabled:=true;
-      CurSide:=Values.Sides[akBottom];
-      BottomAnchoredCheckBox.AllowGrayed:=CurSide.AmbiguousEnabled;
-      if CurSide.AmbiguousEnabled then
-        BottomAnchoredCheckBox.State:=cbGrayed
-      else
-        BottomAnchoredCheckBox.Checked:=CurSide.Enabled;
-      if CurSide.AmbiguousBorderSpace then
-        BottomBorderSpaceSpinEdit.Value:=-1
-      else
-        BottomBorderSpaceSpinEdit.Value:=CurSide.BorderSpace;
-      BottomBorderSpaceSpinEdit.ValueEmpty:=CurSide.AmbiguousBorderSpace;
-      Sibling:=CurSide.Sibling;
-      BottomSiblingComboBox.Text:=Sibling;
-      FillComboBoxWithSiblings(BottomSiblingComboBox);
-      BottomRefBottomSpeedButton.Down:=(CurSide.Side=asrBottom);
-      BottomRefCenterSpeedButton.Down:=(CurSide.Side=asrCenter);
-      BottomRefTopSpeedButton.Down:=(CurSide.Side=asrTop);
-
-      // Left
-      LeftGroupBox.Enabled:=true;
-      CurSide:=Values.Sides[akLeft];
-      LeftAnchoredCheckBox.AllowGrayed:=CurSide.AmbiguousEnabled;
-      if CurSide.AmbiguousEnabled then
-        LeftAnchoredCheckBox.State:=cbGrayed
-      else
-        LeftAnchoredCheckBox.Checked:=CurSide.Enabled;
-      if CurSide.AmbiguousBorderSpace then
-        LeftBorderSpaceSpinEdit.Value:=-1
-      else
-        LeftBorderSpaceSpinEdit.Value:=CurSide.BorderSpace;
-      LeftBorderSpaceSpinEdit.ValueEmpty:=CurSide.AmbiguousBorderSpace;
-      Sibling:=CurSide.Sibling;
-      LeftSiblingComboBox.Text:=Sibling;
-      FillComboBoxWithSiblings(LeftSiblingComboBox);
-      LeftRefRightSpeedButton.Down:=(CurSide.Side=asrBottom);
-      LeftRefCenterSpeedButton.Down:=(CurSide.Side=asrCenter);
-      LeftRefLeftSpeedButton.Down:=(CurSide.Side=asrTop);
-
-      // Right
-      RightGroupBox.Enabled:=true;
-      CurSide:=Values.Sides[akRight];
-      RightAnchoredCheckBox.AllowGrayed:=CurSide.AmbiguousEnabled;
-      if CurSide.AmbiguousEnabled then
-        RightAnchoredCheckBox.State:=cbGrayed
-      else
-        RightAnchoredCheckBox.Checked:=CurSide.Enabled;
-      if CurSide.AmbiguousBorderSpace then
-        RightBorderSpaceSpinEdit.Value:=-1
-      else
-        RightBorderSpaceSpinEdit.Value:=CurSide.BorderSpace;
-      RightBorderSpaceSpinEdit.ValueEmpty:=CurSide.AmbiguousBorderSpace;
-      Sibling:=CurSide.Sibling;
-      RightSiblingComboBox.Text:=Sibling;
-      FillComboBoxWithSiblings(RightSiblingComboBox);
-      RightRefRightSpeedButton.Down:=(CurSide.Side=asrBottom);
-      RightRefCenterSpeedButton.Down:=(CurSide.Side=asrCenter);
-      RightRefLeftSpeedButton.Down:=(CurSide.Side=asrTop);
+      // Sides
+      for AnchorKindIndex:=Low(AnchorKindIndex) to High(AnchorKindIndex) do
+        FSideControls[AnchorKindIndex].Refresh(Values.Sides[AnchorKindIndex]);
     end;
   finally
-    FUpdating:=false;
+    FUpdating:=False;
   end;
 end;
 
@@ -912,7 +1074,7 @@ begin
   Result:=nil;
   GlobalDesignHook.GetSelection(FSelection);
   if FSelection=nil then exit;
-  // collect values of selected controls
+  // Collect values of selected controls
   for i:=0 to FSelection.Count-1 do begin
     CurPersistent:=FSelection[i];
     if CurPersistent is TControl then begin
@@ -973,12 +1135,10 @@ var
 begin
   TheValues:=nil;
   SelectedControlCount:=0;
-  //debugln('TAnchorDesigner.CollectValues A ');
   if ASelection=nil then exit;
-  // collect values of selected controls
+  // Collect values of selected controls
   for i:=0 to ASelection.Count-1 do begin
     CurObject:=TObject(ASelection[i]);
-    //debugln('TAnchorDesigner.CollectValues B ',dbgs(i),' ',DbgSName(CurObject));
     if CurObject is TControl then begin
       AControl:=TControl(CurObject);
       if SelectedControlCount=0 then begin
@@ -1058,6 +1218,18 @@ end;
 
 { TAnchorDesignerSideValues }
 
+function TAnchorDesignerSideValues.GetSideRef_IsAmbiguous: Boolean;
+var
+  SideRefIndex: TAnchorSideReference;
+  n: Integer;
+begin
+  n:=0;
+  for SideRefIndex:=Low(SideRefIndex) to High(SideRefIndex) do
+    if (SideRefIndex in FSideRefs)
+      then Inc(n);
+  Result:=(n>1);
+end;
+
 constructor TAnchorDesignerSideValues.Create(TheKind: TAnchorKind);
 begin
   FAnchorKind:=TheKind;
@@ -1067,14 +1239,14 @@ procedure TAnchorDesignerSideValues.SetValues(AControl: TControl);
 var
   CurSide: TAnchorSide;
 begin
-  FAmbiguousBorderSpace:=false;
+  FCount:=1;
+  FBorderSpace_IsAmbiguous:=false;
   FBorderSpace:=AControl.BorderSpacing.GetSpace(FAnchorKind);
-  FAmbiguousEnabled:=false;
+  FEnabled_IsAmbiguous:=false;
   FEnabled:=(FAnchorKind in AControl.Anchors);
   CurSide:=AControl.AnchorSide[FAnchorKind];
-  FAmbiguousSide:=false;
-  FSide:=CurSide.Side;
-  FAmbiguousSibling:=false;
+  FSideRefs:=[CurSide.Side];
+  FSibling_IsAmbiguous:=false;
   FSibling:=TAnchorDesigner.ControlToStr(CurSide.Control);
 end;
 
@@ -1082,14 +1254,15 @@ procedure TAnchorDesignerSideValues.MergeValues(AControl: TControl);
 var
   CurSide: TAnchorSide;
 begin
-  FAmbiguousBorderSpace:=FAmbiguousBorderSpace
-            or (FBorderSpace<>AControl.BorderSpacing.GetSpace(FAnchorKind));
-  FAmbiguousEnabled:=FAmbiguousEnabled
-                     or (FEnabled<>(FAnchorKind in AControl.Anchors));
+  Inc(FCount);
+  FBorderSpace_IsAmbiguous:=FBorderSpace_IsAmbiguous
+      or (FBorderSpace<>AControl.BorderSpacing.GetSpace(FAnchorKind));
+  FEnabled_IsAmbiguous:=FEnabled_IsAmbiguous
+      or (FEnabled<>(FAnchorKind in AControl.Anchors));
   CurSide:=AControl.AnchorSide[FAnchorKind];
-  FAmbiguousSide:=FAmbiguousSide or (CurSide.Side<>FSide);
-  FAmbiguousSibling:=FAmbiguousSibling
-                   or (TAnchorDesigner.ControlToStr(CurSide.Control)<>FSibling);
+  FSibling_IsAmbiguous:=FSibling_IsAmbiguous
+      or (TAnchorDesigner.ControlToStr(CurSide.Control)<>FSibling);
+  FSideRefs:=FSideRefs+[CurSide.Side];
 end;
 
 { TAnchorPropertyEditor }
@@ -1106,7 +1279,7 @@ end;
 
 initialization
   RegisterPropertyEditor(TypeInfo(TAnchors), TControl, 'Anchors',
-    TAnchorPropertyEditor);
+      TAnchorPropertyEditor);
 
 end.
 

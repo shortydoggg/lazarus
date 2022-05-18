@@ -281,6 +281,10 @@ msgstr ""
 msgid "Previous value"
 msgstr ""
 
+#: syneditstrconst.syns_attrprocedureheadername
+msgid "Procedure header name"
+msgstr ""
+
 #: syneditstrconst.syns_attrprocessinginstr
 msgid "Processing Instruction"
 msgstr ""
@@ -471,6 +475,14 @@ msgstr ""
 
 #: syneditstrconst.syns_emcnone
 msgid "No Action"
+msgstr ""
+
+#: syneditstrconst.syns_emcoverviewguttergotomark
+msgid "Jump to Mark (Overview Gutter)"
+msgstr ""
+
+#: syneditstrconst.syns_emcoverviewgutterscrollto
+msgid "Scroll (Overview Gutter)"
 msgstr ""
 
 #: syneditstrconst.syns_emcpasteselection

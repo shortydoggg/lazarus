@@ -14,29 +14,32 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
   Author: Mattias Gaertner
-
+}
+(*
   Abstract:
     Functions to beautify code.
     Goals:
-      - Customizable
-      - fully automatic
+      - fully automatic (instead of fixed rules mimic the indentation of example code(s))
+      - when target source is within example source use the nearest match.
+      - Customizable (e.g. use boolean: check the global example code, boolean)
       - Beautification of whole sources. For example a unit, or several
         sources.
       - Beautification of parts of sources. For example selections.
-      - Beautification of insertion source. For example beautifying code, that
-        will be inserted in another source.
+      - Beautification of insertion source (Paste). For example beautifying
+        code, that will be inserted in another source.
+      - Find a nice indendation for empty line (e.g. after pressing return)
+        - Inside comments: use indentation of last non empty line
       - Working with syntax errors. The beautification will try its best to
         work, even if the source contains errors.
-      - Does not ignore comments and directives
-      - Contexts: statements, declarations
+      - Comments are special statements.
 
   Line break:
-    1. indent to the smallest indent
+   1. indent to the smallest indent
        For example, when there is always an indent after 'try':
          try|
            |
@@ -49,6 +52,10 @@
            if expr then
              doit;|
          |
+       Closing the corresponding block, not all blocks:
+         if expr then
+           if expr then begin|
+           |end
    3.  optional 'UseLineStart': when next token in line closes block:
          repeat|
          |until
@@ -56,23 +63,33 @@
          repeat|
            |
          until
-       Closing the corresponding block, not all blocks:
-         if expr then
-           if expr then begin|
-           |end
+   4. When unsure, tell that and use identation of last non empty line
+   5. Nested blocks do not need to be indented monoton:
+        if expr
+            or expr then
+          statement;
+        begin
+        //comment
+          statement;
+        //comment
+          statement;
+      {$IFDEF expr}
+          statement;
+      {$ENDIF}
+        end;
 
-  Examples for beautification styles: see scanexamples/indentation.pas
+  Examples for beautification styles: see examples/scanexamples/indentation.pas
 
   ToDo:
     * LineBreak:
-      - indent last line after pressing return key:
+      - Optional: indent last line after pressing return key:
           if true then
           exit;|
           |
     * long lines
        DoSomething(Param1,
                    Param2);
-}
+*)
 unit CodeBeautifier;
 
 {$mode objfpc}{$H+}
@@ -92,8 +109,10 @@ interface
 {$ENDIF}
 
 uses
-  Classes, SysUtils, AVL_Tree,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // Codetools
   FileProcs, KeywordFuncLists, CodeCache, BasicCodeTools,
+  // LazUtils
   LazUtilities;
   
 type

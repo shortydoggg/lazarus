@@ -24,8 +24,8 @@ uses
   // libs
   LazGtk3, LazGdk3, LazGlib2,
   // RTL, FCL, LCL
-  ComCtrls, Classes, LCLType, LMessages, Controls, Graphics,
-  StdCtrls, Forms, LCLProc, LCLIntf, ImgList, Math, Sysutils, InterfaceBase,
+  ComCtrls, Classes, LCLType, LMessages, Controls, Graphics, StdCtrls, Forms,
+  LCLProc, LCLIntf, ImgList, Math, Sysutils, ctypes, InterfaceBase,
   // widgetset
   WSComCtrls, WSLCLClasses, WSControls, WSProc,
   Gtk3WSControls, Gtk3Int, gtk3widgets;
@@ -52,9 +52,11 @@ type
   published
     class function CreateHandle(const AWinControl: TWinControl;
                                 const AParams: TCreateParams): TLCLIntfHandle; override;
-    // class function GetDefaultClientRect(const AWinControl: TWinControl;
-    //         const {%H-}aLeft, {%H-}aTop, aWidth, aHeight: integer; var aClientRect: TRect
-    //         ): boolean; override;
+    (*
+    class function GetDefaultClientRect(const AWinControl: TWinControl;
+            const {%H-}aLeft, {%H-}aTop, aWidth, aHeight: integer; var aClientRect: TRect
+            ): boolean; override;
+    *)
     class procedure AddPage(const ATabControl: TCustomTabControl;
       const AChild: TCustomPage; const AIndex: integer); override;
     class procedure MovePage(const ATabControl: TCustomTabControl;
@@ -119,6 +121,8 @@ type
     class procedure ColumnSetMinWidth(const ALV: TCustomListView; const AIndex: Integer; const {%H-}AColumn: TListColumn; const AMinWidth: integer); override;
     class procedure ColumnSetWidth(const ALV: TCustomListView; const AIndex: Integer; const {%H-}AColumn: TListColumn; const AWidth: Integer); override;
     class procedure ColumnSetVisible(const ALV: TCustomListView; const AIndex: Integer; const {%H-}AColumn: TListColumn; const AVisible: Boolean); override;
+    class procedure ColumnSetSortIndicator(const ALV: TCustomListView; const AIndex: Integer;
+      const AColumn: TListColumn; const ASortIndicator: TSortIndicator);override;
 
     // items
     class procedure ItemDelete(const ALV: TCustomListView; const AIndex: Integer); override;
@@ -161,7 +165,7 @@ type
     class procedure SetHotTrackStyles(const ALV: TCustomListView; const {%H-}AValue: TListHotTrackStyles); override;
     class procedure SetHoverTime(const ALV: TCustomListView; const {%H-}AValue: Integer); override;
     //    class procedure SetIconOptions(const ALV: TCustomListView; const AValue: TIconOptions); override;
-    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageList); override;
+    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageListResolution); override;
     class procedure SetItemsCount(const ALV: TCustomListView; const {%H-}Avalue: Integer); override;
     class procedure SetProperty(const ALV: TCustomListView; const AProp: TListViewProperty; const AIsSet: Boolean); override;
     class procedure SetProperties(const ALV: TCustomListView; const AProps: TListViewProperties); override;
@@ -593,6 +597,19 @@ begin
   TGtk3ListView(ALV.Handle).SetColumnVisible(AIndex, AColumn, AVisible);
 end;
 
+class procedure TGtk3WSCustomListView.ColumnSetSortIndicator(
+  const ALV: TCustomListView; const AIndex: Integer;
+  const AColumn: TListColumn; const ASortIndicator: TSortIndicator);
+begin
+  if not WSCheckHandleAllocated(ALV, 'ColumnSetSortIndicator') then
+    Exit;
+
+  TGtk3ListView(ALV.Handle).ColumnSetSortIndicator(AIndex,AColumn,ASortIndicator);
+end;
+
+
+
+
 type
   TListItemHack = class(TListItem)
   end;
@@ -878,7 +895,7 @@ begin
 end;
 
 class procedure TGtk3WSCustomListView.SetImageList(const ALV: TCustomListView;
-  const AList: TListViewImageList; const AValue: TCustomImageList);
+  const AList: TListViewImageList; const AValue: TCustomImageListResolution);
 var
   AView: TGtk3ListView;
   i: Integer;
@@ -1035,7 +1052,10 @@ end;
 class function TGtk3WSCustomTabControl.CreateHandle(
   const AWinControl: TWinControl; const AParams: TCreateParams): TLCLIntfHandle;
 begin
-  Result := TLCLIntfHandle(TGtk3NoteBook.Create(AWinControl, AParams));
+  if AWinControl is TTabControl then
+    Result := TLCLIntfHandle(TGtk3CustomControl.Create(AWinControl, AParams))
+  else
+    Result := TLCLIntfHandle(TGtk3NoteBook.Create(AWinControl, AParams));
 end;
 
 (*
@@ -1051,13 +1071,18 @@ end;
 class procedure TGtk3WSCustomTabControl.AddPage(
   const ATabControl: TCustomTabControl; const AChild: TCustomPage;
   const AIndex: integer);
-var
-  ALabel: PGtkLabel;
 begin
   if not WSCheckHandleAllocated(ATabControl, 'AddPage') then
     Exit;
+  // set LCL size
+  AChild.SetBounds(AChild.Left, AChild.Top, ATabControl.ClientWidth, ATabControl.ClientHeight);
+
   if AChild.TabVisible then
-    TGtk3Widget(AChild.Handle).Widget^.show;
+    TGtk3Widget(AChild.Handle).Show;
+
+  if ATabControl is TTabControl then
+    exit;
+
   TGtk3Notebook(ATabControl.Handle).InsertPage(AChild, AIndex);
 end;
 
@@ -1067,6 +1092,8 @@ class procedure TGtk3WSCustomTabControl.MovePage(
 begin
   if not WSCheckHandleAllocated(ATabControl, 'MovePage') then
     Exit;
+  if (ATabControl is TTabControl) then
+    exit;
   TGtk3Notebook(ATabControl.Handle).MovePage(AChild, NewIndex);
 end;
 
@@ -1075,6 +1102,8 @@ class procedure TGtk3WSCustomTabControl.RemovePage(
 begin
   if not WSCheckHandleAllocated(ATabControl, 'RemovePage') then
     Exit;
+  if (ATabControl is TTabControl) then
+    exit;
   TGtk3Notebook(ATabControl.Handle).RemovePage(AIndex);
 end;
 
@@ -1086,34 +1115,111 @@ end;
 class function TGtk3WSCustomTabControl.GetNotebookMinTabHeight(
   const AWinControl: TWinControl): integer;
 begin
-  Result := 0;
+  Result := inherited GetNotebookMinTabHeight(AWinControl);
   // inherited GetNotebookMinTabHeight(AWinControl);
 end;
 
 class function TGtk3WSCustomTabControl.GetNotebookMinTabWidth(
   const AWinControl: TWinControl): integer;
 begin
-  Result := 0;
-  // inherited GetNotebookMinTabWidth(AWinControl);
+  Result := TWSCustomTabControl.GetNotebookMinTabWidth(AWinControl);
 end;
 
 class function TGtk3WSCustomTabControl.GetTabIndexAtPos(
   const ATabControl: TCustomTabControl; const AClientPos: TPoint): integer;
+var
+  NoteBookWidget: PGtkNotebook;
+  TabWidget, PageWidget: PGtkWidget;
+  i: integer;
+  AList: PGList;
+  Allocation: TGtkAllocation;
+  ARect: TRect;
 begin
-  Result := 0;
-  // inherited GetTabIndexAtPos(ATabControl, AClientPos);
+  Result:=-1;
+  if (ATabControl is TTabControl) then
+    exit;
+  NoteBookWidget := PGtkNotebook(TGtk3NoteBook(ATabControl.Handle).GetContainerWidget);
+  if (NotebookWidget=nil) then exit;
+
+  AList := NoteBookWidget^.get_children;
+  try
+    for i := 0 to g_list_length(AList) - 1 do
+    begin
+      PageWidget := NoteBookWidget^.get_nth_page(i);
+      if (PageWidget<>nil) then
+      begin
+        TabWidget := NoteBookWidget^.get_tab_label(PageWidget);
+        if TabWidget <> nil then
+        begin
+          gtk_widget_get_allocation(TabWidget, @Allocation);
+          ARect := RectFromGdkRect(Allocation);
+          if PtInRect(ARect, AClientPos) then
+          begin
+            Result := I;
+            break;
+          end;
+        end;
+      end;
+    end;
+  finally
+    if AList <> nil then
+      g_list_free(Alist);
+  end;
 end;
 
 class function TGtk3WSCustomTabControl.GetTabRect(
   const ATabControl: TCustomTabControl; const AIndex: Integer): TRect;
+var
+  NoteBookWidget: PGtkNotebook;
+  TabWidget, PageWidget: PGtkWidget;
+  Count: guint;
+  AList: PGList;
+  Allocation: TGtkAllocation;
+  X, Y: gint;
 begin
+  Result := inherited;
+  if (ATabControl is TTabControl) then
+    exit;
   Result := Rect(0, 0, 0, 0);
-  // inherited GetTabRect(ATabControl, AIndex);
+
+  NoteBookWidget := PGtkNotebook(TGtk3NoteBook(ATabControl.Handle).GetContainerWidget);
+  if (NotebookWidget=nil) then exit;
+
+  AList := NoteBookWidget^.get_children;
+  try
+    Count := g_list_length(AList);
+    PageWidget := NoteBookWidget^.get_nth_page(AIndex);
+    if (PageWidget<>nil) and (AIndex < Count) then
+    begin
+      TabWidget := NoteBookWidget^.get_tab_label(PageWidget);
+      if TabWidget <> nil then
+      begin
+        gtk_widget_get_allocation(TabWidget, @Allocation);
+        Result := RectFromGdkRect(Allocation);
+        gtk_widget_get_allocation(NoteBookWidget, @Allocation);
+        Y := Allocation.y;
+        X := Allocation.x;
+        if Y <= 0 then
+          exit;
+        case ATabControl.TabPosition of
+          tpTop, tpBottom:
+              OffsetRect(Result, 0, -Y);
+          tpLeft, tpRight:
+            OffsetRect(Result, -X, -Y);
+        end;
+      end;
+    end;
+  finally
+    if AList <> nil then
+      g_list_free(Alist);
+  end;
 end;
 
 class procedure TGtk3WSCustomTabControl.SetPageIndex(
   const ATabControl: TCustomTabControl; const AIndex: integer);
 begin
+  if (ATabControl is TTabControl) then
+    exit;
   if not WSCheckHandleAllocated(ATabControl, 'SetPageIndex') then
     Exit;
   TGtk3Notebook(ATabControl.Handle).BeginUpdate;
@@ -1125,6 +1231,8 @@ class procedure TGtk3WSCustomTabControl.SetTabCaption(
   const ATabControl: TCustomTabControl; const AChild: TCustomPage;
   const AText: string);
 begin
+  if (ATabControl is TTabControl) then
+    exit;
   if not WSCheckHandleAllocated(ATabControl, 'SetTabCaption') then
     Exit;
   TGtk3NoteBook(ATabControl.Handle).SetTabLabelText(AChild, AText);
@@ -1133,6 +1241,8 @@ end;
 class procedure TGtk3WSCustomTabControl.SetTabPosition(
   const ATabControl: TCustomTabControl; const ATabPosition: TTabPosition);
 begin
+  if (ATabControl is TTabControl) then
+    exit;
   if not WSCheckHandleAllocated(ATabControl, 'SetTabPosition') then
     Exit;
   TGtk3NoteBook(ATabControl.Handle).SetTabPosition(ATabPosition);
@@ -1141,6 +1251,8 @@ end;
 class procedure TGtk3WSCustomTabControl.ShowTabs(
   const ATabControl: TCustomTabControl; AShowTabs: boolean);
 begin
+  if ATabControl is TTabControl then
+    exit;
   if not WSCheckHandleAllocated(ATabControl, 'ShowTabs') then
     Exit;
   TGtk3NoteBook(ATabControl.Handle).SetShowTabs(AShowTabs);
@@ -1149,9 +1261,16 @@ end;
 class procedure TGtk3WSCustomTabControl.UpdateProperties(
   const ATabControl: TCustomTabControl);
 begin
+  if ATabControl is TTabControl then
+    exit;
   // inherited UpdateProperties(ATabControl);
   if not WSCheckHandleAllocated(ATabControl, 'ATabControl') then
     Exit;
+
+  if (nboHidePageListPopup in ATabControl.Options) then
+    PGtkNotebook(TGtk3NoteBook(ATabControl.Handle).GetContainerWidget)^.popup_disable
+  else
+    PGtkNotebook(TGtk3NoteBook(ATabControl.Handle).GetContainerWidget)^.popup_enable;
 end;
 
 

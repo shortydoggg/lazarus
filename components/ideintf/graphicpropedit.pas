@@ -17,9 +17,12 @@ unit GraphicPropEdit;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls,
-  ExtCtrls, Buttons, ButtonPanel, ExtDlgs, ActnList, StdActns, Clipbrd,
-  IDEDialogs, ObjInspStrConsts;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls, ButtonPanel, ExtDlgs,
+  ActnList, StdActns, Clipbrd,
+  // IdeIntf
+  IDEDialogs, ObjInspStrConsts, IDEWindowIntf;
 
 type
 
@@ -46,6 +49,9 @@ type
     ScrollBox: TScrollBox;
     procedure CopyActionExecute(Sender: TObject);
     procedure CopyActionUpdate(Sender: TObject);
+    procedure FormClose(Sender: TObject; var {%H-}CloseAction: TCloseAction);
+    procedure ImagePreviewPaintBackground({%H-}ASender: TObject; ACanvas: TCanvas;
+      ARect: TRect);
     procedure PasteActionExecute(Sender: TObject);
     procedure PasteActionUpdate(Sender: TObject);
     procedure ClearActionExecute(Sender: TObject);
@@ -54,6 +60,7 @@ type
     procedure FileSaveActionExecute(Sender: TObject);
     procedure FileSaveActionUpdate(Sender: TObject);
     procedure PictureChanged(Sender: TObject);
+    procedure ScrollBoxResize(Sender: TObject);
   private
     FFileName: String;
     FModified: Boolean;
@@ -87,6 +94,13 @@ begin
   OpenDialog.Title:=oisPEOpenImageFile;
   SaveDialog.Title:=oisPESaveImageAs;
   ImagePreview.OnPictureChanged:=@PictureChanged;
+  IDEDialogLayoutList.ApplyLayout(Self);
+end;
+
+procedure TGraphicPropertyEditorForm.FormClose(Sender: TObject;
+  var CloseAction: TCloseAction);
+begin
+  IDEDialogLayoutList.SaveLayout(Self);
 end;
 
 procedure TGraphicPropertyEditorForm.ClearActionExecute(Sender: TObject);
@@ -102,6 +116,34 @@ end;
 procedure TGraphicPropertyEditorForm.CopyActionUpdate(Sender: TObject);
 begin
   CopyAction.Enabled := ImagePreview.Picture.Graphic <> nil;
+end;
+
+procedure TGraphicPropertyEditorForm.ImagePreviewPaintBackground(
+  ASender: TObject; ACanvas: TCanvas; ARect: TRect);
+const
+  cell=8; //8 pixels is usual checkers size
+var
+  bmp: TBitmap;
+  i, j: integer;
+begin
+  //Paint checkers BG picture for transparent image
+  bmp:= TBitmap.Create;
+  try
+    bmp.PixelFormat:= pf24bit;
+    bmp.SetSize(ARect.Right-ARect.Left, ARect.Bottom-ARect.Top);
+    bmp.Canvas.Brush.Color:= clWhite;
+    bmp.Canvas.FillRect(0, 0, bmp.Width, bmp.Height);
+    bmp.Canvas.Brush.Color:= clLtGray;
+
+    for i:= 0 to bmp.Width div cell do
+      for j:= 0 to bmp.Height div cell do
+        if not (Odd(i) xor Odd(j)) then
+          bmp.Canvas.FillRect(i*cell, j*cell, (i+1)*cell, (j+1)*cell);
+
+    ACanvas.CopyRect(ARect, bmp.Canvas, Rect(0, 0, bmp.Width, bmp.Height));
+  finally
+    FreeAndNil(bmp);
+  end;
 end;
 
 procedure TGraphicPropertyEditorForm.FileSaveActionUpdate(Sender: TObject);
@@ -147,6 +189,21 @@ begin
     ScrollBox.Hint := Graphic.ClassName
   else
     ScrollBox.Hint := '';
+
+  ScrollBoxResize(Self);
+end;
+
+procedure TGraphicPropertyEditorForm.ScrollBoxResize(Sender: TObject);
+begin
+  if ImagePreview.Width<ScrollBox.ClientWidth then
+    ImagePreview.Left:= (ScrollBox.ClientWidth-ImagePreview.Width) div 2
+  else
+    ImagePreview.Left:= 0;
+
+  if ImagePreview.Height<ScrollBox.ClientHeight then
+    ImagePreview.Top:= (ScrollBox.ClientHeight-ImagePreview.Height) div 2
+  else
+    ImagePreview.Top:= 0;
 end;
 
 procedure TGraphicPropertyEditorForm.FileSaveActionExecute(Sender: TObject);

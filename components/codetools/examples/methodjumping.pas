@@ -15,7 +15,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -28,7 +28,11 @@ program MethodJumping;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, CodeToolManager, CodeCache;
+  SysUtils,
+  // LazUtils
+  LazFileUtils,
+  // CodeTools
+  CodeToolManager, CodeCache;
   
 var
   ExpandedFilename: String;
@@ -37,7 +41,7 @@ var
   NewX, NewY, NewTopLine: integer;
   RevertableJump: boolean;
   X: Integer;
-  Y: Integer;
+  Y, BlockTopLine, BlockBottomLine: Integer;
 begin
   if (ParamCount>=1) and (Paramcount<3) then begin
     writeln('Usage:');
@@ -58,7 +62,7 @@ begin
   if CodeBuf=nil then
     raise Exception.Create('failed loading '+ExpandedFilename);
   if CodeToolBoss.JumpToMethod(CodeBuf,X,Y,NewCode,NewX,NewY,NewTopLine,
-                               RevertableJump)
+                               BlockTopLine,BlockBottomLine,RevertableJump)
   then
     writeln(NewCode.Filename,' ',NewX,',',NewY,' TopLine=',NewTopLine,
             ' RevertableJump=',RevertableJump)

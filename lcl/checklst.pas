@@ -126,10 +126,12 @@ type
     property OnMouseWheelDown;
     property OnMouseWheelUp;
     property OnResize;
+    property OnSelectionChange;
     property OnShowHint;
     property OnStartDrag;
     property OnUTF8KeyPress;
     property ParentBidiMode;
+    property ParentColor;
     property ParentFont;
     property ParentShowHint;
     property PopupMenu;

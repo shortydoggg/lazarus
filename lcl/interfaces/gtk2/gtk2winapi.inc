@@ -138,7 +138,7 @@ begin
   else Control := nil;
 
   if (Control <> nil)
-  and Control.DoubleBuffered
+  and TWSWinControlClass(Control.WidgetSetClass).GetDoubleBuffered(Control)
   and not GTK_WIDGET_DOUBLE_BUFFERED({%H-}PGTKWidget(Handle))
   then begin
     //DebugLn(['TGtk2WidgetSet.BeginPaint ',DbgSName(Control)]);
@@ -278,7 +278,7 @@ end;
 function TGtk2WidgetSet.ClipboardGetData(ClipboardType: TClipboardType;
   FormatID: TClipboardFormat; Stream: TStream): boolean;
 var
-  FormatAtom, FormatTry: TGdkAtom;
+  FormatAtom: TGdkAtom;
   SupportedCnt, i: integer;
   SupportedFormats: PGdkAtom;
   SelData: TGtkSelectionData;
@@ -286,8 +286,9 @@ var
   CompoundTextCount: integer;
 
   function IsFormatSupported(CurFormat: TGdkAtom): boolean;
-  var a: integer;
-     AllID: TGdkAtom;
+  var
+    i: integer;
+    AllID: TGdkAtom;
   begin
     //DebugLn('IsFormatSupported CurFormat=',dbgs(CurFormat),' SupportedCnt=',dbgs(SupportedCnt));
     if CurFormat=0 then begin
@@ -298,16 +299,19 @@ var
       Result:=false;
       AllID:=gdk_atom_intern('TARGETS',GdkFalse);
       SelData:=RequestSelectionData(ClipboardWidget,ClipboardType,AllID);
-      {DebugLn('IsFormatSupported A ',Dbgs(SelData.Selection),
+      {$IFDEF DEBUG_CLIPBOARD}
+      DebugLn('IsFormatSupported A ',Dbgs(SelData.Selection),
       ' ',HexStr(Cardinal(ClipboardTypeAtoms[ClipboardType]),8),
       ' SelData.Target='+dbgs(SelData.Target),' AllID='+dbgs(AllID),
-      ' SelData.TheType='+dbgs(SelData.TheType)+' ATOM='+dbgs(gdk_atom_intern('ATOM',0))+' Name="'+GdkAtomToStr(SelData.TheType)+'"',
+      ' SelData.TheType='+dbgs(SelData._type)+' ATOM='+dbgs(gdk_atom_intern('ATOM',GdkTrue))+' Name="'+GdkAtomToStr(SelData._type)+'"',
       ' SelData.Length='+dbgs(SelData.Length),
       ' SelData.Format='+dbgs(SelData.Format)
-      );}
+      );
+      {$ENDIF}
       if (SelData.Selection<>ClipboardTypeAtoms[ClipboardType])
       or (SelData.Target<>AllID)
-      or (SelData._Type<>gdk_atom_intern('ATOM',GdkFalse)) then begin
+      or (SelData._Type<>gdk_atom_intern('ATOM',GdkFalse))
+      or ((SelData.Format shr 3)<=0) then begin
         SupportedCnt:=0;
         exit;
       end;
@@ -315,15 +319,27 @@ var
       SupportedFormats:=PGdkAtom(SelData.Data);
       //DebugLn('IsFormatSupported SupportedCnt=',dbgs(SupportedCnt));
 
-      {a:=SupportedCnt-1;
-      while (a>=0) do begin
-        debugln(' ',dbgs(a),' ',GdkAtomToStr(SupportedFormats[a]),' "',p,'"');
-        dec(a);
-      end;}
+      {$IFDEF DEBUG_CLIPBOARD}
+      i:=SupportedCnt-1;
+      while (i>=0) do begin
+        debugln(' ',dbgs(i),' "',GdkAtomToStr(SupportedFormats[i]),'"');
+        dec(i);
+      end;
+      {$ENDIF}
     end;
-    a:=SupportedCnt-1;
-    while (a>=0) and (SupportedFormats[a]<>CurFormat) do dec(a);
-    Result:=(a>=0);
+    i:=SupportedCnt-1;
+    while (i>=0) and (SupportedFormats[i]<>CurFormat) do dec(i);
+    Result:=(i>=0);
+  end;
+
+  procedure CheckAtomFormat(const atom_name: Pgchar; only_if_exists:gboolean);
+  var
+    FormatTry: TGdkAtom;
+  begin
+    if FormatAtom<>0 then exit;
+    FormatTry:=gdk_atom_intern(atom_name,only_if_exists);
+    if IsFormatSupported(FormatTry) then
+      FormatAtom:=FormatTry;
   end;
 
 begin
@@ -342,41 +358,27 @@ begin
 
     FormatAtom:=FormatID;
     if (FormatAtom=gdk_atom_intern('text/plain',GdkTrue)) then begin
-      FormatAtom:=0;
       // text/plain is supported in various formats in gtk
-      FormatTry:=gdk_atom_intern('COMPOUND_TEXT',GdkFalse);
-      if IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
+      FormatAtom:=0;
+      // check for UTF8 text format 'UTF8_STRING'
+      CheckAtomFormat('UTF8_STRING',GdkFalse);
       // The COMPOUND_TEXT format can be converted and is therefore
       // used as default for 'text/plain'
       if (SupportedCnt=0) then
-        FormatAtom:=gdk_atom_intern('COMPOUND_TEXT',GdkFalse);
-      // then check for UTF8 text format 'UTF8_STRING'
-      FormatTry:=gdk_atom_intern('UTF8_STRING',GdkFalse);
-      if IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
-      // then check for simple text format 'text/plain'
-      FormatTry:=gdk_atom_intern('text/plain',GdkFalse);
-      if (FormatAtom=0) and IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
-      // then check for simple text format STRING
-      FormatTry:=gdk_atom_intern('STRING',GdkFalse);
-      if (FormatAtom=0) and IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
-      // check for some other formats that can be interpreted as text
-      FormatTry:=gdk_atom_intern('FILE_NAME',GdkTrue);
-      if (FormatAtom=0) and IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
-      FormatTry:=gdk_atom_intern('HOST_NAME',GdkTrue);
-      if (FormatAtom=0) and IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
-      FormatTry:=gdk_atom_intern('USER',GdkTrue);
-      if (FormatAtom=0) and IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
-      // the TEXT format is not reliable, but it should be supported
-      FormatTry:=gdk_atom_intern('TEXT',GdkFalse);
-      if (FormatAtom=0) and IsFormatSupported(FormatTry) then
-        FormatAtom:=FormatTry;
+        FormatAtom:=gdk_atom_intern('COMPOUND_TEXT',GdkFalse)
+      else begin
+        CheckAtomFormat('COMPOUND_TEXT',GdkFalse);
+        // then check for simple text format 'text/plain'
+        CheckAtomFormat('text/plain',GdkFalse);
+        // then check for simple text format STRING
+        CheckAtomFormat('STRING',GdkFalse);
+        // check for some other formats that can be interpreted as text
+        CheckAtomFormat('FILE_NAME',GdkTrue);
+        CheckAtomFormat('HOST_NAME',GdkTrue);
+        CheckAtomFormat('USER',GdkTrue);
+        // the TEXT format is not reliable, but it should be supported
+        CheckAtomFormat('TEXT',GdkFalse);
+      end;
     end;
 
     {$IfDef DEBUG_CLIPBOARD}
@@ -429,8 +431,10 @@ begin
     {$EndIf}
     Result:=true;
   finally
-    if SupportedFormats<>nil then FreeMem(SupportedFormats);
-    if SelData.Data<>nil then FreeMem(SelData.Data);
+    if SupportedFormats<>nil then
+      FreeMem(SupportedFormats);
+    if (SelData.Data<>nil) and (PGdkAtom(SelData.Data)<>SupportedFormats) then
+      FreeMem(SelData.Data);
   end;
 end;
 
@@ -654,6 +658,8 @@ begin
     begin
       // lcl provides 'text/plain' and the gtk-interface will automatically
       // provide some more text formats
+      ClipboardExtraGtkFormats[ClipboardType][gfUTF8_STRING]:=not IsFormatSupported(
+                gdk_atom_intern(PGChar(GtkClipboardFormatName[gfUTF8_STRING]),GdkFalse));
       ClipboardExtraGtkFormats[ClipboardType][gfCOMPOUND_TEXT]:=
           not IsFormatSupported(
                 gdk_atom_intern(PGChar(GtkClipboardFormatName[gfCOMPOUND_TEXT]),GdkFalse));
@@ -714,6 +720,12 @@ begin
      Of course this will only be a local clipboard, invisible to other
      applications. }
     Result:=true;
+end;
+
+function TGtk2WidgetSet.ClipboardFormatNeedsNullByte(
+  const AFormat: TPredefinedClipboardFormat): Boolean;
+begin
+  Result := False;
 end;
 
 {------------------------------------------------------------------------------
@@ -1398,7 +1410,7 @@ begin
          (lfItalic = 0) and
          (lfUnderline = 0) and
          (lfOrientation = 0) and
-         (CompareText(lfFacename, 'default') = 0) then
+         IsFontNameDefault(lfFacename) then
       begin
         // use default font
         {$IFDEF VerboseFonts}
@@ -1426,7 +1438,7 @@ begin
       
       // using method 2
 
-      if aFamily = 'default' then
+      if IsFontNameDefault(aFamily) then
       begin
         CurFont := GetDefaultGtkFont(False);
         if PANGO_IS_LAYOUT(CurFont) then
@@ -1898,7 +1910,7 @@ begin
     Exit;
   end;
   {$IFDEF DebugLCLComponents}
-  if DebugGdiObjects.IsDestroyed(GDIObject) then
+  if DebugGdiObjects.IsDestroyed(Pointer(GDIObject)) then
   begin
     DebugLn(['TGtk2WidgetSet.DeleteObject object already deleted ',GDIObject]);
     debugln(DebugGdiObjects.GetInfo(PGdiObject(GDIObject),true));
@@ -2654,7 +2666,7 @@ var
       Points[0].cX := LeftPos + Points[0].cX;
       Points[0].cY := TopPos + tm.tmHeight - TM.tmDescent + 1;
 
-      GetTextExtentPoint(DC, @aStr[pIndex], 1, Points[1]);
+      GetTextExtentPoint(DC, @aStr[pIndex], UTF8CodepointSize(@aStr[pIndex]), Points[1]);
       Points[1].cX := Points[0].cX + Points[1].cX;
       Points[1].cY := Points[0].cY;
 
@@ -2827,8 +2839,10 @@ begin
   then Control := TWinControl(GetLCLObject({%H-}Pointer(Handle)))
   else Control := nil;
 
-  If (Control <> nil) and (not GTK_WIDGET_DOUBLE_BUFFERED(({%H-}PGTKWidget(Handle)))) and (Control.DoubleBuffered) then
-  begin
+  if (Control <> nil)
+  and TWSWinControlClass(Control.WidgetSetClass).GetDoubleBuffered(Control)
+  and not GTK_WIDGET_DOUBLE_BUFFERED({%H-}PGTKWidget(Handle))
+  then begin
     gdk_window_thaw_updates(TGtkDeviceContext(PS.HDC).Drawable);
     gdk_window_end_paint (TGtkDeviceContext(PS.HDC).Drawable);
   end;
@@ -3320,7 +3334,8 @@ var
   StylesCount: Integer;
   StylesList: TStringList;
   y: Integer;
-  CharsetList: TFPList;
+  CharsetList: TByteList;
+  CS: Byte;
 
   function Gtk2GetFontFamiliesDefault(var AList: TStringList): Integer;
   var
@@ -3503,11 +3518,12 @@ begin
     FontType := TRUETYPE_FONTTYPE;
     FontList := TStringList.Create;
     StylesList := TStringList.Create;
-    CharsetList := TFPList.Create;
+    CharsetList := TByteList.Create;
     for i := 0 to CharsetEncodingList.Count - 1 do
     begin
-      if CharsetList.IndexOf({%H-}Pointer(PtrUInt(TCharSetEncodingRec(CharsetEncodingList.Items[i]^).CharSet))) = -1 then
-        CharsetList.Add({%H-}Pointer(PtrUInt(TCharSetEncodingRec(CharsetEncodingList.Items[i]^).CharSet)));
+      CS := TCharSetEncodingRec(CharsetEncodingList.Items[i]^).CharSet;
+      if CharsetList.IndexOf(CS) = -1 then
+        CharsetList.Add(CS);
     end;
     try
       if Gtk2GetFontFamilies(FontList, lpLogFont^.lfPitchAndFamily,
@@ -3524,7 +3540,7 @@ begin
           EnumLogFont.elfStyle := AStyle;
 
           if CharSetList.Count > 0 then
-            EnumLogFont.elfLogFont.lfCharSet := {%H-}PtrUInt(CharsetList.Items[0]);
+            EnumLogFont.elfLogFont.lfCharSet := CharsetList.Items[0];
 
           Result := Callback(EnumLogFont, Metric, FontType, LParam);
           for y := 1 to StylesCount - 1 do
@@ -3535,7 +3551,7 @@ begin
           end;
           for y := 1 to CharSetList.Count - 1 do
           begin
-            EnumLogFont.elfLogFont.lfCharSet := {%H-}PtrUInt(CharsetList.Items[y]);
+            EnumLogFont.elfLogFont.lfCharSet := CharsetList.Items[y];
             Result := Callback(EnumLogFont, Metric, FontType, LParam);
           end;
         end;
@@ -3790,7 +3806,7 @@ var
       CurScreenX := X;
       while CurCount > 0 do
       begin
-        CharLen := UTF8CharacterLength(CurStr);
+        CharLen := UTF8CodepointSize(CurStr);
         DevCtx.DrawTextWithColors(CurStr, CharLen, CurScreenX, Y, Foreground, BackgroundColor);
         inc(CurScreenX, CurDx^);
         inc(CurDx);
@@ -3919,7 +3935,7 @@ begin
   Result := IsValidDC(DC) and IsValidGDIObject(Brush);
   if not Result or IsRectEmpty(Rect) then
     Exit;
-  if ({%H-}PGdiObject(Brush)^.GDIBrushFill <> GDK_SOLID) and (TGtkDeviceContext(DC).BkMode = OPAQUE) then
+  if ({%H-}PGdiObject(Brush)^.GDIBrushFill = GDK_TILED) and (TGtkDeviceContext(DC).BkMode = OPAQUE) then
   begin
     // fill a rectangle with a solid back color first
     TempBr := CreateSolidBrush(TGtkDeviceContext(DC).CurrentBackColor.ColorRef);
@@ -4709,10 +4725,10 @@ begin
   //we will also have to add internal support for Papersizes etc..
 
   LOGPIXELSX : { Logical pixels per inch in X }
-    Result := RoundToInt(gdk_screen_width / (GetScreenWidthMM / 25.4));
+    Result := ScreenInfo.PixelsPerInchX;
 
   LOGPIXELSY : { Logical pixels per inch in Y }
-    Result := RoundToInt(gdk_screen_height / (GetScreenHeightMM / 25.4));
+    Result := ScreenInfo.PixelsPerInchY;
 
   SIZEPALETTE: { number of entries in color palette }
     if GetVisual then
@@ -4747,7 +4763,7 @@ begin
   end;
   
   {$IFDEF RaiseExceptionOnNilPointers}
-  RaiseException('TGtk2WidgetSet.GetDeviceSize Window=nil');
+  RaiseGDBException('TGtk2WidgetSet.GetDeviceSize Window=nil');
   {$ENDIF}
   DebugLn('TGtk2WidgetSet.GetDeviceSize:', ' WARNING: DC ',DbgS(DC),' without gdkwindow.',
           ' Widget=',DbgS(DevCtx.Widget));
@@ -4994,11 +5010,21 @@ begin
   else
   {$ENDIF}
   lpmi^.rcWork := lpmi^.rcMonitor;
-  // gtk uses zero position for primary monitor
-  if Monitor = 0 then
-    lpmi^.dwFlags := MONITORINFOF_PRIMARY
-  else
-    lpmi^.dwFlags := 0;
+  // since gtk-2.20 we have correct api to get primary monitor. issue #32464
+  if Assigned(gdk_screen_get_primary_monitor) then
+  begin
+    if (Monitor = gdk_screen_get_primary_monitor(gdk_screen_get_default)) then
+      lpmi^.dwFlags := MONITORINFOF_PRIMARY
+    else
+      lpmi^.dwFlags := 0;
+  end else
+  begin
+    // gtk2 below 2.20
+    if Monitor = 0 then
+      lpmi^.dwFlags := MONITORINFOF_PRIMARY
+    else
+      lpmi^.dwFlags := 0;
+  end;
 end;
 
 {------------------------------------------------------------------------------
@@ -5169,11 +5195,11 @@ begin
         begin
           PLogfont(Buf)^ := GDIObject^.LogFont;
           Result:= SizeOf(TLogFont);
-          if GDIObject^.LogFont.lfFaceName = 'default' then
+          if IsFontNameDefault(GDIObject^.LogFont.lfFaceName) then
           begin
             AFontName := GetDefaultFontName;
 
-            if (AFontName = '') or (AFontName = 'default') then
+            if (AFontName = '') or IsFontNameDefault(AFontName) then
             begin
               AFont := GetDefaultGtkFont(False);
               if PANGO_IS_LAYOUT(AFont) then
@@ -5202,7 +5228,7 @@ begin
               if not pango_font_description_get_size_is_absolute(PangoDesc) or (AFontSize >= PANGO_SCALE) then
                 AFontSize := AFontSize div PANGO_SCALE;
 
-              PLogfont(Buf)^.lfHeight := MulDiv(AFontSize, GetDeviceCaps(0, LOGPIXELSX) , 72);
+              PLogfont(Buf)^.lfHeight := MulDiv(AFontSize, Screen.PixelsPerInch, 72);
             end;
           end;
         end else
@@ -5571,7 +5597,9 @@ var
 {$ifdef HasX}
   ax,ay,ah,aw: gint;
 {$endif}
+{$IFDEF Win32}
   auw, auh: guint;
+{$ENDIF}
   screen: PGdkScreen;
   ARect: TGdkRectangle;
   AValue: TGValue;
@@ -5603,12 +5631,17 @@ begin
     SM_CXCURSOR,
     SM_CYCURSOR:
       begin
-        // Width and height of a cursor, in pixels. For win32 system cannot create cursors of other sizes.
-        // For gtk this should be maximal cursor sizes
-        gdk_display_get_maximal_cursor_size(gdk_display_get_default, @auw, @auh);
-        if nIndex = SM_CXCURSOR
-        then Result := auw // return width
-        else Result := auh; // return height
+        {$IFDEF Win32}
+          // Width and height of a cursor, in pixels. For win32 system cannot create cursors of other sizes.
+          // For gtk this should be maximal cursor sizes
+          gdk_display_get_maximal_cursor_size(gdk_display_get_default, @auw, @auh);
+          if nIndex = SM_CXCURSOR
+          then Result := auw // return width
+          else Result := auh; // return height
+        {$ELSE}
+          // At least on Linux, the default size should be taken: Issue #32385
+          Result := gdk_display_get_default_cursor_size(gdk_display_get_default);
+        {$ENDIF}
       end;
     SM_CXDOUBLECLK:
       begin
@@ -5911,6 +5944,10 @@ begin
         Result := GetSystemMetrics(SM_CYMAXIMIZED) - 1 -
           (GetSystemMetrics(SM_CYCAPTION) - (GetSystemMetrics(SM_CYSIZEFRAME) * 2));
       end;
+    SM_LCLHasFormAlphaBlend:
+      begin
+        Result:=1;
+      end;
   end;
 end;
 
@@ -5932,6 +5969,94 @@ begin
 end;
 
 {------------------------------------------------------------------------------
+  Function: GetTextExtentExPoint
+  Params:
+  Returns:
+
+ ------------------------------------------------------------------------------}
+function TGtk2WidgetSet.GetTextExtentExPoint(DC: HDC; Str: PChar;
+  Count, MaxWidth: Integer; MaxCount, PartialWidths: PInteger;
+  var Size: TSize): Boolean;
+var
+  DevCtx: TGtkDeviceContext absolute DC;
+  UseFont : TGtkIntfFont;
+  Utf8Len, Accu, I: PtrInt;
+  Iter: PPangoLayoutIter;
+  CharRect: TPangoRectangle;
+begin
+  if not IsValidDC(DC) then
+    Exit(False);
+
+  Size.cx := 0;
+  Size.cy := 0;
+  if MaxCount <> nil then
+    MaxCount^ := 0;
+
+  if Count = 0 then
+    Exit(True);
+  if (Count < -1) or (Str = nil) then
+    Exit(False);
+
+  if Count = -1 then
+    Count := Length(Str);
+  Utf8Len := UTF8Length(Str, Count);
+  if Utf8Len = 0 then
+    Exit(True);
+
+  UseFont := GetGtkFont(DevCtx);
+  UpdateDCTextMetric(DevCtx);
+  SetLayoutText(UseFont, Str, Count);
+  pango_layout_get_pixel_size(UseFont, @Size.cx, @Size.cy);
+  if DevCtx.HasTransf then
+  begin
+    DevCtx.InvTransfExtent(Size.cx, Size.cy);
+    Size.cx := Abs(Size.cx);
+    Size.cy := Abs(Size.cy);
+  end;
+
+  if PartialWidths = nil then
+  begin
+    if MaxCount = nil then
+      Exit(True);
+    if Size.cx <= MaxWidth then
+    begin
+      MaxCount^ := Utf8Len;
+      Exit(True);
+    end;
+  end;
+
+  I := 1;
+  Accu := 0;
+  Iter := pango_layout_get_iter(UseFont);
+  repeat
+    pango_layout_iter_get_char_extents(Iter, @CharRect);
+    Inc(Accu, CharRect.Width);
+
+    CharRect.Width := Accu;
+    pango_extents_to_pixels(nil, @CharRect);
+    if DevCtx.HasTransf then
+    begin
+      DevCtx.InvTransfExtent(CharRect.Width, CharRect.Height);
+      CharRect.Width := Abs(CharRect.Width);
+    end;
+
+    if MaxCount <> nil then
+    begin
+      if CharRect.Width > MaxWidth then
+        Break;
+      MaxCount^ := I;
+    end;
+    if PartialWidths <> nil then
+      PartialWidths[I - 1] := CharRect.Width;
+
+    Inc(I);
+  until not pango_layout_iter_next_char(Iter);
+  pango_layout_iter_free(Iter);
+
+  Exit(True);
+end;
+
+{------------------------------------------------------------------------------
   Function: GetTextExtentPoint
   Params:  none
   Returns: Nothing
@@ -5940,32 +6065,8 @@ end;
  ------------------------------------------------------------------------------}
 function TGtk2WidgetSet.GetTextExtentPoint(DC: HDC; Str: PChar; Count: Integer;
   var Size: TSize): Boolean;
-var
-  DevCtx: TGtkDeviceContext absolute DC;
-  UseFont : PPangoLayout;
 begin
-  Result := IsValidDC(DC);
-  if not Result then Exit;
-  if (Count <= 0) or (Str = nil) or (StrPas(Str) = '') then
-  begin
-    FillChar(Size, SizeOf(Size), 0);
-    Exit;
-  end;
-
-  UseFont := GetGtkFont(TGtkDeviceContext(DC));
-
-  UpdateDCTextMetric(TGtkDeviceContext(DC));
-
-  SetLayoutText(UseFont, Str, Count);
-  pango_layout_get_pixel_size(UseFont, @Size.cX, @Size.cY);
-  //DebugLn(['TGtk2WidgetSet.GetTextExtentPoint Str="',copy(Str,1,Count),' Count=',Count,' X=',Size.cx,' Y=',Size.cY]);
-
-  if DevCtx.HasTransf then
-  begin
-    DevCtx.InvTransfExtent(Size.cx, Size.cy);
-    Size.cx := Abs(Size.cx);
-    Size.cy := Abs(Size.cy);
-  end;
+  Result := GetTextExtentExPoint(DC, Str, Count, 0, nil, nil, Size);
 end;
 
 {------------------------------------------------------------------------------
@@ -6137,29 +6238,34 @@ function TGtk2WidgetSet.GetWindowRect(Handle: hwnd; var ARect: TRect): Integer;
 var
   Widget: PGTKWidget;
   GRect: TGdkRectangle;
-  R: TRect;
   P: TPoint;
 begin
-  Result := 0; //default
-  if Handle <> 0 then
+  Result := 0; // error
+  if Handle = 0 then
+    Exit;
+
+  Widget := {%H-}PGtkWidget(Handle);
+
+  if GTK_IS_WINDOW(Widget) and Assigned(Widget^.window)
+  and GTK_WIDGET_VISIBLE(Widget) // Gtk2 returns invalid origin/frame for invisible widgets
+  then
   begin
-    Widget := {%H-}PGtkWidget(Handle);
-
-    if GTK_IS_WINDOW(Widget) and Assigned(Widget^.window) then
-    begin
-      gdk_window_get_origin(Widget^.window, @ARect.Left, @ARect.Top);
-      gdk_window_get_size(Widget^.window, @ARect.Right, @ARect.Bottom);
-      P := GetWidgetOrigin(Widget);
-      gdk_window_get_frame_extents(Widget^.window, @GRect);
-      R := RectFromGdkRect(GRect);
-      ARect := Bounds(P.X,P.Y,R.Right-R.Left,R.Bottom-R.Top);
-      // writeln('Frame extents are: ',dbgs(R),' ARECT=',dbgs(AREct));
-      exit;
-    end;
-
+    P := GetWidgetOrigin(Widget);
+    gdk_window_get_frame_extents(Widget^.window, @GRect);
+    ARect := Bounds(P.X,P.Y,GRect.width,GRect.height);
+    // writeln('Frame extents are: ',dbgs(R),' ARECT=',dbgs(ARect));
+    Result := 1; // success
+  end else
+  begin
     ARect.TopLeft := GetWidgetOrigin(Widget);
-    ARect.BottomRight := Point(ARect.Left + Widget^.allocation.width,
-                    ARect.Top + Widget^.allocation.height);
+    if (ARect.Top <> -1) or (ARect.Left <> -1)
+    or (Widget^.allocation.width <> 1) or (Widget^.allocation.height <> 1) then
+    begin
+      ARect.BottomRight := Point(
+        ARect.Left + Widget^.allocation.width,
+        ARect.Top + Widget^.allocation.height);
+      Result := 1; // success
+    end;
   end;
 end;
 {------------------------------------------------------------------------------
@@ -6853,7 +6959,7 @@ var
 
   i: integer;
   PointArray: PGDKPoint;
-  DCOrigin: TPoint;
+  DCOrigin, P: TPoint;
 begin
   if not IsValidDC(DC) then Exit(False);
   
@@ -6866,9 +6972,11 @@ begin
   for i:=0 to NumPts-1 do
   begin
     if DevCtx.HasTransf then
-      Points[I] := DevCtx.TransfPointIndirect(Points[I]);
-    PointArray[i].x := Points[i].x + DCOrigin.X;
-    PointArray[i].y := Points[i].y + DCOrigin.Y;
+      P := DevCtx.TransfPointIndirect(Points[I])
+    else
+      P := Points[i];
+    PointArray[i].x := P.x + DCOrigin.X;
+    PointArray[i].y := P.y + DCOrigin.Y;
   end;
 
   // draw line
@@ -7211,14 +7319,15 @@ const
 
   function GetGroup: PGSList;
   var
-    Item: PGList;
+    Item, orgList: PGList;
     parent : PGTKWidget;
   begin
     Result := nil;
     parent := gtk_widget_get_parent({%H-}Pointer(hndMenu));
     if parent = nil then Exit;
 
-    Item := gtk_container_children(PGTKContainer(parent));
+    Item := gtk_container_get_children(PGTKContainer(parent));
+    orgList := Item;
     while Item <> nil do
     begin
       if (Item^.Data <> {%H-}Pointer(hndMenu)) // exclude ourself
@@ -7230,6 +7339,8 @@ const
       end;
       Item := Item^.Next;
     end;
+    if Assigned(orgList) then
+      g_list_free(orgList);
   end;
 
 var
@@ -7855,13 +7966,6 @@ begin
       
       DevCtx.CurrentBrush := GDIObject;
       DevCtx.SelectedColors := dcscCustom;
-      if DevCtx.GC = nil then Exit;
-
-      gdk_gc_set_fill(DevCtx.GC, GDIObject^.GDIBrushFill);
-      case GDIObject^.GDIBrushFill of
-        GDK_STIPPLED: gdk_gc_set_stipple(DevCtx.GC, GDIObject^.GDIBrushPixMap);
-        GDK_TILED:    gdk_gc_set_tile(DevCtx.GC, GDIObject^.GDIBrushPixMap);
-      end;
     end;
 
     gdiFont: begin
@@ -9389,6 +9493,8 @@ var
   GtkWindow: PGtkWindow;
   B: Boolean;
   Widget: PGtkWidget;
+  AFlags: TGdkWindowState;
+  AWindow: PGdkWindow;
 begin
   Result := False;
 
@@ -9434,9 +9540,17 @@ begin
       begin
         if not GTK_WIDGET_VISIBLE(PGtkWidget(GtkWindow)) then
           gtk_widget_show(PGtkWidget(GtkWindow));
-        gtk_window_deiconify(GtkWindow);
-        gtk_window_unmaximize(GtkWindow);
-        gtk_window_unfullscreen(GtkWindow);
+        AWindow := PGtkWidget(GtkWindow)^.window;
+        if GDK_IS_WINDOW(AWindow) then
+        begin
+          AFlags := gdk_window_get_state(AWindow);
+          if AFlags and GDK_WINDOW_STATE_ICONIFIED <> 0 then
+            gtk_window_deiconify(GtkWindow);
+          if AFlags and GDK_WINDOW_STATE_MAXIMIZED <> 0 then
+            gtk_window_unmaximize(GtkWindow);
+          if AFlags and GDK_WINDOW_STATE_FULLSCREEN <> 0 then
+            gtk_window_unfullscreen(GtkWindow);
+        end;
       end;
     end;
 
@@ -9452,9 +9566,16 @@ begin
       gtk_widget_show(PGtkWidget(GtkWindow))
     else
     begin
-      gtk_window_deiconify(GtkWindow);
-      gtk_window_unfullscreen(GtkWindow);
-      gtk_window_maximize(GtkWindow);
+      AWindow := PGtkWidget(GtkWindow)^.window;
+      if GDK_IS_WINDOW(AWindow) then
+      begin
+        AFlags := gdk_window_get_state(AWindow);
+        if AFlags and GDK_WINDOW_STATE_ICONIFIED <> 0 then
+          gtk_window_deiconify(GtkWindow);
+        if AFlags and GDK_WINDOW_STATE_FULLSCREEN <> 0 then
+          gtk_window_unfullscreen(GtkWindow);
+        gtk_window_maximize(GtkWindow);
+      end;
     end;
 
   SW_SHOWFULLSCREEN:
@@ -9463,6 +9584,20 @@ begin
     else
       gtk_window_fullscreen(GtkWindow);
 
+  SW_RESTORE:
+    begin
+      AWindow := PGtkWidget(GtkWindow)^.window;
+      if GDK_IS_WINDOW(AWindow) then
+      begin
+        AFlags := gdk_window_get_state(AWindow);
+        if AFlags and GDK_WINDOW_STATE_ICONIFIED <> 0 then
+          gtk_window_deiconify(GtkWindow);
+        if AFlags and GDK_WINDOW_STATE_MAXIMIZED <> 0 then
+          gtk_window_unmaximize(GtkWindow);
+        if AFlags and GDK_WINDOW_STATE_FULLSCREEN <> 0 then
+          gtk_window_unfullscreen(GtkWindow);
+      end;
+    end;
   end;
 
   Result := True;
@@ -9580,15 +9715,10 @@ begin
   EnsureGCColor(DC, dccCurrentTextColor, True, False);
 
   BackGroundColor := nil;
-  if Assigned(DevCtx.GDIObjects[gdiBrush]) and (DevCtx.BkMode = OPAQUE) and
-    Assigned(DevCtx.CurrentBackColor.Colormap) then
+  if DevCtx.BkMode = OPAQUE then
   begin
-    EnsureGCColor(DC, dccCurrentBackColor, DevCtx.GDIObjects[gdiBrush]^.GDIBrushFill = GDK_SOLID, True);
-    //do not set BackGroundColor if CurrentBrush.Color = CurrentBackColor.
-    //issue #22719
-    if TGDKColorToTColor(DevCtx.CurrentBackColor.Color) <>
-      TGDKColorToTColor(DevCtx.GetBrush^.GDIBrushColor.Color) then
-      BackGroundColor := @DevCtx.CurrentBackColor.Color;
+    AllocGDIColor(DC, @DevCtx.CurrentBackColor);
+    BackGroundColor := @DevCtx.CurrentBackColor.Color;
   end;
 
   DevCtx.DrawTextWithColors(Str, Count,

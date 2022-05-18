@@ -335,7 +335,7 @@ type
   (*                                                                     *)
   (*     - if projVector is horizontal, ratio = x_ratio = 1.0            *)
   (*     - if projVector is vertical,   ratop = y_ratio                  *)
-  (*     - else, ratio = sqrt( (proj.x*x_ratio)ý+(proj.y*y_ratio)ý )     *)
+  (*     - else, ratio = sqrt( (proj.x*x_ratio)**2+(proj.y*y_ratio)**2 ) *)
   (*                                                                     *)
   (*   reading a cvt value returns      ratio*cvt[index]                 *)
   (*   writing a cvt value in pixels    cvt[index]/ratio                 *)
@@ -486,7 +486,7 @@ type
             extension : Pointer;
             (* a typeless pointer to the face object's extensions *)
 
-            generic   : Pointer;
+            genericP  : Pointer;
             (* generic pointer - see TT_Set/Get_Face_Pointer *)
           end;
 
@@ -537,7 +537,7 @@ type
                 (* execution context with the instance object *)
                 (* rather than asking it on demand            *)
 
-                generic : Pointer;
+                genericP: Pointer;
                 (* generic pointer - see TT_Set/Get_Instance_Pointer *)
               end;
 
@@ -1722,7 +1722,6 @@ const
         ( (not debug) and Run_Ins( @exec^ ) ) then
        goto Fin;
 
-   ins^.GS        := exec^.GS;
    Instance_Reset := Success;
 
  Fin:

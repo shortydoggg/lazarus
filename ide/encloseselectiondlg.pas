@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -35,9 +35,15 @@ unit EncloseSelectionDlg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Buttons,
-  ExtCtrls, BasicCodeTools, CodeToolManager, SourceChanger,
-  LazarusIDEStrConsts, LazConf, LazUTF8, IDEProcs, ButtonPanel;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, ExtCtrls, ButtonPanel,
+  // LazUtils
+  LazUTF8, LazTracer, LazStringUtils,
+  // CodeTools
+  BasicCodeTools, CodeToolManager, SourceChanger,
+  // IDE
+  LazarusIDEStrConsts;
 
 type
   TEncloseSelectionType = (
@@ -76,9 +82,9 @@ implementation
 
 {$R *.lfm}
 
-function EncloseSelectionTypeDescription(TheType: TEncloseSelectionType
-  ): string;
+function EncloseSelectionTypeDescription(TheType: TEncloseSelectionType): string;
 begin
+  Result:='';
   case TheType of
     estTryFinally: Result:='Try..Finally';
     estTryExcept: Result:='Try..Except';
@@ -89,7 +95,7 @@ begin
     estWith: Result:='With | do begin..end';
     estPascalComment: Result:='{..}';
   else
-    RaiseException('EncloseSelectionTypeDescription');
+    RaiseGDBException('EncloseSelectionTypeDescription');
   end;
 end;
 
@@ -155,7 +161,7 @@ begin
                +'}'+LineEnding;
 
   else
-    RaiseException('GetEnclosedSelectionParams');
+    RaiseGDBException('GetEnclosedSelectionParams');
   end;
 end;
 
@@ -427,7 +433,7 @@ begin
                        EncloseSelectionTypeDescription(Result))=0
     then
       exit;
-  RaiseException('TEncloseSelectionDialog.GetEncloseType');
+  RaiseGDBException('TEncloseSelectionDialog.GetEncloseType');
 end;
 
 end.

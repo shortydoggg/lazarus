@@ -5,8 +5,10 @@ unit TestWatches;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testutils, testregistry, TestGDBMIControl, DbgIntfBaseTypes,
-  DbgIntfDebuggerBase, TestBase, GDBMIDebugger, LCLProc, SynRegExpr, TestWatchUtils;
+  Classes, SysUtils, fpcunit, testutils, testregistry, RegExpr,
+  DbgIntfBaseTypes, DbgIntfDebuggerBase, TestBase, GDBMIDebugger, TestDbgConfig,
+  TestDbgControl, TTestDbgExecuteables, TestDbgTestSuites, LCLProc,
+  TestWatchUtils;
 
 const
   BREAK_LINE_FOOFUNC_NEST  = 206;
@@ -86,6 +88,10 @@ type
   end;
 
 implementation
+
+var
+ ControlTestWatch, ControlTestWatchUnstable, ControlTestWatchGdb, ControlTestWatchAll,
+ ControlTestWatchMix, ControlTestWatchMixAll, ControlTestWatchCache: Pointer;
 
 const
   RNoPreQuote  = '(^|[^''])'; // No open qoute (Either at start, or other char)
@@ -221,7 +227,7 @@ end;
 
 procedure TTestWatches.AddExpectBreakFooGdb;
 begin
-  if not TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.Gdb')] then exit;
+  if not TestControlCanTest(ControlTestWatchGdb) then exit;
   FCurrentExpArray := @ExpectBreakFooGdb;
 
   Add('ptype ArgTFoo',  wdfDefault, 'type = \^TFoo = class : PUBLIC TObject', skClass, '', []);
@@ -240,7 +246,7 @@ procedure TTestWatches.AddExpectBreakFooAll;
 var
   r: PWatchExpectation;
 begin
-  if not TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.All')] then exit;
+  if not TestControlCanTest(ControlTestWatchAll) then exit;
   FCurrentExpArray := @ExpectBreakFoo;
 
   {%region    * records * }
@@ -1073,7 +1079,7 @@ var
   v: string;
   i: integer;
 begin
-  if not TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.All')] then exit;
+  if not TestControlCanTest(ControlTestWatchAll) then exit;
   FCurrentExpArray := @ExpectBreakFooArray;
 
   {%region    * Array * }
@@ -1553,7 +1559,7 @@ procedure TTestWatches.AddExpectBreakFooMixInfo;
     else Add(AVar,                wdfDefault, MatchClassNil(AExpClass), skClass, AExpClass, AFlgs);
   end;
 begin
-  if not TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.Mix')] then exit;
+  if not TestControlCanTest(ControlTestWatchMix) then exit;
   FCurrentExpArray := @ExpectBreakFoo;
 
   // Type Casting objects with mixed symbol type
@@ -1661,7 +1667,7 @@ end;
 
 procedure TTestWatches.AddExpectBreakClassMeth1;
 begin
-  if not TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.All')] then exit;
+  if not TestControlCanTest(ControlTestWatchAll) then exit;
   FCurrentExpArray := @ExpectBreakClassMeth1;
 
   AddFmtDef('publMember1',  '^413$',    skSimple,   'Integer|LongInt',  [fTpMtch]);
@@ -1690,7 +1696,7 @@ procedure TTestWatches.AddExpectBreakFooAndSubFoo;
     AddWatchExp(ExpectBreakSubFoo, AnExpr, AFmt, AMtch, AKind, ATpNm, AFlgs, AStackFrame)
   end;
 begin
-  if not TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.Cache')] then exit;
+  if not TestControlCanTest(ControlTestWatchCache) then exit;
 //  FCurrentExpArray := @ExpectBreakSubFoo;
 
   AddS('VarCacheTest1', wdfDefault, MatchRecord('TCacheTest', 'CTVal = 101'),
@@ -1749,11 +1755,11 @@ var
 begin
   TestBaseName := NamePreFix;
   if not HasTestArraysData then exit;
-  Only := StrToIntDef(TestControlForm.EdOnlyWatch.Text, -1);
+  Only := StrToIntDef(TestControlGetTestPattern, -1);
   OnlyNamePart := '';OnlyName := '';
   if Only < 0
   then begin
-    OnlyName := TestControlForm.EdOnlyWatch.Text;
+    OnlyName := TestControlGetTestPattern;
     if (OnlyName <> '') and (OnlyName[1]='*') then begin
       OnlyNamePart := copy(OnlyName, 2, length(OnlyName));
       OnlyName := '';
@@ -1770,8 +1776,8 @@ begin
     end;
   end;
 
+  dbg := StartGDB(AppDir, TestExeName);
   try
-    dbg := StartGDB(AppDir, TestExeName);
     FWatches := Watches.Watches;
 
     with dbg.BreakPoints.Add('WatchesPrg.pas', BREAK_LINE_FOOFUNC) do begin
@@ -1882,9 +1888,9 @@ var
   UsedUnits: TUsesDir;
 begin
   if SkipTest then exit;
-  if not TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('TTestWatch')] then exit;
+  if not TestControlCanTest(ControlTestWatch) then exit;
 
-  FDoStatIntArray := TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.Unstable')];
+  FDoStatIntArray := TestControlCanTest(ControlTestWatchUnstable);
   // GDB 7.0 with fpc 2.4.x has issues with "array of int"
   FDoStatIntArray := FDoStatIntArray and
                      not ((pos('2.4.', CompilerInfo.Name) > 0) and (DebuggerInfo.Version = 70000));
@@ -1900,7 +1906,7 @@ begin
   AddExpectBreakClassMeth1;
   RunTestWatches('', TestExeName,  '', []);
 
-  if TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('  TTestWatch.Mix')]
+  if TestControlCanTest(ControlTestWatchMix)
   then begin
 
     ClearAllTestArrays;
@@ -1914,7 +1920,7 @@ begin
     end;
     RunTestWatches('unitw1=none', TestExeName,  '-dUSE_W1', [UsedUnits]);
 
-    if TestControlForm.CheckListBox1.Checked[TestControlForm.CheckListBox1.Items.IndexOf('    TTestWatch.Mix.All')]
+  if TestControlCanTest(ControlTestWatchMixAll)
     then begin
       if (stStabs in CompilerInfo.SymbolTypes) and (stStabs in DebuggerInfo.SymbolTypes)
       then begin
@@ -1969,13 +1975,14 @@ end;
 initialization
 
   RegisterDbgTest(TTestWatches);
-  RegisterTestSelectors(['TTestWatch',
-                         '-  TTestWatch.Unstable',
-                         '  TTestWatch.Gdb',
-                         '  TTestWatch.All',
-                         '  TTestWatch.Mix',
-                         '    TTestWatch.Mix.All',
-                         '  TTestWatch.Cache'
-                        ]);
+
+  ControlTestWatch         := TestControlRegisterTest('TTestWatch');
+  ControlTestWatchUnstable := TestControlRegisterTest('Unstable', ControlTestWatch);
+  ControlTestWatchGdb      := TestControlRegisterTest('Gdb', ControlTestWatch);
+  ControlTestWatchAll      := TestControlRegisterTest('All', ControlTestWatch);
+  ControlTestWatchMix      := TestControlRegisterTest('Mix', ControlTestWatch);
+  ControlTestWatchMixAll   := TestControlRegisterTest('All', ControlTestWatchMix);
+  ControlTestWatchCache    := TestControlRegisterTest('Cache', ControlTestWatch);
+
 end.
 

@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -36,13 +36,21 @@ unit SourceEditProcs;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LCLType, Graphics, Controls,
-  SynRegExpr, SynCompletion, BasicCodeTools, CodeTree,
-  CodeAtom, CodeCache, SourceChanger, CustomCodeTool, CodeToolManager,
-  PascalParserTool, KeywordFuncLists, FileProcs, IdentCompletionTool,
-  PascalReaderTool,
+  Classes, SysUtils, RegExpr,
+  // LCL
+  LCLType, Graphics, Controls,
+  // LazUtils
+  LazFileUtils, LazStringUtils,
+  // SynEdit
+  SynCompletion,
+  // CodeTools
+  BasicCodeTools, CodeTree, CodeAtom, CodeCache, SourceChanger, CustomCodeTool,
+  CodeToolManager, PascalParserTool, KeywordFuncLists, FileProcs,
+  IdentCompletionTool, PascalReaderTool,
+  // IdeIntf
   LazIDEIntf, IDEImagesIntf, TextTools, IDETextConverter,
-  DialogProcs, LazFileUtils, EditorOptions, CodeToolsOptions;
+  // IDE
+  DialogProcs, EditorOptions, CodeToolsOptions;
 
 type
 
@@ -97,16 +105,30 @@ type
     icvNone
     );
 
+  TPaintCompletionItemColors = record
+    BackgroundColor: TColor;
+    BackgroundSelectedColor: TColor;
+    TextColor: TColor;
+    TextSelectedColor: TColor;
+    TextHilightColor: TColor;
+  end;
+  PPaintCompletionItemColors = ^TPaintCompletionItemColors;
+
 // completion form and functions
 function PaintCompletionItem(const AKey: string; ACanvas: TCanvas;
   X, Y, MaxX: integer; ItemSelected: boolean; Index: integer;
   {%H-}aCompletion : TSynCompletion; CurrentCompletionType: TCompletionType;
-  Highlighter: TSrcIDEHighlighter; MeasureOnly: Boolean = False): TPoint;
+  Highlighter: TSrcIDEHighlighter; Colors: PPaintCompletionItemColors;
+  MeasureOnly: Boolean = False): TPoint;
 
 function GetIdentCompletionValue(aCompletion : TSynCompletion;
   AddChar: TUTF8Char;
   out ValueType: TIdentComplValue; out CursorToLeft: integer): string;
 function BreakLinesInText(const s: string; MaxLineLength: integer): string;
+
+const
+  ctnWord = ctnUser + 1;
+  WordCompatibility = icompUnknown;
 
 implementation
 
@@ -124,10 +146,11 @@ begin
   FreeAndNil(TextConverterToolClasses);
 end;
 
-function PaintCompletionItem(const AKey: string; ACanvas: TCanvas;
-  X, Y, MaxX: integer; ItemSelected: boolean; Index: integer;
-  aCompletion : TSynCompletion; CurrentCompletionType: TCompletionType;
-  Highlighter: TSrcIDEHighlighter; MeasureOnly: Boolean): TPoint;
+function PaintCompletionItem(const AKey: string; ACanvas: TCanvas; X, Y,
+  MaxX: integer; ItemSelected: boolean; Index: integer;
+  aCompletion: TSynCompletion; CurrentCompletionType: TCompletionType;
+  Highlighter: TSrcIDEHighlighter; Colors: PPaintCompletionItemColors;
+  MeasureOnly: Boolean): TPoint;
 
 const
   HintModifierImage: array[TPascalHintModifier] of String = (
@@ -143,10 +166,12 @@ var
   BGGreen: Integer;
   BGBlue: Integer;
   TokenStart: Integer;
-  BackgroundColor: TColorRef;
-  ForegroundColor: TColorRef;
+  BackgroundColor: TColor;
+  ForegroundColor: TColor;
+  TextHilightColor: TColor;
+  AllowFontColor: Boolean;
 
-  procedure SetFontColor(NewColor: TColor);
+  procedure SetFontColor(NewColor: TColor; Force: boolean = false);
   
     {procedure IncreaseDiff(var Value: integer; BaseValue: integer);
     begin
@@ -171,13 +196,20 @@ var
     GreenDiff: integer;
     BlueDiff: integer;
   begin
+    if (not AllowFontColor) and (not Force) then
+      Exit;
+
     NewColor := TColor(ColorToRGB(NewColor));
     FGRed:=(NewColor shr 16) and $ff;
     FGGreen:=(NewColor shr 8) and $ff;
     FGBlue:=NewColor and $ff;
     RedDiff:=Abs(FGRed-BGRed);
     GreenDiff:=Abs(FGGreen-BGGreen);
-    BlueDiff:=Abs(FGBlue -BGBlue);
+    BlueDiff:=Abs(FGBlue-BGBlue);
+    {if ItemSelected then
+      writeln('SetFontColor ',RedDiff,'=',FGRed,'-',BGRed,' ',
+         GreenDiff,'=',FGGreen,'-',BGGreen,' ',
+         BlueDiff,'=',FGBlue,'-',BGBlue);}
     if RedDiff*RedDiff + GreenDiff*GreenDiff + BlueDiff*BlueDiff<30000 then
     begin
       NewColor:=InvertColor(NewColor);
@@ -187,6 +219,7 @@ var
       NewColor:=(FGRed shl 16) or (FGGreen shl 8) or FGBlue;}
     end;
     ACanvas.Font.Color:=NewColor;
+    //debugln(['SetFontColor ',NewColor,' ',ACanvas.Font.Color]);
   end;
   
   procedure WriteToken(var TokenStart, TokenEnd: integer);
@@ -197,8 +230,10 @@ var
       CurToken:=copy(AKey,TokenStart,TokenEnd-TokenStart);
       if MeasureOnly then
         Inc(Result.X, ACanvas.TextWidth(CurToken))
-      else
+      else begin
+        //debugln(['WriteToken ',CurToken,' ',ACanvas.Font.Color]);
         ACanvas.TextOut(x+1, y, CurToken);
+      end;
       x := x + ACanvas.TextWidth(CurToken);
       //debugln('Paint A Text="',CurToken,'" x=',dbgs(x),' y=',dbgs(y),' "',ACanvas.Font.Name,'" ',dbgs(ACanvas.Font.Height),' ',dbgs(ACanvas.TextWidth(CurToken)));
       TokenStart:=0;
@@ -211,12 +246,14 @@ var
     nTokenLen: integer;
     Attr: TSynHighlightElement;
     CurForeground: TColor;
+    LeftText: string;
   begin
     if MeasureOnly then begin
       Inc(Result.X,ACanvas.TextWidth(s));
       exit;
     end;
-    if (Highlighter<>nil) and (not ItemSelected) then begin
+    if (Highlighter<>nil) and AllowFontColor then begin
+      LeftText := '';
       Highlighter.ResetRange;
       Highlighter.SetLine(s,0);
       while not Highlighter.GetEol do begin
@@ -229,8 +266,8 @@ var
           if CurForeground=clNone then
             CurForeground:=TColor(ForegroundColor);
           SetFontColor(CurForeground);
-          ACanvas.TextOut(x,y,s);
-          inc(x,ACanvas.TextWidth(s));
+          ACanvas.TextOut(x+1+ACanvas.TextWidth(LeftText),y,s);
+          LeftText += s;
         end;
         Highlighter.Next;
       end;
@@ -249,12 +286,45 @@ var
   ItemNode: TCodeTreeNode;
   SubNode: TCodeTreeNode;
   IsReadOnly: boolean;
-  ImageIndex: longint;
+  UseImages: boolean;
+  ImageIndex, ImageIndexCC: longint;
+  Token: String;
+  PrefixPosition: Integer;
   HintModifiers: TPascalHintModifiers;
   HintModifier: TPascalHintModifier;
   HelperForNode: TCodeTreeNode;
 begin
-  ForegroundColor := ColorToRGB(ACanvas.Font.Color);
+  if Colors<>nil then
+  begin
+    if ItemSelected then
+    begin
+      AllowFontColor := Colors^.TextSelectedColor=clNone;
+      if AllowFontColor then
+        ForegroundColor := ColorToRGB(Colors^.TextColor)
+      else
+        ForegroundColor := ColorToRGB(Colors^.TextSelectedColor);
+      BackgroundColor:=ColorToRGB(Colors^.BackgroundSelectedColor);
+    end else
+    begin
+      ForegroundColor := ColorToRGB(Colors^.TextColor);
+      AllowFontColor := True;
+      BackgroundColor:=ColorToRGB(Colors^.BackgroundColor);
+    end;
+    TextHilightColor:=ColorToRGB(Colors^.TextHilightColor);
+  end else
+  begin
+    ForegroundColor := clBlack;
+    AllowFontColor := True;
+    BackgroundColor:=ColorToRGB(ACanvas.Brush.Color);
+    TextHilightColor := clWhite;
+  end;
+
+  BGRed:=(BackgroundColor shr 16) and $ff;
+  BGGreen:=(BackgroundColor shr 8) and $ff;
+  BGBlue:=BackgroundColor and $ff;
+  ForegroundColor := ColorToRGB(ForegroundColor);
+  SetFontColor(ForegroundColor,true);
+
   Result.X := 0;
   Result.Y := ACanvas.TextHeight('W');
   if CurrentCompletionType=ctIdentCompletion then begin
@@ -266,11 +336,10 @@ begin
       exit;
     end;
     IdentItem.BeautifyIdentifier(CodeToolBoss.IdentifierList);
-    BackgroundColor:=ColorToRGB(ACanvas.Brush.Color);
-    BGRed:=(BackgroundColor shr 16) and $ff;
-    BGGreen:=(BackgroundColor shr 8) and $ff;
-    BGBlue:=BackgroundColor and $ff;
+    ItemNode:=IdentItem.Node;
     ImageIndex:=-1;
+    ImageIndexCC := -1;
+    UseImages := CodeToolsOpts.IdentComplShowIcons;
 
     // first write the type
     // var, procedure, property, function, type, const
@@ -278,84 +347,166 @@ begin
 
     ctnVarDefinition, ctnRecordCase:
       begin
-        AColor:=clMaroon;
-        s:='var';
+        if UseImages then
+          ImageIndexCC := IDEImages.LoadImage('cc_variable', 16)
+        else begin
+          AColor:=clMaroon;
+          s:='var';
+        end;
       end;
 
     ctnTypeDefinition, ctnEnumerationType:
       begin
-        AColor:=clLime;
-        s:='type';
+        if UseImages then
+        begin
+          if ItemNode <> nil then
+            begin
+              ANode := IdentItem.Tool.FindTypeNodeOfDefinition(ItemNode);
+              case ANode.Desc of
+                ctnClass:
+                  ImageIndexCC := IDEImages.LoadImage('cc_class', 16);
+                ctnRecordType:
+                  ImageIndexCC := IDEImages.LoadImage('cc_record', 16);
+                ctnEnumerationType:
+                  ImageIndexCC := IDEImages.LoadImage('cc_enum', 16);
+                else
+                  ImageIndexCC := IDEImages.LoadImage('cc_type', 16);
+              end;
+            end
+          else
+            ImageIndexCC := IDEImages.LoadImage('cc_type', 16);
+        end
+        else
+        begin
+          AColor:=clLime;
+          s:='type';
+        end;
       end;
 
     ctnConstDefinition,ctnConstant:
       begin
         AColor:=clOlive;
         s:='const';
+        if UseImages then
+          ImageIndexCC := IDEImages.LoadImage('cc_constant', 16);
       end;
       
     ctnProcedure:
       begin
-        if IdentItem.IsFunction then
+        if UseImages then
         begin
-          AColor:=clTeal;
-          s:='function';
+          if IdentItem.IsFunction then
+            ImageIndexCC := IDEImages.LoadImage('cc_function', 16)
+          else if IdentItem.IsConstructor then
+            ImageIndexCC := IDEImages.LoadImage('cc_constructor', 16)
+          else if IdentItem.IsDestructor then
+            ImageIndexCC := IDEImages.LoadImage('cc_destructor', 16)
+          else
+            ImageIndexCC := IDEImages.LoadImage('cc_procedure', 16);
         end
         else
         begin
-          AColor:=clNavy;
-          if IdentItem.IsConstructor then
-            s := 'constructor'
+          if IdentItem.IsFunction then
+            begin
+              AColor:=clTeal;
+              s:='function';
+            end
           else
-          if IdentItem.IsDestructor then
-            s := 'destructor'
-          else
-            s:='procedure';
+            begin
+              AColor:=clNavy;
+              if IdentItem.IsConstructor then
+                s := 'constructor'
+              else if IdentItem.IsDestructor then
+                s := 'destructor'
+              else
+                s:='procedure';
+            end;
+          if IdentItem.TryIsAbstractMethod then
+            AColor:=clRed;
+          if iliHasLowerVisibility in IdentItem.Flags then
+            AColor:=clGray;
         end;
-        if IdentItem.TryIsAbstractMethod then
-          AColor:=clRed;
       end;
       
     ctnProperty,ctnGlobalProperty:
       begin
-        AColor:=clPurple;
-        s:='property';
         IsReadOnly:=IdentItem.IsPropertyReadOnly;
-        if IsReadOnly then
-          ImageIndex:=IDEImages.LoadImage(16,'ce_property_readonly');
+        if UseImages then
+          begin
+            if IsReadOnly then
+              ImageIndexCC := IDEImages.LoadImage('cc_property_ro', 16)
+            else
+              ImageIndexCC := IDEImages.LoadImage('cc_property', 16);
+          end
+        else
+          begin
+            AColor:=clPurple;
+            s:='property';
+            if IsReadOnly then
+              ImageIndex:=IDEImages.LoadImage('ce_property_readonly');
+          end;
       end;
 
     ctnEnumIdentifier:
       begin
-        AColor:=clOlive;
-        s:='enum';
+        if UseImages then
+          ImageIndexCC := IDEImages.LoadImage('cc_enum', 16)
+        else
+          begin
+            AColor:=clOlive;
+            s:='enum';
+          end;
       end;
       
     ctnLabel:
       begin
-        AColor:=clOlive;
-        s:='label';
+        if UseImages then
+          ImageIndexCC := IDEImages.LoadImage('cc_label', 16)
+        else
+          begin
+            AColor:=clOlive;
+            s:='label';
+          end;
       end;
 
     ctnUnit, ctnUseUnitClearName:
       begin
-        AColor:=clBlack;
-        s:='unit';
+        if UseImages then
+          ImageIndexCC := IDEImages.LoadImage('cc_unit', 16)
+        else
+          begin
+            AColor:=clBlack;
+            s:='unit';
+          end;
       end;
 
     ctnUseUnitNamespace:
       begin
-        AColor:=clBlack;
-        s:='namespace';
+        if UseImages then
+          ImageIndexCC := IDEImages.LoadImage('cc_namespace', 16)
+        else
+          begin
+            AColor:=clBlack;
+            s:='namespace';
+          end;
+      end;
+
+    ctnWord:
+      begin
+        AColor:=clGray;
+        s:='text';
       end;
 
     ctnNone:
-      if iliKeyword in IdentItem.Flags then begin
-        AColor:=clBlack;
-        s:='keyword';
-      end else begin
-        AColor:=clGray;
-        s:='';
+      if not UseImages then
+      begin
+        if iliKeyword in IdentItem.Flags then begin
+          AColor:=clBlack;
+          s:='keyword';
+        end else begin
+          AColor:=clGray;
+          s:='';
+        end;
       end;
 
     else
@@ -363,12 +514,28 @@ begin
       s:='';
     end;
 
-    SetFontColor(AColor);
-    if MeasureOnly then
-      Inc(Result.X, ACanvas.TextWidth('constructor '))
+    if UseImages then
+    begin
+     // drawing type image
+      if MeasureOnly then
+        Inc(Result.X, IDEImages.Images_16.Width + round(IDEImages.Images_16.Width / 4))
+      else
+        begin
+          if ImageIndexCC >= 0 then
+            IDEImages.Images_16.Draw(ACanvas, x+1, y+(Result.Y-IDEImages.Images_16.Height) div 2, ImageIndexCC);
+        end;
+      Inc(x,IDEImages.Images_16.Width + round(IDEImages.Images_16.Width / 4));
+    end
     else
-      ACanvas.TextOut(x+1,y,s);
-    inc(x,ACanvas.TextWidth('constructor '));
+    begin
+      SetFontColor(AColor);
+      if MeasureOnly then
+        Inc(Result.X, ACanvas.TextWidth('constructor '))
+      else
+        ACanvas.TextOut(x+1,y,s);
+      inc(x,ACanvas.TextWidth('constructor '));
+    end;
+
     if x>MaxX then exit;
 
     // paint the identifier
@@ -379,10 +546,32 @@ begin
       Inc(Result.X, 1+ACanvas.TextWidth(s))
     else begin
       //DebugLn(['PaintCompletionItem ',x,',',y,' ',s]);
-      ACanvas.TextOut(x+1,y,s);
-      inc(x,ACanvas.TextWidth(s));
+      // highlighting the prefix
+      if (Colors<>nil) and (TextHilightColor<>clNone)
+      and (aCompletion.CurrentString<>'') then
+      begin
+        PrefixPosition := Pos(LowerCase(aCompletion.CurrentString), LowerCase(s));
+        if PrefixPosition > 0 then
+        begin
+          // paint before prefix
+          Token := Copy(s, 1, PrefixPosition-1);
+          ACanvas.TextOut(x+1,y,Token);
+          // paint highlight prefix
+          SetFontColor(TextHilightColor);
+          Token := Copy(s, PrefixPosition, Length(aCompletion.CurrentString));
+          ACanvas.TextOut(x+1+ACanvas.TextWidth(Copy(s, 1, PrefixPosition-1)),y,Token);
+          // paint after prefix
+          SetFontColor(ForegroundColor);
+          Token := Copy(s, PrefixPosition+Length(aCompletion.CurrentString), High(Integer));
+          ACanvas.TextOut(x+1+ACanvas.TextWidth(Copy(s, 1, PrefixPosition-1+Length(aCompletion.CurrentString))),y,Token);
+        end else
+          ACanvas.TextOut(x+1,y,s);
+      end else
+        ACanvas.TextOut(x+1,y,s);
+      inc(x,ACanvas.TextWidth(s)+1);
       if x>MaxX then exit;
     end;
+    SetFontColor(ForegroundColor);
     ACanvas.Font.Style:=ACanvas.Font.Style-[fsBold];
 
     if ImageIndex <= 0 then
@@ -390,25 +579,27 @@ begin
       HintModifiers := IdentItem.GetHintModifiers;
       for HintModifier in HintModifiers do
       begin
-        ImageIndex := IDEImages.LoadImage(16, HintModifierImage[HintModifier]);
+        ImageIndex := IDEImages.LoadImage(HintModifierImage[HintModifier]);
         break;
       end;
     end;
 
     // paint icon
-    if ImageIndex>=0 then begin
-      if MeasureOnly then
-        Inc(Result.X, 18)
-      else begin
-        IDEImages.Images_16.Draw(ACanvas,x+1,y+(Result.Y-16) div 2,ImageIndex);
-        inc(x,18);
-        if x>MaxX then exit;
+    if not UseImages then
+    begin
+      if ImageIndex>=0 then begin
+        if MeasureOnly then
+          Inc(Result.X, 18)
+        else begin
+          IDEImages.Images_16.Draw(ACanvas,x+1,y+(Result.Y-16) div 2,ImageIndex);
+          inc(x,18);
+          if x>MaxX then exit;
+        end;
       end;
     end;
-    
+
     // finally paint the type/value/parameters
     s:='';
-    ItemNode:=IdentItem.Node;
     if ItemNode<>nil then begin
       case ItemNode.Desc of
 
@@ -420,7 +611,7 @@ begin
              phpWithOfObject,phpWithoutSemicolon]);
         end;
 
-      ctnProperty:
+      ctnProperty,ctnGlobalProperty:
         begin
           s:=IdentItem.Tool.ExtractProperty(ItemNode,
             [phpWithoutName,phpWithVarModifiers,
@@ -523,6 +714,7 @@ begin
 
   end else begin
     // parse AKey for text and style
+    //debugln(['PaintCompletionItem WordCompletion:']);
     i := 1;
     TokenStart:=0;
     while i <= Length(AKey) do begin
@@ -531,9 +723,10 @@ begin
         begin
           WriteToken(TokenStart,i);
           // set color
-          ACanvas.Font.Color := (Ord(AKey[i + 3]) shl 8
-                        + Ord(AKey[i + 2])) shl 8
-                        + Ord(AKey[i + 1]);
+          ForegroundColor:=(Ord(AKey[i + 3]) shl 8
+                          + Ord(AKey[i + 2])) shl 8
+                          + Ord(AKey[i + 1]);
+          SetFontColor(ForegroundColor);
           inc(i, 4);
         end;
       #3:
@@ -557,6 +750,7 @@ begin
     end;
     WriteToken(TokenStart,i);
   end;
+  //debugln(['PaintCompletionItem END']);
 end;
 
 function GetIdentCompletionValue(aCompletion : TSynCompletion;
@@ -856,26 +1050,26 @@ var
   CodeBuf: TCodeBuffer;
   LastPointPos: Integer;
   NewIdentifier: string;
+  WordExc: TWordPolicyExceptions;
 begin
   if FBeautified then
     Exit;
 
   NewIdentifier:=Identifier;
-  if not CodeToolBoss.SourceChangeCache.BeautifyCodeOptions.WordExceptions.CheckExceptions(NewIdentifier) then
+  WordExc:=CodeToolBoss.SourceChangeCache.BeautifyCodeOptions.WordExceptions;
+  if not WordExc.CheckExceptions(NewIdentifier) then
   begin
     CodeBuf:=CodeToolBoss.FindUnitSource(IdentList.StartContextPos.Code,FileUnitName,'');
     if CodeBuf=nil then Exit;
 
-    NewIdentifier:=Copy(CodeToolBoss.GetSourceName(CodeBuf,true), IdentifierStartInUnitName, Length(Identifier));
+    NewIdentifier:=Copy(CodeToolBoss.GetSourceName(CodeBuf,true),
+                        IdentifierStartInUnitName, Length(Identifier));
 
+    LastPointPos := LastDelimiter('.', NewIdentifier);
+    if LastPointPos > 0 then
+      NewIdentifier := Copy(NewIdentifier, LastPointPos+1, length(NewIdentifier));
     if NewIdentifier='' then
-      NewIdentifier:=Identifier
-    else
-    begin
-      LastPointPos := LastDelimiter('.', NewIdentifier);
-      if LastPointPos > 0 then
-        NewIdentifier := Copy(NewIdentifier, LastPointPos+1, High(Integer));
-    end;
+      NewIdentifier:=Identifier;
   end;
   Identifier := NewIdentifier;
   FBeautified := True;

@@ -28,6 +28,12 @@ begin
     FImages.FreeNotification(Self);
 end;
 
+procedure TCustomHeaderControl.SetImagesWidth(const aImagesWidth: Integer);
+begin
+  if FImagesWidth = aImagesWidth then Exit;
+  FImagesWidth := aImagesWidth;
+end;
+
 function TCustomHeaderControl.GetSectionFromOriginalIndex(OriginalIndex: Integer): THeaderSection;
 var
   i: Longint;
@@ -200,6 +206,8 @@ begin
   begin
     FMouseInControl := False;
     FDown := False;
+    if not FTracking then
+      Cursor := FSavedCursor;
     UpdateState;
   end;
 end;
@@ -387,6 +395,7 @@ var
   ARect, ContentRect: TRect;
   Details: TThemedElementDetails;
   Section: THeaderSection;
+  ImagesSize: TSize;
 begin
   Section := Sections[Index];
   if not Section.Visible then Exit;
@@ -405,14 +414,38 @@ begin
   if (Images <> nil) and (Section.ImageIndex <> -1) then
   begin
     inc(ContentRect.Left);
+    ImagesSize := Images.SizeForPPI[ImagesWidth, Font.PixelsPerInch];
     ThemeServices.DrawIcon(Canvas, Details,
-      Point(ContentRect.Left, (ContentRect.Top + ContentRect.Bottom - Images.Height) div 2),
+      Point(ContentRect.Left, (ContentRect.Top + ContentRect.Bottom - ImagesSize.cy) div 2),
       Images, Section.ImageIndex);
-    inc(ContentRect.Left, Images.Width + 2);
+    inc(ContentRect.Left, ImagesSize.cx + 2);
   end;
-  
+
   if Section.Text <> '' then
     ThemeServices.DrawText(Canvas, Details, Section.Text, ContentRect, AlignmentMap[Section.Alignment] or DT_VCENTER or DT_SINGLELINE, 0);
+end;
+
+procedure TCustomHeaderControl.DoAutoAdjustLayout(const AMode: TLayoutAdjustmentPolicy;
+  const AXProportion, AYProportion: Double);
+var
+  I: integer;
+  Sect: THeaderSection;
+begin
+  inherited;
+
+  if AMode in [lapAutoAdjustWithoutHorizontalScrolling, lapAutoAdjustForDPI] then
+  begin
+    Sections.BeginUpdate;
+    try
+      for I := 0 to Sections.Count-1 do
+      begin
+        Sect := Sections.Items[I];
+        Sect.Width := Round(Sect.Width*AXProportion);
+      end;
+    finally
+      Sections.EndUpdate;
+    end;
+  end;
 end;
 
 procedure TCustomHeaderControl.ChangeScale(M, D: Integer);

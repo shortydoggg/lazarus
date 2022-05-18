@@ -5,9 +5,15 @@ unit Package_Usage_Options;
 interface
 
 uses
-  SysUtils, LazFileUtils, Forms, Controls, StdCtrls, Dialogs,
-  PathEditorDlg, IDEOptionsIntf, MacroIntf,
-  LazarusIDEStrConsts, IDEProcs, PackageDefs;
+  SysUtils,
+  // LazUtils
+  LazFileUtils,
+  // LCL
+  Forms, Controls, StdCtrls, Dialogs,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, MacroIntf,
+  // IDE
+  PathEditorDlg, LazarusIDEStrConsts, IDEProcs, PackageDefs;
 
 type
 
@@ -109,7 +115,8 @@ begin
     Name := 'UnitPathButton';
     Parent := AddPathsGroupBox;
     Caption := '...';
-    AutoSize := True;
+    AutoSize := False;
+    Width := Height;
     Anchors := [akRight];
     AnchorParallel(akRight, 6, AddPathsGroupBox);
     AnchorParallel(akTop, 0, UnitPathEdit);
@@ -131,7 +138,8 @@ begin
     Name := 'IncludePathButton';
     Parent := AddPathsGroupBox;
     Caption := '...';
-    AutoSize := True;
+    AutoSize := False;
+    Width := Height;
     Anchors := [akRight];
     AnchorParallel(akRight, 6, AddPathsGroupBox);
     AnchorParallel(akTop, 0, IncludePathEdit);
@@ -148,7 +156,8 @@ begin
     Name := 'ObjectPathButton';
     Parent := AddPathsGroupBox;
     Caption := '...';
-    AutoSize := True;
+    AutoSize := False;
+    Width := Height;
     Anchors := [akRight];
     AnchorParallel(akRight, 6, AddPathsGroupBox);
     AnchorParallel(akTop, 0, ObjectPathEdit);
@@ -165,7 +174,8 @@ begin
     Name := 'LibraryPathButton';
     Parent := AddPathsGroupBox;
     Caption := '...';
-    AutoSize := True;
+    AutoSize := False;
+    Width := Height;
     Anchors := [akRight];
     AnchorParallel(akRight, 6, AddPathsGroupBox);
     AnchorParallel(akTop, 0, LibraryPathEdit);

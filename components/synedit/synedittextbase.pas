@@ -37,7 +37,13 @@ unit SynEditTextBase;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, SynEditMiscProcs, SynEditKeyCmds;
+  Classes, SysUtils,
+  // LCL
+  LCLProc,
+  // LazUtils
+  LazMethodList,
+  // SynEdit
+  SynEditMiscProcs, SynEditKeyCmds;
 
 type
 
@@ -585,8 +591,7 @@ end;
 
 function TSynEditUndoItem.IsEqual(AnItem: TSynEditUndoItem): Boolean;
 begin
-  Result := (ClassType = AnItem.ClassType);
-  if Result then Result := Result and IsEqualContent(AnItem);
+  Result := (ClassType = AnItem.ClassType) and IsEqualContent(AnItem);
 end;
 
 function TSynEditUndoItem.DebugString: String;
@@ -953,7 +958,7 @@ begin
 
   if i < 0 then begin
     if AValue = nil then begin
-      debugln('Removing none existent range');
+      //debugln('Removing none existent range');
       exit;
     end;
     j := length(FClassList);
@@ -963,8 +968,8 @@ begin
     FStorageMemList[j] := AValue;
   end
   else begin
-    if AValue <> nil then
-      DebugLn(['TSynEditStringMemory.SetRange - Overwriting old range at index=', i, ' index=', dbgs(Index)]);
+    //if AValue <> nil then
+    //  DebugLn(['TSynEditStringMemory.SetRange - Overwriting old range at index=', i, ' index=', dbgs(Index)]);
     FStorageMemList[i] := AValue;
     if AValue = nil then begin
       for j := i to length(FClassList) - 2 do begin

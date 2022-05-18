@@ -296,7 +296,12 @@ msgstr "Imposta valore"
 msgid "Unable to find parser for tool \"%s\""
 msgstr "unable to find parser for tool \"%s\""
 
+#: objinspstrconsts.lisunabletofindparserwithname
+msgid "Unable to find parser with name \"%s\""
+msgstr ""
+
 #: objinspstrconsts.nbcesaddpage
+msgctxt "objinspstrconsts.nbcesaddpage"
 msgid "Add Page"
 msgstr "Aggiungi pagina"
 
@@ -364,6 +369,12 @@ msgstr "Editor delle Action&List..."
 msgid "ActionList Editor"
 msgstr "Editor ActionList"
 
+#: objinspstrconsts.oisadd
+#, fuzzy
+msgctxt "objinspstrconsts.oisadd"
+msgid "Add"
+msgstr "Aggiungi"
+
 #: objinspstrconsts.oisaddcollectionitem
 msgid "&Add Item"
 msgstr "&Aggiungi voce"
@@ -375,6 +386,12 @@ msgstr "&Aggiungi campi"
 #: objinspstrconsts.oisaddfieldsfromfielddefs
 msgid "Add fields from FieldDefs"
 msgstr "Aggiungi campi da FieldDefs"
+
+#: objinspstrconsts.oisaddpage
+#, fuzzy
+msgctxt "objinspstrconsts.oisaddpage"
+msgid "Add Page"
+msgstr "Aggiungi pagina"
 
 #: objinspstrconsts.oisaddtofavorites
 msgid "Add to Favorites"
@@ -399,10 +416,6 @@ msgstr "Co&mponenti"
 #: objinspstrconsts.oisbtnproperties
 msgid "&Properties"
 msgstr "&Proprietà"
-
-#: objinspstrconsts.oiscadd
-msgid "&Add"
-msgstr "&Aggiungi"
 
 #: objinspstrconsts.oiscancel
 msgctxt "objinspstrconsts.oiscancel"
@@ -474,6 +487,14 @@ msgstr "Crea evento predefinito"
 msgid "Create new field and add it at current position"
 msgstr "Crea un nuovo campo e aggiungilo alla posizione corrente"
 
+#: objinspstrconsts.oiscurrentparent
+msgid "Current parent"
+msgstr ""
+
+#: objinspstrconsts.oiscurrentparents
+msgid "Current parents"
+msgstr ""
+
 #: objinspstrconsts.oiscutcomponents
 msgctxt "objinspstrconsts.oiscutcomponents"
 msgid "Cu&t"
@@ -492,6 +513,10 @@ msgstr "&Elimina"
 #: objinspstrconsts.oisdeleteitem
 msgid "Delete item \"%s\"?"
 msgstr "Cancellare la voce \"%s\"?"
+
+#: objinspstrconsts.oisdeletepagequestion
+msgid "Do you want to delete the page?"
+msgstr ""
 
 #: objinspstrconsts.oisdeleteselectedfields
 msgid "Delete selected field(s)"
@@ -561,6 +586,10 @@ msgstr "Metodo incompatibile"
 msgid "Input Mask:"
 msgstr "Maschera di input:"
 
+#: objinspstrconsts.oisinsertpagename
+msgid "Insert Page Name"
+msgstr ""
+
 #: objinspstrconsts.oisint64
 msgid "Int64"
 msgstr "Int64"
@@ -572,6 +601,10 @@ msgstr "Intero"
 #: objinspstrconsts.oisinterface
 msgid "Interface"
 msgstr "Interfaccia"
+
+#: objinspstrconsts.oisinvalid
+msgid "(Invalid)"
+msgstr ""
 
 #: objinspstrconsts.oisinvalidpropertyvalue
 msgid "Invalid property value"
@@ -678,6 +711,14 @@ msgstr "Sposta indietro"
 msgid "Move to Front"
 msgstr "Sposta avanti"
 
+#: objinspstrconsts.oispages
+msgid "Pages"
+msgstr ""
+
+#: objinspstrconsts.oispageseditordialog
+msgid "Pages Editor"
+msgstr ""
+
 #: objinspstrconsts.oispastecomponents
 msgctxt "objinspstrconsts.oispastecomponents"
 msgid "&Paste"
@@ -699,6 +740,10 @@ msgstr "Salva immagine come"
 msgid "Press a key ..."
 msgstr ""
 
+#: objinspstrconsts.oispressakeyegctrlp
+msgid "You can press e.g. Ctrl+P ..."
+msgstr ""
+
 #: objinspstrconsts.oisproperties
 msgid "Properties"
 msgstr "Proprietà"
@@ -714,6 +759,14 @@ msgstr "Record"
 #: objinspstrconsts.oisremovefromfavorites
 msgid "Remove from Favorites"
 msgstr "Rimuovi dai Preferiti"
+
+#: objinspstrconsts.oisrename
+msgid "Rename"
+msgstr ""
+
+#: objinspstrconsts.oisrenamepage
+msgid "Rename Page"
+msgstr ""
 
 #: objinspstrconsts.oisrestricted
 msgid "Restricted"
@@ -751,6 +804,14 @@ msgstr "&Seleziona tutto"
 msgid "Select All Fields"
 msgstr "Seleziona tutti i campi"
 
+#: objinspstrconsts.oisselectedcontrol
+msgid "Selected control"
+msgstr ""
+
+#: objinspstrconsts.oisselectedcontrols
+msgid "Selected controls"
+msgstr ""
+
 #: objinspstrconsts.oisselectedproperties
 msgid "&Selected Properties"
 msgstr "Proprietà &Selezionate"
@@ -786,6 +847,14 @@ msgstr "Imposta al valore predefinito: %s"
 #: objinspstrconsts.oissettodefaulthint
 msgid "Set property value to Default"
 msgstr "Imposta come Default il valore della proprietà"
+
+#: objinspstrconsts.oisshowalloutputlines
+msgid "Show all output lines"
+msgstr ""
+
+#: objinspstrconsts.oisshowclasses
+msgid "Show classes"
+msgstr ""
 
 #: objinspstrconsts.oisshowcomponenttree
 msgid "Show Component Tree"
@@ -1247,6 +1316,22 @@ msgstr "Editor delle sezioni..."
 msgid "&Add ..."
 msgstr "&Aggiungi..."
 
+#: objinspstrconsts.sccsiledtaddmoreresolutions
+msgid "Add more resolutions ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtaddnewresolution
+msgid "New resolution ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtaddsliced
+msgid "Add sliced ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtaddslicediconerror
+msgid "Adding sliced icons is not supported."
+msgstr ""
+
 #: objinspstrconsts.sccsiledtadjustment
 msgid "Adjustment"
 msgstr "Aggiustamento"
@@ -1255,6 +1340,14 @@ msgstr "Aggiustamento"
 msgctxt "objinspstrconsts.sccsiledtapply"
 msgid "&Apply"
 msgstr "&Applica"
+
+#: objinspstrconsts.sccsiledtcannotdeleteresolution
+msgid "Cannot delete default resolution."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtcannotslice
+msgid "Source image size must be an integer multiple of the ImageList's Width and Height."
+msgstr ""
 
 #: objinspstrconsts.sccsiledtcaption
 msgid "ImageList Editor"
@@ -1278,6 +1371,14 @@ msgctxt "objinspstrconsts.sccsiledtdelete"
 msgid "&Delete"
 msgstr "&Cancella"
 
+#: objinspstrconsts.sccsiledtdeleteresolution
+msgid "Delete resolution ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtdeleteresolutionconfirmation
+msgid "Select the resolution to delete."
+msgstr ""
+
 #: objinspstrconsts.sccsiledtgrplcaption
 msgid "Images"
 msgstr "Immagini"
@@ -1285,6 +1386,10 @@ msgstr "Immagini"
 #: objinspstrconsts.sccsiledtgrprcaption
 msgid "Selected Image"
 msgstr "Immagine Selezionata"
+
+#: objinspstrconsts.sccsiledtimagewidthofnewresolution
+msgid "Image width of the new resolution:"
+msgstr ""
 
 #: objinspstrconsts.sccsiledtmovedown
 msgctxt "objinspstrconsts.sccsiledtmovedown"
@@ -1304,9 +1409,21 @@ msgstr "Nessuno"
 msgid "Add Images"
 msgstr "Aggiungi Immagini"
 
+#: objinspstrconsts.sccsiledtopendialogn
+msgid "New Image"
+msgstr ""
+
 #: objinspstrconsts.sccsiledtransparentcolor
 msgid "Transparent Color:"
 msgstr "Colore di Trasparenza:"
+
+#: objinspstrconsts.sccsiledtreplace
+msgid "&Replace ..."
+msgstr ""
+
+#: objinspstrconsts.sccsiledtreplaceallresolutions
+msgid "Replace all resolutions ..."
+msgstr ""
 
 #: objinspstrconsts.sccsiledtsave
 msgctxt "objinspstrconsts.sccsiledtsave"
@@ -1527,6 +1644,10 @@ msgstr "Cattura tasto"
 #: objinspstrconsts.s_addassingle
 msgid "Add as single"
 msgstr "Aggiungi come singolo"
+
+#: objinspstrconsts.s_confirm_clear
+msgid "Are you sure to clear image list?"
+msgstr ""
 
 #: objinspstrconsts.s_splitimage
 msgid "Split image"

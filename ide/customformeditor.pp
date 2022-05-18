@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -38,19 +38,23 @@ uses
 {$IFDEF IDE_MEM_CHECK}
   MemCheck,
 {$ENDIF}
-  // LCL+FCL
-  Classes, SysUtils, TypInfo, Math, LCLIntf, LCLType, LResources,
-  LCLMemManager, FileUtil, LazFileUtils, LazFileCache, AvgLvlTree,
-  LCLProc, Graphics, Controls, Forms, Menus, Dialogs,
+  // RTL+FCL
+  Classes, SysUtils, TypInfo, Math, Laz_AVL_Tree,
+  // LCL
+  LCLIntf, LCLType, LResources, LCLMemManager, Controls, Graphics,
+  Forms, Menus, Dialogs,
+  // LazUtils
+  FileUtil, LazFileUtils, LazFileCache, CompWriterPas, LazLoggerBase, LazTracer,
+  // Codetools
   CodeCache, CodeTree, CodeToolManager, FindDeclarationTool,
   // IDEIntf
-  PropEdits, PropEditUtils, ObjectInspector, FormEditingIntf,
-  UnitResources, IDEOptionsIntf, IDEDialogs, ComponentEditors,
+  PropEdits, PropEditUtils, ObjectInspector, FormEditingIntf, ComponentReg,
+  UnitResources, IDEOptEditorIntf, IDEDialogs, ComponentEditors,
   // IDE
-  LazarusIDEStrConsts, EditorOptions, EnvironmentOpts,
-  ControlSelection, Project, JITForms, MainIntf,
-  CustomNonFormDesigner, NonControlDesigner, FrameDesigner, ComponentReg,
-  IDEProcs, DesignerProcs, PackageDefs;
+  LazarusIDEStrConsts, EditorOptions, EnvironmentOpts, Project, MainIntf, PackageDefs,
+  // Designer
+  CustomNonFormDesigner, NonControlDesigner, FrameDesigner, ControlSelection,
+  JITForms, DesignerProcs;
 
 const
   OrdinalTypes = [tkInteger,tkChar,tkEnumeration,tkbool];
@@ -68,20 +72,27 @@ type
     FOnSelectFrame: TSelectFrameEvent;
     FSelection: TPersistentSelectionList;
     FObj_Inspector: TObjectInspectorDlg;
-    FDefineProperties: TAvgLvlTree;// tree of TDefinePropertiesCacheItem
+    FDefineProperties: TAvlTree;// tree of TDefinePropertiesCacheItem
     FStandardDefinePropertiesRegistered: Boolean;
     FDesignerBaseClasses: TFPList; // list of TComponentClass
     FDesignerMediatorClasses: TFPList;// list of TDesignerMediatorClass
     FOnNodeGetImageIndex: TOnOINodeGetImageEvent;
     function GetPropertyEditorHook: TPropertyEditorHook;
     function FindDefinePropertyNode(const APersistentClassName: string
-                                    ): TAvgLvlTreeNode;
+                                    ): TAvlTreeNode;
     procedure FrameCompGetCreationClass(Sender: TObject;
       var NewComponentClass: TComponentClass);
+    procedure OnPasWriterFindAncestor(Writer: TCompWriterPas;
+      aComponent: TComponent; const aName: string; var anAncestor,
+      aRootAncestor: TComponent);
+    procedure OnPasWriterGetMethodName(Writer: TCompWriterPas;
+      Instance: TPersistent; PropInfo: PPropInfo; out Name: String);
+    procedure OnPasWriterGetParentProperty(Writer: TCompWriterPas;
+      Component: TComponent; var PropName: string);
     function OnPropHookGetAncestorInstProp(const InstProp: TInstProp;
                                       out AncestorInstProp: TInstProp): boolean;
   protected
-    FNonFormForms: TAvgLvlTree; // tree of TNonControlDesignerForm sorted for LookupRoot
+    FNonFormForms: TAvlTree; // tree of TNonFormProxyDesignerForm sorted for LookupRoot
     procedure SetSelection(const ASelection: TPersistentSelectionList);
     procedure OnObjectInspectorModified(Sender: TObject);
     procedure SetObj_Inspector(AnObjectInspector: TObjectInspectorDlg); virtual;
@@ -105,7 +116,7 @@ type
     function GetStandardDesignerBaseClasses(Index: integer): TComponentClass; override;
     procedure SetStandardDesignerBaseClasses(Index: integer; AValue: TComponentClass); override;
     procedure OnDesignerMenuItemClick(Sender: TObject); virtual;
-    function FindNonFormFormNode(LookupRoot: TComponent): TAvgLvlTreeNode;
+    function FindNonFormFormNode(LookupRoot: TComponent): TAvlTreeNode;
 
     //because we only meet ObjInspectore here, not in abstract ancestor
     procedure DoOnNodeGetImageIndex(APersistent: TPersistent; var AImageIndex: integer); virtual;
@@ -130,6 +141,7 @@ type
     function CutSelectionToClipboard: Boolean; override;
     function PasteSelectionFromClipboard(Flags: TComponentPasteSelectionFlags
                                          ): Boolean; override;
+
     function GetCurrentObjectInspector: TObjectInspectorDlg; override;
 
     // JIT components
@@ -158,6 +170,7 @@ type
     function SaveUnitComponentToBinStream(AnUnitInfo: TUnitInfo;
       var BinCompStream: TExtMemoryStream): TModalResult;
     function OnGetDanglingMethodName(const AMethod: TMethod; aRootComponent: TObject): string;
+    procedure SaveComponentAsPascal(aDesigner: TIDesigner; Writer: TCompWriterPas); override;
 
     // ancestors
     function GetAncestorLookupRoot(AComponent: TComponent): TComponent; override;
@@ -376,6 +389,8 @@ begin
         exit(pfcbcFrame)
       else if CompareText(AClassName,'TForm')=0 then
         exit(pfcbcForm)
+      else if CompareText(AClassName,'TCustomForm')=0 then
+        exit(pfcbcCustomForm)
       else if CompareText(AClassName,'TDataModule')=0 then
         exit(pfcbcDataModule);
     end;
@@ -434,6 +449,34 @@ end;
 
 { TCustomFormEditor }
 
+procedure OnPasWriterDefinePropertyTStrings(Writer: TCompWriterPas;
+  Instance: TPersistent; const Identifier: string; var Handled: boolean);
+var
+  List: TStrings;
+  HasData: Boolean;
+  i: Integer;
+begin
+  if not (Instance is TStrings) then exit;
+  List:=TStrings(Instance);
+  if Assigned(Writer.Ancestor) then
+    // Only serialize if string list is different from ancestor
+    if Writer.Ancestor.InheritsFrom(TStrings) then
+      HasData := not List.Equals(TStrings(Writer.Ancestor))
+    else
+      HasData := True
+  else
+    HasData := List.Count > 0;
+  if not HasData then exit;
+  Writer.WriteStatement('with '+Identifier+' do begin');
+  Writer.Indent;
+  Writer.WriteStatement('Clear;');
+  for i:=0 to List.Count-1 do
+    Writer.WriteStatement('Add('+Writer.GetStringLiteral(List[i])+');');
+  Writer.Unindent;
+  Writer.WriteStatement('end;');
+  Handled:=true;
+end;
+
 constructor TCustomFormEditor.Create;
 
   procedure InitJITList(List: TJITComponentList);
@@ -450,7 +493,7 @@ var
   l: Integer;
 begin
   inherited Create;
-  FNonFormForms := TAvgLvlTree.Create(@CompareNonFormDesignerForms);
+  FNonFormForms := TAvlTree.Create(@CompareNonFormDesignerForms);
   FSelection := TPersistentSelectionList.Create;
   FDesignerBaseClasses:=TFPList.Create;
   FDesignerMediatorClasses:=TFPList.Create;
@@ -470,6 +513,8 @@ begin
   RegisterDesignerBaseClass(TAbstractIDEOptionsEditor);
 
   GlobalDesignHook.AddHandlerGetAncestorInstProp(@OnPropHookGetAncestorInstProp);
+
+  RegisterDefinePropertiesPas(TStrings,@OnPasWriterDefinePropertyTStrings);
 end;
 
 destructor TCustomFormEditor.Destroy;
@@ -500,18 +545,27 @@ end;
 
 procedure TCustomFormEditor.SetSelection(const ASelection: TPersistentSelectionList);
 begin
+  if FSelection.IsEqual(ASelection) then exit;
   FSelection.Assign(ASelection);
-  if Obj_Inspector=nil then exit;
-  if FSelection.Count>0 then
-    Obj_Inspector.PropertyEditorHook.LookupRoot:=GetLookupRootForComponent(FSelection[0]);
-  Obj_Inspector.Selection := FSelection;
+  if Obj_Inspector=nil then
+  begin
+    GlobalDesignHook.SetSelection(FSelection);
+  end else begin
+    if FSelection.Count>0 then
+      Obj_Inspector.PropertyEditorHook.LookupRoot:=GetLookupRootForComponent(FSelection[0]);
+    Obj_Inspector.Selection := FSelection;
+  end;
 end;
 
 function TCustomFormEditor.AddSelected(Value: TComponent): Integer;
 Begin
   Result := FSelection.Add(Value) + 1;
   if Obj_Inspector<>nil then
+  begin
+    if not Obj_Inspector.Selection.IsEqual(FSelection) then
     Obj_Inspector.Selection := FSelection;
+  end else
+    GlobalDesignHook.SetSelection(FSelection);
 end;
 
 procedure TCustomFormEditor.DeleteComponent(AComponent: TComponent; FreeComponent: boolean);
@@ -560,9 +614,8 @@ Begin
       // free/unbind a non form component and its designer form
       aForm:=GetDesignerForm(AComponent);
       if (AForm<>nil) and (not (AForm is TNonFormProxyDesignerForm)) then
-        RaiseException(Format(
-          lisCFETCustomFormEditorDeleteComponentWhereIsTheTCustomN, [AComponent.
-          ClassName]));
+        RaiseGDBException(Format(lisCFETCustomFormEditorDeleteComponentWhereIsTheTCustomN,
+                                 [AComponent.ClassName]));
 
       if (AForm <> nil) then
       begin
@@ -574,7 +627,7 @@ Begin
       if FreeComponent then
         JITNonFormList.DestroyJITComponent(AComponent);
     end else
-      RaiseException('TCustomFormEditor.DeleteComponent '+AComponent.ClassName);
+      RaiseGDBException('TCustomFormEditor.DeleteComponent '+AComponent.ClassName);
   end else if FreeComponent then begin
     if (AComponent.Owner=nil) then
       DebugLn(['WARNING: TCustomFormEditor.DeleteComponent freeing orphaned component ',DbgSName(AComponent)]);
@@ -806,7 +859,7 @@ end;
 
 function TCustomFormEditor.FindNonFormForm(LookupRoot: TComponent): TNonFormProxyDesignerForm;
 var
-  AVLNode: TAvgLvlTreeNode;
+  AVLNode: TAvlTreeNode;
 begin
   AVLNode := FindNonFormFormNode(LookupRoot);
   if AVLNode <> nil then
@@ -822,7 +875,7 @@ var
 begin
   Result := Nil;
   if FindNonFormFormNode(LookupRoot) <> nil then
-    RaiseException(lisCFETCustomFormEditorCreateNonFormFormAlreadyExists);
+    RaiseGDBException(lisCFETCustomFormEditorCreateNonFormFormAlreadyExists);
   if LookupRoot is TComponent then
   begin
     if LookupRoot is TCustomFrame then
@@ -841,15 +894,16 @@ begin
     (Result as INonFormDesigner).LookupRoot := LookupRoot;
     FNonFormForms.Add(Result);
 
-    if Result is BaseFormEditor1.NonFormProxyDesignerForm[NonControlProxyDesignerFormId] then begin
+    if Result is BaseFormEditor1.NonFormProxyDesignerForm[NonControlProxyDesignerFormId]
+    then begin
       // create the mediator
       MediatorClass:=GetDesignerMediatorClass(TComponentClass(LookupRoot.ClassType));
       if MediatorClass<>nil then
         (Result as INonControlDesigner).Mediator:=MediatorClass.CreateMediator(nil,LookupRoot);
     end;
   end else
-    RaiseException(Format(lisCFETCustomFormEditorCreateNonFormFormUnknownType, [
-      LookupRoot.ClassName]));
+    RaiseGDBException(Format(lisCFETCustomFormEditorCreateNonFormFormUnknownType,
+                             [LookupRoot.ClassName]));
 end;
 
 procedure TCustomFormEditor.RenameJITComponent(AComponent: TComponent;
@@ -859,7 +913,7 @@ var
 begin
   JITComponentList:=FindJITList(AComponent);
   if JITComponentList=nil then
-    RaiseException('TCustomFormEditor.RenameJITComponent');
+    RaiseGDBException('TCustomFormEditor.RenameJITComponent');
   JITComponentList.RenameComponentClass(AComponent,NewClassName);
 end;
 
@@ -870,7 +924,7 @@ var
 begin
   JITComponentList:=FindJITList(AComponent);
   if JITComponentList=nil then
-    RaiseException('TCustomFormEditor.RenameJITComponent');
+    RaiseGDBException('TCustomFormEditor.RenameJITComponent');
   JITComponentList.RenameComponentUnitname(AComponent,NewUnitName);
 end;
 
@@ -906,7 +960,7 @@ var
 begin
   JITComponentList:=FindJITList(ALookupRoot);
   if JITComponentList=nil then
-    RaiseException('TCustomFormEditor.CreateNewJITMethod');
+    RaiseGDBException('TCustomFormEditor.CreateNewJITMethod');
   Result:=JITComponentList.CreateNewMethod(ALookupRoot,AMethodName);
 end;
 
@@ -917,7 +971,7 @@ var
 begin
   JITComponentList:=FindJITList(AComponent);
   if JITComponentList=nil then
-    RaiseException('TCustomFormEditor.RenameJITMethod');
+    RaiseGDBException('TCustomFormEditor.RenameJITMethod');
   JITComponentList.RenameMethod(AComponent,OldMethodName,NewMethodName);
 end;
 
@@ -1091,6 +1145,15 @@ begin
   end;
 end;
 
+procedure TCustomFormEditor.SaveComponentAsPascal(aDesigner: TIDesigner;
+  Writer: TCompWriterPas);
+begin
+  Writer.OnFindAncestor:=@OnPasWriterFindAncestor;
+  Writer.OnGetParentProperty:=@OnPasWriterGetParentProperty;
+  Writer.OnGetMethodName:=@OnPasWriterGetMethodName;
+  Writer.WriteDescendant(aDesigner.LookupRoot);
+end;
+
 function TCustomFormEditor.DesignerCount: integer;
 begin
   Result:=JITFormList.Count+JITNonFormList.Count;
@@ -1195,7 +1258,7 @@ const
   PreferredDistanceMax = 250;
 var
   NewJITIndex: Integer;
-  CompLeft, CompTop, CompWidth, CompHeight: integer;
+  CompLeft, CompTop, CompWidth, CompHeight, NewPPI, OldPPI: integer;
   NewComponent: TComponent;
   OwnerComponent: TComponent;
   JITList: TJITComponentList;
@@ -1209,6 +1272,7 @@ var
   Mediator: TDesignerMediator;
   FreeMediator: Boolean;
   MediatorClass: TDesignerMediatorClass;
+  ParentDesigner: TCustomDesignControl;
 
   function ActiveMonitor: TMonitor;
   begin
@@ -1274,7 +1338,7 @@ begin
       if csInline in NewComponent.ComponentState then begin
         JITList:=FindJITList(OwnerComponent);
         if JITList=nil then
-          RaiseException('TCustomFormEditor.CreateComponent '+TypeClass.ClassName);
+          RaiseGDBException('TCustomFormEditor.CreateComponent '+TypeClass.ClassName);
         JITList.ReadInlineJITChildComponent(NewComponent);
       end;
 
@@ -1302,7 +1366,7 @@ begin
         NewUnitName:=AUnitName;
       JITList:=GetJITListOfType(TypeClass);
       if JITList=nil then
-        RaiseException('TCustomFormEditor.CreateComponent '+TypeClass.ClassName);
+        RaiseGDBException('TCustomFormEditor.CreateComponent '+TypeClass.ClassName);
       NewJITIndex := JITList.AddNewJITComponent(NewUnitName,TypeClass,DisableAutoSize);
       if NewJITIndex < 0 then
         exit;
@@ -1332,9 +1396,24 @@ begin
       if NewComponent is TControl then
       begin
         AControl := TControl(NewComponent);
+        if AControl is TCustomDesignControl then
+          OldPPI := TCustomDesignControl(AControl).DesignTimePPI
+        else
+          OldPPI := 96;
+        ParentDesigner := GetParentDesignControl(AParent);
         // calc bounds
-        if CompWidth <= 0 then CompWidth := Max(5, AControl.Width);
-        if CompHeight <= 0 then CompHeight := Max(5, AControl.Height);
+        if CompWidth <= 0 then
+        begin
+          CompWidth := Max(5, AControl.Width);
+          if ParentDesigner<>nil then
+            CompWidth := MulDiv(CompWidth, ParentDesigner.PixelsPerInch, OldPPI);
+        end;
+        if CompHeight <= 0 then
+        begin
+          CompHeight := Max(5, AControl.Height);
+          if ParentDesigner<>nil then
+            CompHeight := MulDiv(CompHeight, ParentDesigner.PixelsPerInch, OldPPI);
+        end;
         MonitorBounds := ActiveMonitor.BoundsRect;
         if (CompLeft < 0) and (AParent <> nil) then
           CompLeft := (AParent.Width - CompWidth) div 2
@@ -1354,6 +1433,16 @@ begin
         else
         if CompTop < 0 then
           CompTop := 0;
+
+        if ParentDesigner<>nil then
+          NewPPI := ParentDesigner.PixelsPerInch
+        else
+        if (AControl is TCustomForm) then
+          NewPPI := TCustomForm(AControl).Monitor.PixelsPerInch
+        else
+          NewPPI := 0;
+        if NewPPI > 0 then
+          AControl.AutoAdjustLayout(lapAutoAdjustForDPI, OldPPI, NewPPI, 0, 0);
 
         if (AParent <> nil) or (AControl is TCustomForm) then
         begin
@@ -1491,8 +1580,8 @@ begin
   // create JIT Component
   JITList:=GetJITListOfType(AncestorType);
   if JITList=nil then
-    RaiseException('TCustomFormEditor.CreateComponentFromStream ClassName='+
-                   AncestorType.ClassName);
+    RaiseGDBException('TCustomFormEditor.CreateComponentFromStream ClassName='+
+                      AncestorType.ClassName);
   NewJITIndex := JITList.AddJITComponentFromStream(BinStream, UnitResourcefileFormat,
               AncestorType,NewUnitName,Interactive,Visible,DisableAutoSize,
               ContextObj);
@@ -1511,8 +1600,8 @@ var
 begin
   JITList:=FindJITList(Root);
   if JITList=nil then
-    RaiseException('TCustomFormEditor.CreateChildComponentFromStream ClassName='+
-                   Root.ClassName);
+    RaiseGDBException('TCustomFormEditor.CreateChildComponentFromStream ClassName='+
+                      Root.ClassName);
 
   JITList.AddJITChildComponentsFromStream(
                      Root,BinStream,ComponentClass,ParentControl,NewComponents);
@@ -1736,7 +1825,7 @@ var
   APersistent: TPersistent;
   CacheItem: TDefinePropertiesCacheItem;
   DefinePropertiesReader: TDefinePropertiesReader;
-  ANode: TAvgLvlTreeNode;
+  ANode: TAvlTreeNode;
   OldClassName: String;
   DefinePropertiesPersistent: TDefinePropertiesPersistent;
 
@@ -1842,10 +1931,8 @@ begin
       try
         try
           DefinePropertiesReader:=TDefinePropertiesReader.Create;
-          DefinePropertiesPersistent:=
-                                TDefinePropertiesPersistent.Create(APersistent);
-          DefinePropertiesPersistent.PublicDefineProperties(
-                                                        DefinePropertiesReader);
+          DefinePropertiesPersistent:=TDefinePropertiesPersistent.Create(APersistent);
+          DefinePropertiesPersistent.PublicDefineProperties(DefinePropertiesReader);
         except
           on E: Exception do begin
             DbgOut('TCustomFormEditor.FindDefineProperty Error calling DefineProperties for ');
@@ -1872,8 +1959,7 @@ begin
         if (DefinePropertiesReader<>nil)
         and (DefinePropertiesReader.DefinePropertyNames<>nil) then begin
           CacheItem.DefineProperties:=TStringList.Create;
-          CacheItem.DefineProperties.Assign(
-                                    DefinePropertiesReader.DefinePropertyNames);
+          CacheItem.DefineProperties.Assign(DefinePropertiesReader.DefinePropertyNames);
           debugln('TCustomFormEditor.FindDefineProperty Class=',APersistentClassName,
             ' DefineProps="',CacheItem.DefineProperties.Text,'"');
         end;
@@ -1894,7 +1980,7 @@ end;
 procedure TCustomFormEditor.RegisterDefineProperty(const APersistentClassName,
   Identifier: string);
 var
-  ANode: TAvgLvlTreeNode;
+  ANode: TAvlTreeNode;
   CacheItem: TDefinePropertiesCacheItem;
 begin
   //DebugLn('TCustomFormEditor.RegisterDefineProperty ',APersistentClassName,' ',Identifier);
@@ -2077,7 +2163,7 @@ begin
   end;
 end;
 
-function TCustomFormEditor.FindNonFormFormNode(LookupRoot: TComponent): TAvgLvlTreeNode;
+function TCustomFormEditor.FindNonFormFormNode(LookupRoot: TComponent): TAvlTreeNode;
 begin
   Result := FNonFormForms.FindKey(Pointer(LookupRoot),
                                    @CompareLookupRootAndNonFormDesignerForm);
@@ -2217,6 +2303,43 @@ begin
     OnSelectFrame(Sender,NewComponentClass);
 end;
 
+procedure TCustomFormEditor.OnPasWriterFindAncestor(Writer: TCompWriterPas;
+  aComponent: TComponent; const aName: string; var anAncestor,
+  aRootAncestor: TComponent);
+var
+  C: TComponent;
+begin
+  C:=GetAncestorInstance(aComponent);
+  if C=nil then exit;
+  anAncestor:=C;
+  if C.Owner=nil then
+    aRootAncestor:=C;
+  if Writer=nil then ;
+  if aName='' then ;
+end;
+
+procedure TCustomFormEditor.OnPasWriterGetMethodName(Writer: TCompWriterPas;
+  Instance: TPersistent; PropInfo: PPropInfo; out Name: String);
+var
+  aMethod: TMethod;
+  aJITMethod: TJITMethod;
+begin
+  Name:='';
+  if Instance=nil then exit;
+  aMethod:=GetMethodProp(Instance,PropInfo);
+  if GetJITMethod(aMethod,aJITMethod) then
+    Name:=aJITMethod.TheMethodName;
+  if Writer=nil then ;
+end;
+
+procedure TCustomFormEditor.OnPasWriterGetParentProperty(
+  Writer: TCompWriterPas; Component: TComponent; var PropName: string);
+begin
+  if Component is TControl then
+    PropName:='Parent';
+  if Writer=nil then ;
+end;
+
 function TCustomFormEditor.OnPropHookGetAncestorInstProp(
   const InstProp: TInstProp; out AncestorInstProp: TInstProp): boolean;
 var
@@ -2242,11 +2365,10 @@ begin
 end;
 
 function TCustomFormEditor.FindDefinePropertyNode(
-  const APersistentClassName: string): TAvgLvlTreeNode;
+  const APersistentClassName: string): TAvlTreeNode;
 begin
   if FDefineProperties=nil then
-    FDefineProperties:=
-                   TAvgLvlTree.Create(TListSortCompare(@CompareDefPropCacheItems));
+    FDefineProperties:=TAvlTree.Create(TListSortCompare(@CompareDefPropCacheItems));
   Result:=FDefineProperties.FindKey(PChar(APersistentClassName),
                     TListSortCompare(@ComparePersClassNameAndDefPropCacheItem));
 end;

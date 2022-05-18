@@ -26,7 +26,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -37,9 +37,18 @@ unit SearchResultView;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Graphics, ComCtrls, LCLType, LCLIntf, LazUTF8,
-  Menus, strutils, IDEOptionDefs, LazarusIDEStrConsts, EnvironmentOpts, InputHistory,
-  IDEProcs, Project, MainIntf, Clipbrd, ActnList, IDECommands, TreeFilterEdit;
+  Classes, SysUtils, strutils, Laz_AVL_Tree,
+  // LCL
+  LCLProc, LCLType, LCLIntf, Forms, Controls, Graphics, ComCtrls, Menus, Clipbrd,
+  ActnList,
+  // LazControls
+  TreeFilterEdit,
+  // LazUtils
+  LazUTF8, LazFileUtils, LazLoggerBase, LazStringUtils,
+  // IdeIntf
+  IDEImagesIntf, IDECommands,
+  // IDE
+  IDEOptionDefs, LazarusIDEStrConsts, EnvironmentOpts, InputHistory, Project, MainIntf;
 
 
 type
@@ -99,6 +108,7 @@ type
     fUpdateCount: integer;
     FSearchInListPhrases: string;
     fFiltered: Boolean;
+    fFilenameToNode: TAvlTree; // TTreeNode sorted for Text
     procedure SetSkipped(const AValue: integer);
     procedure AddNode(Line: string; MatchPos: TLazSearchMatchPos);
   public
@@ -117,7 +127,6 @@ type
     property UpdateItems: TStrings read fUpdateStrings write fUpdateStrings;
     property Updating: boolean read fUpdating;
     property Skipped: integer read FSkipped write SetSkipped;
-    property Items;
     function ItemsAsStrings: TStrings;
   end;
 
@@ -136,7 +145,6 @@ type
     mniCopyAll: TMenuItem;
     mniCopyItem: TMenuItem;
     popList: TPopupMenu;
-    ImageList: TImageList;
     ResultsNoteBook: TPageControl;
     ToolBar: TToolBar;
     SearchAgainButton: TToolButton;
@@ -154,6 +162,7 @@ type
     procedure mniCopySelectedClick(Sender: TObject);
     procedure mniExpandAllClick(Sender: TObject);
     procedure mniCollapseAllClick(Sender: TObject);
+    procedure ResultsNoteBookChanging(Sender: TObject; var {%H-}AllowChange: Boolean);
     procedure ResultsNoteBookMouseDown(Sender: TObject; Button: TMouseButton;
       {%H-}Shift: TShiftState; X, Y: Integer);
     procedure TreeViewKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -174,6 +183,8 @@ type
       Shift: TShiftState; X, Y: Integer);
   private
     FMaxItems: integer;
+    FFocusTreeViewInOnChange: Boolean;
+    FFocusTreeViewInEndUpdate: Boolean;
     FWorkedSearchText: string;
     FOnSelectionChanged: TNotifyEvent;
     FMouseOverIndex: integer;
@@ -184,6 +195,9 @@ type
     function GetItems(Index: integer): TStrings;
     procedure SetMaxItems(const AValue: integer);
     procedure UpdateToolbar;
+  protected
+    procedure Loaded; override;
+    procedure ActivateControl(aWinControl: TWinControl);
   public
     function AddSearch(const ResultsName: string;
                        const SearchText: string;
@@ -222,6 +236,23 @@ implementation
 
 const
   MaxTextLen = 80;
+
+function CompareTVNodeTextAsFilename(Node1, Node2: Pointer): integer;
+var
+  TVNode1: TTreeNode absolute Node1;
+  TVNode2: TTreeNode absolute Node2;
+begin
+  Result:=CompareFilenames(TVNode1.Text,TVNode2.Text);
+end;
+
+function CompareFilenameWithTVNode(Filename, Node: Pointer): integer;
+var
+  aFilename: String;
+  TVNode: TTreeNode absolute Node;
+begin
+  aFilename:=String(Filename);
+  Result:=CompareFilenames(aFilename,TVNode.Text);
+end;
 
 function CopySearchMatchPos(var Src, Dest: TLazSearchMatchPos): Boolean;
 begin
@@ -287,6 +318,12 @@ begin
   mniCopyAll.Caption := lisCopyAllItemsToClipboard;
   mniExpandAll.Caption := lisExpandAll;
   mniCollapseAll.Caption := lisCollapseAll;
+
+  ToolBar.Images := IDEImages.Images_16;
+  SearchAgainButton.ImageIndex := IDEImages.LoadImage('menu_new_search');
+  ClosePageButton.ImageIndex := IDEImages.LoadImage('menu_close');
+  ActionList.Images := IDEImages.Images_16;
+  actClosePage.ImageIndex := IDEImages.LoadImage('menu_close');
 end;
 
 procedure TSearchResultsView.FormClose(Sender: TObject; var CloseAction: TCloseAction);
@@ -329,13 +366,13 @@ end;
 procedure TSearchResultsView.mniCopyItemClick(Sender: TObject);
 var
   tv: TCustomTreeView;
-  node: TTreeNode;
+  Node: TTreeNode;
 begin
   tv := popList.PopupComponent as TCustomTreeView;
   with tv.ScreenToClient(popList.PopupPoint) do
-    node := tv.GetNodeAt(X, Y);
-  if node <> nil then
-    Clipboard.AsText := node.Text;
+    Node := tv.GetNodeAt(X, Y);
+  if Node <> nil then
+    Clipboard.AsText := Node.Text;
 end;
 
 procedure TSearchResultsView.mniCopySelectedClick(Sender: TObject);
@@ -454,7 +491,7 @@ begin
   end;
 end;
 
-procedure TSearchResultsView.ResultsNoteBookPageChanged (Sender: TObject );
+procedure TSearchResultsView.ResultsNoteBookPageChanged(Sender: TObject);
 var
   CurrentTV: TLazSearchResultTV;
 begin
@@ -462,6 +499,8 @@ begin
   if Assigned(CurrentTV) and not (csDestroying in CurrentTV.ComponentState) then begin
     SearchInListEdit.FilteredTreeview := CurrentTV;
     SearchInListEdit.Filter := CurrentTV.SearchInListPhrases;
+    if FFocusTreeViewInOnChange then
+      ActivateControl(CurrentTV);
   end;
   UpdateToolbar;
 end;
@@ -590,6 +629,11 @@ begin
     end;
   end;
   UpdateToolbar;
+  if FFocusTreeViewInEndUpdate and Assigned(CurrentTV) then
+    ActivateControl(CurrentTV)
+  else
+  if SearchInListEdit.CanFocus then
+    ActivateControl(SearchInListEdit);
 end;
 
 procedure TSearchResultsView.Parse_Search_Phrases(var slPhrases: TStrings);
@@ -615,6 +659,15 @@ begin
       sPhrase := sPhrase + sPhrases[i];
     end;//End if ((sPhrases[i] = ' ') or (sPhrases[i] = ','))
   end;//End for-loop i
+end;
+
+procedure TSearchResultsView.ResultsNoteBookChanging(Sender: TObject;
+  var AllowChange: Boolean);
+var
+  CurrentTV: TLazSearchResultTV;
+begin
+  CurrentTV := GetTreeView(ResultsNoteBook.PageIndex);
+  FFocusTreeViewInOnChange := Assigned(CurrentTV) and CurrentTV.Focused;
 end;
 
 procedure TSearchResultsView.ClosePage(PageIndex: integer);
@@ -733,6 +786,9 @@ var
 begin
   Result:= nil;
   if Assigned(ResultsNoteBook) then
+  begin
+    FFocusTreeViewInEndUpdate := not (Assigned(ResultsNoteBook.ActivePage)
+      and SearchInListEdit.IsParentOf(ResultsNoteBook.ActivePage));
     with ResultsNoteBook do
     begin
       FWorkedSearchText:=BeautifyPageName(ResultsName);
@@ -777,6 +833,7 @@ begin
       SearchInListEdit.Filter:='';
       SearchInListEdit.FilteredTreeview := NewTreeView;
     end;//with
+  end;
 end;//AddResult
 
 procedure TSearchResultsView.LazTVShowHint(Sender: TObject; HintInfo: PHintInfo);
@@ -807,6 +864,26 @@ begin
   end;//if
 end;//LazTVShowHint
 
+procedure TSearchResultsView.Loaded;
+begin
+  inherited Loaded;
+
+  ActiveControl := ResultsNoteBook;
+end;
+
+procedure TSearchResultsView.ActivateControl(aWinControl: TWinControl);
+var
+  aForm: TCustomForm;
+begin
+  if not aWinControl.CanFocus then exit;
+  if Parent=nil then
+    ActiveControl:=aWinControl
+  else begin
+    aForm:=GetParentForm(Self);
+    if aForm<>nil then aForm.ActiveControl:=aWinControl;
+  end;
+end;
+
 procedure TSearchResultsView.TreeViewAdvancedCustomDrawItem(
   Sender: TCustomTreeView; Node: TTreeNode; State: TCustomDrawState;
   Stage: TCustomDrawStage; var PaintImages, DefaultDraw: Boolean);
@@ -829,7 +906,7 @@ begin
   TV.Canvas.FillRect(ARect);
 
   MatchObj := TLazSearchMatchPos(Node.Data);
-  if assigned(MatchObj) and (MatchObj is TLazSearchMatchPos) then
+  if MatchObj is TLazSearchMatchPos then
     MatchPos:= TLazSearchMatchPos(Node.Data)
   else
     MatchPos:= nil;
@@ -1032,13 +1109,21 @@ procedure TLazSearchResultTV.AddNode(Line: string; MatchPos: TLazSearchMatchPos)
 var
   Node: TTreeNode;
   ChildNode: TTreeNode;
+  AVLNode: TAvlTreeNode;
 begin
   if MatchPos=nil then exit;
-  Node := Items.FindNodeWithText(MatchPos.FileName);
+  AVLNode:=fFilenameToNode.FindKey(PChar(MatchPos.FileName),@CompareFilenameWithTVNode);
+  if AVLNode<>nil then
+    Node := TTreeNode(AVLNode.Data)
+  else
+    Node := nil;
 
   //enter a new file entry
   if not Assigned(Node) then
-    Node := Items.Add(Node, MatchPos.FileName);
+    begin
+    Node := Items.Add(Nil, MatchPos.FileName);
+    fFilenameToNode.Add(Node);
+    end;
 
   ChildNode := Items.AddChild(Node, Line);
   Node.Expanded:=true;
@@ -1053,9 +1138,10 @@ begin
   inherited Create(AOwner);
   ReadOnly := True;
   fSearchObject:= TLazSearch.Create;
+  fUpdateStrings:= TStringList.Create;
+  fFilenameToNode:=TAvlTree.Create(@CompareTVNodeTextAsFilename);
   fUpdating:= false;
   fUpdateCount:= 0;
-  fUpdateStrings:= TStringList.Create;
   FSearchInListPhrases := '';
   fFiltered := False;
 end;//Create
@@ -1067,12 +1153,11 @@ begin
   //if UpdateStrings is empty, the objects are stored in Items due to filtering
   //filtering clears UpdateStrings
   if (fUpdateStrings.Count = 0) then
-   FreeObjectsTN(Items);
-  if Assigned(fUpdateStrings) then
-  begin
-    FreeObjects(fUpdateStrings);
-    FreeAndNil(fUpdateStrings);
-  end;
+    FreeObjectsTN(Items);
+  fFilenameToNode.Free;
+  Assert(Assigned(fUpdateStrings), 'fUpdateStrings = Nil');
+  FreeObjects(fUpdateStrings);
+  FreeAndNil(fUpdateStrings);
   inherited Destroy;
 end;//Destroy
 
@@ -1110,6 +1195,7 @@ begin
 
     Items.BeginUpdate;
     Items.Clear;
+    fFilenameToNode.Clear;
 
     for i := 0 to fUpdateStrings.Count - 1 do
       AddNode(fUpdateStrings[i], TLazSearchMatchPos(fUpdateStrings.Objects[i]));
@@ -1184,20 +1270,19 @@ end;
 procedure TLazSearchResultTV.FreeObjectsTN(tnItems: TTreeNodes);
 var i: Integer;
 begin
- for i:=0 to tnItems.Count-1 do
-   if Assigned(tnItems[i].Data) then
-     TLazSearchMatchPos(tnItems[i].Data).Free;
+  fFilenameToNode.Clear;
+  for i:=0 to tnItems.Count-1 do
+    if Assigned(tnItems[i].Data) then
+      TLazSearchMatchPos(tnItems[i].Data).Free;
 end;
 
 procedure TLazSearchResultTV.FreeObjects(slItems: TStrings);
 var i: Integer;
 begin
- if (slItems.Count <= 0) then Exit;
- for i:=0 to slItems.Count-1 do
-  begin
-   if Assigned(slItems.Objects[i]) then
-    slItems.Objects[i].Free;
-  end;//End for-loop
+  if (slItems.Count <= 0) then Exit;
+  for i:=0 to slItems.Count-1 do
+    if Assigned(slItems.Objects[i]) then
+      slItems.Objects[i].Free;
 end;
 
 function TLazSearchResultTV.BeautifyLine(const Filename: string; X, Y: integer;

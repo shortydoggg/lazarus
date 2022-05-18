@@ -1,10 +1,10 @@
-{ $Id: breakpointsdlg.pp 49795 2015-09-09 11:02:48Z martin $ }
+{ $Id: breakpointsdlg.pp 57223 2018-02-02 23:13:20Z maxim $ }
 {               ----------------------------------------------
                  breakpointsdlg.pp  -  Overview of breakpoints
                 ----------------------------------------------
 
  @created(Fri Dec 14st WET 2001)
- @lastmod($Date: 2015-09-09 13:02:48 +0200 (Mi, 09 Sep 2015) $)
+ @lastmod($Date: 2018-02-03 00:13:20 +0100 (Sa, 03 Feb 2018) $)
  @author(Shane Miller)
  @author(Marc Weustink <marc@@dommelstein.net>)
 
@@ -26,7 +26,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -94,12 +94,13 @@ type
     popEnableAllSameSource: TMenuItem;
     popDeleteAllSameSource: TMenuItem;
     ToolBar1: TToolBar;
+    ToolButtonAdd: TToolButton;
     ToolButtonProperties: TToolButton;
-    ToolButton10: TToolButton;
+    ToolSep2: TToolButton;
     ToolButtonEnable: TToolButton;
     ToolButtonDisable: TToolButton;
     ToolButtonTrash: TToolButton;
-    ToolButton6: TToolButton;
+    ToolSep1: TToolButton;
     ToolButtonEnableAll: TToolButton;
     ToolButtonDisableAll: TToolButton;
     ToolButtonTrashAll: TToolButton;
@@ -197,25 +198,36 @@ begin
 end;
 
 function GetBreakPointStateDescription(ABreakpoint: TBaseBreakpoint): string;
-const
-  //                 enabled  valid
-  DEBUG_STATE: array[Boolean, TValidState] of ShortString = (
-                {vsUnknown,     vsValid,   vsInvalid}
-    {Disabled} (lisOff, lisDisabled, lisInvalidOff),
-    {Endabled} (lisOn, lisEnabled, lisInvalidOn));
+var
+  DEBUG_STATE: array[Boolean, TValidState] of ShortString;
 begin
+  DEBUG_STATE[false, vsUnknown]:=lisOff;
+  DEBUG_STATE[false, vsValid]:=lisBPSDisabled;
+  DEBUG_STATE[false, vsInvalid]:=lisInvalidOff;
+  DEBUG_STATE[false, vsPending]:=lisInvalidOff;
+  DEBUG_STATE[true, vsUnknown]:=lisOn;
+  DEBUG_STATE[true, vsValid]:=lisBPSEnabled;
+  DEBUG_STATE[true, vsInvalid]:=lisInvalidOn;
+  DEBUG_STATE[true, vsPending]:=lisPendingOn;
   Result:=DEBUG_STATE[ABreakpoint.Enabled,ABreakpoint.Valid];
 end;
 
 function GetBreakPointActionsDescription(ABreakpoint: TBaseBreakpoint): string;
-const
-  DEBUG_ACTION: array[TIDEBreakPointAction] of ShortString =
-    (lisBreak, lisEnableGroups, lisDisableGroups, lisLogMessage, lisLogEvalExpression, lisLogCallStack, lisTakeSnapshot);
 var
+  DEBUG_ACTION: array[TIDEBreakPointAction] of ShortString;
   CurBreakPoint: TIDEBreakPoint;
   Action: TIDEBreakPointAction;
 begin
   Result := '';
+
+  DEBUG_ACTION[bpaStop]:=lisBreak;
+  DEBUG_ACTION[bpaEnableGroup]:=lisEnableGroups;
+  DEBUG_ACTION[bpaDisableGroup]:=lisDisableGroups;
+  DEBUG_ACTION[bpaLogMessage]:=lisLogMessage;
+  DEBUG_ACTION[bpaEValExpression]:=lisLogEvalExpression;
+  DEBUG_ACTION[bpaLogCallStack]:=lisLogCallStack;
+  DEBUG_ACTION[bpaTakeSnapshot]:=lisTakeSnapshot;
+
   if ABreakpoint is TIDEBreakPoint then begin
     CurBreakPoint:=TIDEBreakPoint(ABreakpoint);
     for Action := Low(TIDEBreakPointAction) to High(TIDEBreakPointAction) do
@@ -331,33 +343,35 @@ begin
   mnuPopup.Images := IDEImages.Images_16;
   lvBreakPoints.SmallImages := IDEImages.Images_16;
 
+  ToolButtonAdd.ImageIndex := IDEImages.LoadImage('laz_add');
+
   actEnableSelected.Caption := lisDbgItemEnable;
   actEnableSelected.Hint    := lisDbgItemEnableHint;
-  actEnableSelected.ImageIndex := IDEImages.LoadImage(16, 'debugger_enable');
+  actEnableSelected.ImageIndex := IDEImages.LoadImage('debugger_enable');
 
   actDisableSelected.Caption := lisDbgItemDisable;
   actDisableSelected.Hint    := lisDbgItemDisableHint;
-  actDisableSelected.ImageIndex := IDEImages.LoadImage(16, 'debugger_disable');
+  actDisableSelected.ImageIndex := IDEImages.LoadImage('debugger_disable');
 
   actDeleteSelected.Caption := lisBtnDelete;
   actDeleteSelected.Hint    := lisDbgItemDeleteHint;
-  actDeleteSelected.ImageIndex := IDEImages.LoadImage(16, 'laz_delete');
+  actDeleteSelected.ImageIndex := IDEImages.LoadImage('laz_delete');
 
   actEnableAll.Caption := lisEnableAll;
   actEnableAll.Hint    := lisDbgAllItemEnableHint;
-  actEnableAll.ImageIndex := IDEImages.LoadImage(16, 'debugger_enable_all');
+  actEnableAll.ImageIndex := IDEImages.LoadImage('debugger_enable_all');
 
   actDisableAll.Caption := liswlDIsableAll;
   actDisableAll.Hint    := lisDbgAllItemDisableHint;
-  actDisableAll.ImageIndex := IDEImages.LoadImage(16, 'debugger_disable_all');
+  actDisableAll.ImageIndex := IDEImages.LoadImage('debugger_disable_all');
 
   actDeleteAll.Caption := lisDeleteAll;
   actDeleteAll.Hint    := lisDbgAllItemDeleteHint;
-  actDeleteAll.ImageIndex := IDEImages.LoadImage(16, 'menu_clean');
+  actDeleteAll.ImageIndex := IDEImages.LoadImage('menu_clean');
 
   actProperties.Caption:= liswlProperties;
   actProperties.Hint := lisDbgBreakpointPropertiesHint;
-  actProperties.ImageIndex := IDEImages.LoadImage(16, 'menu_environment_options');
+  actProperties.ImageIndex := IDEImages.LoadImage('menu_environment_options');
 
   actToggleCurrentEnable.Caption:= lisBtnEnabled;
 

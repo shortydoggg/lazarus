@@ -26,7 +26,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -51,8 +51,9 @@ type
   TProjectVersionStringTable = class(TVersionStringTable)
   private
     FOnModified: TNotifyEvent;
-    function GetValues(Key: string): string;
-    procedure SetValues(Key: string; const AValue: string);
+    function GetValues(const Key: string): string;
+    procedure SetValues(const Key: string; const AValue: string);
+    procedure AddRequired;
   protected
     procedure DoModified;
     function KeyToIndex(const aKey: String): Integer;
@@ -62,7 +63,6 @@ type
     procedure AddDefault;
     function Equals(aTable: TProjectVersionStringTable): boolean; reintroduce;
     procedure Assign(aTable: TProjectVersionStringTable); virtual;
-    procedure AddRequired;
     procedure Clear; reintroduce;
     procedure Delete(const aIndex: integer); overload; reintroduce;
     procedure Delete(const aKey: string); overload; reintroduce;
@@ -115,8 +115,8 @@ type
       AReason: TCompileReason; {%H-}SaveToTestDir: boolean); override;
     function UpdateResources(AResources: TAbstractProjectResources;
       const {%H-}MainFilename: string): boolean; override;
-    procedure WriteToProjectFile(AConfig: {TXMLConfig}TObject; Path: string); override;
-    procedure ReadFromProjectFile(AConfig: {TXMLConfig}TObject; Path: string); override;
+    procedure WriteToProjectFile(AConfig: {TXMLConfig}TObject; const Path: string); override;
+    procedure ReadFromProjectFile(AConfig: {TXMLConfig}TObject; const Path: string); override;
 
     property UseVersionInfo: boolean read FUseVersionInfo write SetUseVersionInfo;
     property AutoIncrementBuild: boolean read FAutoIncrementBuild write SetAutoIncrementBuild;
@@ -422,18 +422,16 @@ begin
   end;
 end;
 
-procedure TProjectVersionInfo.WriteToProjectFile(AConfig: TObject; Path: string);
+procedure TProjectVersionInfo.WriteToProjectFile(AConfig: TObject; const Path: string);
 var
   i: integer;
   Key: string;
-  DefaultValue: String;
   attr: TProjectVersionAttribute;
 begin
   with TXMLConfig(AConfig) do
   begin
     SetDeleteValue(Path + 'VersionInfo/UseVersionInfo/Value', UseVersionInfo, False);
-    SetDeleteValue(Path + 'VersionInfo/AutoIncrementBuild/Value',
-      AutoIncrementBuild, False);
+    SetDeleteValue(Path + 'VersionInfo/AutoIncrementBuild/Value', AutoIncrementBuild, False);
     SetDeleteValue(Path + 'VersionInfo/MajorVersionNr/Value', MajorVersionNr, 0);
     SetDeleteValue(Path + 'VersionInfo/MinorVersionNr/Value', MinorVersionNr, 0);
     SetDeleteValue(Path + 'VersionInfo/RevisionNr/Value', RevisionNr, 0);
@@ -448,19 +446,15 @@ begin
 
     // write string info
     DeletePath(Path + 'VersionInfo/StringTable');
-    for i := 0 to StringTable.Count - 1 do begin
-      Key:=StringTable.Keys[i];
+    for i := 0 to FStringTable.Count - 1 do begin
+      Key:=FStringTable.Keys[i];
       if Key='FileVersion' then continue; // FileVersion is created automatically
-      DefaultValue:='';
-      if (Key='ProductVersion') then
-        DefaultValue:=BuildFileVersionString;
-      SetDeleteValue(Path + 'VersionInfo/StringTable/' + StringTable.Keys[i],
-        StringTable.ValuesByIndex[i],DefaultValue);
+      SetDeleteValue(Path + 'VersionInfo/StringTable/' + Key, FStringTable.ValuesByIndex[i], '');
     end;
   end;
 end;
 
-procedure TProjectVersionInfo.ReadFromProjectFile(AConfig: TObject; Path: string);
+procedure TProjectVersionInfo.ReadFromProjectFile(AConfig: TObject; const Path: string);
 var
   i: integer;
   Node: TDomNode;
@@ -494,29 +488,28 @@ begin
     end;
     Attributes := attrs;
 
-
     // read string info
     Node := FindNode(Path + 'VersionInfo/StringTable', False);
     if Assigned(Node) then
     begin
-      StringTable.Clear;
+      FStringTable.Clear;
       for i := 0 to Node.Attributes.Length - 1 do
-        StringTable[Node.Attributes[i].NodeName] := Node.Attributes[i].NodeValue;
-      StringTable.AddRequired;
+        FStringTable[Node.Attributes[i].NodeName] := Node.Attributes[i].NodeValue;
+      FStringTable.AddRequired;
     end
     else
     begin
       // read old info
-      StringTable['Comments'] := GetValue(Path + 'VersionInfo/Comments/Value', '');
-      StringTable['CompanyName'] := GetValue(Path + 'VersionInfo/CompanyName/Value', '');
-      StringTable['FileDescription'] := GetValue(Path + 'VersionInfo/FileDescription/Value', '');
-      StringTable['FileVersion'] := BuildFileVersionString;
-      StringTable['InternalName'] := GetValue(Path + 'VersionInfo/InternalName/Value', '');
-      StringTable['LegalCopyright'] := GetValue(Path + 'VersionInfo/LegalCopyright/Value', '');
-      StringTable['LegalTrademarks'] := GetValue(Path + 'VersionInfo/LegalTrademarks/Value', '');
-      StringTable['OriginalFilename'] := GetValue(Path + 'VersionInfo/OriginalFilename/Value', '');
-      StringTable['ProductName'] := GetValue(Path + 'VersionInfo/ProductName/Value', '');
-      StringTable['ProductVersion'] := GetValue(Path + 'VersionInfo/ProjectVersion/Value', BuildFileVersionString);
+      FStringTable['Comments'] := GetValue(Path + 'VersionInfo/Comments/Value', '');
+      FStringTable['CompanyName'] := GetValue(Path + 'VersionInfo/CompanyName/Value', '');
+      FStringTable['FileDescription'] := GetValue(Path + 'VersionInfo/FileDescription/Value', '');
+      // FStringTable['FileVersion'] := BuildFileVersionString;  // not needed due to SetFileVersionFromVersion
+      FStringTable['InternalName'] := GetValue(Path + 'VersionInfo/InternalName/Value', '');
+      FStringTable['LegalCopyright'] := GetValue(Path + 'VersionInfo/LegalCopyright/Value', '');
+      FStringTable['LegalTrademarks'] := GetValue(Path + 'VersionInfo/LegalTrademarks/Value', '');
+      FStringTable['OriginalFilename'] := GetValue(Path + 'VersionInfo/OriginalFilename/Value', '');
+      FStringTable['ProductName'] := GetValue(Path + 'VersionInfo/ProductName/Value', '');
+      FStringTable['ProductVersion'] := GetValue(Path + 'VersionInfo/ProductVersion/Value', '');
     end;
 
     SetFileVersionFromVersion;
@@ -610,7 +603,7 @@ var
   S, Part: string;
   i, p: integer;
 begin
-  S := StringTable['ProductVersion'];
+  S := FStringTable['ProductVersion'];
   for i := 0 to 3 do
   begin
     p := Pos('.', S);
@@ -681,7 +674,7 @@ end;
 
 { TProjectVersionStringTable }
 
-function TProjectVersionStringTable.GetValues(Key: string): string;
+function TProjectVersionStringTable.GetValues(const Key: string): string;
 var
   idx: Integer;
 begin
@@ -692,7 +685,8 @@ begin
     Result := ValuesByIndex[idx];
 end;
 
-procedure TProjectVersionStringTable.SetValues(Key: string; const AValue: string);
+procedure TProjectVersionStringTable.SetValues(const Key: string;
+  const AValue: string);
 var
   idx: Integer;
 begin
@@ -722,8 +716,7 @@ begin
   // - SpecialBuild
 end;
 
-function TProjectVersionStringTable.Equals(aTable: TProjectVersionStringTable
-  ): boolean;
+function TProjectVersionStringTable.Equals(aTable: TProjectVersionStringTable): boolean;
 var
   i: Integer;
 begin

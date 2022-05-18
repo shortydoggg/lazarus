@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -30,8 +30,6 @@ uses
 resourcestring
   lisTodolistRefresh='Refresh todo items';
   lisTodoListGotoLine='Goto selected source line';
-  lisTodoListPrintList='Print todo items';
-  lisToDoListOptions='ToDo options ...';
   lisCTInsertMacro = 'Insert Macro';
   lisToDoLDone = 'Done';
   lisToDoLDescription = 'Description';
@@ -42,8 +40,16 @@ resourcestring
   listToDoLCategory = 'Category';
   lisToDoGoto = 'Goto';
   lisToDoExport = 'Export';
-  dlgFROpts = 'Options';
-  lisPrint = 'Print';
+  lisOptions = 'Options';
+  lisHelp = 'Help';
+  lisToDoListed = 'Listed';
+  lisToDoListedHint = 'Add units listed in project inspector/package editor';
+  lisToDoUsed = 'Used';
+  lisToDoUsedHint = 'Add units used by main source file';
+  lisPackages = 'Packages';
+  lisPackagesHint = 'Extends "%s" and "%s" options by units from used packages';
+  lisSourceEditor = 'Editor';
+  lisSourceEditorHint = 'Add units in source editor';
   dlgUnitDepRefresh = 'Refresh';
   lisTDDInsertToDo = 'Insert ToDo';
   lisViewToDoList = 'View ToDo List';

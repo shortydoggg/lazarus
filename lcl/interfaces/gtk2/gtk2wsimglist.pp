@@ -1,4 +1,4 @@
-{ $Id: gtk2wsimglist.pp 41387 2013-05-24 18:30:06Z juha $}
+{ $Id: gtk2wsimglist.pp 57164 2018-01-27 18:12:35Z ondrej $}
 {
  *****************************************************************************
  *                             Gtk2WSImgList.pp                              * 
@@ -33,9 +33,9 @@ uses
 
 type
 
-  { TGtk2WSCustomImageList }
+  { TGtk2WSCustomImageListResolution }
 
-  TGtk2WSCustomImageList = class(TWSCustomImageList)
+  TGtk2WSCustomImageListResolution = class(TWSCustomImageListResolution)
   private
   protected
   public

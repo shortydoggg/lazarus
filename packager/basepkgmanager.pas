@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -46,7 +46,7 @@ uses
   TypInfo, Classes, SysUtils, Forms, LazFileUtils, LCLProc, ComCtrls,
   LazIDEIntf, PackageIntf, MenuIntf,
   LazarusIDEStrConsts, EnvironmentOpts,
-  CompilerOptions, PackageDefs, PackageSystem, ComponentReg, Project;
+  CompilerOptions, PackageDefs, PackageSystem, Project;
 
 type
   { TBasePkgManager }
@@ -87,9 +87,6 @@ type
                                   OnlyTestIfPossible: boolean = false): TModalResult; virtual; abstract;
     function AddProjectDependency(AProject: TProject;
                                   ADependency: TPkgDependency): TModalResult; virtual; abstract;
-    procedure AddProjectRegCompDependency(AProject: TProject;
-                          ARegisteredComponent: TRegisteredComponent); virtual; abstract;
-    procedure AddProjectLCLDependency(AProject: TProject); virtual; abstract;
     function AddProjectDependencies(AProject: TProject; const Packages: string;
                                   OnlyTestIfPossible: boolean = false): TModalResult; virtual; abstract;
     function CheckProjectHasInstalledPackages(AProject: TProject; Interactive: boolean): TModalResult; virtual; abstract;
@@ -122,7 +119,7 @@ type
     procedure OpenHiddenModifiedPackages; virtual; abstract;
 
     // package graph
-    procedure GetPackagesChangedOnDisk(out ListOfPackages: TStringList); virtual; abstract;
+    procedure GetPackagesChangedOnDisk(out ListOfPackages: TStringList; IgnoreModifiedFlag: boolean = False); virtual; abstract;
     function RevertPackages(APackageList: TStringList // list of TLazPackage and alternative lpk file name
         ): TModalResult; virtual; abstract;
     function CheckUserSearchPaths(aCompilerOptions: TBaseCompilerOptions): TModalResult; virtual; abstract;
@@ -133,13 +130,10 @@ type
     // package compilation
     function DoCompileProjectDependencies(AProject: TProject;
                       Flags: TPkgCompileFlags): TModalResult; virtual; abstract;
-    function DoCompilePackage(APackage: TLazPackage; Flags: TPkgCompileFlags;
-                              ShowAbort: boolean): TModalResult; virtual; abstract;
 
     // package installation
     procedure LoadInstalledPackages; virtual; abstract;
     function DoShowLoadedPkgDlg: TModalResult; virtual; abstract;
-    function ShowConfigureCustomComponents: TModalResult; virtual; abstract;
     function DoCompileAutoInstallPackages(Flags: TPkgCompileFlags;
                                           OnlyBase: boolean): TModalResult; virtual; abstract;
     function DoSaveAutoInstallConfig: TModalResult; virtual; abstract;
@@ -232,7 +226,7 @@ begin
     if DepOwner is TLazPackage then begin
       Directory:=TLazPackage(DepOwner).Directory;
     end else if DepOwner is TProject then begin
-      Directory:=TProject(DepOwner).ProjectDirectory;
+      Directory:=TProject(DepOwner).Directory;
     end else if DepOwner=PkgBoss then begin
       Directory:=EnvironmentOptions.GetParsedLazarusDirectory;
     end else begin

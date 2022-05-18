@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,8 +25,13 @@ unit formed_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Graphics, Forms, StdCtrls, Dialogs, Spin,
-  ColorBox, EnvironmentOpts, LazarusIDEStrConsts, IDEProcs, IDEOptionsIntf;
+  Classes, SysUtils,
+  // LCL
+  Graphics, Forms, StdCtrls, Dialogs, Spin, ColorBox,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  EnvironmentOpts, LazarusIDEStrConsts;
 
 type
   TDesignerColor = (
@@ -42,6 +47,8 @@ type
   { TFormEditorOptionsFrame }
 
   TFormEditorOptionsFrame = class(TAbstractIDEOptionsEditor)
+    FormTitleBarChangesObjectInspectorCheckBox: TCheckBox;
+    ForceDPIScalingInDesignTimeCheckBox: TCheckBox;
     SwitchToFavoritesOITabCheckBox:TCheckBox;
     CheckPackagesOnFormCreateCheckBox: TCheckBox;
     OpenDesignerOnOpenUnitCheckBox: TCheckBox;
@@ -136,6 +143,10 @@ procedure TFormEditorOptionsFrame.Setup(ADialog: TAbstractOptionsEditorDialog);
     SwitchToFavoritesOITabCheckBox.Hint:=lisSwitchToFavoritesTabAfterAsking;
     CheckPackagesOnFormCreateCheckBox.Caption:=dlgCheckPackagesOnFormCreate;
     CheckPackagesOnFormCreateCheckBox.Hint:=dlgCheckPackagesOnFormCreateHint;
+    FormTitleBarChangesObjectInspectorCheckBox.Caption:=dlgFormTitleBarChangesObjectInspector;
+    FormTitleBarChangesObjectInspectorCheckBox.Hint:=dlgFormTitleBarChangesObjectInspectorHint;
+    ForceDPIScalingInDesignTimeCheckBox.Caption:=dlgForceDPIScalingInDesignTime;
+    ForceDPIScalingInDesignTimeCheckBox.Hint:=dlgForceDPIScalingInDesignTimeHint;
   end;
 begin
   GridGroupBox.Caption := dlgEnvGrid;
@@ -178,6 +189,8 @@ begin
     CreateCompFocusNameCheckBox.Checked := CreateComponentFocusNameProperty;
     SwitchToFavoritesOITabCheckBox.Checked := SwitchToFavoritesOITab;
     SwitchToFavoritesOITabCheckBox.Enabled := CreateCompFocusNameCheckBox.Checked;
+    FormTitleBarChangesObjectInspectorCheckBox.Checked := FormTitleBarChangesObjectInspector;
+    ForceDPIScalingInDesignTimeCheckBox.Checked := ForceDPIScalingInDesignTime;
   end;
   FLoaded := True;
 end;
@@ -211,6 +224,8 @@ begin
     DesignerPaintLazy := DesignerPaintLazyCheckBox.Checked;
     CreateComponentFocusNameProperty := CreateCompFocusNameCheckBox.Checked;
     SwitchToFavoritesOITab := SwitchToFavoritesOITabCheckBox.Checked;
+    FormTitleBarChangesObjectInspector := FormTitleBarChangesObjectInspectorCheckBox.Checked;
+    ForceDPIScalingInDesignTime := ForceDPIScalingInDesignTimeCheckBox.Checked;
   end;
 end;
 

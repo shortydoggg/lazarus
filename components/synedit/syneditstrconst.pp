@@ -26,7 +26,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: syneditstrconst.pp 48466 2015-03-23 22:22:49Z maxim $
+$Id: syneditstrconst.pp 58519 2018-07-14 13:56:25Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -126,6 +126,7 @@ resourcestring
   SYNS_AttrSQLPlus              =  'SQL*Plus command';
   SYNS_AttrString               =  'String';
   SYNS_AttrSymbol               =  'Symbol';
+  SYNS_AttrProcedureHeaderName  =  'Procedure header name';
   SYNS_AttrCaseLabel            =  'Case label';
   SYNS_AttrSyntaxError          =  'SyntaxError';
   SYNS_AttrSystem               =  'System functions and variables';
@@ -243,6 +244,7 @@ const
   SYNS_XML_AttrSQLPlus              =  'SQL*Plus command';
   SYNS_XML_AttrString               =  'String';
   SYNS_XML_AttrSymbol               =  'Symbol';
+  SYNS_XML_AttrProcedureHeaderName  =  'Procedure header name';
   SYNS_XML_AttrCaseLabel            =  'Case label';
   SYNS_XML_AttrSyntaxError          =  'SyntaxError';
   SYNS_XML_AttrSystem               =  'System functions and variables';
@@ -433,6 +435,8 @@ resourcestring
   SYNS_emcStartSelectTokens        = 'Selection (tokens) ';
   SYNS_emcStartSelectWords         = 'Selection (words)';
   SYNS_emcStartSelectLines         = 'Selection (lines)';
+  SYNS_emcOverViewGutterGotoMark   = 'Jump to Mark (Overview Gutter)';
+  SYNS_emcOverViewGutterScrollTo   = 'Scroll (Overview Gutter)';
 
   SYNS_emcContextMenuCaretMove_opt = '"Move caret, when selection exists", Never, "Click outside", Always';
   SYNS_emcWheelScroll_opt          = 'Speed,"System settings",Lines,Pages,"Pages (less one line)"';

@@ -2,7 +2,7 @@
                            udlgpropertiesprinter.pp
                                 ------------
  *****************************************************************************
-  This file is part of the Lazarus Component Library (LCL)
+  This file is part of the Printer4Lazarus package
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
@@ -58,7 +58,6 @@ type
     pgAdvanced: TTabSheet;
     Notebook1: TPageControl;
     pgGeneral: TTabSheet;
-    pgMargins: TTabSheet;
     rbSheet1: TRADIOBUTTON;
     rbSheet2: TRADIOBUTTON;
     rbSheet4: TRADIOBUTTON;
@@ -358,7 +357,6 @@ begin
   labBanStart.Caption := p4lrsStart;
   labBanEnd.Caption := p4lrsEnd;
   gbPagesSheet.Caption := ' '+p4lrsPagesPerSheet+' ';
-  pgMargins.Caption := p4lrsMargins;
   pgAdvanced.Caption := p4lrsAdvanced;
 
   SetupOptions;

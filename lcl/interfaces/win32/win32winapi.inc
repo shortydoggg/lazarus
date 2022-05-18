@@ -1,5 +1,5 @@
 {%MainUnit win32int.pp}
-{ $Id: win32winapi.inc 53048 2016-09-28 22:07:24Z maxim $ }
+{ $Id: win32winapi.inc 60279 2019-02-02 18:39:33Z mattias $ }
 
 {******************************************************************************
                          All Windows API implementations.
@@ -161,34 +161,24 @@ var
   procedure CallMouseWheelHandler;
   var
     ScrollInfo: Windows.tagScrollInfo;
-    WParam: Windows.WParam;
+    SystemWParam: Windows.WParam;
     ScrollMsg, ScrollBar: dword;
     ScrollOffset: integer;
     Pos: TPoint;
+    MMessage: PLMMouseEvent;
+    SW: TScrollingWinControl;
+    SB: TControlScrollBar;
   begin
     if not TWinControl(Sender).HandleAllocated then
       exit;
 
-    // why coords are client? - they must be screen
-    with TLMMouseEvent(Message) do
-    begin
-      Pos.X := X;
-      Pos.Y := Y;
-    end;
+    // important: LM_MOUSEWHEEL needs client coordinates (windows WM_MOUSEWHEEL are screen coordinates)
+    // do not modify original message
+    MMessage := @TLMMouseEvent(Message);
+    Pos.X := MMessage^.X;
+    Pos.Y := MMessage^.Y;
     ClientToScreen(Handle, Pos);
-    WParam := Windows.WParam(Longint(PointToSmallPoint(Pos)));
-    with TLMMouseEvent(Message) do
-    begin
-      X := Pos.X;
-      Y := Pos.Y;
-    end;
-
-    with TLMessage(Message) do
-    begin
-      Result := CallDefaultWindowProc(Handle, Msg, WParam, LParam);
-      // Windows handled it, so exit here.
-      if Result<>0 then exit;
-    end;
+    SystemWParam := Windows.WParam(Longint(PointToSmallPointNoChecks(Pos)));
 
     // send scroll message
     FillChar(ScrollInfo, sizeof(ScrollInfo), #0);
@@ -196,7 +186,7 @@ var
     ScrollInfo.fMask := SIF_PAGE or SIF_POS or SIF_RANGE;
     // if mouse is over horizontal scrollbar, scroll horizontally
 
-    if Windows.SendMessage(Handle, WM_NCHITTEST, 0, WParam) = HTHSCROLL then
+    if Windows.SendMessage(Handle, WM_NCHITTEST, 0, SystemWParam) = HTHSCROLL then
     begin
       ScrollBar := SB_HORZ;
       ScrollMsg := WM_HSCROLL;
@@ -205,24 +195,48 @@ var
       ScrollBar := SB_VERT;
       ScrollMsg := WM_VSCROLL;
     end;
-    if Windows.GetScrollInfo(Handle, ScrollBar, ScrollInfo) then
+    if Windows.GetScrollInfo(Handle, ScrollBar, ScrollInfo)
+    and (((MMessage^.WheelDelta < 0)
+        and (Int64(ScrollInfo.nPos) <= Int64(ScrollInfo.nMax) - Int64(ScrollInfo.nPage)))
+      or ((MMessage^.WheelDelta > 0)
+        and (Int64(ScrollInfo.nPos) > Int64(ScrollInfo.nMin)))) then
     begin
-      with TLMMouseEvent(Message) do
+      if Mouse.WheelScrollLines < 0 then
+        // -1 means, scroll one page
+        ScrollOffset := (MMessage^.WheelDelta * integer(ScrollInfo.nPage)) div 120
+      else
+      if Sender is TScrollingWinControl then // support scrollbar increment
       begin
-        if Mouse.WheelScrollLines < 0 then
-          // -1 means, scroll one page
-          ScrollOffset := (WheelDelta * integer(ScrollInfo.nPage)) div 120
+        SW := TScrollingWinControl(Sender);
+        if ScrollBar = SB_Horz then
+          SB := SW.HorzScrollBar
         else
-          ScrollOffset := (WheelDelta * Mouse.WheelScrollLines) div 120;
-        WParam := Windows.WParam(ScrollInfo.nPos - ScrollOffset);
-        if WParam > ScrollInfo.nMax - integer(ScrollInfo.nPage) + 1 then
-          WParam := ScrollInfo.nMax - integer(ScrollInfo.nPage) + 1;
-        if WParam < ScrollInfo.nMin then
-          WParam := ScrollInfo.nMin;
-        WParam := SB_THUMBPOSITION or (WParam shl 16);
-      end;
-      Windows.PostMessage(Handle, ScrollMsg, WParam, HWND(nil));
+          SB := SW.VertScrollBar;
+        ScrollOffset :=
+          (Min(High(MMessage^.WheelDelta), Max(Low(MMessage^.WheelDelta),
+            (SB.Increment * MMessage^.WheelDelta))) div 120);
+      end else
+        ScrollOffset := (MMessage^.WheelDelta * Mouse.WheelScrollLines) div 120;
+
+      SystemWParam := Windows.WParam(ScrollInfo.nPos - ScrollOffset);
+      if SystemWParam > ScrollInfo.nMax - integer(ScrollInfo.nPage) + 1 then
+        SystemWParam := ScrollInfo.nMax - integer(ScrollInfo.nPage) + 1;
+      if SystemWParam < ScrollInfo.nMin then
+        SystemWParam := ScrollInfo.nMin;
+      SystemWParam := SB_THUMBPOSITION or (SystemWParam shl 16);
+
+      MMessage^.Result := Windows.SendMessage(Handle, ScrollMsg, SystemWParam, HWND(nil));
     end;
+
+    if (MMessage^.Result = 0)
+    and ((Sender is TCustomListView)
+      or (Sender is TCustomComboBox)
+      or (Sender is TCustomFloatSpinEdit))
+    then // the above 3 controls need windows to handle wheel messages
+      MMessage^.Result := CallDefaultWindowProc(Handle, MMessage^.Msg, TLMessage(Message).WParam, TLMessage(Message).LParam);
+
+    if (MMessage^.Result = 0) and (TControl(Sender).Parent <> nil) then // send unhandled scroll messages to parent
+      TControl(Sender).Parent.WindowProc(TLMessage(Message));
   end;
 
 begin
@@ -230,7 +244,8 @@ begin
   case TLMessage(Message).Msg of
     LM_PAINT:
       CallWin32PaintHandler;
-    LM_MOUSEWHEEL: // provide default wheel scrolling functionality
+    LM_MOUSEWHEEL,
+    LM_MOUSEHWHEEL: // provide default wheel scrolling functionality
       CallMouseWheelHandler;
     LM_ERASEBKGND,
     LM_GETDLGCODE,
@@ -330,7 +345,7 @@ begin
     SetLength(Result,1000);
     FormatLength:= Windows.GetClipboardFormatName(FormatID, PChar(Result), 1000);
     if FormatLength = 0 then
-      raise Exception.CreateFmt('Unknown clipboard format: %d', [FormatID]);
+      exit(''); // do not raise an exception!
     SetLength(Result,FormatLength);
     {$IFDEF VerboseWin32Clipbrd}
     debugln('TWin32WidgetSet.ClipboardFormatToMimeType FormatID=',dbgs(FormatID),' ',Result);
@@ -393,8 +408,6 @@ begin
   until (DbgFormatID=0);
   Windows.CloseClipboard;
   {$ENDIF}
-  if FormatID=PredefinedClipboardFormat(pcfDelphiBitmap)
-    then FormatID := CF_BITMAP;
   if (FormatID=0) or (Stream=nil) or
     not Windows.IsClipboardFormatAvailable(FormatID) then exit;
 
@@ -440,7 +453,7 @@ begin
                 Size := Pos(#0, BufferString);
                 if Size > 0 then
                   SetLength(BufferString, Size - 1);
-                BufferString := AnsiToUtf8(BufferString);
+                BufferString := WinCPToUTF8(BufferString);
               end;
               Stream.Write(BufferString[1], Length(BufferString));
             end;
@@ -602,7 +615,7 @@ function TWin32WidgetSet.ClipboardGetOwnerShip(ClipboardType: TClipboardType;
             end
             else
             begin
-              BufferString := Utf8ToAnsi(BufferString);
+              BufferString := UTF8ToWinCP(BufferString);
               if BufferString<>'' then  // original string may contain invalid UTF8
                 BufferStream.Write(BufferString[1], Length(BufferString));
             end;
@@ -694,9 +707,7 @@ function TWin32WidgetSet.ClipboardRegisterFormat(const AMimeType: String
   ): TClipboardFormat;
 begin
   if AMimeType=PredefinedClipboardMimeTypes[pcfText] then
-    if UnicodeEnabledOS
-      then Result := Windows.CF_UNICODETEXT
-      else Result := Windows.CF_TEXT
+    Result := Windows.CF_UNICODETEXT
   else if (AMimeType=PredefinedClipboardMimeTypes[pcfBitmap]) then
     Result := Windows.CF_BITMAP
   else
@@ -838,26 +849,17 @@ begin
   FontName := LogFont.lfFaceName;
 
   TempLogFont := LogFont;
-  if FontName = DefFontData.Name then
+  if SameText(FontName, DefFontData.Name) then
   begin
-    if UnicodeEnabledOS then
-      TempLogFontW.lfFaceName := UTF8ToUTF16(FMetrics.lfMessageFont.lfFaceName) // FMetrics must be UTF16
-    else
-      Move(FMetrics.lfMessageFont.lfFaceName, TempLogFont.lfFaceName, LF_FACESIZE);
+    TempLogFontW.lfFaceName := UTF8ToUTF16(FMetrics.lfMessageFont.lfFaceName); // FMetrics must be UTF16
     if TempLogFont.lfHeight = 0 then
       TempLogFont.lfHeight := FMetrics.lfMessageFont.lfHeight;
   end
   else
   begin
-  if UnicodeEnabledOS then
-    TempLogFontW.lfFaceName := UTF8ToUTF16(FontName)
-  else
-    TempLogFont.lfFaceName := Utf8ToAnsi(FontName);
+    TempLogFontW.lfFaceName := UTF8ToUTF16(FontName);
   end;
-  if UnicodeEnabledOS then
-    Result := Windows.CreateFontIndirectW(@TempLogFontW)
-  else
-    Result := Windows.CreateFontIndirectA(@TempLogFont)
+  Result := Windows.CreateFontIndirectW(@TempLogFontW);
 end;
 
 {------------------------------------------------------------------------------
@@ -1117,18 +1119,21 @@ begin
     move(str^, PChar(s)^, count);
   end;
   // the length of utf8 vs Wide/Ansi the strings differ, so recalc.
-  if UnicodeEnabledOS then
+  W := UTF8ToUTF16(s);
+  len := Length(W);
+  if (Flags and DT_MODIFYSTRING <> 0) then
+    SetLength(W, len+4);
+  Result := Windows.DrawTextW(DC, PWideChar(W), len, @Rect, Flags);
+  if (Flags and DT_MODIFYSTRING <> 0) then
   begin
-    W := UTF8ToUTF16(s);
-    len := Length(W);
-    Result := Windows.DrawTextW(DC, PWideChar(W), len, @Rect, Flags);
-  end
-  else
-  begin
-    S := Utf8ToAnsi(S);
-    len := Length(S);
-    Result := Windows.DrawText(DC, PChar(S), len, @Rect, Flags);
+    W := WideString(PWideChar(W)); // trim to first #0
+    s := UTF16ToUTF8(W);
+    if s<>'' then
+      Move(s[1], Str^, Length(s)+1) // the programmer has to make sure there's enough space in Str
+    else
+      Str^ := #0;
   end;
+
 
   // Theoretically, we need to augment the returned rect by the text overhang
   // The overhang is returned in the abcC field as documented in the
@@ -1152,10 +1157,7 @@ begin
     begin
 
       paABC := @aABC;
-      if UnicodeEnabledOS then
-        res := GetCharABCWidthsW(DC, Uint(W[len]), Uint(W[len]), paABC)
-      else
-        res := GetCharABCWidthsA(DC, ord(s[len]), ord(s[len]), paABC);
+      res := GetCharABCWidthsW(DC, Uint(W[len]), Uint(W[len]), paABC);
 
      if res then
        Rect.Right := Rect.Right + Abs(aABC.abcC);
@@ -1210,17 +1212,91 @@ begin
 end;
 
 {------------------------------------------------------------------------------
-  Method:  EnableWindow
-  Params: HWnd    - handle to window
-          BEnable -  whether to enable the window
-  Returns: If the window was previously disabled
+  Method:  EnableWindow                       Response to bug #0033923
+  Params:  HWnd    - handle to window
+           BEnable -  whether to enable the window
+  Returns: If the window was previously disabled.
 
   Enables or disables mouse and keyboard input to the specified window or
-  control.
+  control and updates the graphical appearance of the control
+
+ ------------------------------------------------------------------------------
+  Note June 2018: ~bk
+  In normal lazarus behavior, Enable is called by
+    1° - TWinControl.InitializeWnd (wcfInitializing in TWinControl.FWinControlFlags)
+    2° - When property TWinControl.Enabled changes : TWinControl.CMENABLEDCHANGED
+
+  To satisfy W10 new behaviour, if the aHWND parameter effectively changes the
+  Enabled state of its window, except if it is a TCusomForm descendant,
+  all its direct children will be asked to update their UI state if needed and
+  recusively propagate down the Controls children tree.
  ------------------------------------------------------------------------------}
 function TWin32WidgetSet.EnableWindow(HWnd: HWND; BEnable: Boolean): Boolean;
+
+  procedure EnableChildren(AWinControl: TWinControl; Enable: Boolean);
+  var
+    i: Integer;
+    ChildControl: TControl;
+    ChildWinControl: TWinControl absolute ChildControl;
+    RequestedEnable: Boolean;
+    EnabledOld: Boolean;
+    EnabledNew: Boolean;
+  begin
+    for i := 0 to AWinControl.ControlCount - 1 do begin
+      ChildControl := AWinControl.Controls[i];
+      if ChildControl is TWinControl then begin
+        if not ChildWinControl.HandleAllocated then Continue;
+        RequestedEnable := ChildWinControl.Enabled and Enable;
+        EnabledOld := IsWindowEnabled(ChildWinControl.Handle);
+        Windows.EnableWindow(ChildWinControl.Handle, RequestedEnable);
+        EnabledNew := IsWindowEnabled(ChildWinControl.Handle);
+        if (EnabledOld = EnabledNew) or (ChildWinControl.ControlCount < 1)
+        or (EnabledNew <> RequestedEnable)
+        then
+          Continue;
+        EnableChildren(ChildWinControl, RequestedEnable);
+      end
+      else
+        ChildControl.Invalidate;
+    end;
+  end;
+
+  function GetParentEnabled(AWinControl: TWinControl): Boolean;
+  var
+    ParentHandle: HWND;
+    ParentControl: TWinControl;
+  begin
+    ParentControl := AWinControl.Parent;
+    Result := not Assigned(ParentControl) or ParentControl.InheritsFrom(TCustomForm);
+    if not Result then begin
+      ParentHandle := GetParent(HWND);
+      Result := ParentHandle = 0;
+      if not Result then
+        Result := IsWindowEnabled(ParentHandle);
+    end;
+  end;
+
+var
+  lWinControl: TWinControl;
+  IsForm: Boolean;
+  RequestedEnable: Boolean;
 begin
-  Result := Boolean(Windows.EnableWindow(HWnd, BEnable));
+  lWinControl := GetWin32WindowInfo(HWnd)^.WinControl;
+  if not Assigned(lWinControl) then
+    Exit;
+  IsForm := lWinControl.InheritsFrom(TCustomForm);
+  if IsForm then
+    RequestedEnable := BEnable
+  else
+    RequestedEnable := BEnable and GetParentEnabled(lWinControl);
+
+  Result := Boolean(Windows.EnableWindow(HWnd, RequestedEnable));
+  if (wcfInitializing in TWinControlAccess(lWinControl).FWinControlFlags) or IsForm then
+    Exit;
+  // Result contains WS_DISABLED style. True means disabled
+  if (Result <> RequestedEnable) or (lWinControl.ControlCount < 1) then
+    Exit;
+  EnableChildren(lWinControl, RequestedEnable);
 end;
 
 {------------------------------------------------------------------------------
@@ -1293,7 +1369,6 @@ function TWin32WidgetSet.EnumFontFamiliesEx(DC: HDC; lpLogFont: PLogFont;
 var
   FontName: String;
   LFW: LogFontW;
-  LFA: LogFontA absolute LFW;
   Rec: TProcRedirRec;
 begin
   FontName := lpLogFont^.lfFaceName;
@@ -1302,18 +1377,14 @@ begin
   LFW.lfPitchAndFamily := lpLogFont^.lfPitchAndFamily;
   Rec.LParam := LParam;
   Rec.CallBack := CallBack;
-  if UnicodeEnabledOS then
-  begin
-    LFW.lfFaceName := UTF8ToUTF16(FontName);
-    Result := LongInt(Windows.EnumFontFamiliesExW(DC,
-      LFW, windows.FontEnumExProc(@EnumExProcRedirW), Windows.LParam(@Rec), Flags));
-  end
-  else
-  begin
-    LFA.lfFaceName := Utf8ToAnsi(FontName);
-    Result := LongInt(Windows.EnumFontFamiliesExA(DC,
-      LFA, windows.FontEnumExProc(@EnumExProcRedirA), Windows.LParam(@Rec), Flags));
-  end;
+  LFW.lfFaceName := UTF8ToUTF16(FontName);
+  {$if fpc_fullversion < 30101}
+  Result := LongInt(Windows.EnumFontFamiliesExW(DC,
+    LFW, windows.FontEnumExProc(@EnumExProcRedirW), Windows.LParam(@Rec), Flags));
+  {$else}
+  Result := LongInt(Windows.EnumFontFamiliesExW(DC,
+     LFW, windows.FontEnumExProcW(@EnumExProcRedirW), Windows.LParam(@Rec), Flags));
+  {$ifend}
 end;
 
 {------------------------------------------------------------------------------
@@ -1359,6 +1430,11 @@ begin
   LB.lbColor := ColorToRGB(TColor(lplb.lbColor));
   LB.lbHatch := lplb.lbHatch;
   Result := Windows.ExtCreatePen(dwPenStyle, dwWidth, LB, dwStyleCount, lpStyle);
+
+  // Note Michl: When style PS_USERSTYLE is used, lpStyle can't be nil, there
+  //             must be dwSytleCount >= 1, see issue #30661
+  if Result = 0 then
+    DebugLn('TWin32WidgetSet.ExtCreatePen returns 0. Reason = ' + GetLastErrorText(Windows.GetLastError));
 end;
 
 {------------------------------------------------------------------------------
@@ -1390,18 +1466,9 @@ begin
     move(str^, PChar(s)^, count);
   end;
   // the length of utf8 vs Wide/Ansi the strings differ, so recalc.
-  if UnicodeEnabledOS 
-  then
-  begin
-    // TODO: use the real number of chars (and not the lenght)
-    W := UTF8ToUTF16(S);
-    Result := Windows.ExtTextOutW(DC, X, Y, Options, LPRECT(Rect), PWideChar(W), Length(W), Dx);
-  end                                        
-  else
-  begin
-    S := Utf8ToAnsi(S);
-    Result := Windows.ExtTextOut(DC, X, Y, Options, LPRECT(Rect), PChar(S), Length(S), Dx);
-  end;
+  // TODO: use the real number of chars (and not the lenght)
+  W := UTF8ToUTF16(S);
+  Result := Windows.ExtTextOutW(DC, X, Y, Options, LPRECT(Rect), PWideChar(W), Length(W), Dx);
 end;
 
 {------------------------------------------------------------------------------
@@ -1883,24 +1950,24 @@ var
 begin
   if (lpmi <> nil) and (lpmi^.cbSize >= SizeOf(TMonitorInfoEx)) then
   begin
-    if UnicodeEnabledOS then
-    begin
-      LocalInfo.cbSize := SizeOf(TMonitorInfoExW);
-      Result := MultiMon.GetMonitorInfo(hMonitor, @LocalInfo);
-      lpmi^.rcMonitor := LocalInfo.rcMonitor;
-      lpmi^.rcWork := LocalInfo.rcWork;
-      lpmi^.dwFlags := LocalInfo.dwFlags;
-      PMonitorInfoEx(lpmi)^.szDevice := UTF16ToUTF8(LocalInfo.szDevice);
-    end
-    else begin
-      PMonitorInfoEx(lpmi)^.szDevice := AnsiToUtf8(PMonitorInfoEx(lpmi)^.szDevice);
-      Result := True;
-    end;
+    LocalInfo.cbSize := SizeOf(TMonitorInfoExW);
+    Result := MultiMon.GetMonitorInfo(hMonitor, @LocalInfo);
+    lpmi^.rcMonitor := LocalInfo.rcMonitor;
+    lpmi^.rcWork := LocalInfo.rcWork;
+    lpmi^.dwFlags := LocalInfo.dwFlags;
+    PMonitorInfoEx(lpmi)^.szDevice := UTF16ToUTF8(LocalInfo.szDevice);
   end
   else
     Result := MultiMon.GetMonitorInfo(hMonitor, LPMonitorInfo(lpmi));
 end;
 
+function TWin32WidgetSet.GetDpiForMonitor(hmonitor: HMONITOR; dpiType: TMonitorDpiType; out dpiX: UINT; out dpiY: UINT): HRESULT;
+begin
+  if WindowsVersion >= wv8_1 then
+    Result := Win32Int.GetDpiForMonitor(hmonitor, dpiType, dpiX, dpiY)
+  else
+    Result := S_FALSE;
+end;
 {------------------------------------------------------------------------------
   Method:  GetObject
   Params:  GDIObj  - handle to graphics object of interest
@@ -1917,7 +1984,7 @@ var
 begin
   if GetObjectType(GDIObj) = OBJ_FONT then
   begin
-    if (UnicodeEnabledOS) and (BufSize = Sizeof(LOGFONTA)) then
+    if (BufSize = Sizeof(LOGFONTA)) then
     begin
       BufSize := SizeOf(LogFontW);
       Result := Windows.GetObjectW(GDIObj, BufSize, @LFW);
@@ -2069,6 +2136,8 @@ begin
       Result := Windows.GetSystemMetrics(SM_CYMAXIMIZED) -
         (Windows.GetSystemMetrics(SM_CYCAPTION) +
         (Windows.GetSystemMetrics(SM_CYSIZEFRAME) * 2));
+    SM_LCLHasFormAlphaBlend:
+      Result := 1;
   else
     Result := Windows.GetSystemMetrics(NIndex);
   end;
@@ -2084,7 +2153,6 @@ function TWin32WidgetSet.GetTextExtentExPoint(DC: HDC; Str: PChar;
   Count, MaxWidth: Integer; MaxCount, PartialWidths: PInteger; var Size: TSize): Boolean;
 var
   LCLStr: string;
-  s: AnsiString;
   w: WideString;
 begin
   // use temp buffer, if count is set, there might be no null terminator
@@ -2096,19 +2164,10 @@ begin
     move(str^, PChar(LCLStr)^, count);
   end;
   // the length of utf8 vs Wide/Ansi the strings differ, so recalc.
-  if UnicodeEnabledOS then
-  begin
-    // TODO: use the real number of chars (and not the length)
-    w := UTF8ToUTF16(LCLStr);
-    Result := Windows.GetTextExtentExPointW(DC, PWideChar(W), Length(W),
-      MaxWidth, MaxCount, PartialWidths, Size);
-  end
-  else
-  begin
-    s := Utf8ToAnsi(LCLStr);
-    Result := Windows.GetTextExtentExPoint(DC, pchar(s), length(s),
-      MaxWidth, MaxCount, PartialWidths, Size);
-  end;
+  // TODO: use the real number of chars (and not the length)
+  w := UTF8ToUTF16(LCLStr);
+  Result := Windows.GetTextExtentExPointW(DC, PWideChar(W), Length(W),
+    MaxWidth, MaxCount, PartialWidths, Size);
 end;
 
 {------------------------------------------------------------------------------
@@ -2136,19 +2195,9 @@ begin
     move(str^, PChar(s)^, count);
   end;
   // the length of utf8 vs Wide/Ansi the strings differ, so recalc.
-  if UnicodeEnabledOS then
-  begin
-    // TODO: use the real number of chars (and not the length)
-    w := UTF8ToUTF16(S);
-    Result := Windows.GetTextExtentPoint32W(DC, PWideChar(W), Length(W), @Size);
-  end else
-  begin
-    // Important: Althougth the MSDN Docs point that GetTextExtentPoint32W
-    // works under Windows 9x, tests showed that this function produces
-    // a wrong output
-    s := Utf8ToAnsi(s);
-    Result := Windows.GetTextExtentPoint32(DC, pchar(s), length(s), @Size);
-  end;
+  // TODO: use the real number of chars (and not the length)
+  w := UTF8ToUTF16(S);
+  Result := Windows.GetTextExtentPoint32W(DC, PWideChar(W), Length(W), @Size);
 end;
 
 {------------------------------------------------------------------------------
@@ -2189,10 +2238,7 @@ end;
  ------------------------------------------------------------------------------}
 function TWin32WidgetSet.GetWindowLong(Handle: HWND; Int: Integer): PtrInt;
 begin
-  if UnicodeEnabledOS then
-    Result := Windows.GetWindowLongPtrW(Handle, int)
-  else
-    Result := Windows.GetWindowLongPtr(Handle, int);
+  Result := Windows.GetWindowLongPtrW(Handle, int);
 end;
 
 {------------------------------------------------------------------------------
@@ -2287,7 +2333,7 @@ var
   begin
     UpDownWP.length := SizeOf(UpDownWP);
     if Windows.GetWindowPlacement(WindowInfo^.UpDown, UpDownWP) then
-      Width := UpDownWP.rcNormalPosition.Right - WP.rcNormalPosition.Left;
+      Width := Max(Width, UpDownWP.rcNormalPosition.Right - WP.rcNormalPosition.Left);
   end;
 
   procedure ExcludeCaption; inline;
@@ -2326,9 +2372,11 @@ begin
         SetWidthHeightFromRect(WP.rcNormalPosition)
       else
         SetWidthHeightFromRect(Info.rcWindow);
+      {$IFNDEF LCLRealFormBounds}
       Width := Width - 2 * Integer(Info.cxWindowBorders);
       Height := Height - 2 * Integer(Info.cyWindowBorders);
       ExcludeCaption;
+      {$ENDIF}
       //WriteLn('W = ', Width, ' H = ', Height);
       Exit;
     end;
@@ -2644,10 +2692,7 @@ end;
 function TWin32WidgetSet.PeekMessage(var LPMsg: TMsg; Handle: HWND;
   WMsgFilterMin, WMsgFilterMax, WRemoveMsg: UINT): Boolean;
 begin
-    if UnicodeEnabledOS then
-      Result := Boolean(Windows.PeekMessageW(@LPMsg, Handle, WMsgFilterMin, WMsgFilterMax, WRemoveMsg))
-    else
-      Result := Boolean(Windows.PeekMessage(@LPMsg, Handle, WMsgFilterMin, WMsgFilterMax, WRemoveMsg));
+  Result := Boolean(Windows.PeekMessageW(@LPMsg, Handle, WMsgFilterMin, WMsgFilterMax, WRemoveMsg));
 end;
 
 function TWin32WidgetSet.Pie(DC: HDC; EllipseX1, EllipseY1, EllipseX2,
@@ -3345,10 +3390,7 @@ end;
  ------------------------------------------------------------------------------}
 function TWin32WidgetSet.SetWindowLong(Handle: HWND; Idx: Integer; NewLong: PtrInt): PtrInt;
 begin
-  if UnicodeEnabledOS then
-    Result := Windows.SetWindowLongPtrW(Handle, Idx, NewLong)
-  else
-    Result := Windows.SetWindowLongPtr(Handle, Idx, NewLong);
+  Result := Windows.SetWindowLongPtrW(Handle, Idx, NewLong);
 end;
 
 {------------------------------------------------------------------------------

@@ -1,15 +1,16 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: 0.9.16\n"
-"POT-Creation-Date: \n"
-"PO-Revision-Date: 2006-06-04 01:29+0800\n"
-"Last-Translator: 巫山霏云 <freefcw@gmail.com>\n"
-"Language-Team: newsfree <freefcw@gmail.com>\n"
 "MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=utf-8\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Poedit-Language: chinese\n"
-"X-Poedit-Country: china\n"
+"Project-Id-Version: X-1.9\n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: 郑建平@夏宗萍 aka  robsean <robsean@126.com>\n"
+"Language-Team: \n"
+"Language: zh_CN\n"
+"X-Generator: Poedit 1.8.7.1\n"
+"X-Poedit-SourceCharset: UTF-8\n"
 
 #: synmacrorecorder.scannotpause
 msgid "Can only pause when recording"
@@ -21,9 +22,9 @@ msgstr "录制宏时无法回放宏"
 
 #: synmacrorecorder.scannotrecord
 msgid "Cannot record macro when recording"
-msgstr "无法同时录制两个宏"
+msgstr "不能录制宏 当记录时"
 
 #: synmacrorecorder.scannotresume
 msgid "Can only resume when paused"
-msgstr "暂停时只能恢复"
+msgstr "只能恢复 当暂停时"
 

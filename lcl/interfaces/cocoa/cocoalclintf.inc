@@ -26,23 +26,32 @@
   Params:  ACursor - Cursor type
   Returns: Cursor object in Cocoa for the specified cursor type
  ------------------------------------------------------------------------------}
-function TCocoaWidgetSet.CreateStandardCursor(ACursor: SmallInt): HCursor;
+function TCocoaWidgetSet.CreateStandardCursor(ACursor: SmallInt): hCursor;
 begin
   case ACursor of
-    crArrow, crDefault: Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.arrowCursor));
+    crArrow,
+    crAppStart,   // neither LCL nor Cocoa provides "crAppStart" cursor
+    crDefault     : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.arrowCursor));
     crCross       : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.crosshairCursor));
     crIBeam       : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.IBeamCursor));
     crSizeNS,
     crVSplit      : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.resizeUpDownCursor));
+    crSizeNESW    : Result := HCursor(TCocoaCursor.CreateFromCustomCursor( AllocCursorFromCursorByDegrees(NSCursor.resizeLeftRightCursor,  45) ));
+    crSizeNWSE    : Result := HCursor(TCocoaCursor.CreateFromCustomCursor( AllocCursorFromCursorByDegrees(NSCursor.resizeLeftRightCursor, -45) ));
     crSizeWE,
     crHSplit      : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.resizeLeftRightCursor));
     crSizeN       : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.resizeUpCursor));
+    crSizeNW      : Result := HCursor(TCocoaCursor.CreateFromCustomCursor( AllocCursorFromCursorByDegrees(NSCursor.resizeLeftCursor, -45) ));
+    crSizeSW      : Result := HCursor(TCocoaCursor.CreateFromCustomCursor( AllocCursorFromCursorByDegrees(NSCursor.resizeLeftCursor, 45) ));
     crSizeW       : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.resizeLeftCursor));
+    crSizeNE      : Result := HCursor(TCocoaCursor.CreateFromCustomCursor( AllocCursorFromCursorByDegrees(NSCursor.resizeRightCursor,  45) ));
+    crSizeSE      : Result := HCursor(TCocoaCursor.CreateFromCustomCursor( AllocCursorFromCursorByDegrees(NSCursor.resizeRightCursor, -45) ));
     crSizeE       : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.resizeRightCursor));
     crSizeS       : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.resizeDownCursor));
     crNo,
     crNoDrop      : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.operationNotAllowedCursor));
     crHandPoint   : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.pointingHandCursor));
+    //crHourGlass,
     crDrag        : Result := HCursor(TCocoaCursor.CreateStandard(NSCursor.dragCopyCursor));
   else
     // We answer with Result=0 for crHourGlass because Cocoa does not provide any API
@@ -52,6 +61,13 @@ begin
     Result := 0;
   end;
 end;
+
+function TCocoaWidgetSet.FontCanUTF8(Font: HFont): boolean;
+begin
+  // no so deprecated, after all. SynEdit is still using it and caused the issue #34594
+  Result:=true;
+end;
+
 (*
 {------------------------------------------------------------------------------
   Method:  DrawGrid
@@ -130,46 +146,70 @@ begin
     DebugLn('TCarbonWidgetSet.GetLCLOwnerObject Result: ' + DbgS(Result));
   {$ENDIF}
 end;
-
+*)
 {------------------------------------------------------------------------------
   Method:  IsDesignerDC
   Params:  WindowHandle - Handle of window
            DC           - Handle of device context
   Returns: If the device context is designer
  ------------------------------------------------------------------------------}
-function TCarbonWidgetSet.IsDesignerDC(WindowHandle: HWND; DC: HDC): Boolean;
+function TCocoaWidgetSet.IsDesignerDC(WindowHandle: HWND; DC: HDC): Boolean;
 begin
-  Result := False;
-  {$IFDEF VerboseLCLIntf}
-    DebugLn('TCarbonWidgetSet.IsDesignerDC Handle: ' + DbgS(WindowHandle), ' DC: ' + DbgS(DC));
-  {$ENDIF}
-
-  if not CheckWidget(WindowHandle, 'IsDesignerDC', TCarbonDesignWindow) then Exit;
-  Result := DC = HDC(TCarbonDesignWindow(WindowHandle).GetDesignContext);
-end;
- *)
-
-procedure TCocoaWidgetSet.InitClipboard;
-begin
-  PrimarySelection := NSPasteboard.pasteboardWithUniqueName();
-  SecondarySelection := NSPasteboard.pasteboardWithUniqueName();
-  ClipboardFormats := TFPObjectList.Create(True);
+  Result := (WindowHandle <> 0) and (DC <> 0) and TCocoaContext(DC).isDesignDC;
 end;
 
-procedure TCocoaWidgetSet.FreeClipboard;
+procedure TCocoaWidgetSet.SyncClipboard();
 begin
-  PrimarySelection.releaseGlobally();
-  SecondarySelection.releaseGlobally();
-  ClipboardFormats.Free;
+  fClipboard.Sync;
 end;
 
-function TCocoaWidgetSet.GetClipboardDataForFormat(AFormat: TClipboardFormat): TCocoaClipboardData;
+type
+
+  { TCocoaAlertCancelAccessoryView }
+
+  TCocoaAlertCancelAccessoryView = objcclass(NSView)
+    sheetOfWindow: NSWindow;
+    function performKeyEquivalent (theEvent: NSEvent): LCLObjCBoolean; override;
+  end;
+
+  TCocoaSheetDelegate = objcclass(NSObject)
+  public
+    ended: Boolean;
+    retCode: NSInteger;
+    procedure alertDidEnd(alert:NSAlert; returncode: NSInteger; contextInfo: Pointer); message 'alertDidEnd:::';
+  end;
+
+
+procedure TCocoaSheetDelegate.alertDidEnd(alert:NSAlert;
+  returncode: NSInteger; contextInfo: Pointer);
 begin
-  Result := TCocoaClipboardData(AFormat);
+  ended := true;
+  retCode := returnCode;
+end;
+
+// it's placed as a separate function for an easier code management
+function RunSheetAsModal(anAlert: NSAlert; ownerWindow: NSWindow): Integer;
+var
+  alertDel: TCocoaSheetDelegate;
+begin
+  alertDel:= TCocoaSheetDelegate.alloc.init;
+  try
+    anAlert.beginSheetModalForWindow_modalDelegate_didEndSelector_contextInfo(
+      ownerWindow, alertDel, ObjCSelector('alertDidEnd:::'), nil);
+
+    while not alertDel.ended do
+      CocoaWidgetSet.AppProcessMessages;
+
+    Result := alertDel.retCode;
+
+  finally
+    alertDel.release;
+  end;
+
 end;
 
 {------------------------------------------------------------------------------
-  Method:  PromptUser
+  Func:    CocoaPromptUser
   Params:  DialogCaption - Dialog caption
            DialogMessage - Dialog message text
            DialogType    - Type of dialog
@@ -177,18 +217,24 @@ end;
            ButtonCount   - Count of passed buttons
            DefaultIndex  - Index of default button
            EscapeResult  - Result value of escape
+           sheetOfWindow - Shows the prompt as a sheet to the specified NSWindow,
+                           if nil, the prompt is shown as an application modal dialog
+           modalSheet    - (only used if sheetOfWindow is not null).
+                           if true, the function doesn't return until the sheet
+                           is closed
   Returns: The result value of pushed button
 
-  Shows modal dialog with the specified caption, message and buttons and prompts
-  user to push one.
+  Shows modal dialog or window sheet with the specified caption, message
+  and buttons and prompts user to push one.
  ------------------------------------------------------------------------------}
-function TCocoaWidgetSet.PromptUser(const DialogCaption : string;
+function CocoaPromptUser(const DialogCaption : string;
                                      const DialogMessage : string;
                                            DialogType    : LongInt;
                                            Buttons       : PLongInt;
                                            ButtonCount   : LongInt;
                                            DefaultIndex  : LongInt;
-                                           EscapeResult  : LongInt) : LongInt;
+                                           EscapeResult  : LongInt;
+  sheetOfWindow : NSWindow; modalSheet: Boolean) : LongInt;
 {Implements MessageDlg.}
 
 const
@@ -201,7 +247,15 @@ var
   messageText: NSString;
   I: Integer;
   aButton: NSButton;
+  Str: string;
+  cancelAccessory: TCocoaAlertCancelAccessoryView;
+  needsCancel: Boolean;
 begin
+  {Str := 'TCocoaWidgetSet.PromptUser DialogCaption: ' + DialogCaption +
+    ' DialogMessage: ' + DialogMessage + ' DialogType: ' + DbgS(DialogType) +
+    ' ButtonCount: ' + DbgS(ButtonCount) + ' DefaultIndex: ' +
+    DbgS(DefaultIndex) + ' EscapeResult: ' + DbgS(EscapeResult);
+  Result := -1;}
   {$IFDEF VerboseLCLIntf}
     DebugLn('TCocoaWidgetSet.PromptUser DialogCaption: ' + DialogCaption +
       ' DialogMessage: ' + DialogMessage + ' DialogType: ' + DbgS(DialogType) +
@@ -209,19 +263,22 @@ begin
       DbgS(DefaultIndex) + ' EscapeResult: ' + DbgS(EscapeResult));
   {$ENDIF}
   Result := -1;
-  AnAlert :=  NSAlert.alloc.init;
+  AnAlert := NSAlert.alloc.init;
   try
+    cancelAccessory := nil;
     informativeText := NSStringUtf8(DialogMessage);
     messageText := NSStringUtf8(DialogCaption);
     case DialogType of
       idDialogWarning,
       idDialogError    : anAlert.setAlertStyle(NSCriticalAlertStyle);
+      idDialogInfo     : anAlert.setAlertStyle(NSInformationalAlertStyle);
     end;
 
     try
       anAlert.setInformativeText(informativeText);
       anAlert.setMessageText(messageText);
 
+      needsCancel := True;
       for I := 0 to ButtonCount - 1 do
       begin
         if Buttons[I] = idButtonHelp then
@@ -239,7 +296,7 @@ begin
             Continue;
           end;
 
-          aButton := anAlert.addButtonWithTitle(NSLocalizedString(NSSTR(ButtonCaption[Buttons[I]])));
+          aButton := anAlert.addButtonWithTitle(NSSTR(ButtonCaption[Buttons[I]]));
           aButton.setKeyEquivalentModifierMask(0);
 
           if I = DefaultIndex then
@@ -250,15 +307,46 @@ begin
             // from the first button.
             aButton.setKeyEquivalent(NSSTR(''));
 
-          if Buttons[I]=mrCancel then
+          if Buttons[I]=mrCancel then begin
+            needsCancel := False;
             aButton.setKeyEquivalent(NSSTR(#27));
+          end;
 
           aButton.setTag(Buttons[I]);
         end;
       end;
 
-      result := AnAlert.runModal;
+      if needsCancel then begin
+        cancelAccessory := TCocoaAlertCancelAccessoryView.alloc.init;
+        cancelAccessory.sheetOfWindow := sheetOfWindow;
+        cancelAccessory.setBounds(NSZeroRect);
+        anAlert.setAccessoryView(cancelAccessory);
+      end;
+
+      ApplicationWillShowModal;
+
+      if Assigned(sheetOfWindow) then
+      begin
+        if not (modalSheet) then
+        begin
+          anAlert.beginSheetModalForWindow_modalDelegate_didEndSelector_contextInfo(
+            sheetOfWindow, nil, nil, nil
+          );
+          Result := 0;
+        end
+        else
+          Result := RunSheetAsModal(anAlert, sheetOfWindow);
+      end
+      else
+      begin
+        ToggleAppMenu(false);
+        Result := AnAlert.runModal;
+        if Result = NSCancelButton then
+          Result := EscapeResult;
+        ToggleAppMenu(true); // modal menu doesn't have a window, disabling it
+      end;
     finally
+      if Assigned(cancelAccessory) then cancelAccessory.release;
       informativeText.release;
       messageText.release;
     end;
@@ -270,7 +358,156 @@ begin
   {$IFDEF VerboseLCLIntf}
     DebugLn('TCocoaWidgetSet.PromptUser Result: ' + DbgS(Result));
   {$ENDIF}
+end;
+
+{TCocoaWidgetSet.PromptUser}
+
+{ TCocoaAlertCancelAccessoryView }
+
+function TCocoaAlertCancelAccessoryView.performKeyEquivalent(theEvent: NSEvent): LCLObjCBoolean;
+begin
+  if theEvent.keyCode = kVK_Escape then
+  begin
+    if Assigned(sheetOfWindow) then
+      NSApplication(NSApp).endSheet(window) // use "sheetOfWindow.endSheet(window)" on 10.9+
+    else
+      NSApplication(NSApp).stopModalWithCode(NSCancelButton);
+    Result := True;
+  end
+  else
+    Result := inherited performKeyEquivalent(theEvent);
+end;
+
+{------------------------------------------------------------------------------
+  Method:  PromptUser
+  Params:  DialogCaption - Dialog caption
+           DialogMessage - Dialog message text
+           DialogType    - Type of dialog
+           Buttons       - Pointer to button types
+           ButtonCount   - Count of passed buttons
+           DefaultIndex  - Index of default button
+           EscapeResult  - Result value of escape
+  Returns: The result value of pushed button
+
+  Shows modal dialog with the specified caption, message and buttons and prompts
+  user to push one.
+ ------------------------------------------------------------------------------}
+function TCocoaWidgetSet.PromptUser(const DialogCaption, DialogMessage: String;
+  DialogType: longint; Buttons: PLongint; ButtonCount, DefaultIndex,
+  EscapeResult: Longint): Longint;
+begin
+  Result := CocoaPromptUser(DialogCaption, DialogMessage, DialogType, Buttons, ButtonCount,
+    DefaultIndex, EscapeResult);
 end;  {TCocoaWidgetSet.PromptUser}
+
+{------------------------------------------------------------------------------
+  Method:  MessageBox
+------------------------------------------------------------------------------}
+function TCocoaWidgetSet.MessageBox(HWnd: HWND; lpText, lpCaption: PChar;
+  uType: Cardinal): Integer;
+var
+  DialogType : LongInt;
+  ButtonsArray : array[0..3] of LongInt;
+  ButtonsCount : LongInt;
+  DefButtonIndex: LongInt;
+  SheetWnd : NSWindow;
+begin
+  FillChar(ButtonsArray, SizeOf(ButtonsArray), 0);
+
+  if (uType and MB_RETRYCANCEL) = MB_RETRYCANCEL then
+  begin
+    ButtonsCount := 2;
+    ButtonsArray[0] := idButtonRetry;
+    ButtonsArray[1] := idButtonCancel;
+  end
+  else
+  if (uType and MB_YESNO) = MB_YESNO then
+  begin
+    ButtonsCount := 2;
+    ButtonsArray[0] := idButtonYes;
+    ButtonsArray[1] := idButtonNo;
+  end
+  else
+  if (uType and MB_YESNOCANCEL) = MB_YESNOCANCEL then
+  begin
+    ButtonsCount := 3;
+    ButtonsArray[0] := idButtonYes;
+    ButtonsArray[1] := idButtonNo;
+    ButtonsArray[2] := idButtonCancel;
+  end
+  else
+  if (uType and MB_ABORTRETRYIGNORE) = MB_ABORTRETRYIGNORE then
+  begin
+    ButtonsCount := 3;
+    ButtonsArray[0] := idButtonAbort;
+    ButtonsArray[1] := idButtonRetry;
+    ButtonsArray[2] := idButtonIgnore;
+  end
+  else
+  if (uType and MB_OKCANCEL) = MB_OKCANCEL then
+  begin
+    ButtonsCount := 2;
+    ButtonsArray[0] := idButtonOk;
+    ButtonsArray[1] := idButtonCancel;
+  end
+  else
+  begin
+    ButtonsCount := 1;
+    ButtonsArray[0] := idButtonOk;
+  end;
+
+  if (uType and MB_ICONINFORMATION) = MB_ICONINFORMATION then
+    DialogType := idDialogInfo
+  else
+  if (uType and MB_ICONWARNING) = MB_ICONWARNING then
+    DialogType := idDialogWarning
+  else
+  if (uType and MB_ICONQUESTION) = MB_ICONQUESTION then
+    DialogType := idDialogConfirm
+  else
+  if (uType and MB_ICONERROR) = MB_ICONERROR then
+    DialogType := idDialogError
+  else
+    DialogType := idDialogInfo;
+
+  if (uType and MB_DEFBUTTON2) = MB_DEFBUTTON2 then
+    DefButtonIndex := Pred(2)
+  else
+  if (uType and MB_DEFBUTTON3) = MB_DEFBUTTON3 then
+    DefButtonIndex := Pred(3)
+  else
+  if (uType and MB_DEFBUTTON4) = MB_DEFBUTTON4 then
+    DefButtonIndex := Pred(4)
+  else
+    DefButtonIndex := Pred(1);
+
+  if HWnd = 0 then
+    SheetWnd := Nil
+  else
+    SheetWnd := NSView(HWnd).window();
+
+  Result := CocoaPromptUser(
+    string(lpCaption),
+    string(lpText),
+    DialogType,
+    @ButtonsArray,
+    ButtonsCount,
+    DefButtonIndex,
+    0 {EscapeResult},
+    SheetWnd, true);
+
+  case Result of
+    idButtonOk : Result := IDOK;
+    idButtonNo : Result := IDNO;
+    idButtonYes : Result := IDYES;
+    idButtonCancel : Result := IDCANCEL;
+    idButtonRetry : Result := IDRETRY;
+    idButtonAbort : Result := IDABORT;
+    idButtonIgnore : Result := IDIGNORE;
+  else
+    Result := IDCANCEL;
+  end;
+end;
 
 {------------------------------------------------------------------------------
   Function: RawImage_CreateBitmaps
@@ -462,6 +699,14 @@ end;
 
  http://developer.apple.com/qa/qa2007/qa1509.html
  ------------------------------------------------------------------------------}
+var
+  _CGDisplayCreateImage : function ( displayID: CGDirectDisplayID ): CGImageRef; cdecl = nil;
+
+function CGDisplayCreateImageNone( displayID: CGDirectDisplayID ): CGImageRef; cdecl;
+begin
+  Result := nil;
+end;
+
 function TCocoaWidgetSet.RawImage_FromDevice(out ARawImage: TRawImage; ADC: HDC; const ARect: TRect): Boolean;
 var
   CBC: TCocoaBitmapContext absolute ADC;
@@ -483,23 +728,31 @@ begin
 
   { Get's a screenshot }
   displayID := CGMainDisplayID();
-  ScreenImage := CGDisplayCreateImage(displayID);
+  if not Assigned(Pointer(_CGDisplayCreateImage)) then begin
+    Pointer(_CGDisplayCreateImage) := GetProcAddress(TLibHandle(RTLD_DEFAULT), 'CGDisplayCreateImage');
+    if not Assigned(@_CGDisplayCreateImage) then
+      Pointer(_CGDisplayCreateImage) := @CGDisplayCreateImageNone;
+  end;
+  ScreenImage := _CGDisplayCreateImage(displayID);
 
   { Fills the image description }
   ARawImage.Init;
   FillStandardDescription(ARawImage.Description);
-  ARawImage.Description.Height := CGImageGetHeight(ScreenImage);
-  ARawImage.Description.Width := CGImageGetWidth(ScreenImage);
+  if Assigned(ScreenImage) then begin
+    ARawImage.Description.Height := CGImageGetHeight(ScreenImage);
+    ARawImage.Description.Width := CGImageGetWidth(ScreenImage);
+    ARawImage.Data := GetImagePixelData(ScreenImage, ARawImage.DataSize);
+  end;
   ARawImage.Mask := nil;
 
   { Copies the image data to a local buffer }
-  ARawImage.Data := GetImagePixelData(ScreenImage, ARawImage.DataSize);
 
   { clean-up }
   CGImageRelease(ScreenImage);
 
   Result := True;
 end;
+
 
 {------------------------------------------------------------------------------
   Function: RawImage_QueryDescription

@@ -27,7 +27,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -40,12 +40,20 @@ unit ViewUnit_Dlg;
 interface
 
 uses
-  SysUtils, Classes, Controls, Forms, Buttons, StdCtrls,
-  LazarusIdeStrConsts, IDEProcs, CustomFormEditor, LCLType, LCLIntf,
-  ExtCtrls, ButtonPanel, Menus, AVL_Tree, ComCtrls,
-  PackageDefs, IDEWindowIntf, IDEHelpIntf, IDEImagesIntf, ListFilterEdit,
-  CodeToolsStructs, CodeToolManager, FileProcs,
-  lazutf8sysutils, LazFileUtils, LazFileCache;
+  SysUtils, Classes, Laz_AVL_Tree,
+  // LCL
+  LCLType, LCLIntf,
+  Controls, Forms, Buttons, StdCtrls, ExtCtrls, ButtonPanel, Menus, ComCtrls,
+  // LazUtils
+  LazSysUtils, LazFileUtils, LazFileCache, AvgLvlTree,
+  // Codetools
+  CodeToolManager, FileProcs,
+  // LazControls
+  ListFilterEdit,
+  // IdeIntf
+  IDEWindowIntf, IDEHelpIntf, IDEImagesIntf,
+  // IDE
+  LazarusIdeStrConsts, IDEProcs, CustomFormEditor, PackageDefs;
 
 type
   TIDEProjectItem = (
@@ -111,16 +119,19 @@ type
     ProgressBar1: TProgressBar;
     RemoveBitBtn: TSpeedButton;
     SortAlphabeticallySpeedButton: TSpeedButton;
+    procedure FormClose(Sender: TObject; var {%H-}CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure ListboxDrawItem({%H-}Control: TWinControl; Index: Integer;
       ARect: TRect; {%H-}State: TOwnerDrawState);
+    procedure ListboxKeyPress(Sender: TObject; var Key: char);
+    procedure ListboxMeasureItem({%H-}Control: TWinControl; {%H-}Index: Integer;
+      var AHeight: Integer);
     procedure OnIdle(Sender: TObject; var {%H-}Done: Boolean);
     procedure SortAlphabeticallySpeedButtonClick(Sender: TObject);
     procedure OKButtonClick(Sender :TObject);
     procedure HelpButtonClick(Sender: TObject);
     procedure CancelButtonClick(Sender :TObject);
-    procedure ListboxKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure MultiselectCheckBoxClick(Sender :TObject);
   private
     FIdleConnected: boolean;
@@ -138,7 +149,6 @@ type
     procedure ShowEntries;
     procedure UpdateEntries;
   public
-    constructor Create(TheOwner: TComponent); override;
     procedure Init(const aCaption: string;
       AllowMultiSelect, EnableMultiSelect: Boolean; aItemType: TIDEProjectItem;
       TheEntries: TViewUnitEntries; aStartFilename: string = '');
@@ -300,10 +310,32 @@ end;
 
 { TViewUnitDialog }
 
-constructor TViewUnitDialog.Create(TheOwner: TComponent);
+procedure TViewUnitDialog.FormCreate(Sender: TObject);
 begin
-  inherited Create(TheOwner);
   IDEDialogLayoutList.ApplyLayout(Self,450,300);
+  fSearchDirectories:=TFilenameToStringTree.Create(false);
+  fSearchFiles:=TFilenameToStringTree.Create(false);
+  fFoundFiles:=TFilenameToStringTree.Create(false);
+
+  mniMultiSelect.Caption := dlgMultiSelect;
+  ButtonPanel.OKButton.Caption:=lisMenuOk;
+  ButtonPanel.HelpButton.Caption:=lisMenuHelp;
+  ButtonPanel.CancelButton.Caption:=lisCancel;
+  SortAlphabeticallySpeedButton.Hint:=lisPESortFilesAlphabetically;
+  IDEImages.AssignImage(SortAlphabeticallySpeedButton, 'pkg_sortalphabetically');
+end;
+
+procedure TViewUnitDialog.FormDestroy(Sender: TObject);
+begin
+  FreeAndNil(fSearchDirectories);
+  FreeAndNil(fSearchFiles);
+  FreeAndNil(fFoundFiles);
+  IdleConnected:=false;
+end;
+
+procedure TViewUnitDialog.FormClose(Sender: TObject; var CloseAction: TCloseAction);
+begin
+  IDEDialogLayoutList.SaveLayout(Self);
 end;
 
 procedure TViewUnitDialog.Init(const aCaption: string; AllowMultiSelect,
@@ -344,13 +376,17 @@ end;
 
 procedure TViewUnitDialog.ListboxDrawItem(Control: TWinControl; Index: Integer;
   ARect: TRect; State: TOwnerDrawState);
+var
+  aTop: Integer;
 begin
   if Index < 0 then Exit;
   with ListBox do
   begin
     Canvas.FillRect(ARect);
-    IDEImages.Images_16.Draw(Canvas, 1, ARect.Top, FImageIndex);
-    Canvas.TextRect(ARect, ARect.Left + 20, ARect.Top, Items[Index]);
+    aTop := (ARect.Bottom + ARect.Top - IDEImages.Images_16.Height) div 2;
+    IDEImages.Images_16.Draw(Canvas, 1, aTop, FImageIndex);
+    aTop := (ARect.Bottom + ARect.Top - Canvas.TextHeight('Šj9')) div 2;
+    Canvas.TextRect(ARect, ARect.Left + IDEImages.Images_16.Width + Scale96ToFont(4), aTop, Items[Index]);
   end;
 end;
 
@@ -385,6 +421,7 @@ procedure TViewUnitDialog.OnIdle(Sender: TObject; var Done: Boolean);
     i: Integer;
     aFilename: String;
   begin
+    if not FilenameIsAbsolute(aDirectory) then exit;
     aDirectory:=AppendPathDelim(aDirectory);
     //DebugLn(['CheckDirectory ',aDirectory]);
     Files:=nil;
@@ -433,41 +470,18 @@ begin
   end;
 end;
 
-procedure TViewUnitDialog.FormDestroy(Sender: TObject);
-begin
-  FreeAndNil(fSearchDirectories);
-  FreeAndNil(fSearchFiles);
-  FreeAndNil(fFoundFiles);
-  IdleConnected:=false;
-end;
-
-procedure TViewUnitDialog.FormCreate(Sender: TObject);
-begin
-  fSearchDirectories:=TFilenameToStringTree.Create(false);
-  fSearchFiles:=TFilenameToStringTree.Create(false);
-  fFoundFiles:=TFilenameToStringTree.Create(false);
-
-  //ActiveControl:=FilterEdit;
-  mniMultiSelect.Caption := dlgMultiSelect;
-  ButtonPanel.OKButton.Caption:=lisMenuOk;
-  ButtonPanel.HelpButton.Caption:=lisMenuHelp;
-  ButtonPanel.CancelButton.Caption:=lisCancel;
-  SortAlphabeticallySpeedButton.Hint:=lisPESortFilesAlphabetically;
-  SortAlphabeticallySpeedButton.LoadGlyphFromResourceName(HInstance, 'pkg_sortalphabetically');
-end;
-
 procedure TViewUnitDialog.OKButtonClick(Sender: TObject);
 var
   S2PItem: PStringToPointerTreeItem;
   Entry: TViewUnitsEntry;
 Begin
-  IDEDialogLayoutList.SaveLayout(Self);
   FilterEdit.StoreSelection;
   for S2PItem in fEntries.fItems do begin
     Entry:=TViewUnitsEntry(S2PItem^.Value);
     Entry.Selected:=FilterEdit.SelectionList.IndexOf(Entry.Name)>-1;
+    if Entry.Selected then
+      ModalResult := mrOK;
   end;
-  ModalResult := mrOK;
 End;
 
 procedure TViewUnitDialog.HelpButtonClick(Sender: TObject);
@@ -477,19 +491,20 @@ end;
 
 procedure TViewUnitDialog.CancelButtonClick(Sender: TObject);
 Begin
-  IDEDialogLayoutList.SaveLayout(Self);
   ModalResult := mrCancel;
 end;
 
-procedure TViewUnitDialog.ListboxKeyDown(Sender: TObject; var Key: Word;
-  Shift: TShiftState);
+procedure TViewUnitDialog.ListboxKeyPress(Sender: TObject; var Key: char);
 begin
-  if Key = VK_RETURN then
-    OKButtonClick(nil)
-  // A hack to prevent 'O' working as shortcut for OK-button.
-  // Should be removed when issue #20599 is resolved.
-  else if (Key = VK_O) and (Shift = []) then
-    Key:=VK_UNKNOWN;
+  if Key = Char(VK_RETURN) then
+    OKButtonClick(nil);
+end;
+
+procedure TViewUnitDialog.ListboxMeasureItem(Control: TWinControl;
+  Index: Integer; var AHeight: Integer);
+begin
+  if AHeight <= IDEImages.Images_16.Height then
+    AHeight := IDEImages.Images_16.Height + 2;
 end;
 
 procedure TViewUnitDialog.MultiselectCheckBoxClick(Sender :TObject);
@@ -517,10 +532,6 @@ begin
     for UEntry in fEntries do
       FilterEdit.Items.Add(UEntry.Name);
     FilterEdit.InvalidateFilter;
-    // Initial selection
-    for UEntry in fEntries do
-      if UEntry.Selected then
-        FilterEdit.SelectionList.Add(UEntry.Name);
   finally
     EnableAutoSizing{$IFDEF DebugDisableAutoSizing}('TViewUnitDialog.ShowEntries'){$ENDIF};
   end;
@@ -528,7 +539,7 @@ end;
 
 procedure TViewUnitDialog.UpdateEntries;
 var
-  F2SItem: PStringToStringTreeItem;
+  F2SItem: PStringToStringItem;
 begin
   fEntries.Clear;
   for F2SItem in fFoundFiles do
@@ -541,9 +552,9 @@ begin
   if FItemType=AValue then Exit;
   FItemType:=AValue;
   case ItemType of
-    piComponent: FImageIndex := IDEImages.LoadImage(16, 'item_form');
-    piFrame:    FImageIndex := IDEImages.LoadImage(16, 'tpanel');
-  else FImageIndex:=IDEImages.LoadImage(16, 'item_unit');
+    piComponent: FImageIndex := IDEImages.LoadImage('item_form');
+    piFrame:     FImageIndex := IDEImages.LoadImage('tpanel');
+    else         FImageIndex := IDEImages.LoadImage('item_unit');
   end;
   if FImageIndex<0 then FImageIndex:=0;
 end;

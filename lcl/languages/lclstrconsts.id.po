@@ -54,210 +54,30 @@ msgstr "Alt"
 msgid "Ctrl"
 msgstr "Ctrl"
 
-#: lclstrconsts.ifsvk_accept
-msgid "Accept"
-msgstr "Terima"
-
-#: lclstrconsts.ifsvk_apps
-msgid "application key"
-msgstr "tombol aplikasi"
-
-#: lclstrconsts.ifsvk_back
-msgid "Backspace"
-msgstr "Backspace"
-
-#: lclstrconsts.ifsvk_cancel
-msgctxt "lclstrconsts.ifsvk_cancel"
-msgid "Cancel"
-msgstr ""
-
-#: lclstrconsts.ifsvk_capital
-msgid "Capital"
-msgstr "Kapital"
-
-#: lclstrconsts.ifsvk_clear
-msgid "Clear"
-msgstr "Clear"
-
 #: lclstrconsts.ifsvk_cmd
 msgid "Cmd"
 msgstr ""
 
-#: lclstrconsts.ifsvk_control
-msgid "Control"
-msgstr "Kontrol"
-
-#: lclstrconsts.ifsvk_convert
-msgid "Convert"
-msgstr "Konversi"
-
-#: lclstrconsts.ifsvk_delete
-msgctxt "lclstrconsts.ifsvk_delete"
-msgid "Delete"
-msgstr ""
-
-#: lclstrconsts.ifsvk_down
-msgctxt "lclstrconsts.ifsvk_down"
-msgid "Down"
-msgstr "Turun"
-
-#: lclstrconsts.ifsvk_end
-msgctxt "lclstrconsts.ifsvk_end"
-msgid "End"
-msgstr "End"
-
-#: lclstrconsts.ifsvk_escape
-msgid "Escape"
-msgstr "Escape"
-
-#: lclstrconsts.ifsvk_execute
-msgid "Execute"
-msgstr "Jalankan"
-
-#: lclstrconsts.ifsvk_final
-msgid "Final"
-msgstr "Final"
-
-#: lclstrconsts.ifsvk_hanja
-msgid "Hanja"
-msgstr "Hanja"
-
 #: lclstrconsts.ifsvk_help
+msgctxt "lclstrconsts.ifsvk_help"
 msgid "Help"
 msgstr "Panduan"
-
-#: lclstrconsts.ifsvk_home
-msgctxt "lclstrconsts.ifsvk_home"
-msgid "Home"
-msgstr "Home"
-
-#: lclstrconsts.ifsvk_insert
-msgctxt "lclstrconsts.ifsvk_insert"
-msgid "Insert"
-msgstr ""
-
-#: lclstrconsts.ifsvk_junja
-msgid "Junja"
-msgstr "Junja"
-
-#: lclstrconsts.ifsvk_kana
-msgid "Kana"
-msgstr "Kana"
-
-#: lclstrconsts.ifsvk_lbutton
-msgid "Mouse Button Left"
-msgstr "Tombol Mouse Kiri"
-
-#: lclstrconsts.ifsvk_left
-msgctxt "lclstrconsts.ifsvk_left"
-msgid "Left"
-msgstr "Left"
-
-#: lclstrconsts.ifsvk_lwin
-msgid "left windows key"
-msgstr "tombol kiri windows"
-
-#: lclstrconsts.ifsvk_mbutton
-msgid "Mouse Button Middle"
-msgstr "Tombol Mouse Tengah"
-
-#: lclstrconsts.ifsvk_menu
-msgctxt "lclstrconsts.ifsvk_menu"
-msgid "Menu"
-msgstr "Menu"
 
 #: lclstrconsts.ifsvk_meta
 msgid "Meta"
 msgstr ""
 
-#: lclstrconsts.ifsvk_modechange
-msgid "Mode Change"
-msgstr "Ubah  Mode"
-
-#: lclstrconsts.ifsvk_next
-msgctxt "lclstrconsts.ifsvk_next"
-msgid "Next"
-msgstr ""
-
-#: lclstrconsts.ifsvk_nonconvert
-msgid "Nonconvert"
-msgstr "Nonkonversi"
-
-#: lclstrconsts.ifsvk_numlock
-msgid "Numlock"
-msgstr "Numlock"
-
-#: lclstrconsts.ifsvk_numpad
-msgid "Numpad %d"
-msgstr "Numpad %d"
-
-#: lclstrconsts.ifsvk_pause
-msgid "Pause key"
-msgstr "Tombol pause"
-
-#: lclstrconsts.ifsvk_print
-msgid "Print"
-msgstr "Cetak"
-
-#: lclstrconsts.ifsvk_prior
-msgctxt "lclstrconsts.ifsvk_prior"
-msgid "Prior"
-msgstr ""
-
-#: lclstrconsts.ifsvk_rbutton
-msgid "Mouse Button Right"
-msgstr "Tombol Mouse Kanan"
-
-#: lclstrconsts.ifsvk_return
-msgid "Return"
-msgstr "Return"
-
-#: lclstrconsts.ifsvk_right
-msgctxt "lclstrconsts.ifsvk_right"
-msgid "Right"
-msgstr "Right"
-
-#: lclstrconsts.ifsvk_rwin
-msgid "right windows key"
-msgstr "tombol kanan windows"
-
-#: lclstrconsts.ifsvk_scroll
-msgid "Scroll"
-msgstr "Scroll"
-
-#: lclstrconsts.ifsvk_select
-msgid "Select"
-msgstr "Pilih"
-
 #: lclstrconsts.ifsvk_shift
 msgid "Shift"
 msgstr "Shift"
-
-#: lclstrconsts.ifsvk_snapshot
-msgid "Snapshot"
-msgstr "Snapshot"
-
-#: lclstrconsts.ifsvk_space
-msgid "Space key"
-msgstr "Tombol Spasi"
 
 #: lclstrconsts.ifsvk_super
 msgid "Super"
 msgstr ""
 
-#: lclstrconsts.ifsvk_tab
-msgctxt "lclstrconsts.ifsvk_tab"
-msgid "Tab"
-msgstr "Tab"
-
 #: lclstrconsts.ifsvk_unknown
 msgid "Unknown"
 msgstr "Tidak dikenal"
-
-#: lclstrconsts.ifsvk_up
-msgctxt "lclstrconsts.ifsvk_up"
-msgid "Up"
-msgstr "Up"
 
 #: lclstrconsts.lislclresourcesnotfound
 msgctxt "lclstrconsts.lislclresourcesnotfound"
@@ -296,6 +116,10 @@ msgstr ""
 
 #: lclstrconsts.rsaquacolorcaption
 msgid "Aqua"
+msgstr ""
+
+#: lclstrconsts.rsascannothaveasparent
+msgid "Class %s cannot have %s as parent."
 msgstr ""
 
 #: lclstrconsts.rsbackgroundcolorcaption
@@ -343,9 +167,10 @@ msgid "Calculator"
 msgstr "Kalkulator"
 
 #: lclstrconsts.rscancelrecordhint
+#, fuzzy
 msgctxt "lclstrconsts.rscancelrecordhint"
 msgid "Cancel"
-msgstr ""
+msgstr "Batal"
 
 #: lclstrconsts.rscannotfocus
 msgid "Can not focus"
@@ -367,6 +192,10 @@ msgstr "Sensitif huruf"
 msgid "Control of class '%s' can't have control of class '%s' as a child"
 msgstr ""
 
+#: lclstrconsts.rscontrolhasnoparentformorframe
+msgid "Control '%s' has no parent form or frame"
+msgstr ""
+
 #: lclstrconsts.rscontrolhasnoparentwindow
 msgid "Control '%s' has no parent window"
 msgstr ""
@@ -378,10 +207,6 @@ msgstr ""
 #: lclstrconsts.rscreamcolorcaption
 msgid "Cream"
 msgstr ""
-
-#: lclstrconsts.rscreatinggdbcatchableerror
-msgid "Creating gdb catchable error:"
-msgstr "Pembuatan cachable salah: "
 
 #: lclstrconsts.rscursor
 msgid "Cursor"
@@ -416,10 +241,6 @@ msgstr "Arah"
 msgid "&Directory"
 msgstr "&Direktori"
 
-#: lclstrconsts.rsdocking
-msgid "Docking"
-msgstr "Docking"
-
 #: lclstrconsts.rsdocopy
 msgid "Copy"
 msgstr ""
@@ -441,17 +262,14 @@ msgid "Search entire file"
 msgstr ""
 
 #: lclstrconsts.rserror
+#, fuzzy
 msgctxt "lclstrconsts.rserror"
 msgid "Error"
-msgstr ""
+msgstr "Salah"
 
 #: lclstrconsts.rserrorcreatingdevicecontext
 msgid "Error creating device context for %s.%s"
 msgstr "Kesalahan pembuatan konteks device untuk %s.%s"
-
-#: lclstrconsts.rserrorinlcl
-msgid "ERROR in LCL: "
-msgstr "KESALAHAN dalam LCL: "
 
 #: lclstrconsts.rserroroccurredinataddressframe
 msgid "Error occurred in %s at %sAddress %s%s Frame %s"
@@ -680,6 +498,12 @@ msgstr "--no-xshm             Matikan penggunaan X Shared Memory Extension."
 msgid "--sync                Call XSynchronize (display, True) after the Xserver connection has been established. This makes debugging X protocol errors easier, because X request buffering will be disabled and X errors will be received immediately after the protocol request that generated the error has been processed by the X server."
 msgstr "--sync                Panggil XSynchronize (layar, Benar) setelah sambungan Xserver terlaksana. Ini membuat debugging kesalahan protokol X lebih mudah, karena permintaan penyanggaan X akan dimatikan dan kesalahan X akan diterima segera setelah permintaan protokol yang kesalahannya telah dibuat sudah diproses oleh X server."
 
+#: lclstrconsts.rshelp
+#, fuzzy
+msgctxt "lclstrconsts.rshelp"
+msgid "Help"
+msgstr "Panduan"
+
 #: lclstrconsts.rshelpalreadyregistered
 msgid "%s: Already registered"
 msgstr "%s: Sudah teregistrasi"
@@ -907,9 +731,25 @@ msgstr ""
 msgid "List index exceeds bounds (%d)"
 msgstr "Indeks List melebihi jangkauan (%d)"
 
-#: lclstrconsts.rslistmustbeempty
-msgid "List must be empty"
-msgstr "List harus kosong"
+#: lclstrconsts.rsmacosmenuhide
+msgid "Hide %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuhideothers
+msgid "Hide Others"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuquit
+msgid "Quit %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuservices
+msgid "Services"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenushowall
+msgid "Show All"
+msgstr ""
 
 #: lclstrconsts.rsmarooncolorcaption
 msgid "Maroon"
@@ -1083,11 +923,9 @@ msgstr ""
 msgid "Post"
 msgstr ""
 
-#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpresscanceltok
-#, fuzzy
-#| msgid "%s%sPress Ok to ignore and risk data corruption.%sPress Cancel to kill the program."
-msgid "%s%sPress OK to ignore and risk data corruption.%sPress Cancel to kill the program."
-msgstr "%s%sTekan Ok untuk mengabaikan dan resiko kerusakan data.%sTekan Batal untuk mematikan program"
+#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpressaborttok
+msgid "%s%sPress OK to ignore and risk data corruption.%sPress Abort to kill the program."
+msgstr ""
 
 #: lclstrconsts.rspriorrecordhint
 msgctxt "lclstrconsts.rspriorrecordhint"
@@ -1267,6 +1105,10 @@ msgstr ""
 msgid "Text"
 msgstr "Teks"
 
+#: lclstrconsts.rsthebuiltinurlisreadonlychangethebaseurlinstead
+msgid "The built-in URL is read only. Change the BaseURL instead."
+msgstr ""
+
 #: lclstrconsts.rstiff
 msgid "Tagged Image File Format"
 msgstr ""
@@ -1365,6 +1207,10 @@ msgstr ""
 #: lclstrconsts.scannotfocus
 msgid "Cannot focus a disabled or invisible window"
 msgstr "Tidak bisa memberikan fokus ke jendela yang dimatikan atau tidak nampak"
+
+#: lclstrconsts.scannotsetdesigntimeppi
+msgid "Cannot set design time PPI."
+msgstr ""
 
 #: lclstrconsts.sduplicatemenus
 msgid "Duplicate menus"
@@ -1496,10 +1342,6 @@ msgstr "Tab"
 msgctxt "lclstrconsts.smkcup"
 msgid "Up"
 msgstr "Up"
-
-#: lclstrconsts.snomdiform
-msgid "No MDI form present."
-msgstr "Tidak ada form MDI"
 
 #: lclstrconsts.snotimers
 msgid "No timers available"

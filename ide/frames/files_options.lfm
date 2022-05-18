@@ -1,16 +1,16 @@
 object FilesOptionsFrame: TFilesOptionsFrame
   Left = 0
-  Height = 460
+  Height = 505
   Top = 0
-  Width = 569
+  Width = 622
   ChildSizing.LeftRightSpacing = 2
   ChildSizing.TopBottomSpacing = 2
-  ClientHeight = 460
-  ClientWidth = 569
+  ClientHeight = 505
+  ClientWidth = 622
   TabOrder = 0
   Visible = False
-  DesignLeft = 441
-  DesignTop = 249
+  DesignLeft = 395
+  DesignTop = 121
   object MaxRecentOpenFilesLabel: TLabel
     AnchorSideLeft.Control = Owner
     AnchorSideTop.Control = Owner
@@ -24,7 +24,7 @@ object FilesOptionsFrame: TFilesOptionsFrame
   object MaxRecentProjectFilesLabel: TLabel
     AnchorSideLeft.Control = lblCenter
     AnchorSideTop.Control = Owner
-    Left = 287
+    Left = 314
     Height = 15
     Top = 2
     Width = 146
@@ -43,7 +43,7 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Width = 195
     BorderSpacing.Top = 6
     Caption = 'OpenLastProjectAtStartCheckBox'
-    TabOrder = 0
+    TabOrder = 2
   end
   object ShowCompileDialogCheckBox: TCheckBox
     AnchorSideLeft.Control = Owner
@@ -57,7 +57,7 @@ object FilesOptionsFrame: TFilesOptionsFrame
     BorderSpacing.Top = 2
     Caption = 'ShowCompileDialogCheckBox'
     OnChange = ShowCompileDialogCheckBoxChange
-    TabOrder = 1
+    TabOrder = 4
   end
   object LazarusDirLabel: TLabel
     AnchorSideLeft.Control = Owner
@@ -78,14 +78,14 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideRight.Side = asrBottom
     AnchorSideBottom.Control = LazarusDirComboBox
     AnchorSideBottom.Side = asrBottom
-    Left = 542
+    Left = 597
     Height = 23
     Top = 157
-    Width = 25
+    Width = 23
     Anchors = [akTop, akRight, akBottom]
     Caption = '...'
     OnClick = DirectoriesButtonClick
-    TabOrder = 2
+    TabOrder = 7
   end
   object LazarusDirComboBox: TComboBox
     AnchorSideLeft.Control = Owner
@@ -95,10 +95,10 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 23
     Top = 157
-    Width = 540
+    Width = 595
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
-    TabOrder = 3
+    TabOrder = 6
     Text = 'LazarusDirComboBox'
   end
   object CompilerPathComboBox: TComboBox
@@ -109,10 +109,10 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 23
     Top = 201
-    Width = 540
+    Width = 595
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
-    TabOrder = 4
+    TabOrder = 8
     Text = 'CompilerPathComboBox'
   end
   object CompilerPathButton: TButton
@@ -121,14 +121,14 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideRight.Side = asrBottom
     AnchorSideBottom.Control = CompilerPathComboBox
     AnchorSideBottom.Side = asrBottom
-    Left = 542
+    Left = 597
     Height = 23
     Top = 201
-    Width = 25
+    Width = 23
     Anchors = [akTop, akRight, akBottom]
     Caption = '...'
     OnClick = FilesButtonClick
-    TabOrder = 5
+    TabOrder = 9
   end
   object CompilerPathLabel: TLabel
     AnchorSideLeft.Control = Owner
@@ -150,10 +150,10 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 23
     Top = 245
-    Width = 540
+    Width = 595
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
-    TabOrder = 6
+    TabOrder = 10
     Text = 'FPCSourceDirComboBox'
   end
   object FPCSourceDirButton: TButton
@@ -162,14 +162,14 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideRight.Side = asrBottom
     AnchorSideBottom.Control = FPCSourceDirComboBox
     AnchorSideBottom.Side = asrBottom
-    Left = 542
+    Left = 597
     Height = 23
     Top = 245
-    Width = 25
+    Width = 23
     Anchors = [akTop, akRight, akBottom]
     Caption = '...'
     OnClick = DirectoriesButtonClick
-    TabOrder = 7
+    TabOrder = 11
   end
   object FPCSourceDirLabel: TLabel
     AnchorSideLeft.Control = Owner
@@ -202,7 +202,7 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 15
     Top = 318
-    Width = 92
+    Width = 91
     BorderSpacing.Top = 6
     Caption = 'TestBuildDirLabel'
     ParentColor = False
@@ -215,10 +215,10 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 23
     Top = 289
-    Width = 540
+    Width = 595
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
-    TabOrder = 8
+    TabOrder = 12
     Text = 'MakePathComboBox'
   end
   object MakePathButton: TButton
@@ -227,14 +227,14 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideRight.Side = asrBottom
     AnchorSideBottom.Control = MakePathComboBox
     AnchorSideBottom.Side = asrBottom
-    Left = 542
+    Left = 597
     Height = 23
     Top = 289
-    Width = 25
+    Width = 23
     Anchors = [akTop, akRight, akBottom]
     Caption = '...'
     OnClick = FilesButtonClick
-    TabOrder = 9
+    TabOrder = 13
   end
   object TestBuildDirComboBox: TComboBox
     AnchorSideLeft.Control = Owner
@@ -244,10 +244,10 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 23
     Top = 333
-    Width = 540
+    Width = 595
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
-    TabOrder = 10
+    TabOrder = 14
     Text = 'TestBuildDirComboBox'
   end
   object TestBuildDirButton: TButton
@@ -256,14 +256,14 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideRight.Side = asrBottom
     AnchorSideBottom.Control = TestBuildDirComboBox
     AnchorSideBottom.Side = asrBottom
-    Left = 542
+    Left = 597
     Height = 23
     Top = 333
-    Width = 25
+    Width = 23
     Anchors = [akTop, akRight, akBottom]
     Caption = '...'
     OnClick = DirectoriesButtonClick
-    TabOrder = 11
+    TabOrder = 15
   end
   object AutoCloseCompileDialogCheckBox: TCheckBox
     AnchorSideLeft.Control = ShowCompileDialogCheckBox
@@ -276,7 +276,7 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Width = 206
     BorderSpacing.Left = 30
     Caption = 'AutoCloseCompileDialogCheckBox'
-    TabOrder = 12
+    TabOrder = 5
   end
   object CompilerTranslationFileLabel: TLabel
     AnchorSideLeft.Control = Owner
@@ -285,7 +285,7 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 15
     Top = 362
-    Width = 154
+    Width = 153
     Alignment = taRightJustify
     BorderSpacing.Top = 6
     Caption = 'CompilerTranslationFileLabel'
@@ -299,16 +299,16 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideRight.Side = asrBottom
     AnchorSideBottom.Control = CompilerTranslationFileComboBox
     AnchorSideBottom.Side = asrBottom
-    Left = 542
+    Left = 597
     Height = 23
     Top = 377
-    Width = 25
+    Width = 23
     Anchors = [akTop, akRight, akBottom]
     Caption = '...'
     OnClick = CompilerTranslationFileButtonClick
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 13
+    TabOrder = 17
   end
   object CompilerTranslationFileComboBox: TComboBox
     AnchorSideLeft.Control = Owner
@@ -318,18 +318,18 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 23
     Top = 377
-    Width = 540
+    Width = 595
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 14
+    TabOrder = 16
     Text = 'CompilerTranslationFileComboBox'
   end
   object lblCenter: TLabel
     AnchorSideLeft.Control = Owner
     AnchorSideLeft.Side = asrCenter
-    Left = 284
+    Left = 311
     Height = 1
     Top = 105
     Width = 1
@@ -344,11 +344,14 @@ object FilesOptionsFrame: TFilesOptionsFrame
     Left = 2
     Height = 23
     Top = 19
-    Width = 278
+    Hint = 'Value 0 means unlimited.'
+    Width = 305
     Anchors = [akTop, akLeft, akRight]
     BorderSpacing.Right = 3
     BorderSpacing.Around = 2
-    TabOrder = 15
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 0
   end
   object MaxRecentProjectFilesSpin: TSpinEdit
     AnchorSideLeft.Control = lblCenter
@@ -356,14 +359,17 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideTop.Side = asrBottom
     AnchorSideRight.Control = Owner
     AnchorSideRight.Side = asrBottom
-    Left = 289
+    Left = 316
     Height = 23
     Top = 19
-    Width = 278
+    Hint = 'Value 0 means unlimited.'
+    Width = 304
     Anchors = [akTop, akLeft, akRight]
     BorderSpacing.Left = 3
     BorderSpacing.Around = 2
-    TabOrder = 16
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 1
   end
   object MultipleInstancesLabel: TLabel
     AnchorSideLeft.Control = Owner
@@ -381,14 +387,17 @@ object FilesOptionsFrame: TFilesOptionsFrame
     AnchorSideLeft.Side = asrBottom
     AnchorSideTop.Control = OpenLastProjectAtStartCheckBox
     AnchorSideTop.Side = asrBottom
+    AnchorSideRight.Control = Owner
+    AnchorSideRight.Side = asrBottom
     Left = 131
     Height = 23
     Top = 69
-    Width = 294
+    Width = 489
+    Anchors = [akTop, akLeft, akRight]
     BorderSpacing.Left = 8
     BorderSpacing.Top = 2
     ItemHeight = 15
     Style = csDropDownList
-    TabOrder = 17
+    TabOrder = 3
   end
 end

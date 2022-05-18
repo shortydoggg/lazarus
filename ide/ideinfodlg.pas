@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,9 +30,11 @@ unit IDEInfoDlg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ComCtrls,
-  LCLProc, LazFileUtils, LazUTF8, IDEHelpIntf, IDEWindowIntf, LazIDEIntf,
-  LazHelpIntf, LazHelpHTML, ButtonPanel, DefineTemplates, CodeToolManager,
+  Classes, SysUtils, LazFileUtils, LazUTF8,
+  CodeToolManager, DefineTemplates, LinkScanner,
+  Forms, Controls, Graphics, Dialogs, StdCtrls, ComCtrls,
+  LCLProc, ButtonPanel, LazHelpHTML, LazHelpIntf,
+  IDEHelpIntf, IDEWindowIntf, LazIDEIntf, IDEExternToolIntf,
   EnvironmentOpts, AboutFrm, LazConf, LazarusIDEStrConsts, Project,
   SourceEditor, InitialSetupProc, PackageSystem, PackageDefs;
 
@@ -42,6 +44,7 @@ type
 
   TIDEInfoDialog = class(TForm)
     ButtonPanel1: TButtonPanel;
+    ExtToolMemo: TMemo;
     GeneralMemo: TMemo;
     HelpMemo: TMemo;
     ModifiedMemo: TMemo;
@@ -49,6 +52,7 @@ type
     GeneralTabSheet: TTabSheet;
     ModifiedTabSheet: TTabSheet;
     HelpTabSheet: TTabSheet;
+    ExtToolTabSheet: TTabSheet;
     procedure FormClose(Sender: TObject; var {%H-}CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
   private
@@ -66,10 +70,13 @@ type
     procedure GatherHelpViewers(sl: TStrings);
     procedure GatherHelpDB(Prefix: string; const HelpDB: THelpDatabase; const sl: TStrings);
     procedure GatherHelpViewer(Prefix: string; const Viewer: THelpViewer; const sl: TStrings);
+    // external tools
+    procedure GatherExternalTools(sl: TStrings);
   public
     procedure UpdateGeneralMemo;
     procedure UpdateModifiedMemo;
     procedure UpdateHelpMemo;
+    procedure UpdateExternalTools;
   end;
 
 var
@@ -103,6 +110,7 @@ begin
   UpdateGeneralMemo;
   UpdateModifiedMemo;
   UpdateHelpMemo;
+  UpdateExternalTools;
   PageControl1.PageIndex:=0;
   IDEDialogLayoutList.ApplyLayout(Self);
 end;
@@ -192,6 +200,44 @@ begin
   sl.Add('');
 end;
 
+procedure TIDEInfoDialog.GatherExternalTools(sl: TStrings);
+var
+  i, j: Integer;
+  Tool: TAbstractExternalTool;
+  View: TExtToolView;
+  Parser: TExtToolParser;
+begin
+  sl.Add('External Tools: '+IntToStr(ExternalToolList.Count));
+  for i:=0 to ExternalToolList.Count-1 do begin
+    Tool:=ExternalToolList[i];
+    sl.Add('Tool '+IntToStr(i)+'/'+IntToStr(ExternalToolList.Count)
+      +' ParserCount='+IntToStr(Tool.ParserCount)+' ViewCount='+IntToStr(Tool.ViewCount));
+    sl.Add('  Stage='+dbgs(Tool.Stage));
+    sl.Add('  Process.Active='+dbgs(Tool.Process.Active));
+    sl.Add('  Process.Executable='+AnsiQuotedStr(Tool.Process.Executable,'"'));
+    sl.Add('  Process.CurrentDirectory='+AnsiQuotedStr(Tool.Process.CurrentDirectory,'"'));
+    sl.Add('  Process.Running='+dbgs(Tool.Process.Running));
+    sl.Add('  CmdLineParams='+AnsiQuotedStr(Tool.CmdLineParams,'"'));
+    sl.Add('  ErrorMessage='+AnsiQuotedStr(Tool.ErrorMessage,'"'));
+    sl.Add('  ExitCode='+IntToStr(Tool.ExitCode));
+    sl.Add('  ExitStatus='+IntToStr(Tool.ExitStatus));
+    sl.Add('  Terminated='+dbgs(Tool.Terminated));
+    sl.Add('  ReadStdOutBeforeErr='+dbgs(Tool.ReadStdOutBeforeErr));
+    sl.Add('  WorkerDirectory='+AnsiQuotedStr(Tool.WorkerDirectory,'"'));
+
+    for j:=0 to Tool.ViewCount-1 do begin
+      Parser:=Tool.Parsers[j];
+      sl.Add('   Parser '+IntToStr(j)+'/'+IntToStr(Tool.ParserCount)+' '+Parser.ClassName);
+    end;
+
+    for j:=0 to Tool.ViewCount-1 do begin
+      View:=Tool.Views[j];
+      sl.Add('   View '+IntToStr(j)+'/'+IntToStr(Tool.ViewCount)+' '+AnsiQuotedStr(View.Caption,'"'));
+    end;
+    sl.Add('');
+  end;
+end;
+
 procedure TIDEInfoDialog.GatherIDEVersion(sl: TStrings);
 begin
   sl.Add('Lazarus version: '+GetLazarusVersionString);
@@ -218,17 +264,23 @@ end;
 procedure TIDEInfoDialog.GatherEnvironmentVars(sl: TStrings);
 var
   i: Integer;
+  l: TStringList;
 begin
   sl.Add('Environment variables:');
+  l:=TStringList.Create;
   for i:=0 to GetEnvironmentVariableCount-1 do
-    sl.Add(GetEnvironmentStringUTF8(i));
+    l.Add(GetEnvironmentStringUTF8(i));
+  l.Sort;
+  sl.AddStrings(l);
+  l.free;
   sl.Add('');
 end;
 
 procedure TIDEInfoDialog.GatherGlobalOptions(sl: TStrings);
 var
-  CfgCache: TFPCTargetConfigCache;
-  Note: string;
+  CfgCache: TPCTargetConfigCache;
+  Note, aFilename: string;
+  CompilerKind: TPascalCompiler;
 begin
   sl.add('Global IDE options:');
   sl.Add('Primary config directory='+GetPrimaryConfigPath);
@@ -242,18 +294,27 @@ begin
 
   sl.Add('Default CompilerFilename='+EnvironmentOptions.CompilerFilename);
   sl.Add('Real Default CompilerFilename='+EnvironmentOptions.GetParsedCompilerFilename);
-  if CheckCompilerQuality(EnvironmentOptions.GetParsedCompilerFilename,Note,
-                       CodeToolBoss.FPCDefinesCache.TestFilename)<>sddqCompatible
+  if CheckFPCExeQuality(EnvironmentOptions.GetParsedCompilerFilename,Note,
+                       CodeToolBoss.CompilerDefinesCache.TestFilename)<>sddqCompatible
   then
     sl.Add('WARNING: '+Note);
 
   if Project1<>nil then begin
     sl.Add('Project CompilerFilename='+Project1.CompilerOptions.CompilerPath);
-    sl.Add('Real Project CompilerFilename='+LazarusIDE.GetFPCompilerFilename);
-    if CheckCompilerQuality(LazarusIDE.GetFPCompilerFilename,Note,
-                         CodeToolBoss.FPCDefinesCache.TestFilename)<>sddqCompatible
-    then
-      sl.Add('WARNING: '+Note);
+    aFilename:=LazarusIDE.GetCompilerFilename;
+    sl.Add('Real Project CompilerFilename='+aFilename);
+    IsCompilerExecutable(aFilename,Note,CompilerKind,true);
+    if CompilerKind=pcPas2js then begin
+      if CheckPas2jsQuality(aFilename,Note,
+                           CodeToolBoss.CompilerDefinesCache.TestFilename)<>sddqCompatible
+      then
+        sl.Add('WARNING: '+Note);
+    end else begin
+      if CheckFPCExeQuality(aFilename,Note,
+                           CodeToolBoss.CompilerDefinesCache.TestFilename)<>sddqCompatible
+      then
+        sl.Add('WARNING: '+Note);
+    end;
   end;
 
   sl.Add('CompilerMessagesFilename='+EnvironmentOptions.CompilerMessagesFilename);
@@ -261,7 +322,7 @@ begin
 
   sl.Add('FPC source directory='+EnvironmentOptions.FPCSourceDirectory);
   sl.Add('Real FPC source directory='+EnvironmentOptions.GetParsedFPCSourceDirectory);
-  CfgCache:=CodeToolBoss.FPCDefinesCache.ConfigCaches.Find(
+  CfgCache:=CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
     LazarusIDE.GetFPCompilerFilename,'','','',true);
   if CheckFPCSrcDirQuality(EnvironmentOptions.GetParsedFPCSourceDirectory,Note,
     CfgCache.GetFPCVer)<>sddqCompatible
@@ -434,6 +495,19 @@ begin
     GatherHelpDatabases(sl);
     GatherHelpViewers(sl);
     HelpMemo.Lines.Assign(sl);
+  finally
+    sl.Free;
+  end;
+end;
+
+procedure TIDEInfoDialog.UpdateExternalTools;
+var
+  sl: TStringList;
+begin
+  sl:=TStringList.Create;
+  try
+    GatherExternalTools(sl);
+    ExtToolMemo.Lines.Assign(sl);
   finally
     sl.Free;
   end;

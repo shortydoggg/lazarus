@@ -38,8 +38,12 @@ interface
 {$endif}
 
 uses
-  Classes, SysUtils, LCLStrConsts, LCLType, LCLProc, LCLIntf, InterfaceBase,
-  LResources, LMessages, ActnList, Graphics, ImgList, LCLClasses, Themes;
+  Types, Classes, SysUtils,
+  // LCL
+  LCLStrConsts, LCLType, LCLProc, LCLIntf, LCLClasses, LResources, LMessages,
+  ActnList, Graphics, ImgList, Themes,
+  // LazUtils
+  LazMethodList, LazLoggerBase;
 
 type
   TMenu = class;
@@ -108,10 +112,15 @@ type
     mihtDestroy
     );
 
+  TMenuDrawItemEvent = procedure(Sender: TObject; ACanvas: TCanvas;
+    ARect: TRect; AState: TOwnerDrawState) of object;
+  TMenuMeasureItemEvent = procedure(Sender: TObject; ACanvas: TCanvas;
+    var AWidth, AHeight: Integer) of object;
+
   TMenuItem = class(TLCLComponent)
   private
     FActionLink: TMenuActionLink;
-    FCaption: string;
+    FCaption: TTranslateString;
     FBitmap: TBitmap;
     FGlyphShowMode: TGlyphShowMode;
     FHandle: HMenu;
@@ -123,9 +132,12 @@ type
     FMenu: TMenu;
     FOnChange: TMenuChangeEvent;
     FOnClick: TNotifyEvent;
+    FOnDrawItem: TMenuDrawItemEvent;
+    FOnMeasureItem: TMenuMeasureItemEvent;
     FParent: TMenuItem;
     FMenuItemHandlers: array[TMenuItemHandlerType] of TMethodList;
     FSubMenuImages: TCustomImageList;
+    FSubMenuImagesWidth: Integer;
     FShortCut: TShortCut;
     FShortCutKey2: TShortCut;
     FGroupIndex: Byte;
@@ -162,10 +174,12 @@ type
     procedure SetBitmap(const AValue: TBitmap);
     procedure SetGlyphShowMode(const AValue: TGlyphShowMode);
     procedure SetMenuIndex(AValue: Integer);
+    procedure SetName(const Value: TComponentName); override;
     procedure SetRadioItem(const AValue: Boolean);
     procedure SetRightJustify(const AValue: boolean);
     procedure SetShowAlwaysCheckable(const AValue: boolean);
     procedure SetSubMenuImages(const AValue: TCustomImageList);
+    procedure SetSubMenuImagesWidth(const aSubMenuImagesWidth: Integer);
     procedure ShortcutChanged;
     procedure SubItemChanged(Sender: TObject; Source: TMenuItem; Rebuild: Boolean);
     procedure TurnSiblingsOff;
@@ -176,6 +190,8 @@ type
     procedure ActionChange(Sender: TObject; CheckDefaults: Boolean); virtual;
     procedure AssignTo(Dest: TPersistent); override;
     procedure BitmapChange(Sender: TObject);
+    function DoDrawItem(ACanvas: TCanvas; ARect: TRect; AState: TOwnerDrawState): Boolean; virtual;
+    function DoMeasureItem(ACanvas: TCanvas; var AWidth, AHeight: Integer): Boolean; virtual;
     function GetAction: TBasicAction;
     function GetActionLinkClass: TMenuActionLinkClass; virtual;
     function GetHandle: HMenu;
@@ -208,7 +224,8 @@ type
     destructor Destroy; override;
     function Find(const ACaption: string): TMenuItem;
     function GetEnumerator: TMenuItemEnumerator;
-    function GetImageList: TCustomImageList; virtual;
+    procedure GetImageList(out aImages: TCustomImageList; out aImagesWidth: Integer); virtual;
+    function GetImageList: TCustomImageList;
     function GetParentComponent: TComponent; override;
     function GetParentMenu: TMenu; virtual;
     function GetIsRightToLeft:Boolean; virtual;
@@ -234,7 +251,7 @@ type
     function IsInMenuBar: boolean; virtual;
     procedure Clear;
     function HasBitmap: boolean;
-    function GetIconSize: TPoint; virtual;
+    function GetIconSize(ADC: HDC): TPoint; virtual;
     // Event lists
     procedure RemoveAllHandlersOfObject(AnObject: TObject); override;
     procedure AddHandlerOnDestroy(const OnDestroyEvent: TNotifyEvent;
@@ -280,9 +297,12 @@ type
     property ShowAlwaysCheckable: boolean read FShowAlwaysCheckable
                                  write SetShowAlwaysCheckable default False;
     property SubMenuImages: TCustomImageList read FSubMenuImages write SetSubMenuImages;
+    property SubMenuImagesWidth: Integer read FSubMenuImagesWidth write SetSubMenuImagesWidth default 0;
     property Visible: Boolean read FVisible write SetVisible
                               stored IsVisibleStored default True;
     property OnClick: TNotifyEvent read FOnClick write FOnClick;
+    property OnDrawItem: TMenuDrawItemEvent read FOnDrawItem write FOnDrawItem;
+    property OnMeasureItem: TMenuMeasureItemEvent read FOnMeasureItem write FOnMeasureItem;
   end;
   TMenuItemClass = class of TMenuItem;
 
@@ -296,8 +316,12 @@ type
     FBiDiMode: TBiDiMode;
     FImageChangeLink: TChangeLink;
     FImages: TCustomImageList;
+    FImagesWidth: Integer;
     FItems: TMenuItem;
+    FOnDrawItem: TMenuDrawItemEvent;
     FOnChange: TMenuChangeEvent;
+    FOnMeasureItem: TMenuMeasureItemEvent;
+    FOwnerDraw: Boolean;
     FParent: TComponent;
     FParentBiDiMode: Boolean;
     FShortcutHandled: boolean;
@@ -308,6 +332,7 @@ type
     procedure ImageListChange(Sender: TObject);
     procedure SetBiDiMode(const AValue: TBiDiMode);
     procedure SetImages(const AValue: TCustomImageList);
+    procedure SetImagesWidth(const aImagesWidth: Integer);
     procedure SetParent(const AValue: TComponent);
     procedure SetParentBiDiMode(const AValue: Boolean);
   protected
@@ -319,6 +344,7 @@ type
     procedure GetChildren(Proc: TGetChildProc; Root: TComponent); override;
     procedure MenuChanged(Sender: TObject; Source: TMenuItem;
                           Rebuild: Boolean); virtual;
+    procedure AssignTo(Dest: TPersistent); override;
     procedure Notification(AComponent: TComponent;
       Operation: TOperation); override;
     procedure ParentBidiModeChanged;
@@ -350,6 +376,10 @@ type
     property ParentBidiMode:Boolean read FParentBidiMode write SetParentBidiMode default True;
     property Items: TMenuItem read FItems;
     property Images: TCustomImageList read FImages write SetImages;
+    property ImagesWidth: Integer read FImagesWidth write SetImagesWidth default 0;
+    property OwnerDraw: Boolean read FOwnerDraw write FOwnerDraw default False;
+    property OnDrawItem: TMenuDrawItemEvent read FOnDrawItem write FOnDrawItem;
+    property OnMeasureItem: TMenuMeasureItemEvent read FOnMeasureItem write FOnMeasureItem;
   end;
 
 
@@ -432,6 +462,7 @@ function NewItem(const ACaption: string; AShortCut: TShortCut;
                  hCtx: THelpContext; const AName: string): TMenuItem;
 function NewLine: TMenuItem;
 
+function StripHotkey(const Text: string): string;
 
 procedure Register;
 
@@ -450,6 +481,60 @@ implementation
 uses
   WSMenus,
   Forms {KeyDataToShiftState};
+
+{ Helpers for Assign() }
+
+procedure MenuItem_Copy(ASrc, ADest: TMenuItem);
+var
+  mi: TMenuItem;
+  i: integer;
+begin
+  ADest.Clear;
+  ADest.Action:= ASrc.Action;
+  ADest.AutoCheck:= ASrc.AutoCheck;
+  ADest.Caption:= ASrc.Caption;
+  ADest.Checked:= ASrc.Checked;
+  ADest.Default:= ASrc.Default;
+  ADest.Enabled:= ASrc.Enabled;
+  ADest.Bitmap:= ASrc.Bitmap;
+  ADest.GroupIndex:= ASrc.GroupIndex;
+  ADest.GlyphShowMode:= ASrc.GlyphShowMode;
+  ADest.HelpContext:= ASrc.HelpContext;
+  ADest.Hint:= ASrc.Hint;
+  ADest.ImageIndex:= ASrc.ImageIndex;
+  ADest.RadioItem:= ASrc.RadioItem;
+  ADest.RightJustify:= ASrc.RightJustify;
+  ADest.ShortCut:= ASrc.ShortCut;
+  ADest.ShortCutKey2:= ASrc.ShortCutKey2;
+  ADest.ShowAlwaysCheckable:= ASrc.ShowAlwaysCheckable;
+  ADest.SubMenuImages:= ASrc.SubMenuImages;
+  ADest.SubMenuImagesWidth:= ASrc.SubMenuImagesWidth;
+  ADest.Visible:= ASrc.Visible;
+  ADest.OnClick:= ASrc.OnClick;
+  ADest.OnDrawItem:= ASrc.OnDrawItem;
+  ADest.OnMeasureItem:= ASrc.OnMeasureItem;
+  ADest.Tag:= ASrc.Tag;
+
+  for i:= 0 to ASrc.Count-1 do
+  begin
+    mi:= TMenuItem.Create(ASrc.Owner);
+    MenuItem_Copy(ASrc.Items[i], mi);
+    ADest.Add(mi);
+  end;
+end;
+
+procedure Menu_Copy(ASrc, ADest: TMenu);
+begin
+  ADest.BidiMode:= ASrc.BidiMode;
+  ADest.ParentBidiMode:= ASrc.ParentBidiMode;
+  ADest.Images:= ASrc.Images;
+  ADest.ImagesWidth:= ASrc.ImagesWidth;
+  ADest.OwnerDraw:= ASrc.OwnerDraw;
+  ADest.OnDrawItem:= ASrc.OnDrawItem;
+  ADest.OnMeasureItem:= ASrc.OnMeasureItem;
+
+  MenuItem_Copy(ASrc.Items, ADest.Items);
+end;
 
 { Easy Menu building }
 
@@ -528,6 +613,34 @@ function NewLine: TMenuItem;
 begin
   Result := TMenuItem.Create(nil);
   Result.Caption := cLineCaption;
+end;
+
+function StripHotkey(const Text: string): string;
+var
+  I, R: Integer;
+begin
+  SetLength(Result, Length(Text));
+  I := 1;
+  R := 1;
+  while I <= Length(Text) do
+  begin
+    if Text[I] = cHotkeyPrefix then
+    begin
+      if (I < Length(Text)) and (Text[I+1] = cHotkeyPrefix) then
+      begin
+        Result[R] := Text[I];
+        Inc(R);
+        Inc(I, 2);
+      end else
+        Inc(I);
+    end else
+    begin
+      Result[R] := Text[I];
+      Inc(R);
+      Inc(I);
+    end;
+  end;
+  SetLength(Result, R-1);
 end;
 
 procedure Register;

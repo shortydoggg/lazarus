@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -32,8 +32,16 @@ unit IDEProtocol;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, LazConf, BaseIDEIntf, LazConfigStorage;
-  
+  Classes, SysUtils,
+  // LCL
+  LCLProc,
+  // LazUtils
+  LazConfigStorage, LazFileUtils,
+  // IdeIntf
+  BaseIDEIntf,
+  // IDE
+  LazConf;
+
 const
   IDEProtocolOptsVersion: integer = 1;
   IDEProtocolFilename = 'protocol.xml';
@@ -80,7 +88,7 @@ var
   Config: TConfigStorage;
 begin
   if Filename='' then
-    Filename:=SetDirSeparators(GetPrimaryConfigPath+'/'+IDEProtocolFilename);
+    Filename:=AppendPathDelim(GetPrimaryConfigPath)+IDEProtocolFilename;
   try
     Config:=DefaultConfigClass.Create(Filename,true);
     try
@@ -100,7 +108,7 @@ var
   Config: TConfigStorage;
 begin
   if Filename='' then
-    Filename:=SetDirSeparators(GetPrimaryConfigPath+'/'+IDEProtocolFilename);
+    Filename:=AppendPathDelim(GetPrimaryConfigPath)+IDEProtocolFilename;
   try
     Config:=DefaultConfigClass.Create(Filename,false);
     try

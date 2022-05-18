@@ -1,5 +1,5 @@
 {%MainUnit ../interfacebase.pp}
-{ $Id: intfbaselcl.inc 52457 2016-06-08 22:15:55Z maxim $
+{ $Id: intfbaselcl.inc 58530 2018-07-15 10:23:43Z martin $
  ******************************************************************************
                                   TWidgetSet
 
@@ -88,6 +88,12 @@ function TWidgetSet.ClipboardRegisterFormat(
   const AMimeType: string): TClipboardFormat;
 begin
   Result := 0;
+end;
+
+function TWidgetSet.ClipboardFormatNeedsNullByte(
+  const AFormat: TPredefinedClipboardFormat): Boolean;
+begin
+  Result := AFormat = pcfText;
 end;
 
 //todo: remove ?

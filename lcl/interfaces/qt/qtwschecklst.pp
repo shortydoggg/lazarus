@@ -1,4 +1,4 @@
-{ $Id: qtwschecklst.pp 46135 2014-09-05 17:52:09Z zeljko $}
+{ $Id: qtwschecklst.pp 55211 2017-06-04 15:14:29Z juha $}
 {
  *****************************************************************************
  *                              QtWSCheckLst.pp                              * 
@@ -108,19 +108,18 @@ var
   QtListWidget: TQtCheckListBox;
 begin
   if not WSCheckHandleAllocated(ACheckListBox, 'GetItemEnabled') then
-    Exit;
+    Exit(False);
   QtListWidget := TQtCheckListBox(ACheckListBox.Handle);
   Result := QtListWidget.Enabled[AIndex];
 end;
 
 class function TQtWSCustomCheckListBox.GetState(
-  const ACheckListBox: TCustomCheckListBox; const AIndex: integer
-  ): TCheckBoxState;
+  const ACheckListBox: TCustomCheckListBox; const AIndex: integer): TCheckBoxState;
 var
   QtListWidget: TQtCheckListBox;
 begin
   if not WSCheckHandleAllocated(ACheckListBox, 'GetState') then
-    Exit;
+    Exit(cbUnchecked);
   QtListWidget := TQtCheckListBox(ACheckListBox.Handle);
   QtListWidget.AllowGrayed := ACheckListBox.AllowGrayed;
   Result := QtCheckStateToLCLCheckStateMap[QtListWidget.ItemCheckState[AIndex]];

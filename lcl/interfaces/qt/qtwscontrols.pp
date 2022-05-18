@@ -1,4 +1,4 @@
-{ $Id: qtwscontrols.pp 50535 2015-11-30 16:43:36Z zeljko $}
+{ $Id: qtwscontrols.pp 57164 2018-01-27 18:12:35Z ondrej $}
 {
  *****************************************************************************
  *                              QtWSControls.pp                              * 
@@ -33,16 +33,16 @@ uses
 
 type
 
-  { TQtWSDragImageList }
+  { TQtWSDragImageListResolution }
 
-  TQtWSDragImageList = class(TWSDragImageList)
+  TQtWSDragImageListResolution = class(TWSDragImageListResolution)
   published
-    class function BeginDrag(const ADragImageList: TDragImageList; Window: HWND; AIndex, X, Y: Integer): Boolean; override;
-    class function DragMove(const ADragImageList: TDragImageList; X, Y: Integer): Boolean; override;
-    class procedure EndDrag(const ADragImageList: TDragImageList); override;
-    class function HideDragImage(const ADragImageList: TDragImageList;
+    class function BeginDrag(const ADragImageList: TDragImageListResolution; Window: HWND; AIndex, X, Y: Integer): Boolean; override;
+    class function DragMove(const ADragImageList: TDragImageListResolution; X, Y: Integer): Boolean; override;
+    class procedure EndDrag(const ADragImageList: TDragImageListResolution); override;
+    class function HideDragImage(const ADragImageList: TDragImageListResolution;
       ALockedWindow: HWND; DoUnLock: Boolean): Boolean; override;
-    class function ShowDragImage(const ADragImageList: TDragImageList;
+    class function ShowDragImage(const ADragImageList: TDragImageListResolution;
       ALockedWindow: HWND; X, Y: Integer; DoLock: Boolean): Boolean; override;
   end;
 
@@ -89,8 +89,10 @@ type
 
     class procedure ConstraintsChange(const AWinControl: TWinControl); override;
     class procedure PaintTo(const AWinControl: TWinControl; ADC: HDC; X, Y: Integer); override;
+    class procedure Repaint(const AWinControl: TWinControl); override;
     class procedure ScrollBy(const AWinControl: TWinControl; DeltaX, DeltaY: integer); override;
   end;
+
 
   { TQtWSGraphicControl }
 
@@ -124,9 +126,8 @@ const
  { True  } QtRightToLeft
   );
 implementation
-{$IF DEFINED(VerboseQtResize) OR DEFINED(VerboseQt)}
+
 uses LCLProc;
-{$ENDIF}
 
 {------------------------------------------------------------------------------
   Method: TQtWSCustomControl.CreateHandle
@@ -297,7 +298,7 @@ begin
 
   Result := not TQtWidget(AWinControl.Handle).getTextStatic;
   if Result then
-    AText := UTF16ToUTF8(TQtWidget(AWinControl.Handle).getText);
+    AText := TQtWidget(AWinControl.Handle){%H-}.getText;
 end;
 
 class procedure TQtWSWinControl.SetText(const AWinControl: TWinControl;
@@ -306,12 +307,12 @@ begin
   if not WSCheckHandleAllocated(AWincontrol, 'SetText') then
     Exit;
   TQtWidget(AWinControl.Handle).BeginUpdate;
-  TQtWidget(AWinControl.Handle).setText(GetUtf8String(AText));
+  TQtWidget(AWinControl.Handle).setText(AText{%H-});
   TQtWidget(AWinControl.Handle).EndUpdate;
 end;
 
 class procedure TQtWSWinControl.SetChildZPosition(const AWinControl,
-                AChild: TWinControl; const AOldPos, ANewPos: Integer; const AChildren: TFPList);
+  AChild: TWinControl; const AOldPos, ANewPos: Integer; const AChildren: TFPList);
 var
   n: Integer;
   Child: TWinControl;
@@ -437,6 +438,13 @@ begin
   end;
 end;
 
+class procedure TQtWSWinControl.Repaint(const AWinControl: TWinControl);
+begin
+  if not WSCheckHandleAllocated(AWinControl, 'Repaint') then
+    Exit;
+  TQtWidget(AWinControl.Handle).Repaint;
+end;
+
 class procedure TQtWSWinControl.ScrollBy(const AWinControl: TWinControl;
   DeltaX, DeltaY: integer);
 var
@@ -542,7 +550,20 @@ begin
   TQtWidget(AWinControl.Handle).BeginUpdate;
   with R do
   begin
+    {$IF DEFINED(QTUSEACCURATEFRAME) AND DEFINED(HASX11)}
+    // DO NOT TOUCH THIS UNTIL COMPLETE PROBLEM IS INVESTIGATED
+    // WITH OPENBOX WM. Qt most of time have wrong assumption about position.
+    if TQtWidget(AWinControl.Handle).IsFramedWidget and
+        GetX11WindowRealized(QWidget_winID(TQtWidget(AWinControl.Handle).Widget)) and
+      (GetWindowManager = 'Openbox') then
+    begin
+      SetX11WindowPos(QWidget_winID(TQtWidget(AWinControl.Handle).Widget), Left, Top);
+      // QApplication_syncX;
+    end else
+      TQtWidget(AWinControl.Handle).move(Left, Top);
+    {$ELSE}
     TQtWidget(AWinControl.Handle).move(Left, Top);
+    {$ENDIF}
     TQtWidget(AWinControl.Handle).resize(Right, Bottom);
   end;
   TQtWidget(AWinControl.Handle).EndUpdate;
@@ -604,12 +625,17 @@ begin
     Exit;
 
   Widget := TQtWidget(AWinControl.Handle);
-
   Widget.BeginUpdate;
-  // issue #28437
-  if AWinControl.HandleObjectShouldBeVisible and not AWinControl.IsParentFont and
-    (AWinControl.Font.Name = 'default') then
-      SetFont(AWinControl, AWinControl.Font);
+  // issue #28437, #30966 - regression from r53365: when FontChanged() is called
+  // here handle is recreated inside LCL, so we are dead - SEGFAULT.
+  if AWinControl.HandleObjectShouldBeVisible and
+    IsFontNameDefault(AWinControl.Font.Name) then
+  begin
+    if AWinControl.IsParentFont and Assigned(AWinControl.Parent) then
+      SetFont(AWinControl, AWinControl.Parent.Font) {DO NOT TOUCH THIS PLEASE !}
+    else
+      SetFont(AWinControl, AWinControl.Font); {DO NOT TOUCH THIS PLEASE !}
+  end;
 
   Widget.setVisible(AWinControl.HandleObjectShouldBeVisible);
   Widget.EndUpdate;
@@ -764,42 +790,45 @@ begin
     QtEdit.setBorder(ABorderStyle = bsSingle);
 end;
 
-{ TQtWSDragImageList }
+{ TQtWSDragImageListResolution }
 
-class function TQtWSDragImageList.BeginDrag(
-  const ADragImageList: TDragImageList; Window: HWND; AIndex, X, Y: Integer): Boolean;
+class function TQtWSDragImageListResolution.BeginDrag(
+  const ADragImageList: TDragImageListResolution; Window: HWND; AIndex, X, Y: Integer): Boolean;
 var
   ABitmap: TBitmap;
 begin
   ABitmap := TBitmap.Create;
-  ADragImageList.GetBitmap(AIndex, ABitmap);
+  try
+    ADragImageList.GetBitmap(AIndex, ABitmap);
 
-  if (ABitmap.Handle = 0) or (ABitmap.Width = 0) or (ABitmap.Height = 0) then
-  begin
-    Result := False;
-    Exit;
+    if (ABitmap.Handle = 0) or (ABitmap.Width = 0) or (ABitmap.Height = 0) then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    Result := TQtWidgetset(Widgetset).DragImageList_BeginDrag(
+      TQtImage(ABitmap.Handle).Handle, ADragImageList.DragHotSpot);
+    if Result then
+      TQtWidgetset(Widgetset).DragImageList_DragMove(X, Y);
+  finally
+    ABitmap.Free;
   end;
-
-  Result := TQtWidgetset(Widgetset).DragImageList_BeginDrag(
-    TQtImage(ABitmap.Handle).Handle, ADragImageList.DragHotSpot);
-  if Result then
-    TQtWidgetset(Widgetset).DragImageList_DragMove(X, Y);
-  ABitmap.Free;
 end;
 
-class function TQtWSDragImageList.DragMove(
-  const ADragImageList: TDragImageList; X, Y: Integer): Boolean;
+class function TQtWSDragImageListResolution.DragMove(
+  const ADragImageList: TDragImageListResolution; X, Y: Integer): Boolean;
 begin
   Result := TQtWidgetset(Widgetset).DragImageList_DragMove(X, Y);
 end;
 
-class procedure TQtWSDragImageList.EndDrag(const ADragImageList: TDragImageList);
+class procedure TQtWSDragImageListResolution.EndDrag(const ADragImageList: TDragImageListResolution);
 begin
   TQtWidgetset(Widgetset).DragImageList_EndDrag;
 end;
 
-class function TQtWSDragImageList.HideDragImage(
-  const ADragImageList: TDragImageList; ALockedWindow: HWND; DoUnLock: Boolean
+class function TQtWSDragImageListResolution.HideDragImage(
+  const ADragImageList: TDragImageListResolution; ALockedWindow: HWND; DoUnLock: Boolean
   ): Boolean;
 begin
   Result := True;
@@ -810,8 +839,8 @@ begin
   end;
 end;
 
-class function TQtWSDragImageList.ShowDragImage(
-  const ADragImageList: TDragImageList; ALockedWindow: HWND; X, Y: Integer;
+class function TQtWSDragImageListResolution.ShowDragImage(
+  const ADragImageList: TDragImageListResolution; ALockedWindow: HWND; X, Y: Integer;
   DoLock: Boolean): Boolean;
 begin
   Result := TQtWidgetset(Widgetset).DragImageLock;

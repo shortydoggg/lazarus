@@ -107,17 +107,17 @@ begin
   MoveDownBtn.Hint:=lisMoveSelectedDown;
   // Icons
   PopupMenu1.Images:=IDEImages.Images_16;
-  ActivateMenuItem.ImageIndex:=IDEImages.LoadImage(16, 'laz_open');
-  CloseMenuItem.ImageIndex:=IDEImages.LoadImage(16, 'menu_close');
-  CloseCheckedButton.LoadGlyphFromResourceName(HInstance, 'menu_close_all');
-  SaveCheckedButton.LoadGlyphFromResourceName(HInstance, 'menu_save_all');
-  MoveUpBtn.LoadGlyphFromResourceName(HInstance, 'arrow_up');
-  MoveDownBtn.LoadGlyphFromResourceName(HInstance, 'arrow_down');
+  ActivateMenuItem.ImageIndex:=IDEImages.LoadImage('laz_open');
+  CloseMenuItem.ImageIndex:=IDEImages.LoadImage('menu_close');
+  IDEImages.AssignImage(CloseCheckedButton, 'menu_close_all');
+  IDEImages.AssignImage(SaveCheckedButton, 'menu_save_all');
+  IDEImages.AssignImage(MoveUpBtn, 'arrow_up');
+  IDEImages.AssignImage(MoveDownBtn, 'arrow_down');
   // Buttons on FilterPanel
-  OpenButton.LoadGlyphFromResourceName(HInstance, 'laz_open');
+  IDEImages.AssignImage(OpenButton, 'laz_open');
   OpenButton.Hint:=lisActivateSelected;
   SortAlphabeticallyButton.Hint:=lisPESortFilesAlphabetically;
-  SortAlphabeticallyButton.LoadGlyphFromResourceName(HInstance, 'pkg_sortalphabetically');
+  IDEImages.AssignImage(SortAlphabeticallyButton, 'pkg_sortalphabetically');
 end;
 
 procedure TEditorFileManagerForm.CheckListBox1Click(Sender: TObject);
@@ -360,8 +360,7 @@ begin
       end;
     end;
   FilterEdit.InvalidateFilter;
-  FileCountLabel.Caption:=Format(dlgFiles, [IntToStr(SourceEditorManager.
-    SourceEditorCount)]);
+  FileCountLabel.Caption:=Format(dlgFiles,[IntToStr(SourceEditorManager.SourceEditorCount)]);
 end;
 
 function TEditorFileManagerForm.SrcEditorByListItem(ListIndex: integer): TSourceEditor;
@@ -370,7 +369,7 @@ var
 begin
   s:=CheckListBox1.Items[ListIndex];
   if (s<>'') and (s[1]='*') then        // Modified indicator
-    s:=copy(s, 3, Length(s));
+    delete(s, 1, 2);
   Result:=SourceEditorManager.SourceEditorIntfWithFilename(s);
 end;
 

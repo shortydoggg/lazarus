@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -72,6 +72,8 @@ type
     procedure Scan(Directory: string);
   end;
 
+procedure ApplyFPCSrcFiles(FPCSrcDir: string; var Files: TStringList);
+
 implementation
 
 procedure ApplyFPCSrcFiles(FPCSrcDir: string; var Files: TStringList);
@@ -82,7 +84,7 @@ begin
   // copy Files to codetools cache
   if CodeToolBoss<>nil then
   begin
-    SrcCache:=CodeToolBoss.FPCDefinesCache.SourceCaches.Find(FPCSrcDir,true);
+    SrcCache:=CodeToolBoss.CompilerDefinesCache.SourceCaches.Find(FPCSrcDir,true);
     debugln(['ApplyFPCSrcFiles SrcCache.Update ...']);
     SrcCache.Update(Files);
 
@@ -119,6 +121,7 @@ begin
     ApplyFPCSrcFiles(Directory,Files);
     // delete item in progress window
     debugln(['TFPCSrcScan.OnFilesGathered closing progress item ...']);
+    ProgressItem.Window.Close;
     FreeAndNil(ProgressItem);
     Scans.Remove(Self);
     debugln(['TFPCSrcScan.OnFilesGathered END']);

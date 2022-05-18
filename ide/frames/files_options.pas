@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -29,10 +29,19 @@ unit files_options;
 interface
 
 uses
-  SysUtils, StdCtrls, Dialogs, Controls, Spin, FileUtil, LazFileUtils,
-  EnvironmentOpts, CodeToolManager, DefineTemplates, IDEOptionsIntf, IDEDialogs,
-  LazarusIDEStrConsts, InputHistory, LazConf, IDEProcs,
-  IDEUtils, InitialSetupProc, DialogProcs;
+  SysUtils,
+  // LCL
+  StdCtrls, Dialogs, Controls, Spin,
+  // LazUtils
+  FileUtil, LazFileUtils,
+  // IDE
+  EnvironmentOpts,
+  // CodeTools
+  CodeToolManager, DefineTemplates,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEDialogs, IDEUtils,
+  // IDE
+  LazarusIDEStrConsts, InputHistory, LazConf, DialogProcs, InitialSetupProc;
 
 type
 
@@ -220,7 +229,9 @@ end;
 procedure TFilesOptionsFrame.Setup(ADialog: TAbstractOptionsEditorDialog);
 begin
   MaxRecentOpenFilesLabel.Caption:=dlgMaxRecentFiles;
+  MaxRecentOpenFilesLabel.Hint:=dlgMaxRecentHint;
   MaxRecentProjectFilesLabel.Caption:=dlgMaxRecentProjs;
+  MaxRecentProjectFilesLabel.Hint:=dlgMaxRecentHint;
   OpenLastProjectAtStartCheckBox.Caption:=dlgQOpenLastPrj;
   ShowCompileDialogCheckBox.Visible:=false;
   AutoCloseCompileDialogCheckBox.Visible:=false;
@@ -228,7 +239,7 @@ begin
   with LazarusDirComboBox.Items do
   begin
     BeginUpdate;
-    Add(ProgramDirectory(true));
+    Add(ProgramDirectoryWithBundle);
     EndUpdate;
   end;
   MultipleInstancesLabel.Caption := dlgMultipleInstances;
@@ -275,7 +286,7 @@ begin
   CompilerTranslationFileComboBox.Hint:=CompilerTranslationFileLabel.Hint;
   with CompilerTranslationFileComboBox.Items do
   begin
-    Add(SetDirSeparators('$(FPCSrcDir)/compiler/msg/errordu.msg'));
+    Add(GetForcedPathDelims('$(FPCSrcDir)/compiler/msg/errordu.msg'));
   end;
 end;
 
@@ -460,12 +471,12 @@ var
   NewFPCSrcDir: string;
   Note: string;
   Quality: TSDFilenameQuality;
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
   FPCVer: String;
 begin
   if EnvironmentOptions.FPCSourceDirectory=FOldFPCSourceDir then exit(true);
   Result:=false;
-  CfgCache:=CodeToolBoss.FPCDefinesCache.ConfigCaches.Find(
+  CfgCache:=CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
     EnvironmentOptions.GetParsedCompilerFilename,'','','',true);
   FPCVer:=CfgCache.GetFPCVer;
   EnvironmentOptions.FPCSourceDirectory:=FPCSourceDirComboBox.Text;
@@ -493,8 +504,8 @@ begin
   Result:=false;
   EnvironmentOptions.CompilerFilename:=CompilerPathComboBox.Text;
   NewCompilerFilename:=EnvironmentOptions.GetParsedCompilerFilename;
-  Quality:=CheckCompilerQuality(NewCompilerFilename,Note,
-                                CodeToolBoss.FPCDefinesCache.TestFilename);
+  Quality:=CheckFPCExeQuality(NewCompilerFilename,Note,
+                                CodeToolBoss.CompilerDefinesCache.TestFilename);
   if Quality<>sddqCompatible then
   begin
     if IDEMessageDialog(lisCCOWarningCaption,

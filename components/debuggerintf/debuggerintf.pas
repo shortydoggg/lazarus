@@ -4,10 +4,12 @@
 
 unit DebuggerIntf;
 
+{$warn 5023 off : no warning about unused units}
 interface
 
 uses
-  DbgIntfBaseTypes, DbgIntfDebuggerBase, DbgIntfMiscClasses, LazarusPackageIntf;
+  DbgIntfBaseTypes, DbgIntfDebuggerBase, DbgIntfMiscClasses, IDEMiniLibC, 
+  DbgIntfPseudoTerminal, LazarusPackageIntf;
 
 implementation
 

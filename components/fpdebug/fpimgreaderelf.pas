@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -33,7 +33,7 @@ interface
 uses
   Classes, SysUtils,
   FpImgReaderBase,
-  fpDbgSymTable,
+  fpDbgSymTable, DbgIntfBaseTypes,
   FpImgReaderElfTypes, LCLProc;  // these files are part of
 
 
@@ -363,7 +363,7 @@ begin
           if SymbolArr64^[i].st_name<>0 then
             begin
             SymbolName:=pchar(SymbolStr+SymbolArr64^[i].st_name);
-            AfpSymbolInfo.AddObject(SymbolName, TObject(PtrUInt(SymbolArr64^[i].st_value+ImageBase)));
+            AfpSymbolInfo.Add(SymbolName, TDbgPtr(SymbolArr64^[i].st_value+ImageBase));
             end;
           {$pop}
         end
@@ -379,7 +379,7 @@ begin
           if SymbolArr32^[i].st_name<>0 then
             begin
             SymbolName:=pchar(SymbolStr+SymbolArr32^[i].st_name);
-            AfpSymbolInfo.AddObject(SymbolName, TObject(PtrUInt(SymbolArr32^[i].st_value+ImageBase)));
+            AfpSymbolInfo.Add(SymbolName, TDBGPtr(SymbolArr32^[i].st_value+ImageBase));
             end;
         end
       end;

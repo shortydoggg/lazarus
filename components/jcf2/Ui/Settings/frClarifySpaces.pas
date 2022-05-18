@@ -31,7 +31,7 @@ interface
 
 uses
   Classes, StdCtrls, ExtCtrls, Spin,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -85,9 +85,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -156,7 +156,7 @@ end;
 
 procedure TfClarifySpaces.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Spaces do
+  with FormattingSettings.Spaces do
   begin
     cbTabsToSpaces.Checked := TabsToSpaces;
     cbSpacesToTabs.Checked := SpacesToTabs;
@@ -200,7 +200,7 @@ end;
 
 procedure TfClarifySpaces.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Spaces do
+  with FormattingSettings.Spaces do
   begin
     TabsToSpaces := cbTabsToSpaces.Checked;
     SpacesToTabs := cbSpacesToTabs.Checked;
@@ -243,7 +243,7 @@ end;
 
 class function TfClarifySpaces.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 {-------------------------------------------------------------------------------

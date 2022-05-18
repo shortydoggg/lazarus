@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
  
@@ -40,17 +40,23 @@ unit JITForms;
 
 { $DEFINE VerboseJITForms}
 
-
 interface
 
 uses
   {$IFDEF IDE_MEM_CHECK}
   MemCheck,
   {$ENDIF}
-  Classes, SysUtils, AvgLvlTree, BasicCodeTools, TypInfo, LCLProc, LResources,
-  Forms, Controls, LCLMemManager, LCLIntf, Dialogs,
-  PropEditUtils, PropEdits, UnitResources, IDEDialogs,
-  IDEProcs, PackageDefs, BasePkgManager, DesignerProcs;
+  Classes, SysUtils, TypInfo, Laz_AVL_Tree,
+  // LCL
+  Forms, Controls, Dialogs, LResources, LCLMemManager, LCLProc,
+  //LazUtils
+  AvgLvlTree, LazLoggerBase,
+  // CodeTools
+  BasicCodeTools,
+  // IdeIntf
+  PackageDependencyIntf, PropEditUtils, PropEdits, UnitResources, IDEDialogs,
+  // IDE
+  PackageDefs;
 
 type
   //----------------------------------------------------------------------------
@@ -268,7 +274,7 @@ type
   TJITMethods = class
   private
     fClearing: boolean;
-    fMethods: TAvgLvlTree;// sorted with CompareJITMethod
+    fMethods: TAvlTree; // sorted with CompareJITMethod
     procedure InternalAdd(const AMethod: TJITMethod);
     procedure InternalRemove(const AMethod: TJITMethod);
   public
@@ -751,10 +757,10 @@ procedure TJITComponentList.DestroyJITComponent(JITComponent:TComponent);
 var a:integer;
 begin
   if JITComponent=nil then
-    RaiseException('TJITComponentList.DestroyJITForm JITComponent=nil');
+    RaiseGDBException('TJITComponentList.DestroyJITForm JITComponent=nil');
   a:=IndexOf(JITComponent);
   if a<0 then
-    RaiseException('TJITComponentList.DestroyJITForm JITComponent.ClassName='+
+    RaiseGDBException('TJITComponentList.DestroyJITForm JITComponent.ClassName='+
       JITComponent.ClassName);
   if a>=0 then DestroyJITComponent(a);
 end;
@@ -1228,7 +1234,7 @@ begin
   if IndexOf(JITComponent)<0 then
     raise Exception.Create('TJITComponentList.RemoveMethod JITComponent.ClassName='+
       JITComponent.ClassName);
-  if (AName='') or (not IsValidIdent(AName)) then
+  if not IsValidIdent(AName) then
     raise Exception.Create('TJITComponentList.RemoveMethod invalid name: "'+AName+'"');
 
   // delete TJITMethod
@@ -1254,7 +1260,7 @@ begin
   if IndexOf(JITComponent)<0 then
     raise Exception.Create('TJITComponentList.RenameMethod JITComponent.ClassName='+
       JITComponent.ClassName);
-  if (NewName='') or (not IsValidIdent(NewName)) then
+  if not IsValidIdent(NewName) then
     raise Exception.Create('TJITComponentList.RenameMethod invalid name: "'+NewName+'"');
     
   // rename TJITMethod
@@ -1278,7 +1284,7 @@ begin
   if IndexOf(JITComponent)<0 then
     raise Exception.Create('TJITComponentList.RenameComponentClass JITComponent.ClassName='+
       JITComponent.ClassName);
-  if (NewName='') or (not IsValidIdent(NewName)) then
+  if not IsValidIdent(NewName) then
     raise Exception.Create('TJITComponentList.RenameComponentClass invalid name: "'+NewName+'"');
   DoRenameClass(JITComponent.ClassType,NewName);
 end;
@@ -1309,7 +1315,7 @@ var
   Action: TModalResult;
 begin
   if IndexOf(JITOwnerComponent)<0 then
-    RaiseException('TJITComponentList.AddJITChildComponentFromStream');
+    RaiseGDBException('TJITComponentList.AddJITChildComponentFromStream');
   {$IFDEF VerboseJITForms}
   debugln('[TJITComponentList.AddJITChildComponentFromStream] A');
   {$ENDIF}
@@ -1401,7 +1407,7 @@ begin
   if IndexOf(JITComponent)<0 then
     raise Exception.Create('TJITComponentList.CreateNewMethod JITComponent.ClassName='+
       JITComponent.ClassName);
-  if (AName='') or (not IsValidIdent(AName)) then
+  if not IsValidIdent(AName) then
     raise Exception.Create('TJITComponentList.CreateNewMethod invalid name: "'+AName+'"');
   OldCode:=JITComponent.MethodAddress(AName);
   if OldCode<>nil then begin
@@ -1588,7 +1594,8 @@ procedure TJITComponentList.FreeJITClass(var AClass: TClass);
   end;
 
 var
-  OldVMT, ClassNamePShortString: Pointer;
+  OldVMT: PVmt;
+  ClassNamePShortString: Pointer; // don't use PShortString so that the compiler don't get silly ideas
   OldFieldTable: PFieldTable;
   OldTypeInfo: PTypeInfo;
   OldMethodTable: PMethodNameTable;
@@ -1599,27 +1606,32 @@ begin
   // free TJITMethods
   JITMethods.DeleteAllOfClass(AClass);
 
-  OldVMT:=Pointer(AClass);
+  OldVMT:=PVmt(Pointer(AClass));
 
   // free methodtable
-  OldMethodTable:=PMethodNameTable((OldVMT+vmtMethodTable)^);
+  OldMethodTable:=PMethodNameTable(OldVMT^.vMethodTable);
   if Assigned(OldMethodTable) then begin
     FreeMethodTableEntries(OldMethodTable);
     FreeMem(OldMethodTable);
   end;
 
+  // set vmtParent
+  {$IFNDEF HasVMTParent}
+  FreeMem(OldVMT^.vParentRef);
+  {$ENDIF}
+
   // free classname
-  ClassNamePShortString:=Pointer((OldVMT+vmtClassName)^);
+  ClassNamePShortString:=Pointer(OldVMT^.vClassName);
   FreeMem(ClassNamePShortString);
 
   // free field table
-  OldFieldTable:=PFieldTable((OldVMT+vmtFieldTable)^);
+  OldFieldTable:=PFieldTable(OldVMT^.vFieldTable);
   ReallocMem(OldFieldTable^.ClassTable,0);
   FreeMem(OldFieldTable);
 
   // free typeinfo
-  OldTypeInfo:=PTypeInfo((OldVMT+vmtTypeInfo)^);
-  {$IF FPC_FULLVERSION>=30100}
+  OldTypeInfo:=PTypeInfo(OldVMT^.vTypeInfo);
+  {$IFNDEF HasVMTParent}
   // free ParentInfoRef
   OldTypeData:=GetTypeData(OldTypeInfo);
   FreeMem(OldTypeData^.ParentInfoRef);
@@ -1751,7 +1763,7 @@ var
 begin
   TypeInfo:=PTypeInfo(JITClass.ClassInfo);
   if TypeInfo=nil then
-    RaiseException('TJITComponentList.DoRenameUnitNameOfClass');
+    RaiseGDBException('TJITComponentList.DoRenameUnitNameOfClass');
   TypeData:=GetTypeData(TypeInfo);
   //DebugLn(['TJITComponentList.DoRenameUnitNameOfClass Old=',TypeData^.UnitName,' New=',NewUnitName]);
   OldPropCount:=GetTypeDataPropCountAddr(TypeData)^;
@@ -2002,7 +2014,7 @@ end;
 
 constructor TJITMethods.Create;
 begin
-  fMethods:=TAvgLvlTree.Create(@CompareJITMethod);
+  fMethods:=TAvlTree.Create(@CompareJITMethod);
 end;
 
 destructor TJITMethods.Destroy;
@@ -2033,7 +2045,7 @@ function TJITMethods.Find(aClass: TClass;
   const aMethodName: shortstring): TJITMethod;
 var
   CurMethod: TJITMethod;
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   Comp: LongInt;
 begin
   //DebugLn(['TJITMethods.Find  Class=',dbgsname(aClass),' aMethodName=',aMethodName]);
@@ -2057,9 +2069,8 @@ end;
 function TJITMethods.Delete(aMethod: TJITMethod): boolean;
 begin
   //DebugLn(['TJITMethods.Delete  Class=',dbgsname(AMethod.TheClass),' aMethodName=',aMethod.TheMethodName]);
-  if (aMethod=nil) then
-    Result:=false
-  else if aMethod.Owner<>Self then
+  Result:=false;
+  if (aMethod<>nil) and (aMethod.Owner<>Self) then
     RaiseGDBException('TJITMethods.DeleteJITMethod')
   else begin
     Result:=true;
@@ -2086,9 +2097,9 @@ end;
 procedure TJITMethods.DeleteAllOfClass(aClass: TClass);
 var
   CurMethod: TJITMethod;
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
   Comp: LongInt;
-  NextNode: TAvgLvlTreeNode;
+  NextNode: TAvlTreeNode;
 begin
   Node:=fMethods.Root;
   while (Node<>nil) do begin

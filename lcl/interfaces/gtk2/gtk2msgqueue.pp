@@ -23,7 +23,9 @@ interface
 uses
   // RTL
   // LCL
-  LazLinkedList, LCLType, LMessages, Gtk2Globals, DynHashArray, Gtk2Proc
+  LazLinkedList, LCLType, LMessages, Gtk2Globals, Gtk2Proc,
+  // LazUtils
+  DynHashArray
 {$IFNDEF USE_GTK_MAIN_OLD_ITERATION}
 , glib2
 {$ENDIF}
@@ -141,8 +143,7 @@ end;
 
 procedure TGtkMessageQueue.Lock;
 begin
-  inc(fLock);
-  if fLock=1 then
+  if InterlockedIncrement(fLock)=1 then
     {$IFDEF USE_GTK_MAIN_OLD_ITERATION}
     EnterCriticalsection(FCritSec);
     {$ELSE}
@@ -152,8 +153,7 @@ end;
 
 procedure TGtkMessageQueue.UnLock;
 begin
-  dec(fLock);
-  if fLock=0 then
+  if InterlockedDecrement(fLock)=0 then
     {$IFDEF USE_GTK_MAIN_OLD_ITERATION}
     LeaveCriticalsection(FCritSec);
     {$ELSE}

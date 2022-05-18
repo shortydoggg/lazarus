@@ -1,4 +1,4 @@
-{ $Id: qtwsmenus.pp 42630 2013-09-06 06:32:20Z zeljko $}
+{ $Id: qtwsmenus.pp 57240 2018-02-03 22:58:50Z ondrej $}
 {
  *****************************************************************************
  *                               QtWSMenus.pp                                * 
@@ -28,6 +28,7 @@ uses
   qtwidgets, qtobjects, qtproc, QtWsControls,
   // LCL
   SysUtils, Classes, Types, LCLType, LCLProc, Graphics, Controls, Forms, Menus,
+  ImgList,
   // Widgetset
   WSMenus, WSLCLClasses;
 
@@ -89,7 +90,6 @@ var
 begin
   if not WSCheckMenuItem(AMenuItem, 'AttachMenu') or (AMenuItem.Parent = nil) then
     Exit;
-
   Widget := TQtWidget(AMenuItem.Parent.Handle);
   if Widget is TQtMenuBar then
     TQtMenuBar(Widget).insertMenu(AMenuItem.Parent.VisibleIndexOf(AMenuItem),
@@ -102,7 +102,7 @@ end;
 
 class function TQtWSMenuItem.CreateMenuFromMenuItem(const AMenuItem: TMenuItem): TQtMenu;
 var
-  ImgList: TImageList;
+  ImgList: TCustomImageList;
 begin
   Result := TQtMenu.Create(AMenuItem);
   Result.FDeleteLater := False;
@@ -110,7 +110,7 @@ begin
   Result.setHasSubmenu(AMenuItem.Count > 0);
   if not AMenuItem.IsLine then
   begin
-    Result.setText(GetUtf8String(AMenuItem.Caption));
+    Result.setText(AMenuItem.Caption{%H-});
     Result.setEnabled(AMenuItem.Enabled);
     Result.setCheckable(AMenuItem.RadioItem or AMenuItem.ShowAlwaysCheckable);
     Result.BeginUpdate;
@@ -119,13 +119,13 @@ begin
     Result.setShortcut(AMenuItem.ShortCut, AMenuItem.ShortCutKey2);
     if AMenuItem.HasIcon then
     begin
-      ImgList := TImageList(AMenuItem.GetImageList);
+      ImgList := AMenuItem.GetImageList;
       // we must check so because AMenuItem.HasIcon can return true
       // if Bitmap is setted up but not ImgList.
       if (ImgList <> nil) and (AMenuItem.ImageIndex >= 0) and
         (AMenuItem.ImageIndex < ImgList.Count) then
       begin
-        ImgList.GetBitmap(AMenuItem.ImageIndex, AMenuItem.Bitmap);
+        ImgList.ResolutionForPPI[16, ScreenInfo.PixelsPerInchX, 1].GetBitmap(AMenuItem.ImageIndex, AMenuItem.Bitmap); // Qt bindings support only 16px icons for menu items
         Result.setImage(TQtImage(AMenuItem.Bitmap.Handle));
       end else
       if Assigned(AMenuItem.Bitmap) then
@@ -215,7 +215,11 @@ begin
   begin
     if (AMenuItem.Owner is TMainMenu) and
       Assigned(TMainMenu(AMenuItem.Owner).Parent) and
-      (TMainMenu(AMenuItem.Owner).Parent is TCustomForm) then
+      (
+      (TMainMenu(AMenuItem.Owner).Parent is TCustomForm) or
+      (TMainMenu(AMenuItem.Owner).Parent is TCustomFrame)
+      )
+       then
     begin
       {do not destroy menuitem handle if parent form handle = 0 - it's
        already destroyed (TCustomForm.DestroyWnd isn't called when
@@ -253,7 +257,7 @@ begin
     if ACaption = cLineCaption then
       TQtMenu(Widget).setText('')
     else
-      TQtMenu(Widget).setText(GetUtf8String(ACaption));
+      TQtMenu(Widget).setText(ACaption{%H-});
   end;
 end;
 
@@ -365,7 +369,7 @@ end;
 class function TQtWSMenuItem.SetRightJustify(const AMenuItem: TMenuItem; const Justified: boolean): boolean;
 begin
   if not WSCheckMenuItem(AMenuItem, 'SetRightJustify') then
-    Exit;
+    Exit(False);
 
   // what should be done here? maybe this?
   TQtMenu(AMenuItem.Handle).setAttribute(QtWA_RightToLeft, Justified);
@@ -397,28 +401,41 @@ class function TQtWSMenu.CreateHandle(const AMenu: TMenu): HMENU;
 var
   MenuBar: TQtMenuBar;
   Menu: TQtMenu;
+  AParent: TComponent;
 begin
+  Result := 0;
   { If the menu is a main menu, there is no need to create a handle for it.
     It's already created on the window }
-  if (AMenu is TMainMenu) and (AMenu.Owner is TCustomForm) then
+  if (AMenu is TMainMenu) then
   begin
-    MenuBar := TQtMainWindow(TCustomForm(AMenu.Owner).Handle).MenuBar;
-
-    Result := HMENU(MenuBar);
-  end
-  else if (AMenu is TPopUpMenu) then
+    AParent := AMenu.Parent;
+    if AParent = nil then
+      AParent := AMenu.Owner;
+    if Assigned(AParent) and
+      ((AParent is TCustomForm) or (AParent is TCustomFrame)) then
+    begin
+      if (AParent is TCustomForm) then
+        MenuBar := TQtMainWindow(TCustomForm(AParent).Handle).MenuBar
+      else
+        MenuBar := TQtMainWindow(TCustomFrame(AParent).Handle).MenuBar;
+      Result := HMENU(MenuBar);
+    end else
+    begin
+      Menu := TQtMenu.Create(AMenu.Items);
+      Menu.AttachEvents;
+      Result := HMENU(Menu);
+    end;
+  end else
+  if (AMenu is TPopUpMenu) then
   begin
     Menu := TQtMenu.Create(AMenu.Items);
     Menu.AttachEvents;
-  
     Result := HMENU(Menu);
   end;
 
   {$ifdef VerboseQt}
     Write('[TQtWSMenu.CreateHandle] ');
-
     if (AMenu is TMainMenu) then Write('IsMainMenu ');
-
     WriteLn(' Handle: ', dbghex(Result), ' Name: ', AMenu.Name);
   {$endif}
 end;

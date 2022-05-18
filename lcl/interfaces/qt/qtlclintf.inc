@@ -1,5 +1,5 @@
 {%MainUnit qtint.pp}
-{ $Id: qtlclintf.inc 48042 2015-02-28 11:42:52Z zeljko $ }
+{ $Id: qtlclintf.inc 56639 2017-12-05 21:30:51Z juha $ }
 
 {******************************************************************************
                   All QT interface support routines
@@ -176,23 +176,23 @@ begin
         if (BtnID >= Low(IdButtonToQtStandardButton)) and
            (BtnID <= High(IdButtonToQtStandardButton)) and
            (IdButtonToQtStandardButton[BtnID] <> QMessageBoxNoButton) then
-          QtMessageBox.AddButton(Caption, IdButtonToQtStandardButton[BtnID], ModalResult, Default, Cancel)
+          QtMessageBox.AddButton(Caption{%H-}, IdButtonToQtStandardButton[BtnID], ModalResult, Default, Cancel)
         else
-          QtMessageBox.AddButton(Caption, ModalResult, Default, Cancel);
+          QtMessageBox.AddButton(Caption{%H-}, ModalResult, Default, Cancel);
       end;
     end;
 
     if DialogCaption <> '' then
       QtMessageBox.Title := DialogCaption
-    else
+    {%H-}else
       case DialogType of
-        idDialogWarning: QtMessageBox.Title := rsMtWarning;
-        idDialogError: QtMessageBox.Title := rsMtError;
-        idDialogInfo : QtMessageBox.Title := rsMtInformation;
-        idDialogConfirm : QtMessageBox.Title := rsMtConfirmation;
+        idDialogWarning: QtMessageBox.Title := rsMtWarning{%H-};
+        idDialogError: QtMessageBox.Title := rsMtError{%H-};
+        idDialogInfo : QtMessageBox.Title := rsMtInformation{%H-};
+        idDialogConfirm : QtMessageBox.Title := rsMtConfirmation{%H-};
       end;
 
-    QtMessageBox.MessageStr := DialogMessage;
+    QtMessageBox.MessageStr := DialogMessage{%H-};
 
     case DialogType of
       idDialogWarning: QtMessageBox.MsgBoxType := QMessageBoxWarning;
@@ -396,24 +396,24 @@ begin
       if (BtnID >= Low(IdButtonToQtStandardButton)) and
          (BtnID <= High(IdButtonToQtStandardButton)) and
          (IdButtonToQtStandardButton[BtnID] <> QMessageBoxNoButton) then
-        QtMessageBox.AddButton(GetButtonCaption(BtnID), IdButtonToQtStandardButton[BtnID], BtnID,
+        QtMessageBox.AddButton(GetButtonCaption(BtnID){%H-}, IdButtonToQtStandardButton[BtnID], BtnID,
           BtnIdx = DefaultIndex, (EscapeResult = mrCancel) and (BtnId = EscapeResult))
       else
-        QtMessageBox.AddButton(GetButtonCaption(BtnID), BtnID, BtnIdx = DefaultIndex,
+        QtMessageBox.AddButton(GetButtonCaption(BtnID){%H-}, BtnID, BtnIdx = DefaultIndex,
           (EscapeResult = mrCancel) and (BtnId = EscapeResult));
     end;
 
     if DialogCaption <> '' then
       QtMessageBox.Title := DialogCaption
-    else
+    {%H-}else
       case DialogType of
-        idDialogWarning: QtMessageBox.Title := rsMtWarning;
-        idDialogError: QtMessageBox.Title := rsMtError;
-        idDialogInfo : QtMessageBox.Title := rsMtInformation;
-        idDialogConfirm : QtMessageBox.Title := rsMtConfirmation;
+        idDialogWarning: QtMessageBox.Title := rsMtWarning{%H-};
+        idDialogError: QtMessageBox.Title := rsMtError{%H-};
+        idDialogInfo : QtMessageBox.Title := rsMtInformation{%H-};
+        idDialogConfirm : QtMessageBox.Title := rsMtConfirmation{%H-};
       end;
 
-    QtMessageBox.MessageStr := DialogMessage;
+    QtMessageBox.MessageStr := DialogMessage{%H-};
 
     case DialogType of
       idDialogWarning: QtMessageBox.MsgBoxType := QMessageBoxWarning;
@@ -894,6 +894,11 @@ begin
   if ARubberBand = 0 then
     exit;
   QRubberBand_setGeometry(QRubberBandH(ARubberBand), @ARect);
+end;
+
+function TQtWidgetSet.ExtUTF8Out(DC: HDC; X, Y: Integer; Options: Longint; Rect: PRect; Str: PChar; Count: Longint; Dx: PInteger): Boolean;
+begin
+  Result := ExtTextOut(DC,X,Y,Options,Rect,Str,Count,Dx);
 end;
 
 function TQtWidgetSet.TextUTF8Out(DC: HDC; X, Y: Integer; Str: PChar; Count: Longint): Boolean;

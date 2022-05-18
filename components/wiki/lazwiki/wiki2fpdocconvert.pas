@@ -14,8 +14,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 
 <fpdoc>
@@ -84,7 +84,7 @@ interface
 
 uses
   Classes, SysUtils, WikiParser, laz2_DOM, LazFileUtils, laz2_XMLRead,
-  laz2_XMLWrite, LazLogger, WikiFormat;
+  laz2_XMLWrite, LazLoggerBase, WikiFormat;
 
 type
 
@@ -279,8 +279,8 @@ begin
 end;
 
 {   IsValidIdent returns true if the first character of Ident is in:
-    'A' to 'Z', 'a' to 'z' or '_' and the following characters are
-    on of: 'A' to 'Z', 'a' to 'z', '0'..'9' or '_'    }
+    'A' to 'Z', 'a' to 'z' or '_' and the following characters are one of:
+    'A' to 'Z', 'a' to 'z', '0'..'9', '_' or '-'  }
 function IsValidNodeName(const Ident: string): boolean;
 var
   p: PChar;
@@ -412,7 +412,7 @@ end;
 
 procedure TWiki2FPDocConverter.SetPackageName(AValue: string);
 begin
-  if (AValue='') or not IsValidIdent(AValue) then
+  if not IsValidIdent(AValue) then
     raise Exception.Create('invalid package name "'+AValue+'"');
   if FPackageName=AValue then Exit;
   FPackageName:=AValue;

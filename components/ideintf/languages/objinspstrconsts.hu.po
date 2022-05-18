@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.5.4\n"
+"X-Generator: Poedit 1.8.7.1\n"
 
 #: objinspstrconsts.cactionlisteditorallcategory
 msgid "(All)"
@@ -295,7 +295,12 @@ msgstr "Érték megadása"
 msgid "Unable to find parser for tool \"%s\""
 msgstr "Nem található elemző az eszközhöz: \"%s\""
 
+#: objinspstrconsts.lisunabletofindparserwithname
+msgid "Unable to find parser with name \"%s\""
+msgstr "Nem található \"%s\" nevű elemző"
+
 #: objinspstrconsts.nbcesaddpage
+msgctxt "objinspstrconsts.nbcesaddpage"
 msgid "Add Page"
 msgstr "Lap hozzáadása"
 
@@ -363,6 +368,11 @@ msgstr "Műveletlista szerkesztő ..."
 msgid "ActionList Editor"
 msgstr "Műveletlista szerkesztő"
 
+#: objinspstrconsts.oisadd
+msgctxt "objinspstrconsts.oisadd"
+msgid "Add"
+msgstr "Hozzáadás"
+
 #: objinspstrconsts.oisaddcollectionitem
 msgid "&Add Item"
 msgstr "Elem hozzáadása"
@@ -374,6 +384,11 @@ msgstr "Mezők hozzá&adása"
 #: objinspstrconsts.oisaddfieldsfromfielddefs
 msgid "Add fields from FieldDefs"
 msgstr "Mezők hozzáadása FieldDefs-ből"
+
+#: objinspstrconsts.oisaddpage
+msgctxt "objinspstrconsts.oisaddpage"
+msgid "Add Page"
+msgstr "Lap hozzáadása"
 
 #: objinspstrconsts.oisaddtofavorites
 msgid "Add to Favorites"
@@ -398,10 +413,6 @@ msgstr "Ko&mponensek"
 #: objinspstrconsts.oisbtnproperties
 msgid "&Properties"
 msgstr "Tulajdonságok"
-
-#: objinspstrconsts.oiscadd
-msgid "&Add"
-msgstr "Hozzá&adás"
 
 #: objinspstrconsts.oiscancel
 msgctxt "objinspstrconsts.oiscancel"
@@ -473,6 +484,14 @@ msgstr "Alapértelmezett esemény létrehozása"
 msgid "Create new field and add it at current position"
 msgstr "Mező létrehozása és hozzáadása az aktuális helyhez"
 
+#: objinspstrconsts.oiscurrentparent
+msgid "Current parent"
+msgstr "Jelenlegi szülő"
+
+#: objinspstrconsts.oiscurrentparents
+msgid "Current parents"
+msgstr "Jelenlegi szülők"
+
 #: objinspstrconsts.oiscutcomponents
 msgctxt "objinspstrconsts.oiscutcomponents"
 msgid "Cu&t"
@@ -491,6 +510,10 @@ msgstr "&Törlés"
 #: objinspstrconsts.oisdeleteitem
 msgid "Delete item \"%s\"?"
 msgstr "Törli a(z) \"%s\" elemet?"
+
+#: objinspstrconsts.oisdeletepagequestion
+msgid "Do you want to delete the page?"
+msgstr "Törölni szeretné a lapot?"
 
 #: objinspstrconsts.oisdeleteselectedfields
 msgid "Delete selected field(s)"
@@ -560,6 +583,10 @@ msgstr "Nem kompatibilis metódus"
 msgid "Input Mask:"
 msgstr "Beviteli maszk:"
 
+#: objinspstrconsts.oisinsertpagename
+msgid "Insert Page Name"
+msgstr "Lapnév beszúrása"
+
 #: objinspstrconsts.oisint64
 msgid "Int64"
 msgstr "64 bites egész szám"
@@ -571,6 +598,10 @@ msgstr "Egész szám"
 #: objinspstrconsts.oisinterface
 msgid "Interface"
 msgstr "Felület"
+
+#: objinspstrconsts.oisinvalid
+msgid "(Invalid)"
+msgstr "(Érvénytelen)"
 
 #: objinspstrconsts.oisinvalidpropertyvalue
 msgid "Invalid property value"
@@ -677,6 +708,14 @@ msgstr "Háttérbe"
 msgid "Move to Front"
 msgstr "Előtérbe"
 
+#: objinspstrconsts.oispages
+msgid "Pages"
+msgstr "Lapok"
+
+#: objinspstrconsts.oispageseditordialog
+msgid "Pages Editor"
+msgstr "Lapok szerkesztése"
+
 #: objinspstrconsts.oispastecomponents
 msgctxt "objinspstrconsts.oispastecomponents"
 msgid "&Paste"
@@ -698,6 +737,10 @@ msgstr "Kép mentése másként"
 msgid "Press a key ..."
 msgstr "Nyomjon le egy billentyűt ..."
 
+#: objinspstrconsts.oispressakeyegctrlp
+msgid "You can press e.g. Ctrl+P ..."
+msgstr "Használható pl. a Ctrl+P ..."
+
 #: objinspstrconsts.oisproperties
 msgid "Properties"
 msgstr "Tulajdonságok"
@@ -713,6 +756,14 @@ msgstr "Rekord"
 #: objinspstrconsts.oisremovefromfavorites
 msgid "Remove from Favorites"
 msgstr "Eltávolítás a kedvencek közül"
+
+#: objinspstrconsts.oisrename
+msgid "Rename"
+msgstr "Átnevezés"
+
+#: objinspstrconsts.oisrenamepage
+msgid "Rename Page"
+msgstr "Lap átnevezése"
 
 #: objinspstrconsts.oisrestricted
 msgid "Restricted"
@@ -750,6 +801,14 @@ msgstr "Ö&sszes kijelölése"
 msgid "Select All Fields"
 msgstr "Minden mező kijelölése"
 
+#: objinspstrconsts.oisselectedcontrol
+msgid "Selected control"
+msgstr "Kiválasztott vezérlő"
+
+#: objinspstrconsts.oisselectedcontrols
+msgid "Selected controls"
+msgstr "Kiválasztott vezérlők"
+
 #: objinspstrconsts.oisselectedproperties
 msgid "&Selected Properties"
 msgstr "Kijelölt tulajdonságok"
@@ -785,6 +844,14 @@ msgstr "Beállítás alapértelmezettre: %s"
 #: objinspstrconsts.oissettodefaulthint
 msgid "Set property value to Default"
 msgstr "A tulajdonság értéke legyen Alapértelmezett"
+
+#: objinspstrconsts.oisshowalloutputlines
+msgid "Show all output lines"
+msgstr "A kimenet összes sorának megjelenítése"
+
+#: objinspstrconsts.oisshowclasses
+msgid "Show classes"
+msgstr "Osztályok megjelenítése"
 
 #: objinspstrconsts.oisshowcomponenttree
 msgid "Show Component Tree"
@@ -1246,6 +1313,22 @@ msgstr "Szakasz szerkesztő ..."
 msgid "&Add ..."
 msgstr "Hozzá&adás ..."
 
+#: objinspstrconsts.sccsiledtaddmoreresolutions
+msgid "Add more resolutions ..."
+msgstr "További felbontások hozzáadása ..."
+
+#: objinspstrconsts.sccsiledtaddnewresolution
+msgid "New resolution ..."
+msgstr "Új felbontás ..."
+
+#: objinspstrconsts.sccsiledtaddsliced
+msgid "Add sliced ..."
+msgstr "Szeletelt kép hozzáadása ..."
+
+#: objinspstrconsts.sccsiledtaddslicediconerror
+msgid "Adding sliced icons is not supported."
+msgstr "Szeletelt képek hozzáadása nincs támogatva."
+
 #: objinspstrconsts.sccsiledtadjustment
 msgid "Adjustment"
 msgstr "Méretezés"
@@ -1254,6 +1337,14 @@ msgstr "Méretezés"
 msgctxt "objinspstrconsts.sccsiledtapply"
 msgid "&Apply"
 msgstr "&Alkalmazás"
+
+#: objinspstrconsts.sccsiledtcannotdeleteresolution
+msgid "Cannot delete default resolution."
+msgstr "Az alapértelmezett felbontás nem törölhető."
+
+#: objinspstrconsts.sccsiledtcannotslice
+msgid "Source image size must be an integer multiple of the ImageList's Width and Height."
+msgstr "A forráskép mérete az ImageList Width és Height tulajdonságának egész számú többszöröse kell legyen."
 
 #: objinspstrconsts.sccsiledtcaption
 msgid "ImageList Editor"
@@ -1277,6 +1368,14 @@ msgctxt "objinspstrconsts.sccsiledtdelete"
 msgid "&Delete"
 msgstr "&Törlés"
 
+#: objinspstrconsts.sccsiledtdeleteresolution
+msgid "Delete resolution ..."
+msgstr "Felbontás törlése ..."
+
+#: objinspstrconsts.sccsiledtdeleteresolutionconfirmation
+msgid "Select the resolution to delete."
+msgstr "A törlendő felbontás kiválasztása."
+
 #: objinspstrconsts.sccsiledtgrplcaption
 msgid "Images"
 msgstr "Képek"
@@ -1284,6 +1383,10 @@ msgstr "Képek"
 #: objinspstrconsts.sccsiledtgrprcaption
 msgid "Selected Image"
 msgstr "Kijelölt kép"
+
+#: objinspstrconsts.sccsiledtimagewidthofnewresolution
+msgid "Image width of the new resolution:"
+msgstr "Az új felbontás szélessége:"
 
 #: objinspstrconsts.sccsiledtmovedown
 msgctxt "objinspstrconsts.sccsiledtmovedown"
@@ -1303,9 +1406,21 @@ msgstr "Semmi"
 msgid "Add Images"
 msgstr "Képek hozzáadása"
 
+#: objinspstrconsts.sccsiledtopendialogn
+msgid "New Image"
+msgstr "Új kép"
+
 #: objinspstrconsts.sccsiledtransparentcolor
 msgid "Transparent Color:"
 msgstr "Átlátszó szín:"
+
+#: objinspstrconsts.sccsiledtreplace
+msgid "&Replace ..."
+msgstr "Csere ..."
+
+#: objinspstrconsts.sccsiledtreplaceallresolutions
+msgid "Replace all resolutions ..."
+msgstr "Az összes felbontás cseréléje ..."
 
 #: objinspstrconsts.sccsiledtsave
 msgctxt "objinspstrconsts.sccsiledtsave"
@@ -1526,6 +1641,10 @@ msgstr "Bekérés"
 #: objinspstrconsts.s_addassingle
 msgid "Add as single"
 msgstr "Hozzáadás single-ként"
+
+#: objinspstrconsts.s_confirm_clear
+msgid "Are you sure to clear image list?"
+msgstr "Biztosan kiüríthető a képlista?"
 
 #: objinspstrconsts.s_splitimage
 msgid "Split image"

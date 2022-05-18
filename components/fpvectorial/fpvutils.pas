@@ -43,6 +43,7 @@ function FPColorToRGBHexString(AColor: TFPColor): string;
 function RGBToFPColor(AR, AG, AB: byte): TFPColor; inline;
 function MixColors(AColor1, AColor2: TFPColor; APos, AMax: Double): TFPColor;
 function GradientColor(AColors: TvGradientColors; AValue: Double): TFPColor;
+function AlphaBlendColor(AColorBase, AColor: TFPColor): TFPColor;
 // Coordinate Conversion routines
 function CanvasCoordsToFPVectorial(AY: Integer; AHeight: Integer): Integer; inline;
 function CanvasTextPosToFPVectorial(AY: Integer; ACanvasHeight, ATextHeight: Integer): Integer;
@@ -50,9 +51,11 @@ function CoordToCanvasX(ACoord: Double; ADestX: Integer; AMulX: Double): Integer
 function CoordToCanvasY(ACoord: Double; ADestY: Integer; AMulY: Double): Integer; inline;
 // Other routines
 function SeparateString(AString: string; ASeparator: char): T10Strings;
+procedure SeparateStringInTwo(AString: string; ASeparator: char; out AStart, AEnd: string);
 function Make3DPoint(AX, AY, AZ: Double): T3DPoint; overload; inline;
 function Make3DPoint(AX, AY: Double): T3DPoint; overload; inline;
 function Point2D(AX, AY: Double): T2DPoint; inline;
+function IsGradientBrush(ABrush: TvBrush): Boolean;
 // Mathematical routines
 function LineEquation_GetPointAndTangentForLength(AStart, AEnd: T3DPoint; ADistance: Double; out AX, AY, ATangentAngle: Double): Boolean;
 procedure EllipticalArcToBezier(Xc, Yc, Rx, Ry, startAngle, endAngle: Double; var P1, P2, P3, P4: T3DPoint);
@@ -72,9 +75,14 @@ procedure ConvertPathToPolygons(APath: TPath; ADestX, ADestY: Integer; AMulX, AM
   var PolygonPoints: TPointsArray; var PolygonStartIndexes: TIntegerDynArray);
 procedure ConvertPathToPoints(APath: TPath; ADestX, ADestY: Integer; AMulX, AMulY: Double; var Points: TPointsArray);
 function GetLinePolygonIntersectionPoints(ACoord: Double;
-  const APoints: T2DPointsArray; ACoordIsX: Boolean): T2DPointsArray;
+  const APoints: T2DPointsArray; const APolyStarts: TIntegerDynArray;
+  ACoordIsX: Boolean): T2DPointsArray; overload;
+function GetLinePolygonIntersectionPoints(ACoord: Double;
+  const APoints: T2DPointsArray; ACoordIsX: Boolean): T2DPointsArray; overload;
 function Rotate2DPoint(P, RotCenter: TPoint; alpha:double): TPoint;
 function Rotate3DPointInXY(P, RotCenter: T3DPoint; alpha:double): T3DPoint;
+function SamePoint(P1, P2: T3DPoint; Epsilon: Double = 0.0): Boolean; overload;
+function SamePoint(P1, P2: TPoint): Boolean; overload;
 procedure NormalizeRect(var ARect: TRect);
 // Transformation matrix operations
 // See http://www.useragentman.com/blog/2011/01/07/css3-matrix-transform-for-the-mathematically-challenged/
@@ -99,9 +107,14 @@ procedure FPVUDebugLn(AStr: string);
 function ConvertPathToRegion(APath: TPath; ADestX, ADestY: Integer; AMulX, AMulY: Double): HRGN;
 {$endif}
 
+procedure AddStringToArray(var A: TStringArray; const B: String);
+procedure AddStringsToArray(var A: TStringArray; const B: TStringArray);
+
 var
   FPVUDebugOutCallback: TFPVUDebugOutCallback; // executes DebugLn
   FPVDebugBuffer: string;
+  ScreenDpiX: Integer = 96;
+  ScreenDpiY: Integer = 96;
 
 implementation
 
@@ -163,6 +176,18 @@ begin
         Result := MixColors(c1, c2, AValue - p1, p2 - p1);
         exit;
       end;
+end;
+
+function AlphaBlendColor(AColorBase, AColor: TFPColor): TFPColor;
+var
+  f1, f2: Double;
+begin
+  f1 := 1 - f2;
+  f2 := AColor.Alpha / alphaOpaque;
+  Result.Alpha := Round(AColorBase.Alpha * f1 + AColor.Alpha * f2);
+  Result.Red := Round(AColorBase.Red * f1 + AColor.Red * f2);
+  Result.Green := Round(AColorBase.Green * f1 + AColor.Green * f2);
+  Result.Blue := Round(AColorBase.Blue * f1 + AColor.Blue * f2);
 end;
 
 {@@ Converts the coordinate system from a TCanvas to FPVectorial
@@ -241,6 +266,16 @@ begin
   Result.Y := AY;
 end;
 
+procedure SeparateStringInTwo(AString: string; ASeparator: char; out AStart,
+  AEnd: string);
+var
+  lPosSep: SizeInt;
+begin
+  lPosSep := Pos(ASeparator, AString);
+  AStart := Copy(AString, 0, lPosSep-1);
+  AEnd := Copy(AString, lPosSep+1, Length(AString));
+end;
+
 function Make3DPoint(AX, AY, AZ: Double): T3DPoint;
 begin
   Result.X := AX;
@@ -253,6 +288,12 @@ begin
   Result.X := AX;
   Result.Y := AY;
   Result.Z := 0;
+end;
+
+function IsGradientBrush(ABrush: TvBrush): Boolean;
+begin
+  Result := ABrush.Kind in [bkHorizontalGradient, bkVerticalGradient,
+    bkOtherLinearGradient, bkRadialGradient];
 end;
 
 { Considering a counter-clockwise arc, elliptical and alligned to the axises
@@ -526,7 +567,7 @@ begin
   // Rotate ellipse back to align its major axis with the x axis
   P := Rotate3dPointInXY(Make3dPoint(x-cx, y-cy, 0), Make3dPoint(0, 0, 0), phi);
   // Correctly speaking, above line should use -phi, instead of phi. But
-  // Make3DPointInXY seems to define the angle in the opposite way.
+  // Rotate3DPointInXY seems to define the angle in the opposite way.
   Result := arctan2(P.Y/ry, P.X/rx);
   if Result < 0 then Result := TWO_PI + Result;
 end;
@@ -599,39 +640,39 @@ begin
 
     case curSegment.SegmentType of
       stMoveTo:
-        begin
-          // Store current length of points array as polygon start index
-          if numPolygons >= Length(PolygonStartIndexes) then
-            SetLength(PolygonstartIndexes, Length(PolygonStartIndexes) + POINT_BUFFER);
-          PolygonStartIndexes[numPolygons] := numPoints;
-          inc(numPolygons);
+      begin
+        // Store current length of points array as polygon start index
+        if numPolygons >= Length(PolygonStartIndexes) then
+          SetLength(PolygonstartIndexes, Length(PolygonStartIndexes) + POINT_BUFFER);
+        PolygonStartIndexes[numPolygons] := numPoints;
+        inc(numPolygons);
 
-          // Store current point as first point of a new polygon
-          coordX := CoordToCanvasX(cur2DSegment.X, ADestX, AMulX);
-          coordY := CoordToCanvasY(cur2DSegment.Y, ADestY, AMulY);
-          if numPoints >= Length(PolygonPoints) then
-            SetLength(PolygonPoints, Length(PolygonPoints) + POINT_BUFFER);
-          PolygonPoints[numPoints] := Point(coordX, coordY);
-          inc(numPoints);
-        end;
+        // Store current point as first point of a new polygon
+        coordX := CoordToCanvasX(cur2DSegment.X, ADestX, AMulX);
+        coordY := CoordToCanvasY(cur2DSegment.Y, ADestY, AMulY);
+        if numPoints >= Length(PolygonPoints) then
+          SetLength(PolygonPoints, Length(PolygonPoints) + POINT_BUFFER);
+        PolygonPoints[numPoints] := Point(coordX, coordY);
+        inc(numPoints);
+      end;
 
       st2DLine, st3DLine, st2DLineWithPen:
-        begin
-          // Add current point to current polygon
-          coordX := CoordToCanvasX(cur2DSegment.X, ADestX, AMulX);
-          coordY := CoordToCanvasY(cur2DSegment.Y, ADestY, AMulY);
-          if numPoints >= Length(PolygonPoints) then
-            SetLength(PolygonPoints, Length(PolygonPoints) + POINT_BUFFER);
-          PolygonPoints[numPoints] := Point(coordX, coordY);
-          inc(numPoints);
-        end;
+      begin
+        // Add current point to current polygon
+        coordX := CoordToCanvasX(cur2DSegment.X, ADestX, AMulX);
+        coordY := CoordToCanvasY(cur2DSegment.Y, ADestY, AMulY);
+        if numPoints >= Length(PolygonPoints) then
+          SetLength(PolygonPoints, Length(PolygonPoints) + POINT_BUFFER);
+        PolygonPoints[numPoints] := Point(coordX, coordY);
+        inc(numPoints);
+      end;
 
       st2DBezier, st3DBezier, st2DEllipticalArc:
-        begin
-          SetLength(PolygonPoints, numPoints);
-          curSegment.AddToPoints(ADestX, ADestY, AMulX, AMulY, PolygonPoints);
-          numPoints := Length(PolygonPoints);
-        end;
+      begin
+        SetLength(PolygonPoints, numPoints);
+        curSegment.AddToPoints(ADestX, ADestY, AMulX, AMulY, PolygonPoints);
+        numPoints := Length(PolygonPoints);
+      end;
     end;
   end;
   SetLength(PolygonPoints, numPoints);
@@ -696,15 +737,27 @@ begin
   Result := CompareValue(val1^, val2^);
 end;
 
+function GetLinePolygonIntersectionPoints(ACoord: Double;
+  const APoints: T2DPointsArray; ACoordIsX: Boolean): T2DPointsArray;
+var
+  polystarts: TIntegerDynArray;
+begin
+  SetLength(polystarts, 1);
+  polystarts[0] := 0;
+  Result := GetLinePolygonIntersectionPoints(ACoord, APoints, ACoordIsX);
+end;
+
 {@@ Calculates the intersection points of a vertical (ACoordIsX = true) or
     horizontal (ACoordIsX = false) line with border of the polygon specified
     by APoints. Returns the coordinates of the intersection points }
 function GetLinePolygonIntersectionPoints(ACoord: Double;
-  const APoints: T2DPointsArray; ACoordIsX: Boolean): T2DPointsArray;
+  const APoints: T2DPointsArray; const APolyStarts: TIntegerDynArray;
+  ACoordIsX: Boolean): T2DPointsArray;
 const
   EPS = 1e-9;
 var
-  j: Integer;
+  j, p: Integer;
+  firstj,lastj: Integer;
   dx, dy: Double;
   xval, yval: Double;
   val: ^Double;
@@ -713,41 +766,73 @@ begin
   list := TFPList.Create;
   if ACoordIsX then
   begin
-    for j:=0 to High(APoints) - 1 do
+    for p := 0 to High(APolyStarts) do
     begin
-      if ((APoints[j].X <= ACoord) and (ACoord < APoints[j+1].X)) or
-         ((APoints[j+1].X <= ACoord) and (ACoord < APoints[j].X)) then
-      begin
-        dx := APoints[j+1].X - APoints[j].X;   // can't be zero here
-        dy := APoints[j+1].Y - APoints[j].Y;
-        New(val);
-        val^ := APoints[j].Y + (ACoord - APoints[j].X) * dy / dx;
-        list.Add(val);
+      firstj := APolyStarts[p];
+      lastj := IfThen(p = High(APolyStarts), High(APoints), APolyStarts[p+1]-1);
+      // Skip non-closed polygons
+      if (APoints[firstj].X <> APoints[lastj].x) or (APoints[lastj].Y <> APoints[lastj].Y) then
+        continue;
+      for j := firstj to lastj-1 do
+        if ((APoints[j].X <= ACoord) and (ACoord < APoints[j+1].X)) or
+           ((APoints[j+1].X <= ACoord) and (ACoord < APoints[j].X)) then
+        begin
+          dx := APoints[j+1].X - APoints[j].X;   // can't be zero here
+          dy := APoints[j+1].Y - APoints[j].Y;
+          New(val);
+          val^ := APoints[j].Y + (ACoord - APoints[j].X) * dy / dx;
+          list.Add(val);
+        end;
       end;
-    end;
   end else
   begin
-    for j:=0 to High(APoints) - 1 do
-      if ((APoints[j].Y <= ACoord) and (ACoord < APoints[j+1].Y)) or
-         ((APoints[j+1].Y <= ACoord) and (ACoord < APoints[j].Y)) then
-      begin
-        dy := APoints[j+1].Y - APoints[j].Y;     // can't be zero here
-        dx := APoints[j+1].X - APoints[j].X;
-        New(val);
-        val^ := APoints[j].X + (ACoord - APoints[j].Y) * dx / dy;
-        list.Add(val);
-      end;
+    for p := 0 to High(APolyStarts) do begin
+      firstj := APolyStarts[p];
+      lastj := IfThen(p = High(APolyStarts), High(APoints), APolyStarts[p+1]-1);
+      // Skip non-closed polygons
+      if (APoints[firstj].X <> APoints[lastj].x) or (APoints[lastj].Y <> APoints[lastj].Y) then
+        continue;
+      for j := firstj to lastj-1 do
+        if ((APoints[j].Y <= ACoord) and (ACoord < APoints[j+1].Y)) or
+           ((APoints[j+1].Y <= ACoord) and (ACoord < APoints[j].Y)) then
+        begin
+          dy := APoints[j+1].Y - APoints[j].Y;     // can't be zero here
+          dx := APoints[j+1].X - APoints[j].X;
+          New(val);
+          val^ := APoints[j].X + (ACoord - APoints[j].Y) * dx / dy;
+          list.Add(val);
+        end;
+    end;
   end;
 
   // Sort intersection coordinates in ascending order
   list.Sort(@CompareDbl);
-  SetLength(Result, list.Count);
-  if ACoordIsX then
-    for j:=0 to list.Count-1 do
-      Result[j] := Point2D(ACoord, Double(list[j]^))
-  else
-    for j:=0 to list.Count-1 do
-      Result[j] := Point2D(Double(list[j]^), ACoord);
+
+  // When scanning across an non-contiguous polygon the scan may produce an
+  // odd number of points where the scan finds irregular points due to interaction
+  // with the other polygon curves. I don't have a general solution, only for
+  // the case of 3 points.
+  (*
+  if list.Count = 3 then begin // this can't be --> use ony outer points
+    SetLength(Result, 2);
+    if ACoordIsX then begin
+      Result[0] := Point2D(ACoord, Double(list[0]^));
+      Result[1] := Point2D(ACoord, Double(list[2]^));
+    end else begin
+      Result[0] := Point2D(Double(list[0]^), ACoord);
+      Result[1] := Point2D(Double(list[2]^), ACoord);
+    end;
+  end else
+  *)
+  begin    // regular case
+    SetLength(Result, list.Count);
+    if ACoordIsX then
+      for j:=0 to list.Count-1 do
+        Result[j] := Point2D(ACoord, Double(list[j]^))
+    else
+      for j:=0 to list.Count-1 do
+        Result[j] := Point2D(Double(list[j]^), ACoord);
+  end;
 
   // Clean-up
   for j:=list.Count-1 downto 0 do
@@ -784,6 +869,18 @@ begin
   result.x := Round( p.x*cosinus + p.y*sinus)   +  RotCenter.x;
   result.y := Round(-p.x*sinus   + p.y*cosinus) +  RotCenter.y;
   result.z := P.z;
+end;
+
+function SamePoint(P1, P2: TPoint): Boolean;
+begin
+  Result := (P1.X = P2.X) and (P1.Y = P2.Y);
+end;
+
+function SamePoint(P1, P2: T3DPoint; Epsilon: Double = 0.0): Boolean;
+begin
+  Result := SameValue(P1.X, P2.X, Epsilon) and
+            SameValue(P1.Y, P2.Y, Epsilon) and
+            SameValue(P1.Z, P2.Z, Epsilon);
 end;
 
 procedure NormalizeRect(var ARect: TRect);
@@ -1097,6 +1194,22 @@ begin
   Result := LCLIntf.CreatePolygonRgn(@Points[0], Length(Points), WindingMode);
 end;
 {$endif}
+
+procedure AddStringToArray(var A: TStringArray; const B: String);
+begin
+  SetLength(A, Length(A) + 1);
+  A[High(A)] := B;
+end;
+
+procedure AddStringsToArray(var A: TStringArray; const B: TStringArray);
+var
+  n, i: Integer;
+begin
+  n := Length(A);
+  SetLength(A, n + Length(B));
+  for i:=0 to High(B) do
+    A[i + n] := B[i];
+end;
 
 end.
 

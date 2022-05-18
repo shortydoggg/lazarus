@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="9"/>
+    <Version Value="11"/>
     <General>
       <Flags>
         <SaveOnlyProjectUnits Value="True"/>
@@ -11,7 +11,6 @@
       <Title Value="JSON Data viewer"/>
       <ResourceType Value="res"/>
       <UseXPManifest Value="True"/>
-      <Icon Value="0"/>
     </General>
     <i18n>
       <EnableI18N Value="True"/>
@@ -20,7 +19,6 @@
     <VersionInfo>
       <Language Value=""/>
       <CharSet Value=""/>
-      <StringTable ProductVersion=""/>
     </VersionInfo>
     <BuildModes Count="1">
       <Item1 Name="default" Default="True"/>
@@ -32,21 +30,23 @@
       <ExcludeFileFilter Value="*.(bak|ppu|ppw|o|so);*~;backup"/>
     </PublishOptions>
     <RunParams>
-      <local>
-        <FormatVersion Value="1"/>
-        <LaunchingApplication PathPlusParams="/usr/bin/xterm -T 'Lazarus Run Output' -e $(LazarusDir)/tools/runwait.sh $(TargetCmdLine)"/>
-      </local>
+      <FormatVersion Value="2"/>
+      <Modes Count="1">
+        <Mode0 Name="default"/>
+      </Modes>
     </RunParams>
-    <RequiredPackages Count="1">
+    <RequiredPackages Count="2">
       <Item1>
-        <PackageName Value="LCL"/>
+        <PackageName Value="SynEdit"/>
       </Item1>
+      <Item2>
+        <PackageName Value="LCL"/>
+      </Item2>
     </RequiredPackages>
-    <Units Count="6">
+    <Units Count="11">
       <Unit0>
         <Filename Value="jsonviewer.lpr"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="jsonviewer"/>
       </Unit0>
       <Unit1>
         <Filename Value="frmmain.pp"/>
@@ -54,12 +54,12 @@
         <ComponentName Value="MainForm"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-        <UnitName Value="frmmain"/>
       </Unit1>
       <Unit2>
         <Filename Value="frmnewboolean.pp"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="NewBooleanForm"/>
+        <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="frmNewBoolean"/>
       </Unit2>
@@ -67,21 +67,54 @@
         <Filename Value="frmnewinteger.pp"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="NewNumberForm"/>
+        <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-        <UnitName Value="frmnewinteger"/>
       </Unit3>
       <Unit4>
         <Filename Value="frmnewstring.pp"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="NewStringForm"/>
+        <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-        <UnitName Value="frmnewstring"/>
       </Unit4>
       <Unit5>
         <Filename Value="msgjsonviewer.pp"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="msgjsonviewer"/>
       </Unit5>
+      <Unit6>
+        <Filename Value="frmcreatecode.pp"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="CreateCodeForm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit6>
+      <Unit7>
+        <Filename Value="frarest.pp"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="RestFrame"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Frame"/>
+      </Unit7>
+      <Unit8>
+        <Filename Value="frmheader.pp"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="HeaderForm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit8>
+      <Unit9>
+        <Filename Value="frmauthentication.pp"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="AuthenticationForm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="frmaddtofavourite.pp"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="SaveRequestDataForm"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit10>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -89,17 +122,6 @@
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
     </SearchPaths>
-    <Parsing>
-      <SyntaxOptions>
-        <UseAnsiStrings Value="False"/>
-      </SyntaxOptions>
-    </Parsing>
-    <Other>
-      <CompilerMessages>
-        <UseMsgFile Value="True"/>
-      </CompilerMessages>
-      <CompilerPath Value="$(CompPath)"/>
-    </Other>
   </CompilerOptions>
   <Debugging>
     <Exceptions Count="3">

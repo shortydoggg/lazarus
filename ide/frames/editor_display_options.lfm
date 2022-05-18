@@ -2,9 +2,9 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
   Left = 0
   Height = 455
   Top = 0
-  Width = 501
+  Width = 588
   ClientHeight = 455
-  ClientWidth = 501
+  ClientWidth = 588
   TabOrder = 0
   Visible = False
   DesignLeft = 176
@@ -12,24 +12,24 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
   object MarginAndGutterGroupBox: TGroupBox
     AnchorSideRight.Side = asrBottom
     Left = 0
-    Height = 149
+    Height = 151
     Top = 0
-    Width = 501
+    Width = 588
     Align = alTop
     AutoSize = True
     Caption = 'MarginAndGutterGroupBox'
     ClientHeight = 131
-    ClientWidth = 497
+    ClientWidth = 584
     TabOrder = 0
     object RightMarginLabel: TLabel
       AnchorSideLeft.Control = RightMarginComboBox
       AnchorSideLeft.Side = asrBottom
       AnchorSideTop.Control = RightMarginComboBox
       AnchorSideTop.Side = asrCenter
-      Left = 296
-      Height = 16
-      Top = 9
-      Width = 95
+      Left = 310
+      Height = 15
+      Top = 10
+      Width = 94
       BorderSpacing.Left = 6
       Caption = 'RightMarginLabel'
       ParentColor = False
@@ -40,22 +40,24 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideTop.Control = ShowOnlyLineNumbersMultiplesOfSpinEdit
       AnchorSideTop.Side = asrCenter
       Left = 294
-      Height = 16
-      Top = 67
-      Width = 122
+      Height = 15
+      Top = 68
+      Width = 121
       BorderSpacing.Left = 6
       BorderSpacing.Top = 6
       Caption = 'Every n-th line number'
       ParentColor = False
     end
     object GutterSeparatorIndexLabel: TLabel
-      AnchorSideLeft.Control = RightMarginLabel
+      AnchorSideLeft.Control = GutterSeparatorIndexSpinBox
+      AnchorSideLeft.Side = asrBottom
       AnchorSideTop.Control = GutterSeparatorIndexSpinBox
       AnchorSideTop.Side = asrCenter
       Left = 296
-      Height = 16
-      Top = 38
-      Width = 140
+      Height = 15
+      Top = 39
+      Width = 139
+      BorderSpacing.Left = 6
       Caption = 'GutterSeparatorIndexLabel'
       ParentColor = False
     end
@@ -65,10 +67,10 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideTop.Control = RightMarginLabel
       AnchorSideTop.Side = asrCenter
       Cursor = crHandPoint
-      Left = 397
-      Height = 16
-      Top = 9
-      Width = 118
+      Left = 410
+      Height = 15
+      Top = 10
+      Width = 117
       BorderSpacing.Left = 6
       Caption = 'RightMarginColorLink'
       Font.Color = clBlue
@@ -124,7 +126,7 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       Left = 234
       Height = 23
       Top = 6
-      Width = 56
+      Width = 70
       BorderSpacing.Left = 50
       BorderSpacing.Around = 6
       ItemHeight = 15
@@ -194,15 +196,15 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
   object EditorFontGroupBox: TGroupBox
     AnchorSideRight.Side = asrBottom
     Left = 0
-    Height = 111
-    Top = 155
-    Width = 501
+    Height = 113
+    Top = 157
+    Width = 588
     Align = alTop
     AutoSize = True
     BorderSpacing.Top = 6
     Caption = 'EditorFontGroupBox'
     ClientHeight = 93
-    ClientWidth = 497
+    ClientWidth = 584
     TabOrder = 1
     object EditorFontSizeLabel: TLabel
       AnchorSideLeft.Control = EditorFontSizeSpinEdit
@@ -210,9 +212,9 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideTop.Control = EditorFontSizeSpinEdit
       AnchorSideTop.Side = asrCenter
       Left = 62
-      Height = 16
-      Top = 38
-      Width = 104
+      Height = 15
+      Top = 39
+      Width = 103
       BorderSpacing.Around = 6
       Caption = 'EditorFontSizeLabel'
       ParentColor = False
@@ -222,10 +224,10 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideLeft.Side = asrBottom
       AnchorSideTop.Control = ExtraLineSpacingComboBox
       AnchorSideTop.Side = asrCenter
-      Left = 298
-      Height = 16
-      Top = 38
-      Width = 118
+      Left = 297
+      Height = 15
+      Top = 39
+      Width = 117
       BorderSpacing.Around = 6
       Caption = 'ExtraLineSpacingLabel'
       ParentColor = False
@@ -235,10 +237,10 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideLeft.Side = asrBottom
       AnchorSideTop.Control = ExtraCharSpacingComboBox
       AnchorSideTop.Side = asrCenter
-      Left = 298
-      Height = 16
-      Top = 67
-      Width = 121
+      Left = 297
+      Height = 15
+      Top = 68
+      Width = 120
       BorderSpacing.Around = 6
       Caption = 'ExtraCharSpacingLabel'
       ParentColor = False
@@ -250,7 +252,7 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       Left = 6
       Height = 23
       Top = 6
-      Width = 460
+      Width = 549
       Anchors = [akTop, akLeft, akRight]
       BorderSpacing.Left = 6
       BorderSpacing.Top = 6
@@ -265,10 +267,10 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideRight.Side = asrBottom
       AnchorSideBottom.Control = EditorFontComboBox
       AnchorSideBottom.Side = asrBottom
-      Left = 466
+      Left = 555
       Height = 23
       Top = 6
-      Width = 25
+      Width = 23
       Anchors = [akTop, akRight, akBottom]
       BorderSpacing.Right = 6
       Caption = '...'
@@ -284,6 +286,7 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       Top = 35
       Width = 50
       BorderSpacing.Around = 6
+      MinValue = -100
       OnChange = EditorFontSizeSpinEditChange
       TabOrder = 2
     end
@@ -292,7 +295,7 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideLeft.Side = asrBottom
       AnchorSideTop.Control = EditorFontComboBox
       AnchorSideTop.Side = asrBottom
-      Left = 192
+      Left = 191
       Height = 23
       Top = 35
       Width = 100
@@ -313,7 +316,7 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideLeft.Control = ExtraLineSpacingComboBox
       AnchorSideTop.Control = ExtraLineSpacingComboBox
       AnchorSideTop.Side = asrBottom
-      Left = 192
+      Left = 191
       Height = 23
       Top = 64
       Width = 100
@@ -334,10 +337,9 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       AnchorSideTop.Control = EditorFontSizeSpinEdit
       AnchorSideTop.Side = asrBottom
       Left = 6
-      Height = 23
+      Height = 19
       Top = 64
       Width = 172
-      Anchors = [akTop, akLeft, akBottom]
       BorderSpacing.Around = 6
       Caption = 'DisableAntialiasingCheckBox'
       OnChange = GeneralCheckBoxOnChange
@@ -348,9 +350,9 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
     AnchorSideRight.Side = asrBottom
     AnchorSideBottom.Side = asrBottom
     Left = 0
-    Height = 183
-    Top = 272
-    Width = 501
+    Height = 179
+    Top = 276
+    Width = 588
     Align = alClient
     BorderSpacing.Top = 6
     Font.Height = -16
@@ -758,6 +760,7 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
         ShiftMask = [ssShift, ssAlt, ssCtrl]
         Command = emcMouseLink
       end>
+    MouseTextActions = <>
     MouseSelActions = <    
       item
         ClickDir = cdDown
@@ -768,6 +771,13 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
     )
     VisibleSpecialChars = [vscSpace, vscTabAtLast]
     ReadOnly = True
+    SelectedColor.BackPriority = 50
+    SelectedColor.ForePriority = 50
+    SelectedColor.FramePriority = 50
+    SelectedColor.BoldPriority = 50
+    SelectedColor.ItalicPriority = 50
+    SelectedColor.UnderlinePriority = 50
+    SelectedColor.StrikeOutPriority = 50
     BracketHighlightStyle = sbhsBoth
     BracketMatchColor.Background = clNone
     BracketMatchColor.Foreground = clNone
@@ -803,6 +813,8 @@ object EditorDisplayOptionsFrame: TEditorDisplayOptionsFrame
       object TSynGutterSeparator
         Width = 2
         MouseActions = <>
+        MarkupInfo.Background = clWhite
+        MarkupInfo.Foreground = clGray
       end
       object TSynGutterCodeFolding
         MouseActions = <        

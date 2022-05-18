@@ -1,5 +1,5 @@
 {%MainUnit Gtk2Extra.pp}
-{ $Id: gtk2extrah.inc 52174 2016-04-11 22:22:13Z maxim $ }
+{ $Id: gtk2extrah.inc 58987 2018-09-14 08:45:30Z juha $ }
 {
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -127,6 +127,8 @@ function pango_attr_gravity_new(gravity: TPangoGravity): PPangoAttribute; cdecl;
 
 function pango_version_check(required_major, required_minor, required_micro: integer): PChar; cdecl; external pangolib;
 
+procedure pango_extents_to_pixels(inclusive: PPangoRectangle; nearest: PPangoRectangle); cdecl; external pangolib;
+
 {$IF FPC_FULLVERSION<20501}
 function pango_font_family_is_monospace(family:PPangoFontFamily):gboolean; cdecl; external pangolib;
 {$ENDIF}
@@ -177,39 +179,6 @@ procedure gtk_file_chooser_set_show_hidden(chooser: PGtkFileChooser; show_hidden
 procedure gtk_im_context_get_preedit_string_laz(context:PGtkIMContext; str:PPgchar; attrs:PPPangoAttrList; cursor_pos:Pgint); cdecl; external gtklib name 'gtk_im_context_get_preedit_string';
 
 // - - - - - - - - - gdk extras - - - - - - - - -
-
-// ----------------- this gdk symbols can be removed after fpc 2.2.4
-{$IF FPC_FULLVERSION<20600}
-type
-  PGdkPangoRenderer = pointer;
-// gdk 2.2
-function gdk_event_new(_type: TGdkEventType): PGdkEvent; cdecl; external gdklib;
-
-procedure gdk_display_get_pointer(display : PGdkDisplay; screen :PGdkScreen; x :Pgint; y : Pgint; mask : PGdkModifierType); cdecl; external gdklib;
-function gdk_display_get_default:PGdkDisplay; cdecl; external gdklib;
-
-procedure gdk_draw_pixbuf(drawable : PGdkDrawable; gc : PGdkGC; pixbuf : PGdkPixbuf; src_x, src_y, dest_x, dest_y, width, height : gint;
-                                             dither : TGdkRgbDither; x_dither, y_dither : gint); cdecl; external gdklib;
-function gdk_screen_get_default: PGdkScreen; cdecl; external gdklib;
-function gdk_screen_get_rgb_colormap(screen: PGdkScreen): PGdkColormap; cdecl; external gdklib;
-function gdk_x11_get_default_xdisplay: pointer; cdecl; external gdklib;
-function gdk_x11_get_default_root_xwindow: guint; cdecl; external gdklib;
-
-// gdk 2.4
-function gdk_cursor_new_from_pixbuf(display: PGdkDisplay; pixbuf: PGdkPixbuf; x, y: gint): PGdkCursor; cdecl; external gdklib name 'gdk_cursor_new_from_pixbuf';
-function gdk_display_get_default_cursor_size(display: PGdkDisplay): guint; cdecl; external gdklib;
-procedure gdk_display_get_maximal_cursor_size(display: PGdkDisplay; w, h: pguint); cdecl; external gdklib;
-
-// gdk 2.6
-function gdk_pango_renderer_get_default(screen: PGdkScreen): PPangoRenderer; cdecl; external gdklib;
-procedure gdk_pango_renderer_set_drawable(gdk_renderer: PGdkPangoRenderer; drawable: PGdkDrawable); cdecl; external gdklib;
-procedure gdk_pango_renderer_set_gc(gdk_renderer: PGdkPangoRenderer; gc: PGdkGC); cdecl; external gdklib;
-procedure gdk_pango_renderer_set_override_color(gdk_renderer: PGdkPangoRenderer; part: TPangoRenderPart; color: PGdkColor); cdecl; external gdklib;
-// ------------------end of symbold to remove --------------------------
-
-// gdk-pixbuf 2.6
-function gdk_pixbuf_flip(src: PGdkPixbuf; horizontal: gboolean): PGdkPixbuf; cdecl; external gdkpixbuflib;
-{$ENDIF}
 
 {$ifdef GTK_2_8}
 // gdk 2.8
@@ -341,6 +310,8 @@ var
   gtk_window_set_opacity: procedure(window: PGtkWindow; opacity: gdouble); cdecl;
   g_object_ref_sink: function(anObject: PGObject): gpointer; cdecl;
   gdk_window_get_cursor: function(window: PGdkWindow): PGdkCursor; cdecl;
+  // since 2.20
+  gdk_screen_get_primary_monitor: function(screen: PGdkScreen): gint; cdecl;
 
   // since 2.10
   gtk_tree_view_set_grid_lines: procedure(tree_view: PGtkTreeView; grid_lines: TGtkTreeViewGridLines); cdecl;

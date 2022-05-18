@@ -1,11 +1,11 @@
-{ $Id: processdebugger.pp 50616 2015-12-04 17:36:32Z mattias $ }
+{ $Id: processdebugger.pp 61614 2019-07-22 10:41:53Z martin $ }
 {      ------------------------------------------------  
        ProcessDebugger.pp  -  Debugger class which only
                               executes a target 
        ------------------------------------------------ 
  
  @created(Sun Nov 27st WET 2005)
- @lastmod($Date: 2015-12-04 18:36:32 +0100 (Fr, 04 Dez 2015) $)
+ @lastmod($Date: 2019-07-22 12:41:53 +0200 (Mo, 22 Jul 2019) $)
  @author(Marc Weustink <marc@@dommelstein.net>)                       
 
  This unit contains the process debugger class. It simply creates a process.
@@ -26,7 +26,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -54,11 +54,11 @@ type
     function  ProcessStop: Boolean;
   protected
     function  GetSupportedCommands: TDBGCommands; override;
-    function  RequestCommand(const ACommand: TDBGCommand; const AParams: array of const): Boolean; override;
+    function  RequestCommand(const ACommand: TDBGCommand; const AParams: array of const;
+      const {%H-}ACallback: TMethod): Boolean; override;
   public
     class function Caption: String; override;
     class function NeedsExePath: boolean; override;
-    class function CanExternalDebugSymbolsFile: boolean; override;
   published
   end;
 
@@ -91,8 +91,14 @@ end;
 procedure TProcessDebugger.ProcessDestroyed(Sender: TObject);
 begin
   FProcess := nil;
-  if State <> dsIdle then
-    SetState(dsStop);
+
+  LockRelease;
+  try
+    if State <> dsIdle then
+      SetState(dsStop);
+  finally
+    UnlockRelease;
+  end;
 end;
 
 function TProcessDebugger.ProcessEnvironment(const AVariable: String; const ASet: Boolean): Boolean;
@@ -155,7 +161,8 @@ begin
   Result := [dcRun, dcStop, dcEnvironment]
 end;
 
-function TProcessDebugger.RequestCommand(const ACommand: TDBGCommand; const AParams: array of const): Boolean;
+function TProcessDebugger.RequestCommand(const ACommand: TDBGCommand;
+  const AParams: array of const; const ACallback: TMethod): Boolean;
 begin
   case ACommand of
     dcRun:         Result := ProcessRun;
@@ -173,11 +180,6 @@ end;
 class function TProcessDebugger.NeedsExePath: boolean;
 begin
   Result := false; // no need to have a valid exe path for the process debugger
-end;
-
-class function TProcessDebugger.CanExternalDebugSymbolsFile: boolean;
-begin
-  Result := true; // Yeah, why not.
 end;
 
 initialization

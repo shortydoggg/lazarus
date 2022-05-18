@@ -1,11 +1,12 @@
+# Valdas Jankunas <zmuogs@gmail.com>, 2017.
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"PO-Revision-Date: 2012-08-07 00:34+0300\n"
+"PO-Revision-Date: 2017-07-07 22:36+0200\n"
 "Project-Id-Version: lclstrconsts\n"
 "Language-Team: Lithuanian <kde-i18n-lt@kde.org>\n"
-"X-Generator: Lokalize 1.5\n"
+"X-Generator: Lokalize 2.0\n"
 "MIME-Version: 1.0\n"
 "Last-Translator: Valdas Jankunas <zmuogs@gmail.com>\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
@@ -13,22 +14,16 @@ msgstr ""
 "Language: lt\n"
 
 #: lclstrconsts.hhshelpbrowsernotexecutable
-#, fuzzy,badformat
-#| msgid "Browser %s%s%s not executable."
 msgid "Browser \"%s\" not executable."
-msgstr "Naršyklė %s%s%s nėra vykdomasis failas."
+msgstr "Naršyklė „%s“ nėra vykdomasis failas."
 
 #: lclstrconsts.hhshelpbrowsernotfound
-#, fuzzy,badformat
-#| msgid "Browser %s%s%s not found."
 msgid "Browser \"%s\" not found."
-msgstr "Naršyklė %s%s%s nerasta."
+msgstr "Naršyklė „%s“ nerasta."
 
 #: lclstrconsts.hhshelperrorwhileexecuting
-#, fuzzy,badformat
-#| msgid "Error while executing %s%s%s:%s%s"
 msgid "Error while executing \"%s\":%s%s"
-msgstr "Įvyko klaida vykdant %s%s%s:%s%s"
+msgstr "Įvyko klaida vykdant „%s“:%s%s"
 
 #: lclstrconsts.hhshelpnohtmlbrowserfound
 msgid "Unable to find a HTML browser."
@@ -39,10 +34,8 @@ msgid "No HTML Browser found.%sPlease define one in Tools -> Options -> Help -> 
 msgstr "Nerasta HTML Naršyklė.%sJą galima nustatyti „Aplinka -> Aplinkos parinktys -> Žinynas -> Žinyno parinktys“"
 
 #: lclstrconsts.hhshelpthehelpdatabasewasunabletofindfile
-#, fuzzy,badformat
-#| msgid "The help database %s%s%s was unable to find file %s%s%s."
 msgid "The help database \"%s\" was unable to find file \"%s\"."
-msgstr "Žinyno duomenų bazė %s%s%s nerado failo %s%s%s."
+msgstr "Žinyno duomenų bazė „%s“ nerado failo „%s“."
 
 #: lclstrconsts.hhshelpthemacrosinbrowserparamswillbereplacedbytheurl
 msgid "The macro %s in BrowserParams will be replaced by the URL."
@@ -56,210 +49,30 @@ msgstr "Alt"
 msgid "Ctrl"
 msgstr "Vald"
 
-#: lclstrconsts.ifsvk_accept
-msgid "Accept"
-msgstr "Priimti"
-
-#: lclstrconsts.ifsvk_apps
-msgid "application key"
-msgstr "Programos klavišas"
-
-#: lclstrconsts.ifsvk_back
-msgid "Backspace"
-msgstr "Naikinimo klavišas"
-
-#: lclstrconsts.ifsvk_cancel
-msgctxt "lclstrconsts.ifsvk_cancel"
-msgid "Cancel"
-msgstr "Atsisakyti"
-
-#: lclstrconsts.ifsvk_capital
-msgid "Capital"
-msgstr "Didž"
-
-#: lclstrconsts.ifsvk_clear
-msgid "Clear"
-msgstr "Išvalyti"
-
 #: lclstrconsts.ifsvk_cmd
 msgid "Cmd"
 msgstr "Cmd"
 
-#: lclstrconsts.ifsvk_control
-msgid "Control"
-msgstr "Vald"
-
-#: lclstrconsts.ifsvk_convert
-msgid "Convert"
-msgstr "Paversti"
-
-#: lclstrconsts.ifsvk_delete
-msgctxt "lclstrconsts.ifsvk_delete"
-msgid "Delete"
-msgstr "Šalinti"
-
-#: lclstrconsts.ifsvk_down
-msgctxt "lclstrconsts.ifsvk_down"
-msgid "Down"
-msgstr "Žemyn"
-
-#: lclstrconsts.ifsvk_end
-msgctxt "lclstrconsts.ifsvk_end"
-msgid "End"
-msgstr "Pabaiga"
-
-#: lclstrconsts.ifsvk_escape
-msgid "Escape"
-msgstr "Grįžimas"
-
-#: lclstrconsts.ifsvk_execute
-msgid "Execute"
-msgstr "Vykdyti"
-
-#: lclstrconsts.ifsvk_final
-msgid "Final"
-msgstr "Galutinis"
-
-#: lclstrconsts.ifsvk_hanja
-msgid "Hanja"
-msgstr "Hanja"
-
 #: lclstrconsts.ifsvk_help
+msgctxt "lclstrconsts.ifsvk_help"
 msgid "Help"
 msgstr "Žinynas"
-
-#: lclstrconsts.ifsvk_home
-msgctxt "lclstrconsts.ifsvk_home"
-msgid "Home"
-msgstr "Į pradžią"
-
-#: lclstrconsts.ifsvk_insert
-msgctxt "lclstrconsts.ifsvk_insert"
-msgid "Insert"
-msgstr "Įterpti"
-
-#: lclstrconsts.ifsvk_junja
-msgid "Junja"
-msgstr "Junja"
-
-#: lclstrconsts.ifsvk_kana
-msgid "Kana"
-msgstr "Kana"
-
-#: lclstrconsts.ifsvk_lbutton
-msgid "Mouse Button Left"
-msgstr "Kairys peles klavišas"
-
-#: lclstrconsts.ifsvk_left
-msgctxt "lclstrconsts.ifsvk_left"
-msgid "Left"
-msgstr "Kairėn"
-
-#: lclstrconsts.ifsvk_lwin
-msgid "left windows key"
-msgstr "Kairysis windows klavišas"
-
-#: lclstrconsts.ifsvk_mbutton
-msgid "Mouse Button Middle"
-msgstr "Vidurinis pelės klavišas"
-
-#: lclstrconsts.ifsvk_menu
-msgctxt "lclstrconsts.ifsvk_menu"
-msgid "Menu"
-msgstr "Meniu"
 
 #: lclstrconsts.ifsvk_meta
 msgid "Meta"
 msgstr "Meta"
 
-#: lclstrconsts.ifsvk_modechange
-msgid "Mode Change"
-msgstr "Būsenos keitimas"
-
-#: lclstrconsts.ifsvk_next
-msgctxt "lclstrconsts.ifsvk_next"
-msgid "Next"
-msgstr "Kitas"
-
-#: lclstrconsts.ifsvk_nonconvert
-msgid "Nonconvert"
-msgstr "Nonconvert"
-
-#: lclstrconsts.ifsvk_numlock
-msgid "Numlock"
-msgstr "Skaitm"
-
-#: lclstrconsts.ifsvk_numpad
-msgid "Numpad %d"
-msgstr "%d skaičių klaviatūros"
-
-#: lclstrconsts.ifsvk_pause
-msgid "Pause key"
-msgstr "Pazės klavišas"
-
-#: lclstrconsts.ifsvk_print
-msgid "Print"
-msgstr "Spausdinti"
-
-#: lclstrconsts.ifsvk_prior
-msgctxt "lclstrconsts.ifsvk_prior"
-msgid "Prior"
-msgstr "Ankstesnis"
-
-#: lclstrconsts.ifsvk_rbutton
-msgid "Mouse Button Right"
-msgstr "Dešinys pelės klavišas"
-
-#: lclstrconsts.ifsvk_return
-msgid "Return"
-msgstr "Įvedimas"
-
-#: lclstrconsts.ifsvk_right
-msgctxt "lclstrconsts.ifsvk_right"
-msgid "Right"
-msgstr "Dešinėn"
-
-#: lclstrconsts.ifsvk_rwin
-msgid "right windows key"
-msgstr "Dešinysis windows klavišas"
-
-#: lclstrconsts.ifsvk_scroll
-msgid "Scroll"
-msgstr "Slinkti"
-
-#: lclstrconsts.ifsvk_select
-msgid "Select"
-msgstr "Pasirinkti"
-
 #: lclstrconsts.ifsvk_shift
 msgid "Shift"
 msgstr "Lyg2"
-
-#: lclstrconsts.ifsvk_snapshot
-msgid "Snapshot"
-msgstr "Momentinė kopija"
-
-#: lclstrconsts.ifsvk_space
-msgid "Space key"
-msgstr "Tarpo klavišas"
 
 #: lclstrconsts.ifsvk_super
 msgid "Super"
 msgstr "Super"
 
-#: lclstrconsts.ifsvk_tab
-msgctxt "lclstrconsts.ifsvk_tab"
-msgid "Tab"
-msgstr "Tab"
-
 #: lclstrconsts.ifsvk_unknown
 msgid "Unknown"
 msgstr "Nežinomas"
-
-#: lclstrconsts.ifsvk_up
-msgctxt "lclstrconsts.ifsvk_up"
-msgid "Up"
-msgstr "Aukštyn"
 
 #: lclstrconsts.lislclresourcesnotfound
 msgctxt "lclstrconsts.lislclresourcesnotfound"
@@ -297,6 +110,10 @@ msgstr "Programos darbo laukas"
 #: lclstrconsts.rsaquacolorcaption
 msgid "Aqua"
 msgstr "Žydra"
+
+#: lclstrconsts.rsascannothaveasparent
+msgid "Class %s cannot have %s as parent."
+msgstr "Klasė „%s“ negali turėti „%s“ kaip tėvo."
 
 #: lclstrconsts.rsbackgroundcolorcaption
 msgid "Desktop"
@@ -367,6 +184,10 @@ msgstr "Skirti raidžių lygį"
 msgid "Control of class '%s' can't have control of class '%s' as a child"
 msgstr "„%s“ klasės valdiklis negali būti „%s“ klasės valdiklio tėvas"
 
+#: lclstrconsts.rscontrolhasnoparentformorframe
+msgid "Control '%s' has no parent form or frame"
+msgstr "Valdiklis „%s“ neturi tėvinės formos ar kadro"
+
 #: lclstrconsts.rscontrolhasnoparentwindow
 msgid "Control '%s' has no parent window"
 msgstr "„%s“ valdiklis neturi tėvinio lango"
@@ -378,10 +199,6 @@ msgstr "„%s“ nėra „%s“ tėvas"
 #: lclstrconsts.rscreamcolorcaption
 msgid "Cream"
 msgstr "Kreminė"
-
-#: lclstrconsts.rscreatinggdbcatchableerror
-msgid "Creating gdb catchable error:"
-msgstr "Kuriama GDB aptinkama klaida:"
 
 #: lclstrconsts.rscursor
 msgid "Cursor"
@@ -416,17 +233,13 @@ msgstr "Kryptis"
 msgid "&Directory"
 msgstr "&Aplankas"
 
-#: lclstrconsts.rsdocking
-msgid "Docking"
-msgstr "Pritvirtinimas"
-
 #: lclstrconsts.rsdocopy
 msgid "Copy"
-msgstr ""
+msgstr "Kopijuoti"
 
 #: lclstrconsts.rsdopaste
 msgid "Paste"
-msgstr ""
+msgstr "Įdėti"
 
 #: lclstrconsts.rsduplicateiconformat
 msgid "Duplicate icon format."
@@ -448,10 +261,6 @@ msgstr "Klaida"
 #: lclstrconsts.rserrorcreatingdevicecontext
 msgid "Error creating device context for %s.%s"
 msgstr "Įvyko klaida kuriant įrenginio kontekstą, skirtą %s.%s"
-
-#: lclstrconsts.rserrorinlcl
-msgid "ERROR in LCL: "
-msgstr "LCL klaida:"
 
 #: lclstrconsts.rserroroccurredinataddressframe
 msgid "Error occurred in %s at %sAddress %s%s Frame %s"
@@ -543,16 +352,12 @@ msgid "First"
 msgstr "Pirmasis"
 
 #: lclstrconsts.rsfixedcolstoobig
-#, fuzzy
-#| msgid "FixedCols can't be >= ColCount"
 msgid "FixedCols can't be > ColCount"
-msgstr "„FixedCols“ reikšmė negali būti lygi ar didesnė nei „ColCount“"
+msgstr "Fiksuotų stulpelių negali būti daugiau nei stulpelių skaičius"
 
 #: lclstrconsts.rsfixedrowstoobig
-#, fuzzy
-#| msgid "FixedRows can't be >= RowCount"
 msgid "FixedRows can't be > RowCount"
-msgstr "„FixedRows“ reikšmė negali būti lygi ar didesnė nei „RowCount“"
+msgstr "Fiksuotų eilučių negali būti daugiau nei eilučių skaičius"
 
 #: lclstrconsts.rsformcolorcaption
 msgid "Form"
@@ -616,15 +421,15 @@ msgstr "Žalia"
 
 #: lclstrconsts.rsgridfiledoesnotexist
 msgid "Grid file doesn't exist"
-msgstr ""
+msgstr "Lentelės failas neegzistuoja"
 
 #: lclstrconsts.rsgridhasnocols
 msgid "Cannot insert rows into a grid when it has no columns"
-msgstr ""
+msgstr "Neimanoma lentelėn įterpti eilučių kai ji neturi stulpelių"
 
 #: lclstrconsts.rsgridhasnorows
 msgid "Cannot insert columns into a grid when it has no rows"
-msgstr ""
+msgstr "Neimanoma lentelėn įterpti stulpelių kai ji neturi eilučių"
 
 #: lclstrconsts.rsgridindexoutofrange
 msgid "Grid index out of range."
@@ -678,6 +483,12 @@ msgstr "--no-xshm     Nenaudoti „X Shared Memory“ plėtinio."
 msgid "--sync                Call XSynchronize (display, True) after the Xserver connection has been established. This makes debugging X protocol errors easier, because X request buffering will be disabled and X errors will be received immediately after the protocol request that generated the error has been processed by the X server."
 msgstr "--sync     Kai XServer ryšys sukurtas, vykdyti „XSynchronize (display, True)“. Tai palengvins X protokolo klaidų derinimą, nes bus išjungtas X kreipinių buferis ir X serveriui apdorojant protokolo kreipinį įvykusi klaida bus gauta iškart."
 
+#: lclstrconsts.rshelp
+#, fuzzy
+msgctxt "lclstrconsts.rshelp"
+msgid "Help"
+msgstr "Žinynas"
+
 #: lclstrconsts.rshelpalreadyregistered
 msgid "%s: Already registered"
 msgstr "%s: jau yra registruotas"
@@ -699,52 +510,36 @@ msgid "Help context %s not found."
 msgstr "Žinyno turinys %s nerastas."
 
 #: lclstrconsts.rshelphelpcontextnotfoundindatabase
-#, fuzzy,badformat
-#| msgid "Help context %s not found in Database %s%s%s."
 msgid "Help context %s not found in Database \"%s\"."
-msgstr "Žinyno turinys %s duomenų bazėje %s%s%s nerastas."
+msgstr "Žinyno turinys „%s“ duomenų bazėje „%s“ nerastas."
 
 #: lclstrconsts.rshelphelpdatabasedidnotfoundaviewerforahelppageoftype
-#, fuzzy,badformat
-#| msgid "Help Database \"%s\" did not found a viewer for a help page of type %s"
 msgid "Help Database \"%s\" did not find a viewer for a help page of type %s"
-msgstr "Žinyno duomenų bazė %s%s%s nerado žiūryklės %s tipo žinyno lapui."
+msgstr "Žinyno duomenų bazė „%s“ nerado žiūryklės „%s“ tipo žinyno lapui."
 
 #: lclstrconsts.rshelphelpdatabasenotfound
-#, fuzzy,badformat
-#| msgid "Help Database %s%s%s not found"
 msgid "Help Database \"%s\" not found"
-msgstr "Žinyno duomenų bazė %s%s%s nerasta."
+msgstr "Žinyno duomenų bazė „%s“ nerasta."
 
 #: lclstrconsts.rshelphelpfordirectivenotfound
-#, fuzzy,badformat
-#| msgid "Help for directive %s%s%s not found."
 msgid "Help for directive \"%s\" not found."
-msgstr "Žinyne nėra informacijos apie direktyvą %s%s%s."
+msgstr "Žinyne nėra informacijos apie direktyvą „%s“."
 
 #: lclstrconsts.rshelphelpfordirectivenotfoundindatabase
-#, fuzzy,badformat
-#| msgid "Help for directive %s%s%s not found in Database %s%s%s."
 msgid "Help for directive \"%s\" not found in Database \"%s\"."
-msgstr "Informacijos apie direktyvą %s%s%s duomenų bazėje %s%s%s nerasta."
+msgstr "Informacijos apie direktyvą „%s“ duomenų bazėje „%s“ nerasta."
 
 #: lclstrconsts.rshelphelpkeywordnotfound
-#, fuzzy,badformat
-#| msgid "Help keyword %s%s%s not found."
 msgid "Help keyword \"%s\" not found."
-msgstr "Žinyno raktažodis %s%s%s nerastas."
+msgstr "Žinyno raktažodis „%s“ nerastas."
 
 #: lclstrconsts.rshelphelpkeywordnotfoundindatabase
-#, fuzzy,badformat
-#| msgid "Help keyword %s%s%s not found in Database %s%s%s."
 msgid "Help keyword \"%s\" not found in Database \"%s\"."
-msgstr "Žinyno raktažodis %s%s%s duomenų bazėje %s%s%s nerastas."
+msgstr "Žinyno raktažodis „%s“ duomenų bazėje „%s“ nerastas."
 
 #: lclstrconsts.rshelphelpnodehasnohelpdatabase
-#, fuzzy,badformat
-#| msgid "Help node %s%s%s has no Help Database"
 msgid "Help node \"%s\" has no Help Database"
-msgstr "Žinyno mazgas %s%s%s neturi žinyno duomenų bazės."
+msgstr "Žinyno mazgas „%s“ neturi žinyno duomenų bazės."
 
 #: lclstrconsts.rshelpnohelpfoundforsource
 msgid "No help found for line %d, column %d of %s."
@@ -767,10 +562,8 @@ msgid "Help Selector Error"
 msgstr "Žinyno parinkiklio klaida"
 
 #: lclstrconsts.rshelpthereisnoviewerforhelptype
-#, fuzzy,badformat
-#| msgid "There is no viewer for help type %s%s%s"
 msgid "There is no viewer for help type \"%s\""
-msgstr "Nerasta žiūryklė %s%s%s žinyno tipui."
+msgstr "Nerasta žiūryklė „%s“ žinyno tipui."
 
 #: lclstrconsts.rshelpviewererror
 msgid "Help Viewer Error"
@@ -899,9 +692,25 @@ msgstr "Gelsvai žalsva"
 msgid "List index exceeds bounds (%d)"
 msgstr "Sąrašo indeksas peržengė ribas (%d)"
 
-#: lclstrconsts.rslistmustbeempty
-msgid "List must be empty"
-msgstr "Sąrašas turi būti tuščias"
+#: lclstrconsts.rsmacosmenuhide
+msgid "Hide %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuhideothers
+msgid "Hide Others"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuquit
+msgid "Quit %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuservices
+msgid "Services"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenushowall
+msgid "Show All"
+msgstr ""
 
 #: lclstrconsts.rsmarooncolorcaption
 msgid "Maroon"
@@ -1075,9 +884,9 @@ msgstr "Portable PixMap"
 msgid "Post"
 msgstr "Išsiųsti"
 
-#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpresscanceltok
-msgid "%s%sPress OK to ignore and risk data corruption.%sPress Cancel to kill the program."
-msgstr "%s%sSpauskite „Gerai“ jeigu norite ignoruoti ir rizikuoti sugadinti duomenis.%sSpauskite „Atsisakyti“, kad išjungtumėte programą."
+#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpressaborttok
+msgid "%s%sPress OK to ignore and risk data corruption.%sPress Abort to kill the program."
+msgstr "%s%sSpustelėjus „Tinka“ bus tęsiama, tačiau iškils sugadintų duomenų rizika.%sSpustelėjus „Nutraukti“ programas darbas bus nutrauktas."
 
 #: lclstrconsts.rspriorrecordhint
 msgctxt "lclstrconsts.rspriorrecordhint"
@@ -1257,6 +1066,10 @@ msgstr "Tamsiai žydra"
 msgid "Text"
 msgstr "Tekstas"
 
+#: lclstrconsts.rsthebuiltinurlisreadonlychangethebaseurlinstead
+msgid "The built-in URL is read only. Change the BaseURL instead."
+msgstr ""
+
 #: lclstrconsts.rstiff
 msgid "Tagged Image File Format"
 msgstr "„Tagged Image File Format“"
@@ -1355,6 +1168,10 @@ msgstr "Geltona"
 #: lclstrconsts.scannotfocus
 msgid "Cannot focus a disabled or invisible window"
 msgstr "Negalima sufokusuoti neveiksnaus ar nematomo lango"
+
+#: lclstrconsts.scannotsetdesigntimeppi
+msgid "Cannot set design time PPI."
+msgstr "Nepavyko nustatyti konstravimo rėžimo „PPI“."
 
 #: lclstrconsts.sduplicatemenus
 msgid "Duplicate menus"
@@ -1487,17 +1304,13 @@ msgctxt "lclstrconsts.smkcup"
 msgid "Up"
 msgstr "Aukštyn"
 
-#: lclstrconsts.snomdiform
-msgid "No MDI form present."
-msgstr "MDI formos nėra."
-
 #: lclstrconsts.snotimers
 msgid "No timers available"
 msgstr "Nėra laikmačių"
 
 #: lclstrconsts.sparentrequired
 msgid "Control \"%s\" has no parent window."
-msgstr ""
+msgstr "Valdiklis „\"%s“ neturi tėvinės formos."
 
 #: lclstrconsts.sparexpected
 msgid "Wrong token type: %s expected"
@@ -1533,7 +1346,7 @@ msgstr "Klaidingas leksemos tipas: tikėtasi %s, tačiau rasta %s"
 
 #: lclstrconsts.sshellctrlsbytes
 msgid "%s bytes"
-msgstr ""
+msgstr "%s baitų"
 
 #: lclstrconsts.sshellctrlsinvalidpath
 msgctxt "lclstrconsts.sshellctrlsinvalidpath"
@@ -1541,6 +1354,8 @@ msgid ""
 "Invalid pathname:\n"
 "\"%s\"\n"
 msgstr ""
+"Klaidingas kelio pavadinimas:\n"
+"„%s“\n"
 
 #: lclstrconsts.sshellctrlsinvalidpathrelative
 msgid ""
@@ -1549,6 +1364,10 @@ msgid ""
 "in relation to rootpath:\n"
 "\"%s\"\n"
 msgstr ""
+"Klaidingas snatykinio kelio pavadinimas:\n"
+"„%s“\n"
+"šakninio kelio atžvilgiu:\n"
+"„%s“\n"
 
 #: lclstrconsts.sshellctrlsinvalidroot
 msgctxt "lclstrconsts.sshellctrlsinvalidroot"
@@ -1556,30 +1375,34 @@ msgid ""
 "Invalid pathname:\n"
 "\"%s\"\n"
 msgstr ""
+"Klaidingas kelio pavadinimas:\n"
+"„%s“\n"
 
 #: lclstrconsts.sshellctrlskb
 msgid "%s kB"
-msgstr ""
+msgstr "%s kB"
 
 #: lclstrconsts.sshellctrlsmb
 msgid "%s MB"
-msgstr ""
+msgstr "%s MB"
 
 #: lclstrconsts.sshellctrlsname
 msgid "Name"
-msgstr ""
+msgstr "Pavadinimas"
 
 #: lclstrconsts.sshellctrlsselecteditemdoesnotexists
 msgid ""
 "The selected item does not exist on disk:\n"
 "\"%s\"\n"
 msgstr ""
+"Parinktojo elemento diske nėra;\n"
+"„%s“\n"
 
 #: lclstrconsts.sshellctrlssize
 msgid "Size"
-msgstr ""
+msgstr "Dydis"
 
 #: lclstrconsts.sshellctrlstype
 msgid "Type"
-msgstr ""
+msgstr "Tipas"
 

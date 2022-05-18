@@ -1,17 +1,17 @@
 object EditorMarkupOptionsFrame: TEditorMarkupOptionsFrame
   Left = 0
-  Height = 492
+  Height = 506
   Top = 0
   Width = 634
-  HorzScrollBar.Page = 634
-  VertScrollBar.Page = 492
+  HorzScrollBar.Page = 1
+  VertScrollBar.Page = 1
   AutoScroll = True
-  ClientHeight = 492
+  ClientHeight = 506
   ClientWidth = 634
   TabOrder = 0
   Visible = False
-  DesignLeft = 263
-  DesignTop = 222
+  DesignLeft = 408
+  DesignTop = 211
   object MarkupWordDelayLabel: TLabel
     AnchorSideLeft.Control = Owner
     AnchorSideTop.Control = MarkupWordTimeTrackBar
@@ -142,6 +142,7 @@ object EditorMarkupOptionsFrame: TEditorMarkupOptionsFrame
     Width = 48
     BorderSpacing.Left = 6
     BorderSpacing.Top = 6
+    MaxValue = 300
     TabOrder = 2
   end
   object MarkupWordNoTimerCheckBox: TCheckBox
@@ -208,10 +209,10 @@ object EditorMarkupOptionsFrame: TEditorMarkupOptionsFrame
     AnchorSideTop.Side = asrBottom
     AnchorSideRight.Control = Owner
     AnchorSideRight.Side = asrBottom
-    Left = -721
+    Left = 0
     Height = 15
     Top = 155
-    Width = 1355
+    Width = 634
     Caption = 'divMatchingBrackets'
     Anchors = [akTop, akLeft, akRight]
     Font.Style = [fsBold]
@@ -312,21 +313,122 @@ object EditorMarkupOptionsFrame: TEditorMarkupOptionsFrame
   end
   object chkKWGroups: TCheckListBox
     AnchorSideLeft.Control = Owner
-    AnchorSideTop.Control = divKeyWordGroups
+    AnchorSideTop.Control = LanguageComboBox
     AnchorSideTop.Side = asrBottom
     AnchorSideBottom.Control = Owner
     AnchorSideBottom.Side = asrBottom
     Left = 6
-    Height = 185
-    Top = 301
+    Height = 150
+    Top = 380
     Width = 220
     Anchors = [akTop, akLeft, akBottom]
     BorderSpacing.Around = 6
     Constraints.MinHeight = 150
     ItemHeight = 0
+    OnClick = chkKWGroupsClick
     OnClickCheck = chkKWGroupsClickCheck
     OnExit = chkKWGroupsClickCheck
     OnKeyUp = chkKWGroupsKeyUp
     TabOrder = 8
+  end
+  object LanguageComboBox: TComboBox
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Control = cbMarkupOutline
+    AnchorSideTop.Side = asrBottom
+    Left = 6
+    Height = 23
+    Top = 351
+    Width = 200
+    BorderSpacing.Left = 6
+    BorderSpacing.Top = 6
+    ItemHeight = 15
+    OnChange = LanguageComboBoxChange
+    OnExit = LanguageComboBoxExit
+    OnKeyDown = LanguageComboBoxKeyDown
+    Style = csDropDownList
+    TabOrder = 9
+  end
+  object LanguageLabel: TLabel
+    AnchorSideLeft.Control = LanguageComboBox
+    AnchorSideLeft.Side = asrBottom
+    AnchorSideTop.Control = LanguageComboBox
+    AnchorSideTop.Side = asrCenter
+    Left = 212
+    Height = 15
+    Top = 355
+    Width = 80
+    BorderSpacing.Left = 6
+    Caption = 'LanguageLabel'
+    ParentColor = False
+  end
+  object cbMarkup: TCheckBox
+    AnchorSideLeft.Control = chkKWGroups
+    AnchorSideLeft.Side = asrBottom
+    AnchorSideTop.Control = chkKWGroups
+    Left = 232
+    Height = 19
+    Top = 380
+    Width = 74
+    BorderSpacing.Left = 6
+    Caption = 'cbMarkup'
+    OnChange = cbMarkupChange
+    TabOrder = 10
+  end
+  object cbOutline: TCheckBox
+    AnchorSideLeft.Control = chkKWGroups
+    AnchorSideLeft.Side = asrBottom
+    AnchorSideTop.Control = cbMarkup
+    AnchorSideTop.Side = asrBottom
+    Left = 232
+    Height = 19
+    Top = 405
+    Width = 72
+    BorderSpacing.Left = 6
+    BorderSpacing.Top = 6
+    Caption = 'cbOutline'
+    OnChange = cbMarkupChange
+    TabOrder = 11
+  end
+  object cbMarkupWordBracket: TCheckBox
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Control = divKeyWordGroups
+    AnchorSideTop.Side = asrBottom
+    Left = 6
+    Height = 19
+    Top = 301
+    Width = 142
+    BorderSpacing.Around = 6
+    Caption = 'cbMarkupWordBracket'
+    OnChange = cbMarkupWordBracketChange
+    TabOrder = 12
+  end
+  object cbMarkupOutline: TCheckBox
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Control = cbMarkupWordBracket
+    AnchorSideTop.Side = asrBottom
+    Left = 6
+    Height = 19
+    Top = 326
+    Width = 113
+    BorderSpacing.Around = 6
+    Caption = 'cbMarkupOutline'
+    OnChange = cbMarkupOutlineChange
+    TabOrder = 13
+  end
+  object lbMarkupWarnNoColor: TLabel
+    AnchorSideLeft.Control = cbMarkupOutline
+    AnchorSideLeft.Side = asrBottom
+    AnchorSideTop.Control = cbMarkupOutline
+    AnchorSideTop.Side = asrCenter
+    Left = 139
+    Height = 15
+    Top = 328
+    Width = 124
+    BorderSpacing.Left = 20
+    Caption = 'lbMarkupWarnNoColor'
+    Font.Color = clRed
+    ParentColor = False
+    ParentFont = False
+    Visible = False
   end
 end

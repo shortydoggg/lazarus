@@ -5,8 +5,9 @@ unit TestHighlightPas;
 interface
 
 uses
-  Classes, SysUtils, testregistry, TestBase, Forms, LCLProc, TestHighlightFoldBase,
-  SynEdit, SynEditTypes, SynHighlighterPas, SynEditHighlighterFoldBase;
+  Classes, SysUtils, testregistry, TestBase, Forms, LCLProc,
+  TestHighlightFoldBase, SynEdit, SynEditTypes, SynHighlighterPas,
+  SynEditHighlighterFoldBase, SynEditHighlighter;
 
 type
 
@@ -45,17 +46,19 @@ type
     function TestTextFoldInfo2: TStringArray;
     function TestTextFoldInfo3: TStringArray;
     function TestTextFoldInfo4(AIfCol: Integer): TStringArray;
+    function TestTextFoldInfo5: TStringArray;
 
-    procedure CheckTokensForLine(Name: String; LineIdx: Integer; ExpTokens: Array of TtkTokenKind);
   published
     procedure TestFoldInfo;
     procedure TestExtendedKeywordsAndStrings;
     procedure TestContextForProcModifiers;
     procedure TestContextForProperties;
     procedure TestContextForProcedure;
+    procedure TestContextForInterface;
     procedure TestContextForDeprecated;
     procedure TestContextForClassModifier; // Sealed abstract
     procedure TestContextForClassHelper;
+    procedure TestContextForClassFunction; // in class,object,record
     procedure TestContextForRecordHelper;
     procedure TestContextForStatic;
     procedure TestCaretAsString;
@@ -63,6 +66,21 @@ type
   end;
 
 implementation
+
+operator := (a: TtkTokenKind) : TExpTokenInfo;
+begin
+  result := default(TExpTokenInfo);
+  result.ExpKind := ord(a);
+  result.Flags := [etiKind];
+end;
+
+operator + (a: TtkTokenKind; b: TSynHighlighterAttributes) : TExpTokenInfo;
+begin
+  result := default(TExpTokenInfo);
+  result.ExpKind := ord(a);
+  result.ExpAttr := b;
+  result.Flags := [etiKind, etiAttr];
+end;
 
 { TTestBaseHighlighterPas }
 
@@ -174,11 +192,14 @@ begin
     AssertEquals(Format('%s (%d/%d) FoldLvlEnd',   [AName, ALine, AColumn]), FoldLvlEnd, nd.FoldLvlEnd);
     AssertEquals(Format('%s (%d/%d) NestLvlStart', [AName, ALine, AColumn]), NestLvlStart, nd.NestLvlStart);
     AssertEquals(Format('%s (%d/%d) NestLvlEnd',   [AName, ALine, AColumn]), NestLvlEnd, nd.NestLvlEnd);
-    AssertEquals(Format('%s (%d/%d) FoldType',     [AName, ALine, AColumn]), PtrUInt(FoldType), PtrUInt(nd.FoldType));
-    AssertEquals(Format('%s (%d/%d) FoldTypeCompatible', [AName, ALine, AColumn]), PtrUInt(FoldTypeCompatible), PtrUInt(nd.FoldTypeCompatible));
+    AssertEquals(Format('%s (%d/%d) FoldType',     [AName, ALine, AColumn]), PtrInt(FoldType), PtrInt(nd.FoldType));
+    AssertEquals(Format('%s (%d/%d) FoldTypeCompatible', [AName, ALine, AColumn]),
+                       PtrInt(FoldTypeCompatible), PtrInt(nd.FoldTypeCompatible));
     AssertEquals(Format('%s (%d/%d) FoldGroup:',   [AName, ALine, AColumn]), FoldGroup, nd.FoldGroup);
   end;
-  AssertEquals(Format('%s (%d/%d) FoldAction',   [AName, ALine, AColumn]), FoldActionsToString(FoldAction), FoldActionsToString(nd.FoldAction));
+  AssertEquals(Format('%s (%d/%d) FoldAction',   [AName, ALine, AColumn]),
+    FoldActionsToString(FoldAction),
+    FoldActionsToString(nd.FoldAction - [sfaOutline..sfaOutlineNoLine]));
 end;
 
 procedure TTestBaseHighlighterPas.CheckPasFoldNodeInfo(AName: String; nd: TSynFoldNodeInfo;
@@ -263,22 +284,22 @@ begin
 
 end;
 
-procedure TTestHighlighterPas.CheckTokensForLine(Name: String; LineIdx: Integer;
-  ExpTokens: array of TtkTokenKind);
-var
-  c: Integer;
+function TTestHighlighterPas.TestTextFoldInfo5: TStringArray;
 begin
-  PasHighLighter.StartAtLineIndex(LineIdx);
-  c := 0;
-  while not PasHighLighter.GetEol do begin
-    //DebugLn([PasHighLighter.GetToken,' (',PasHighLighter.GetTokenID ,') at ', PasHighLighter.GetTokenPos]);
-    AssertEquals(Name + 'TokenId Line='+IntToStr(LineIdx)+' pos='+IntToStr(c),  ord(ExpTokens[c]), ord(PasHighLighter.GetTokenID));
-    PasHighLighter.Next;
-    inc(c);
-    if c >= length(ExpTokens) then
-      break;
-  end;
-  AssertEquals(Name+ 'TokenId Line='+IntToStr(LineIdx)+'  amount of tokens', length(ExpTokens), c );
+  SetLength(Result, 13);
+  Result[0] := 'Unit Foo;';
+  Result[1] := 'Interface';
+  Result[2] := 'type';
+  Result[3] := 'TFoo<T: class> = class(TBar<T>)';
+  Result[4] := 'class procedure Proc;';
+  Result[5] := 'end;';
+  Result[6] := 'TFoo = record';
+  Result[7] := 'class procedure Proc;';
+  Result[8] := 'end;';
+  Result[9] := 'Implementation';
+  Result[10] := '//';
+  Result[11] := 'end.';
+  Result[12] := '';
 end;
 
 procedure TTestHighlighterPas.TestFoldInfo;
@@ -423,7 +444,28 @@ begin
                           [1, 1, 3, 0, 0, 0, 1]);
   {%endregion}
 
+  {%region}
+  SetLines(TestTextFoldInfo5);
+  EnableFolds([cfbtBeginEnd..cfbtNone], [cfbtSlashComment]);
+  PushBaseName('Text 5 (class in generic type)');
 
+  AssertEquals('Len Unit',     11, PasHighLighter.FoldLineLength( 0,0));
+  AssertEquals('Len Intf',      7, PasHighLighter.FoldLineLength( 1,0));
+  AssertEquals('Len type',      6, PasHighLighter.FoldLineLength( 2,0));
+  AssertEquals('Len class',     2, PasHighLighter.FoldLineLength( 3,0));
+  AssertEquals('Len record',    2, PasHighLighter.FoldLineLength( 6,0));
+  AssertEquals('Len Impl',      1, PasHighLighter.FoldLineLength( 9,0));
+  AssertEquals('Len //',        0, PasHighLighter.FoldLineLength(10,0));
+
+  //                       un in ty cl pr en re pr en im // en
+  CheckFoldOpenCounts('', [1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0]);
+  CheckFoldInfoCounts('', [sfaOpenFold, sfaFold],
+                          [1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0]);
+  CheckFoldInfoCounts('', [sfaCloseFold, sfaFold, sfaLastLineClose],
+                          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  CheckFoldInfoCounts('', [sfaLastLineClose],
+                          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  {%endregion}
 end;
 
 procedure TTestHighlighterPas.TestExtendedKeywordsAndStrings;
@@ -620,11 +662,23 @@ begin
 end;
 
 procedure TTestHighlighterPas.TestContextForProcedure;
+var
+  AtP, AtI, AtK: TSynHighlighterAttributes;
 begin
   ReCreateEdit;
+  AtP := PasHighLighter.ProcedureHeaderName;
+  AtI := PasHighLighter.IdentifierAttri;
+  AtK := PasHighLighter.KeywordAttribute;
+
   SetLines
     ([ 'Unit A;',
        'interface',
+       '',
+       'type',
+       '  IBar = interface',
+       '     procedure p1;',
+       '     procedure p2;',
+       '  end;',
        '',
        'var',
        '  Foo: Procedure of object;', // no folding // do not end var block
@@ -654,16 +708,73 @@ begin
        ''
     ]);
   EnableFolds([cfbtBeginEnd..cfbtNone]);
-  CheckFoldOpenCounts('', [ 1, 1, 0, 1 {var}, 0, 0, 1 {type}, 0, 0, 0, 0 {Proc}, 0,
+  CheckFoldOpenCounts('', [ 1, 1, 0,
+                            1 {type}, 1, 0, 0, 0, 0,
+                            1 {var}, 0, 0, 1 {type}, 0, 0, 0,
+                            0 {Proc}, 0,
                             1 {impl}, 0, 1 {var}, 0, 0, 1 {type}, 0, 0, 0,
                             1 {proc}, 1 {var}, 0, 0, 0, 0, 0
                      ]);
-  AssertEquals('Len var 1 ',   2, PasHighLighter.FoldLineLength(3, 0));
-  AssertEquals('Len type 1 ',  3, PasHighLighter.FoldLineLength(6, 0));
-  AssertEquals('Len var 2 ',   2, PasHighLighter.FoldLineLength(14, 0));
-  AssertEquals('Len type 2 ',  3, PasHighLighter.FoldLineLength(17, 0));
-  AssertEquals('Len var 3 ',   2, PasHighLighter.FoldLineLength(22, 0));
+  AssertEquals('Len var 1 ',   2, PasHighLighter.FoldLineLength(9, 0));
+  AssertEquals('Len type 1 ',  3, PasHighLighter.FoldLineLength(12, 0));
+  AssertEquals('Len var 2 ',   2, PasHighLighter.FoldLineLength(20, 0));
+  AssertEquals('Len type 2 ',  3, PasHighLighter.FoldLineLength(23, 0));
+  AssertEquals('Len var 3 ',   2, PasHighLighter.FoldLineLength(28, 0));
 
+
+  CheckTokensForLine('IBar.p1',   5, [ tkSpace, tkKey + AtK, tkSpace, tkIdentifier + AtP, tkSymbol ]);
+  CheckTokensForLine('IBar.p2',   6, [ tkSpace, tkKey + AtK, tkSpace, tkIdentifier + AtP, tkSymbol ]);
+  CheckTokensForLine('foo p of', 10, [ tkSpace, tkIdentifier, tkSymbol, tkSpace,
+    tkKey + AtK, tkSpace, tkKey + AtK {of}, tkSpace, tkKey, tkSymbol
+    ]);
+  CheckTokensForLine('TBar',     14, [ tkSpace, tkKey + AtK, tkSymbol, tkSymbol, tkSymbol,
+    tkSpace, tkIdentifier + AtI, tkSymbol
+    ]);
+
+
+end;
+
+procedure TTestHighlighterPas.TestContextForInterface;
+var
+  AtP, AtI, AtK: TSynHighlighterAttributes;
+begin
+  ReCreateEdit;
+  AtK := PasHighLighter.KeywordAttribute;
+
+  SetLines
+    ([ 'Unit A;',
+       'interface',
+       '',
+       'type',
+       '  IBar = interface',
+       '     procedure p1;',
+       '     procedure p2;',
+       '  end;',
+       '',
+       'var',
+       '  IBar2: interface', // not allowed "anonymous class"
+       '     procedure p1;',
+       '     procedure p2;',
+       '',
+       'implementation',
+       ''
+    ]);
+  EnableFolds([cfbtBeginEnd..cfbtNone]);
+  CheckFoldOpenCounts('', [ 1, 1, 0,
+                            1 {type}, 1, 0, 0, 0, 0,
+                            1 {var},  0, 0, 0, 0, 0
+                            // implementation
+                     ]);
+  AssertEquals('Len type ',  5, PasHighLighter.FoldLineLength(3, 0));
+  AssertEquals('Len intf ',  3, PasHighLighter.FoldLineLength(4, 0));
+  AssertEquals('Len var  ',  1, PasHighLighter.FoldLineLength(9, 0)); // ends at next procedure
+
+  CheckTokensForLine('unit "interface"',  1,
+    [ tkKey + AtK ]);
+  CheckTokensForLine('type "interface"',  4,
+    [ tkSpace, tkIdentifier, tkSpace, tkSymbol, tkSpace, tkKey + AtK ]);
+  CheckTokensForLine('var "interface"',  10,
+    [ tkSpace, tkIdentifier, tkSymbol, tkSpace, tkKey + AtK ]); // not allowed, still a keyword
 end;
 
 procedure TTestHighlighterPas.TestContextForDeprecated;
@@ -974,6 +1085,35 @@ begin
 
 end;
 
+procedure TTestHighlighterPas.TestContextForClassFunction;
+var
+  i: Integer;
+const
+  t: array[0..2] of string = ('class', 'object', 'record');
+begin
+  for i:= 0 to 2 do begin
+  ReCreateEdit;
+  EnableFolds([cfbtBeginEnd..cfbtNone]);
+
+  SetLines
+    ([ 'Unit A; interface',
+       'type',
+       'TFoo = '+t[i],
+         'class function f1: boolean;',
+         'class procedure p1(v: boolean);',
+        'end;',
+       ''
+    ]);
+  //   unit/iface,  type,  record, -,-
+  CheckFoldOpenCounts('', [2, 1, 1, 0, 0]);
+  CheckTokensForLine('class function',  3,
+    [ tkKey, tkSpace, tkKey, tkSpace,  tkIdentifier, tkSymbol, tkSpace,  tkIdentifier, tkSymbol  ]);
+  CheckTokensForLine('class procedure',  4,
+    [ tkKey, tkSpace, tkKey, tkSpace,  tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkSpace,  tkIdentifier, tkSymbol, tkSymbol  ]);
+
+  end;
+end;
+
 procedure TTestHighlighterPas.TestContextForRecordHelper;
 begin
   ReCreateEdit;
@@ -1084,24 +1224,26 @@ begin
     ([ 'Unit A; interface',  // 0
        'var',
          'a:char=^o;',
+         'a:somestring=^o^c;',
          'b:^char=nil;',
        'type',
-         'c=^char;',         // 5
+         'c=^char;',         // 6
+         'c=type ^char;',         // 6
        'implementation',
-       'function x(f:^char=^k):^v;', // actually the compiler does not allow ^ as pointer for result
+       'function x(f:^char=^k^c):^v;', // actually the compiler does not allow ^ as pointer for result
        'var',
-         'a:char=^o;',
-         'b:^char=nil;',     // 10
+         'a:char=^o;',       // 11
+         'b:^char=nil;',     // 12
        'type',
          'c=^char;',
        'begin',
          'i:=^f;',
-         'x:=GetTypeData(PropInfo^.PropType{$IFNDEF FPC}^{$ENDIF});', // 15
+         'x:=GetTypeData(PropInfo^.PropType{$IFNDEF FPC}^{$ENDIF});', // 17
          'c:=p^;',
          'c:=p ^;',
          'c:=p(**)^;',
-         'c:=p{} ^;',
-         'i:=f(1)^;',     // 20
+         'c:=p{} ^;',     // 21
+         'i:=f(1)^;',     // 22
          'i:=f[1]^;',
          'i:=f^^;',
          'c:=p^+^i''e''^a#13^x;',
@@ -1112,50 +1254,54 @@ begin
 
   CheckTokensForLine('a:char=^o;',   2,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkString, tkSymbol]);
-  CheckTokensForLine('b:^char=nil;',   3,
+  CheckTokensForLine('a:char=^o^c;',   3,
+                     [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkString, tkString, tkSymbol]);
+  CheckTokensForLine('b:^char=nil;',   4,
                      [tkIdentifier, tkSymbol, tkSymbol, tkIdentifier, tkSymbol, tkKey, tkSymbol]);
-  CheckTokensForLine('c=^char;',   5,
+  CheckTokensForLine('c=^char;',   6,
                      [tkIdentifier, tkSymbol, tkSymbol, tkIdentifier, tkSymbol]);
+  CheckTokensForLine('c=type ^char;',   7,
+                     [tkIdentifier, tkSymbol, tkKey, tkSpace, tkSymbol, tkIdentifier, tkSymbol]);
 
-  CheckTokensForLine('function x(f:^char=^k):^v;',   7,
+  CheckTokensForLine('function x(f:^char=^k):^v;',   9,
                      [tkKey, tkSpace, tkIdentifier, tkSymbol, tkIdentifier,  // function x(f
-                      tkSymbol, tkSymbol, tkIdentifier, tkSymbol, tkString,  // :^char=^k
+                      tkSymbol, tkSymbol, tkIdentifier, tkSymbol, tkString,  tkString,  // :^char=^k
                       tkSymbol, tkSymbol, tkSymbol, tkIdentifier, tkSymbol]);          // ):^v;
-  CheckTokensForLine('LOCAL a:char=^o;',   9,
+  CheckTokensForLine('LOCAL a:char=^o;',   11,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkString, tkSymbol]);
-  CheckTokensForLine('LOCAL b:^char=nil;',   10,
+  CheckTokensForLine('LOCAL b:^char=nil;',   12,
                      [tkIdentifier, tkSymbol, tkSymbol, tkIdentifier, tkSymbol, tkKey, tkSymbol]);
-  CheckTokensForLine('LOCAL c=^char;',   12,
+  CheckTokensForLine('LOCAL c=^char;',   14,
                      [tkIdentifier, tkSymbol, tkSymbol, tkIdentifier, tkSymbol]);
-  CheckTokensForLine('i:=^f',   14,
+  CheckTokensForLine('i:=^f',   16,
                      [tkIdentifier, tkSymbol, tkString, tkSymbol]);
 
-  CheckTokensForLine('x:=GetTypeData(PropInfo^.PropType{$IFNDEF FPC}^{$ENDIF});',   15,
+  CheckTokensForLine('x:=GetTypeData(PropInfo^.PropType{$IFNDEF FPC}^{$ENDIF});',   17,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol,    // x:=GetTypeData(
                       tkIdentifier, tkSymbol, tkSymbol, tkIdentifier,    // PropInfo^.PropType
                       tkDirective, tkSymbol, tkDirective, tkSymbol, tkSymbol]);  // {$IFNDEF FPC}^{$ENDIF});
 
-  CheckTokensForLine('c:=p^;',   16,
+  CheckTokensForLine('c:=p^;',   18,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkSymbol]);
-  CheckTokensForLine('c:=p ^;',   17,
+  CheckTokensForLine('c:=p ^;',   19,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSpace, tkSymbol, tkSymbol]);
-  CheckTokensForLine('c:=p(**)^;',   18,
+  CheckTokensForLine('c:=p(**)^;',   20,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkComment, tkSymbol, tkSymbol]);
-  CheckTokensForLine('c:=p{} ^;',   19,
+  CheckTokensForLine('c:=p{} ^;',   21,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkComment, tkSpace, tkSymbol, tkSymbol]);
 
-  CheckTokensForLine('c:=p(1)^;',   20,
+  CheckTokensForLine('c:=p(1)^;',   22,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkNumber, tkSymbol, tkSymbol]);
-  CheckTokensForLine('c:=p[1]^;',   21,
+  CheckTokensForLine('c:=p[1]^;',   23,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkNumber, tkSymbol, tkSymbol]);
-  CheckTokensForLine('c:=p^^;',   22,
+  CheckTokensForLine('c:=p^^;',   24,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkSymbol, tkSymbol]);
 
-  CheckTokensForLine('c:=p^+^i''e''^a#13^x;',   23,
+  CheckTokensForLine('c:=p^+^i''e''^a#13^x;',   25,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkSymbol, // c:=p^+
                       tkString, tkString, tkString, tkString, tkString, tkSymbol  // ^i'e'^a#13^x;
                      ]);
-  CheckTokensForLine('c:=x=^a and ^a=k and(^a^a=z);',   24,
+  CheckTokensForLine('c:=x=^a and ^a=k and(^a^a=z);',   26,
                      [tkIdentifier, tkSymbol, tkIdentifier, tkSymbol, tkString, tkSpace, // c:=x=^a
                       tkKey, tkSpace, tkString, tkSymbol, tkIdentifier, tkSpace, // and ^a=k
                       tkKey, tkSymbol, tkString, tkString, tkSymbol, tkIdentifier,  // and(^a^a=z
@@ -1214,7 +1360,7 @@ begin
     {%region TEXT 1 -- [cfbtBeginEnd..cfbtNone], []}
       PopPushBaseName('Text 1 -- [cfbtBeginEnd..cfbtNone], [], 0');
       SetLines(TestTextFoldInfo1);
-      EnableFolds([cfbtBeginEnd..cfbtNone], []);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
       //DebugFoldInfo([]);
 
       CheckFoldInfoCounts('', [], 0, [1, 1, 1, 1, 1, 3, 0, 1, 2, 1, 2, 2]);
@@ -1284,8 +1430,8 @@ begin
     {%region TEXT 1 -- [cfbtBeginEnd..cfbtNone], [] grp=1}
       PopPushBaseName('Text 1 -- [cfbtBeginEnd..cfbtNone], [], grp=1');
       SetLines(TestTextFoldInfo1);
-      EnableFolds([cfbtBeginEnd..cfbtNone], []);
-      DebugFoldInfo([],1);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
+      //DebugFoldInfo([],1);
 
       CheckFoldInfoCounts('', [], 1, [1, 1, 0, 1, 0, 1, 0, 1, 2, 1, 2, 2]);
 
@@ -1342,7 +1488,7 @@ begin
     {%region TEXT 1 -- [cfbtBeginEnd,cfbtIfDef], [] grp=1}
       PopPushBaseName('Text 1 -- [cfbtBeginEnd,cfbtIfDef], [], grp=4');
       SetLines(TestTextFoldInfo1);
-      EnableFolds([cfbtBeginEnd,cfbtIfDef], []);
+      EnableFolds([cfbtBeginEnd,cfbtIfDef]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
       //DebugFoldInfo([],4);
 
       CheckFoldInfoCounts('', [], 1, [1, 1, 0, 1, 0, 1, 0, 1, 2, 1, 2, 2]);
@@ -1400,7 +1546,7 @@ begin
     {%region TEXT 1 -- [cfbtBeginEnd..cfbtNone], [sfaFold, sfaMultiLine]}
       PopPushBaseName('Text 1 -- [cfbtBeginEnd..cfbtNone], [sfaFold, sfaMultiLine], 0');
       SetLines(TestTextFoldInfo1);
-      EnableFolds([cfbtBeginEnd..cfbtNone], []);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
       //DebugFoldInfo([sfaFold, sfaMultiLine]);
 
       CheckFoldInfoCounts('', [sfaFold, sfaMultiLine], 0, [1, 1, 1, 1, 1, 1, 0, 1, 2, 1, 2, 0]);
@@ -1459,7 +1605,7 @@ begin
     {%region TEXT 1 -- [cfbtBeginEnd..cfbtNone], [sfaMarkup, sfaMultiLine]}
       PopPushBaseName('Text 1 -- [cfbtBeginEnd..cfbtNone]-cfbtIfDef, [sfaMarkup, sfaMultiLine], 0');
       SetLines(TestTextFoldInfo1);
-      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtIfDef], []);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtIfDef]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
       //DebugFoldInfo([sfaMarkup, sfaMultiLine]);
 
       CheckFoldInfoCounts('', [sfaMarkup, sfaMultiLine], 0, [1, 1, 0, 1, 0, 1, 0, 1, 2, 1, 2, 0]);
@@ -1513,7 +1659,7 @@ begin
     {%region TEXT 1 -- [cfbtBeginEnd..cfbtNone], [sfaMarkup, sfaMultiLine]}
       PopPushBaseName('Text 1 -- [cfbtBeginEnd..cfbtNone], [sfaMarkup, sfaMultiLine], cfbtIfDef 0');
       SetLines(TestTextFoldInfo1);
-      EnableFolds([cfbtBeginEnd..cfbtNone], [], [cfbtIfDef]);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], [], [cfbtIfDef]);
       //DebugFoldInfo([sfaMarkup, sfaMultiLine]);
 
       CheckFoldInfoCounts('', [sfaMarkup, sfaMultiLine], 0, [1, 1, 1, 1, 1, 3, 0, 1, 2, 1, 2, 0]);
@@ -1567,7 +1713,7 @@ begin
     {%region TEXT 1 -- [cfbtBeginEnd..cfbtNone]-[cfbtProcedure], [cfbtSlashComment]}
       PopPushBaseName('Text 1 -- [cfbtBeginEnd..cfbtNone]-[cfbtProcedure], [cfbtSlashComment], 0');
       SetLines(TestTextFoldInfo1);
-      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtProcedure], [cfbtSlashComment]);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtProcedure]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], [cfbtSlashComment]);
       //DebugFoldInfo([]);
 
       CheckFoldInfoCounts('', [], 0, [1, 1, 1, 1, 1, 3, 0, 1, 2, 1, 2, 2, 0]);
@@ -1642,7 +1788,7 @@ begin
     {%region TEXT 2 -- [cfbtBeginEnd..cfbtNone], []}
       PopPushBaseName('Text 2 -- [cfbtBeginEnd..cfbtNone], [], 0');
       SetLines(TestTextFoldInfo2);
-      EnableFolds([cfbtBeginEnd..cfbtNone], []);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
       //DebugFoldInfo([]);
 
       CheckFoldInfoCounts('', [], 0, [1, 1, 10, 2, 4, 5, 2, 3]);
@@ -1682,10 +1828,10 @@ begin
                                   [sfaOpen, sfaOpenFold,sfaMarkup,sfaFold,sfaFoldFold, sfaMultiLine]);// try
       CheckNode( 2, [], 0,   8,   72, 77,   2, 1,   2, 1,
                                   cfbtIfDef, cfbtIfDef,  FOLDGROUP_IFDEF,
-                                  [sfaClose, sfaMarkup,sfaOneLineClose, sfaSingleLine]);                      // {$ELSE}
+                                  [sfaClose, sfaMarkup,sfaOneLineClose, sfaSingleLine, sfaCloseAndOpen]);                      // {$ELSE}
       CheckNode( 2, [], 0,   9,   72, 77,   1, 2,   1, 2,
                                   cfbtIfDef, cfbtIfDef,  FOLDGROUP_IFDEF,
-                                  [sfaMarkup,sfaOpen, sfaOpenFold,sfaFold,sfaFoldFold, sfaMultiLine]);          // {$ELSE}
+                                  [sfaMarkup,sfaOpen, sfaOpenFold,sfaFold,sfaFoldFold, sfaMultiLine, sfaCloseAndOpen]);          // {$ELSE}
       // Line 3:     //foo                                                      # pasminlvl=4 endlvl=4
       CheckNode( 3, [], 0,   0,   2, 4,   4, 5,   4, 5,
                                   cfbtSlashComment, cfbtSlashComment,  FOLDGROUP_PASCAL,
@@ -1749,7 +1895,7 @@ begin
     {%region TEXT 3 -- [cfbtBeginEnd..cfbtNone], []}
       PopPushBaseName('Text 3 -- [cfbtBeginEnd..cfbtNone], [], 0');
       SetLines(TestTextFoldInfo3);
-      EnableFolds([cfbtBeginEnd..cfbtNone], []);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
       //DebugFoldInfo([]);
 
       CheckFoldInfoCounts('', [], 0, [1, 1, 2, 1, 1, 1, 0, 3, 1, 3, 2]);
@@ -1823,7 +1969,7 @@ begin
     {%region TEXT 4 -- [cfbtBeginEnd..cfbtNone], []}
       PopPushBaseName('Text 4(1) -- [cfbtBeginEnd..cfbtNone], [], 0');
       SetLines(TestTextFoldInfo4(1));
-      EnableFolds([cfbtBeginEnd..cfbtNone], []);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
       //DebugFoldInfo([]);
 
       CheckFoldInfoCounts('', [], 0, [1, 1,3, 1, 2, 1, 3]);
@@ -1875,6 +2021,78 @@ begin
 
   {%region TEXT 4}
 
+  {%region TEXT 5}
+
+    {%region TEXT 5 -- [cfbtBeginEnd..cfbtNone], []}
+      PopPushBaseName('Text 5 -- [cfbtBeginEnd..cfbtNone], [], 0');
+      SetLines(TestTextFoldInfo5);
+      EnableFolds([cfbtBeginEnd..cfbtNone]-[cfbtForDo,cfbtWhileDo,cfbtWithDo], []);
+      //DebugFoldInfo([]);
+
+      CheckFoldInfoCounts('', [], 0, [1, 1, 1, 1, 0, 1, 1, 0, 3, 1, 3, 1]);
+
+      // Line 0:   unit foo;
+      CheckNode( 0, [], 0,   0,   0, 4,   0, 1,   0, 1,
+                                  cfbtUnit, cfbtUnit,  FOLDGROUP_PASCAL,
+                                  [sfaOpen, sfaOpenFold, sfaFold, sfaFoldFold, sfaMultiLine]);
+      // Line 1:   interface
+      CheckNode( 1, [], 0,   0,   0, 9,   1, 2,   1, 2,
+                                  cfbtUnitSection, cfbtUnitSection,  FOLDGROUP_PASCAL,
+                                  [sfaOpen, sfaOpenFold, sfaFold, sfaFoldFold, sfaMultiLine]);
+      // Line 2:   type
+      CheckNode( 2, [], 0,   0,   0, 4,   2, 3,   2, 3,
+                                  cfbtVarType, cfbtVarType,  FOLDGROUP_PASCAL,
+                                  [sfaOpen, sfaFold, sfaFoldFold, sfaMultiLine, sfaOpenFold]);
+      // Line 3:   TFoo<T: class> = class(TBar<T>)
+      CheckNode( 3, [], 0,   0,   17, 22,   3, 4,   3, 4,
+                                  cfbtClass, cfbtClass,  FOLDGROUP_PASCAL,
+                                  [sfaOpen, sfaFold, sfaFoldFold, sfaMultiLine, sfaMarkup, sfaOpenFold]);
+      // Line 4:   class procedure Proc;
+      CheckNode( 4, [], 0,   -1,    0, 0,   4, 4,   4, 4,
+                                  cfbtNone, cfbtNone,  FOLDGROUP_PASCAL,
+                                  [sfaInvalid]);
+      // Line 5:   end.
+      CheckNode( 5, [], 0,   0,    0, 3,   4, 3,   4, 3,
+                                  cfbtClass, cfbtClass,  FOLDGROUP_PASCAL,
+                                  [sfaClose, sfaFold, sfaMultiLine, sfaMarkup, sfaCloseFold]);
+      CheckNode( 6, [], 0,   0,     7, 13,   3, 4,   3, 4,
+                                  cfbtRecord, cfbtRecord,  FOLDGROUP_PASCAL,
+                                  [sfaOpen, sfaFold, sfaFoldFold, sfaMultiLine, sfaMarkup, sfaOpenFold]);
+      // Line 7:   class procedure Proc;
+      CheckNode( 7, [], 0,   -1,    0, 0,   4, 4,   4, 4,
+                                  cfbtNone, cfbtNone,  FOLDGROUP_PASCAL,
+                                  [sfaInvalid]);
+      // Line 8:   end.
+      CheckNode( 8, [], 0,   0,    0, 3,   4, 3,   4, 3,
+                                  cfbtRecord, cfbtRecord,  FOLDGROUP_PASCAL,
+                                  [sfaClose, sfaFold, sfaMultiLine, sfaMarkup, sfaCloseFold]);
+      CheckNode( 8, [], 0,   1,    4, 4,   3, 2,   3, 2,
+                                  cfbtVarType, cfbtVarType,  FOLDGROUP_PASCAL,
+                                  [sfaClose, sfaFold, sfaMultiLine, sfaCloseForNextLine, sfaCloseFold]);
+      CheckNode( 8, [], 0,   2,    4, 4,   2, 1,   2, 1,
+                                  cfbtUnitSection, cfbtUnitSection,  FOLDGROUP_PASCAL,
+                                  [sfaClose, sfaFold, sfaMultiLine, sfaCloseForNextLine, sfaCloseFold]);
+      // Line 9:   implementation
+      CheckNode( 9, [], 0,   0,   0, 14,   1, 2,   1, 2,
+                                  cfbtUnitSection, cfbtUnitSection,  FOLDGROUP_PASCAL,
+                                  [sfaOpen, sfaOpenFold,sfaFold, sfaFoldFold, sfaMultiLine]);
+      // Line 10:   //, unit-section
+      CheckNode(10, [], 0,   0,   0, 2,   2, 3,   2, 3,
+                                  cfbtSlashComment, cfbtSlashComment,  FOLDGROUP_PASCAL,
+                                  [sfaOpen, sfaOneLineOpen, sfaSingleLine]);
+      CheckNode(10, [], 0,   1,   2, 2,   3, 2,   3, 2,
+                                  cfbtSlashComment, cfbtSlashComment,  FOLDGROUP_PASCAL,
+                                  [sfaClose, sfaOneLineClose, sfaCloseForNextLine, sfaSingleLine]);
+      CheckNode(10, [], 0,   2,   2, 2,   2, 1,   2, 1,
+                                  cfbtUnitSection, cfbtUnitSection,  FOLDGROUP_PASCAL,
+                                  [sfaClose, sfaCloseFold,sfaFold, sfaCloseForNextLine, sfaMultiLine]);
+      // Line 11:   end.
+      CheckNode(11, [], 0,   0,   0, 3,   1, 0,   1, 0,
+                                  cfbtUnit, cfbtUnit,  FOLDGROUP_PASCAL,
+                                  [sfaClose, sfaCloseFold,sfaFold, sfaMultiLine]);
+    {%endregion TEXT 5 -- [cfbtBeginEnd..cfbtNone], []}
+
+  {%region TEXT 5}
 end;
 
 initialization

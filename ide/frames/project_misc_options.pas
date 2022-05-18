@@ -5,10 +5,15 @@ unit project_misc_options;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, FileUtil, Forms, Controls, Graphics, Dialogs,
-  ExtCtrls, StdCtrls,
-  ProjectIntf, IDEOptionsIntf,
-  IDEProcs, Project, LazarusIDEStrConsts;
+  SysUtils,
+  // LCL
+  LCLProc, Forms, Dialogs, ExtCtrls, StdCtrls,
+  // LazUtils
+  FileUtil, LazFileUtils,
+  // IdeIntf
+  ProjectIntf, IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  Project, LazarusIDEStrConsts;
 
 type
 
@@ -21,6 +26,7 @@ type
     LRSInOutputDirCheckBox: TCheckBox;
     MainUnitHasCreateFormStatementsCheckBox: TCheckBox;
     MainUnitHasTitleStatementCheckBox: TCheckBox;
+    MainUnitHasScaledStatementCheckBox: TCheckBox;
     MainUnitHasUsesSectionForAllUnitsCheckBox: TCheckBox;
     MainUnitIsPascalSourceCheckBox: TCheckBox;
     PathDelimComboBox: TComboBox;
@@ -58,8 +64,10 @@ begin
   MainUnitHasUsesSectionForAllUnitsCheckBox.Hint := lisNewUnitsAreAddedToUsesSections;
   MainUnitHasCreateFormStatementsCheckBox.Caption := lisMainUnitHasApplicationCreateFormStatements;
   MainUnitHasCreateFormStatementsCheckBox.Hint := lisUsedForAutoCreatedForms;
-  MainUnitHasTitleStatementCheckBox.Caption := lisMainUnitHasApplicationTitleStatements;
+  MainUnitHasTitleStatementCheckBox.Caption := lisMainUnitHasApplicationTitleStatement;
   MainUnitHasTitleStatementCheckBox.Hint := lisIdeMaintainsTheTitleInMainUnit;
+  MainUnitHasScaledStatementCheckBox.Caption := lisMainUnitHasApplicationScaledStatement;
+  MainUnitHasScaledStatementCheckBox.Hint := lisIdeMaintainsScaledInMainUnit;
   RunnableCheckBox.Caption := lisProjectIsRunnable;
   RunnableCheckBox.Hint := lisProjectIsRunnableHint;
   UseDesignTimePkgsCheckBox.Caption := lisUseDesignTimePackages;
@@ -87,6 +95,7 @@ begin
     MainUnitHasUsesSectionForAllUnitsCheckBox.Checked := (pfMainUnitHasUsesSectionForAllUnits in Flags);
     MainUnitHasCreateFormStatementsCheckBox.Checked := (pfMainUnitHasCreateFormStatements in Flags);
     MainUnitHasTitleStatementCheckBox.Checked := (pfMainUnitHasTitleStatement in Flags);
+    MainUnitHasScaledStatementCheckBox.Checked := (pfMainUnitHasScaledStatement in Flags);
     RunnableCheckBox.Checked := (pfRunnable in Flags);
     UseDesignTimePkgsCheckBox.Checked := (pfUseDesignTimePackages in Flags);
     AlwaysBuildCheckBox.Checked := (pfAlwaysBuild in Flags);
@@ -129,6 +138,8 @@ begin
                  MainUnitHasCreateFormStatementsCheckBox.Checked);
   SetProjectFlag(pfMainUnitHasTitleStatement,
                  MainUnitHasTitleStatementCheckBox.Checked);
+  SetProjectFlag(pfMainUnitHasScaledStatement,
+                 MainUnitHasScaledStatementCheckBox.Checked);
   SetProjectFlag(pfRunnable, RunnableCheckBox.Checked);
   SetProjectFlag(pfUseDesignTimePackages, UseDesignTimePkgsCheckBox.Checked);
   SetProjectFlag(pfAlwaysBuild, AlwaysBuildCheckBox.Checked);

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -32,12 +32,17 @@ unit EmptyMethodsDlg;
 interface
 
 uses
-  Classes, SysUtils, TypInfo, LCLProc, Forms, Controls, Graphics,
-  Dialogs, ExtCtrls, StdCtrls, ButtonPanel, SynEdit, SynHighlighterPas,
-  CodeToolsStructs, CodeCache, CodeToolManager, PascalParserTool,
-  CodeTree,
-  SrcEditorIntf, LazIDEIntf, PropEdits, IDEDialogs, CustomFormEditor, JitForms,
-  Project, LazarusIDEStrConsts, EditorOptions;
+  Classes, SysUtils, TypInfo,
+  // LCL
+  LCLProc, Forms, Controls, Dialogs, StdCtrls, ButtonPanel,
+  // SynEdit
+  SynEdit, SynHighlighterPas,
+  // CodeTools
+  CodeToolsStructs, CodeCache, CodeToolManager, PascalParserTool, CodeTree,
+  // IdeIntf
+  SrcEditorIntf, LazIDEIntf, PropEdits, IDEDialogs,
+  // IDE
+  CustomFormEditor, JitForms, Project, LazarusIDEStrConsts, EditorOptions;
 
 type
 

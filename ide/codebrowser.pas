@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -45,20 +45,20 @@ unit CodeBrowser;
 interface
 
 uses
-  // RTL + FCL + LCL
-  Classes, SysUtils, types, AVL_Tree,
-  LCLProc, LResources, Forms, Controls, Graphics, Dialogs, Clipbrd, StdCtrls,
-  ExtCtrls, ComCtrls, Buttons, Menus, HelpIntfs, LCLIntf,
+  // RTL + FCL
+  Classes, SysUtils, types, Laz_AVL_Tree,
+  // LCL
+  LCLProc, Forms, Controls, Graphics, Dialogs, Clipbrd, StdCtrls,
+  ExtCtrls, ComCtrls, Buttons, Menus, HelpIntfs,
   // CodeTools
-  BasicCodeTools, DefineTemplates, CodeTree, CodeCache,
-  CodeToolsStructs, CodeToolManager, PascalParserTool, LinkScanner, FileProcs,
-  CodeIndex, StdCodeTools, SourceLog, CustomCodeTool,
+  BasicCodeTools, DefineTemplates, CodeTree, CodeCache, CodeToolManager,
+  PascalParserTool, LinkScanner, FileProcs, CodeIndex, StdCodeTools, SourceLog,
   // LazUtils
-  LazFileUtils, LazUtilities,
+  LazFileUtils, LazStringUtils, AvgLvlTree,
   // IDEIntf
   IDEWindowIntf, SrcEditorIntf, IDEMsgIntf, IDEDialogs, LazConfigStorage,
-  IDEHelpIntf, PackageIntf, IDECommands, LazIDEIntf,
-  IDEExternToolIntf,
+  IDEHelpIntf, PackageIntf, IDECommands, LazIDEIntf, IDEExternToolIntf,
+  IDEImagesIntf,
   // IDE
   Project, DialogProcs, PackageSystem, PackageDefs, LazarusIDEStrConsts,
   IDEOptionDefs, etFPCMsgParser, BasePkgManager, EnvironmentOpts;
@@ -198,7 +198,6 @@ type
     IdentifierFilterBeginsSpeedButton: TSpeedButton;
     IdentifierFilterContainsSpeedButton: TSpeedButton;
     IdentifierFilterEdit: TEdit;
-    ImageList1: TImageList;
     LevelsGroupBox: TGroupBox;
     OpenMenuItem: TMenuItem;
     OptionsGroupBox: TGroupBox;
@@ -815,24 +814,25 @@ end;
 
 procedure TCodeBrowserView.InitImageList;
 begin
-  ImgIDDefault := Imagelist1.AddResourceName(HInstance, 'ce_default');
-  ImgIDProgramCode := Imagelist1.AddResourceName(HInstance, 'ce_program');
-  ImgIDUnitCode := Imagelist1.AddResourceName(HInstance, 'ce_unit');
-  ImgIDInterfaceSection := Imagelist1.AddResourceName(HInstance, 'ce_interface');
-  ImgIDImplementation := Imagelist1.AddResourceName(HInstance, 'ce_implementation');
-  ImgIDInitialization := Imagelist1.AddResourceName(HInstance, 'ce_initialization');
-  ImgIDFinalization := Imagelist1.AddResourceName(HInstance, 'ce_finalization');
-  ImgIDTypeSection := Imagelist1.AddResourceName(HInstance, 'ce_type');
-  ImgIDType := Imagelist1.AddResourceName(HInstance, 'ce_type');
-  ImgIDVarSection := Imagelist1.AddResourceName(HInstance, 'ce_variable');
-  ImgIDVariable := Imagelist1.AddResourceName(HInstance, 'ce_variable');
-  ImgIDConstSection := Imagelist1.AddResourceName(HInstance, 'ce_const');
-  ImgIDConst := Imagelist1.AddResourceName(HInstance, 'ce_const');
-  ImgIDClass := Imagelist1.AddResourceName(HInstance, 'ce_class');
-  ImgIDProc := Imagelist1.AddResourceName(HInstance, 'ce_procedure');
-  ImgIDProperty := Imagelist1.AddResourceName(HInstance, 'ce_property');
-  ImgIDPackage := Imagelist1.AddResourceName(HInstance, 'item_package');
-  ImgIDProject := Imagelist1.AddResourceName(HInstance, 'item_project');
+  BrowseTreeView.Images := IDEImages.Images_16;
+  ImgIDDefault := IDEImages.GetImageIndex('ce_default');
+  ImgIDProgramCode := IDEImages.GetImageIndex('ce_program');
+  ImgIDUnitCode := IDEImages.GetImageIndex('cc_unit');
+  ImgIDInterfaceSection := IDEImages.GetImageIndex('ce_interface');
+  ImgIDImplementation := IDEImages.GetImageIndex('ce_implementation');
+  ImgIDInitialization := IDEImages.GetImageIndex('ce_initialization');
+  ImgIDFinalization := IDEImages.GetImageIndex('ce_finalization');
+  ImgIDTypeSection := IDEImages.GetImageIndex('cc_type');
+  ImgIDType := IDEImages.GetImageIndex('cc_type');
+  ImgIDVarSection := IDEImages.GetImageIndex('cc_variable');
+  ImgIDVariable := IDEImages.GetImageIndex('cc_variable');
+  ImgIDConstSection := IDEImages.GetImageIndex('cc_constant');
+  ImgIDConst := IDEImages.GetImageIndex('cc_constant');
+  ImgIDClass := IDEImages.GetImageIndex('cc_class');
+  ImgIDProc := IDEImages.GetImageIndex('cc_procedure');
+  ImgIDProperty := IDEImages.GetImageIndex('cc_property');
+  ImgIDPackage := IDEImages.GetImageIndex('item_package');
+  ImgIDProject := IDEImages.GetImageIndex('item_project');
 end;
 
 procedure TCodeBrowserView.SetScannedBytes(const AValue: PtrInt);
@@ -1362,9 +1362,9 @@ var
     UnitSetChanged: Boolean;
     UnitSet: TFPCUnitSetCache;
     Filename: String;
-    ConfigCache: TFPCTargetConfigCache;
+    ConfigCache: TPCTargetConfigCache;
     Node: TAVLTreeNode;
-    Item: PStringToStringTreeItem;
+    Item: PStringToStringItem;
   begin
     // use unitset of the lazarus source directory
     LazDir:=AppendPathDelim(EnvironmentOptions.GetParsedLazarusDirectory);
@@ -1372,14 +1372,14 @@ var
     UnitSetID:=CodeToolBoss.GetUnitSetIDForDirectory(LazDir);
     if UnitSetID='' then exit;
     UnitSetChanged:=false;
-    UnitSet:=CodeToolBoss.FPCDefinesCache.FindUnitSetWithID(UnitSetID,
+    UnitSet:=CodeToolBoss.CompilerDefinesCache.FindUnitSetWithID(UnitSetID,
                                                           UnitSetChanged,false);
     if UnitSet=nil then exit;
     ConfigCache:=UnitSet.GetConfigCache(false);
     if (ConfigCache=nil) or (ConfigCache.Units=nil) then exit;
     Node:=ConfigCache.Units.Tree.FindLowest;
     while Node<>nil do begin
-      Item:=PStringToStringTreeItem(Node.Data);
+      Item:=PStringToStringItem(Node.Data);
       Filename:=Item^.Value;
       if (CompareFileExt(Filename,'ppu',false)=0) then begin
         // search source in fpc sources
@@ -2179,20 +2179,11 @@ var
     end;
   end;
   
-  procedure AddUnits(SrcList: TCodeBrowserUnitList;
-    var DestParentList: TCodeBrowserUnitList);
-    
-    procedure RaiseParentNotUnitList;
-    begin
-      raise Exception.Create('TCodeBrowserView.UpdateTreeView.AddUnits.RaiseParentNotUnitList');
-    end;
-    
+  procedure AddUnits(SrcList: TCodeBrowserUnitList; var DestParentList: TCodeBrowserUnitList);
   var
     Node: TAVLTreeNode;
-    CurUnit: TCodeBrowserUnit;
-    NewUnit: TCodeBrowserUnit;
-    List: TCodeBrowserUnitList;
-    OldDestParentList: TObject;
+    CurUnit, NewUnit: TCodeBrowserUnit;
+    List, OldDestParentList: TCodeBrowserUnitList;
   begin
     if SrcList=nil then exit;
     //DebugLn(['AddUnits SrcList.Owner="',SrcList.Owner,'" HasUnits=',SrcList.Units<>nil]);
@@ -2205,11 +2196,9 @@ var
       if (CurUnit.Filename='')
       or IdentifierFitsFilter(cblUnits,ExtractFileNameOnly(CurUnit.Filename))
       then begin
-        if DestParentList=nil then begin
+        if DestParentList=nil then
           DestParentList:=TCodeBrowserUnitList.Create(CodeBrowserHidden,nil);
-        end else if not (DestParentList is TCodeBrowserUnitList) then
-          RaiseParentNotUnitList;
-        List:=TCodeBrowserUnitList(DestParentList);
+        List:=DestParentList;
         if ShowUnits then begin
           // create a unit node
           NewUnit:=List.AddUnit(CurUnit.Filename);
@@ -2242,11 +2231,8 @@ var
     var DestParentList: TCodeBrowserUnitList);
   var
     Node: TAVLTreeNode;
-    SubList: TCodeBrowserUnitList;
-    NewList: TCodeBrowserUnitList;
-    OldDestParentList: TCodeBrowserUnitList;
-    NewListCreated: Boolean;
-    CreateNode: Boolean;
+    SubList, NewList, OldDestParentList: TCodeBrowserUnitList;
+    NewListCreated, CreateNode: Boolean;
   begin
     if SrcList=nil then exit;
     //DebugLn(['AddUnitLists SrcList.Owner="',SrcList.Owner,'"']);
@@ -2258,16 +2244,15 @@ var
     
     // create node
     NewListCreated:=false;
+    NewList:=Nil;
     if CreateNode then begin
       if ShowPackages then begin
-        if DestParentList=nil then begin
+        if DestParentList=nil then
           DestParentList:=TCodeBrowserUnitList.Create(CodeBrowserHidden,nil);
-        end;
         NewList:=TCodeBrowserUnitList.Create(SrcList.Owner,DestParentList);
         NewListCreated:=true;
-      end else begin
+      end else
         NewList:=DestParentList;
-      end;
     end;
     // create nodes for unitlists
     if SrcList.UnitLists<>nil then begin
@@ -2286,12 +2271,9 @@ var
         //DebugLn(['AddUnitLists EMPTY ',NewList.Owner,' ',NewList.UnitListCount,' ',NewList.UnitCount]);
         if DestParentList=NewList then
           DestParentList:=nil;
-        NewList.Free;
-        NewList:=nil;
-        if (OldDestParentList=nil) and (DestParentList<>nil)
-        and DestParentList.IsEmpty then begin
+        FreeAndNil(NewList);
+        if (OldDestParentList=nil) and (DestParentList<>nil) and DestParentList.IsEmpty then
           FreeAndNil(DestParentList);
-        end;
       end;
       // update DestParentList
       if (DestParentList=nil) then
@@ -3327,13 +3309,13 @@ begin
   end;
 
   // get identifier
-  if (Identifier='') or (not IsValidIdent(Identifier)) then begin
+  if not IsValidIdent(Identifier) then begin
     DebugLn(['TQuickFixIdentifierNotFound_Search.Execute not an identifier "',dbgstr(Identifier),'"']);
     exit;
   end;
 
   Filename:=Msg.GetFullFilename;
-  KnownFilename:= LazarusIDE.FindSourceFile(Filename, Project1.ProjectDirectory,
+  KnownFilename:= LazarusIDE.FindSourceFile(Filename, Project1.Directory,
                     [fsfSearchForProject, fsfUseIncludePaths, fsfMapTempToVirtualFiles]);
   Caret:=Point(Msg.Line,Msg.Column);
 

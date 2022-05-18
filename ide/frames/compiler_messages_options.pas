@@ -5,10 +5,20 @@ unit compiler_messages_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, LazFileCache, LazLoggerBase, ListFilterEdit,
-  StdCtrls, CheckLst, Dialogs, IDEOptionsIntf, IDEExternToolIntf,
-  IDEDialogs, CompOptsIntf, CodeToolsFPCMsgs, CompilerOptions,
-  LazarusIDEStrConsts, etFPCMsgParser;
+  Classes, SysUtils,
+  // LCL
+  StdCtrls, CheckLst, Dialogs,
+  // LazUtils
+  FileUtil, LazFileCache, LazLoggerBase,
+  // LazControls
+  ListFilterEdit,
+  // CodeTools
+  CodeToolsFPCMsgs,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEExternToolIntf, CompOptsIntf, IDEImagesIntf,
+  IDEDialogs,
+  // IDE
+  CompilerOptions, LazarusIDEStrConsts, etFPCMsgParser;
 
 type
 
@@ -50,7 +60,7 @@ var
   MsgId: Integer;
 begin
   if (Index < 0) or (Index >= chklistCompMsg.Items.Count) then exit;
-  MsgId:=Integer({%H-}PtrUInt(Pointer(chklistCompMsg.Items.Objects[Index])));
+  MsgId:=Integer({%H-}PtrUInt(chklistCompMsg.Items.Objects[Index]));
   if MsgId<=0 then exit;
   if chklistCompMsg.Checked[Index] then begin
     // show message, this is the default

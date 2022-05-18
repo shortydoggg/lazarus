@@ -651,11 +651,11 @@ end;
 
 {------------------------------------------------------------------------------
   Method:   TCanvas.Arc
-  Params:   ALeft, ATop, ARight, ABottom, angle1, angle2
+  Params:   ALeft, ATop, ARight, ABottom, Angle, AngleLength
   Returns:  Nothing
 
   Use Arc to draw an elliptically curved line with the current Pen.
-  The angles angle1 and angle2 are 1/16th of a degree. For example, a full
+  The angles Angle and AngleLength are 1/16th of a degree. For example, a full
   circle equals 5760 (16*360). Positive values of Angle and AngleLength mean
   counter-clockwise while negative values mean clockwise direction.
   Zero degrees is at the 3'o clock position.
@@ -772,11 +772,11 @@ end;
 
 {------------------------------------------------------------------------------
   Method:   TCanvas.RadialPie
-  Params:   x1, y1, x2, y2, StartAngle16Deg, EndAngle16Deg: Integer
+  Params:   x1, y1, x2, y2, StartAngle16Deg, Angle16DegLength: Integer
   Returns:  Nothing
 
   Use RadialPie to draw a filled pie-shaped wedge on the canvas.
-  The angles StartAngle16Deg and EndAngle16Deg are 1/16th of a degree.
+  The angles StartAngle16Deg and Angle16DegLength are 1/16th of a degree.
   For example, a full circle equals 5760 (16*360).
   Positive values of Angle and AngleLength mean
   counter-clockwise while negative values mean clockwise direction.
@@ -1313,7 +1313,6 @@ begin
 
   if Style.Clipping then
   begin
-    IntersectRect(ARect, ARect, fRect);
     with ARect do
       InterSectClipRect(DC, Left, Top, Right, Bottom);
     Options := Options or DT_NOCLIP; // no clipping as we are handling it here
@@ -1357,6 +1356,8 @@ begin
   Flags := 0;
   if TextStyle.Opaque then
     Flags := ETO_Opaque;
+  if TextStyle.RightToLeft then
+    Flags := Flags or ETO_RTLREADING;
   ExtUTF8Out(FHandle, X, Y, Flags, nil, PChar(Text), Length(Text), nil);
   MoveTo(X + TextWidth(Text), Y);
   Changed;
@@ -1761,12 +1762,39 @@ end;
   Gets the width and height of a text
  ------------------------------------------------------------------------------}
 function TCanvas.TextExtent(const Text: string): TSize;
+var
+  DCIndex: Integer;
+  ARect: TRect;
+
+  procedure SaveState;
+  begin
+    if DCIndex <> 0 then exit;
+    DCIndex := SaveDC(FHandle);
+  end;
+
+  procedure RestoreState;
+  begin
+    if DCIndex = 0 then exit;
+    RestoreDC(FHandle, DCIndex);
+  end;
+
 begin
   Result.cX := 0;
   Result.cY := 0;
   if Text='' then exit;
   RequiredState([csHandleValid, csFontValid]);
+
+  DCIndex := 0;
+  if Font.IsDefault then
+  begin
+    SaveState;
+    SelectObject(FHandle, OnGetSystemFont());
+  end;
+
+  ARect := Rect(0, 0, 0, 0);
   GetTextExtentPoint(FHandle, PChar(Text), Length(Text), Result);
+
+  RestoreState;
 end;
 
 {------------------------------------------------------------------------------

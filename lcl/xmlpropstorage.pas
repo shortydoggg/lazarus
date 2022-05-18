@@ -1,4 +1,4 @@
-{  $Id: xmlpropstorage.pas 49494 2015-07-04 23:08:00Z juha $  }
+{  $Id: xmlpropstorage.pas 51954 2016-03-15 21:16:43Z juha $  }
 {
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -15,8 +15,12 @@ interface
 
 
 uses
-  Classes, SysUtils, LCLProc, Forms, XMLConf, DOM,
-  XMLRead, XMLWrite, LazConfigStorage, LazUTF8, lazutf8classes;
+  // RTL, FCL
+  Classes, SysUtils, XMLConf, DOM, XMLRead, XMLWrite,
+  // LCL
+  LCLProc, Forms,
+  // LazUtils
+  LazConfigStorage, LazUTF8, LazUTF8Classes;
 
 type
   { TPropStorageXMLConfig }

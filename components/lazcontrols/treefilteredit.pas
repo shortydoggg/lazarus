@@ -16,12 +16,16 @@ unit TreeFilterEdit;
 interface
 
 uses
-  Classes, SysUtils, Forms, Graphics, Controls, ComCtrls, EditBtn,
-  LResources, LCLType, LCLProc, LazFileUtils, LazUTF8, AvgLvlTree, fgl;
+  Classes, SysUtils, fgl,
+  // LCL
+  LCLType, Graphics, ComCtrls, EditBtn,
+  // LazUtils
+  LazFileUtils, LazUTF8, AvgLvlTree;
 
 type
   TImageIndexEvent = function (Str: String; Data: TObject;
                                var AIsEnabled: Boolean): Integer of object;
+  TFilterNodeEvent = function (ItemNode: TTreeNode; out Done: Boolean): Boolean of object;
 
   TTreeFilterEdit = class;
 
@@ -73,9 +77,10 @@ type
     fBranches: TBranchList;         // Items under these nodes can be sorted.
     fExpandAllInitially: Boolean;   // Expand all levels when searched for the first time.
     fIsFirstTime: Boolean;          // Needed for fExpandAllInitially.
-    // First node that matched the filter. Will be selected if old selection is hidden.
+    // First node matching the filter. Will be selected if old selection is hidden.
     fFirstPassedNode: TTreeNode;
     fOnGetImageIndex: TImageIndexEvent;
+    fOnFilterNode: TFilterNodeEvent;
     procedure SetFilteredTreeview(const AValue: TCustomTreeview);
     procedure SetShowDirHierarchy(const AValue: Boolean);
     function FilterTree(Node: TTreeNode): Boolean;
@@ -91,7 +96,7 @@ type
     function ReturnKeyHandled: Boolean; override;
     procedure SortAndFilter; override;
     procedure ApplyFilterCore; override;
-    function GetDefaultGlyph: TBitmap; override;
+    function GetDefaultGlyphName: string; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -108,6 +113,7 @@ type
     property FilteredTreeview: TCustomTreeview read fFilteredTreeview write SetFilteredTreeview;
     property ExpandAllInitially: Boolean read fExpandAllInitially write fExpandAllInitially default False;
     property OnGetImageIndex: TImageIndexEvent read fOnGetImageIndex write fOnGetImageIndex;
+    property OnFilterNode: TFilterNodeEvent read fOnFilterNode write fOnFilterNode;
   end;
 
   { TTFENodeData - TreeFilterEditNodeData }
@@ -127,17 +133,7 @@ type
     constructor Create(AFilename: string; aData: Pointer);
   end;
 
-var
-  TreeFilterGlyph: TBitmap;
-
-procedure Register;
-
 implementation
-
-procedure Register;
-begin
-  RegisterComponents('LazControls',[TTreeFilterEdit]);
-end;
 
 { TTreeFilterBranch }
 
@@ -198,10 +194,11 @@ begin
   fSortedData.Clear;
   for Origi:=0 to fOriginalData.Count-1 do begin
     s:=fOriginalData[Origi];
-    if (fOwner.Filter='') or (Pos(fOwner.Filter,lowercase(s))>0) then begin
+    if (fOwner.Filter='') or
+        fOwner.DoFilterItem(s, fOwner.Filter, nil) then begin
       i:=fSortedData.Count-1;
       while i>=0 do begin
-        if CompareFNs(s,fSortedData[i])>=0 then break;
+        if CompareFNs(s,fSortedData[i]) >= 0 then break;
         dec(i);
       end;
       fSortedData.InsertObject(i+1, s, fOriginalData.Objects[Origi]);
@@ -241,7 +238,7 @@ begin
         s:=fNodeTextToFullFilenameMap[FileN];           // Full file name.
       AObject := TFileNameItem.Create(s, AObject);
     end;
-    If Assigned(AObject) and (AObject is TTFENodeData) then Begin
+    If AObject is TTFENodeData then Begin
       TTFENodeData(AObject).Node := TVNode;
       TTFENodeData(AObject).Branch := Self;
     end;
@@ -284,10 +281,10 @@ begin
   p:=0;
   while Filename<>'' do begin
     // get the next file name part
-    DelimPos:=System.Pos(PathDelim,Filename);
+    DelimPos:=Pos(PathDelim,Filename);
     if DelimPos>0 then begin
       FilePart:=copy(Filename,1,DelimPos-1);
-      Filename:=copy(Filename,DelimPos+1,length(Filename));
+      delete(Filename,1,DelimPos);
     end else begin
       FilePart:=Filename;
       Filename:='';
@@ -431,9 +428,9 @@ begin
   inherited Destroy;
 end;
 
-function TTreeFilterEdit.GetDefaultGlyph: TBitmap;
+function TTreeFilterEdit.GetDefaultGlyphName: string;
 begin
-  Result := TreeFilterGlyph;
+  Result := 'btnfiltercancel';
 end;
 
 procedure TTreeFilterEdit.OnBeforeTreeDestroy(Sender: TObject);
@@ -444,12 +441,15 @@ end;
 procedure TTreeFilterEdit.SetFilteredTreeview(const AValue: TCustomTreeview);
 begin
   if fFilteredTreeview = AValue then Exit;
-  if fFilteredTreeview <> nil then begin
+  if fFilteredTreeview <> nil then
+  begin
     fFilteredTreeview.RemoveFreeNotification(Self);
     fFilteredTreeview.RemoveHandlerOnBeforeDestruction(@OnBeforeTreeDestroy);
   end;
   fFilteredTreeview := AValue;
-  if fFilteredTreeview <> nil then begin
+  if fFilteredTreeview <> nil then
+  begin
+    Filter := Text;
     fFilteredTreeview.FreeNotification(Self);
     fFilteredTreeview.AddHandlerOnBeforeDestruction(@OnBeforeTreeDestroy);
   end;
@@ -468,21 +468,16 @@ function TTreeFilterEdit.FilterTree(Node: TTreeNode): Boolean;
 // Returns True if Node or its siblings or child nodes have visible items.
 var
   Pass, Done: Boolean;
-  FilterLC: string;
 begin
-  Result:=False;
-  Done:=False;
-  FilterLC:=UTF8LowerCase(Filter);
-  while Node<>nil do
+  Result := False;
+  Done := False;
+  while (Node<>nil) and not Done do
   begin
-    // Call OnFilterItem handler.
-    if Assigned(OnFilterItem) then
-      Pass:=OnFilterItem(TObject(Node.Data), Done)
-    else
-      Pass:=False;
-    // Filter by item's title text if needed.
-    if not (Pass or Done) then
-      Pass:=(FilterLC='') or (Pos(FilterLC,UTF8LowerCase(Node.Text))>0);
+    // Filter with event handler if there is one.
+    if Assigned(fOnFilterNode) then
+      Pass := fOnFilterNode(Node, Done);
+    if not (Pass and Done) then
+      Pass := DoFilterItem(Node.Text, Filter, Node.Data);
     if Pass and (fFirstPassedNode=Nil) then
       fFirstPassedNode:=Node;
     // Recursive call for child nodes.
@@ -578,12 +573,12 @@ begin
       fSelectionList.Delete(0);
     end;
   end;
-  if Assigned(SelectNode) then  // Original selection will be restored later.
-    ANode:=SelectNode
+  if Assigned(SelectNode) then
+    ANode:=SelectNode                       // Stored selection
   else if Assigned(fFirstPassedNode) then
-    ANode:=fFirstPassedNode
+    ANode:=fFirstPassedNode                 // Node matching the filter
   else
-    ANode:=fFilteredTreeview.Items.GetFirstVisibleNode;
+    ANode:=fFilteredTreeview.Items.GetFirstVisibleNode; // Otherwise first node
   fFilteredTreeview.Selected:=ANode;
 end;
 
@@ -604,12 +599,14 @@ end;
 
 procedure TTreeFilterEdit.MoveEnd(ASelect: Boolean);
 begin
-  fFilteredTreeview.MoveEnd(ASelect);
+  if Assigned(fFilteredTreeview) then
+    fFilteredTreeview.MoveEnd(ASelect);
 end;
 
 procedure TTreeFilterEdit.MoveHome(ASelect: Boolean);
 begin
-  fFilteredTreeview.MoveHome(ASelect);
+  if Assigned(fFilteredTreeview) then
+    fFilteredTreeview.MoveHome(ASelect);
 end;
 
 function TTreeFilterEdit.GetCleanBranch(ARootNode: TTreeNode): TTreeFilterBranch;
@@ -643,22 +640,26 @@ end;
 
 procedure TTreeFilterEdit.MoveNext(ASelect: Boolean);
 begin
-  fFilteredTreeview.MoveToNextNode(ASelect);
+  if Assigned(fFilteredTreeview) then
+    fFilteredTreeview.MoveToNextNode(ASelect);
 end;
 
 procedure TTreeFilterEdit.MovePageDown(ASelect: Boolean);
 begin
-  fFilteredTreeview.MovePageDown(ASelect);
+  if Assigned(fFilteredTreeview) then
+    fFilteredTreeview.MovePageDown(ASelect);
 end;
 
 procedure TTreeFilterEdit.MovePageUp(ASelect: Boolean);
 begin
-  fFilteredTreeview.MovePageUp(ASelect);
+  if Assigned(fFilteredTreeview) then
+    fFilteredTreeview.MovePageUp(ASelect);
 end;
 
 procedure TTreeFilterEdit.MovePrev(ASelect: Boolean);
 begin
-  fFilteredTreeview.MoveToPrevNode(ASelect);
+  if Assigned(fFilteredTreeview) then
+    fFilteredTreeview.MoveToPrevNode(ASelect);
 end;
 
 function TTreeFilterEdit.ReturnKeyHandled: Boolean;

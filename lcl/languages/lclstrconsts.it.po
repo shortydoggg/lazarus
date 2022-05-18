@@ -49,210 +49,30 @@ msgstr "Alt"
 msgid "Ctrl"
 msgstr "Ctrl"
 
-#: lclstrconsts.ifsvk_accept
-msgid "Accept"
-msgstr "Accetta"
-
-#: lclstrconsts.ifsvk_apps
-msgid "application key"
-msgstr "tasto applicazione"
-
-#: lclstrconsts.ifsvk_back
-msgid "Backspace"
-msgstr "Backspace"
-
-#: lclstrconsts.ifsvk_cancel
-msgctxt "lclstrconsts.ifsvk_cancel"
-msgid "Cancel"
-msgstr "Cancella"
-
-#: lclstrconsts.ifsvk_capital
-msgid "Capital"
-msgstr "Maiuscola"
-
-#: lclstrconsts.ifsvk_clear
-msgid "Clear"
-msgstr "Cancella"
-
 #: lclstrconsts.ifsvk_cmd
 msgid "Cmd"
 msgstr "Cmd"
 
-#: lclstrconsts.ifsvk_control
-msgid "Control"
-msgstr "Controllo"
-
-#: lclstrconsts.ifsvk_convert
-msgid "Convert"
-msgstr "Converti"
-
-#: lclstrconsts.ifsvk_delete
-msgctxt "lclstrconsts.ifsvk_delete"
-msgid "Delete"
-msgstr "Elimina"
-
-#: lclstrconsts.ifsvk_down
-msgctxt "lclstrconsts.ifsvk_down"
-msgid "Down"
-msgstr "Giù"
-
-#: lclstrconsts.ifsvk_end
-msgctxt "lclstrconsts.ifsvk_end"
-msgid "End"
-msgstr "Fine"
-
-#: lclstrconsts.ifsvk_escape
-msgid "Escape"
-msgstr "Escape"
-
-#: lclstrconsts.ifsvk_execute
-msgid "Execute"
-msgstr "Esegui"
-
-#: lclstrconsts.ifsvk_final
-msgid "Final"
-msgstr "Finale"
-
-#: lclstrconsts.ifsvk_hanja
-msgid "Hanja"
-msgstr "Hanja"
-
 #: lclstrconsts.ifsvk_help
+msgctxt "lclstrconsts.ifsvk_help"
 msgid "Help"
 msgstr "Aiuto"
-
-#: lclstrconsts.ifsvk_home
-msgctxt "lclstrconsts.ifsvk_home"
-msgid "Home"
-msgstr "Home"
-
-#: lclstrconsts.ifsvk_insert
-msgctxt "lclstrconsts.ifsvk_insert"
-msgid "Insert"
-msgstr "Inserisci"
-
-#: lclstrconsts.ifsvk_junja
-msgid "Junja"
-msgstr "Junja"
-
-#: lclstrconsts.ifsvk_kana
-msgid "Kana"
-msgstr "Kana"
-
-#: lclstrconsts.ifsvk_lbutton
-msgid "Mouse Button Left"
-msgstr "Tasto sinistro del mouse"
-
-#: lclstrconsts.ifsvk_left
-msgctxt "lclstrconsts.ifsvk_left"
-msgid "Left"
-msgstr "Sinistra"
-
-#: lclstrconsts.ifsvk_lwin
-msgid "left windows key"
-msgstr "tasto windows sinistro"
-
-#: lclstrconsts.ifsvk_mbutton
-msgid "Mouse Button Middle"
-msgstr "Tasto centrale del mouse"
-
-#: lclstrconsts.ifsvk_menu
-msgctxt "lclstrconsts.ifsvk_menu"
-msgid "Menu"
-msgstr "Menu"
 
 #: lclstrconsts.ifsvk_meta
 msgid "Meta"
 msgstr "Meta"
 
-#: lclstrconsts.ifsvk_modechange
-msgid "Mode Change"
-msgstr "Cambiamento di modalità"
-
-#: lclstrconsts.ifsvk_next
-msgctxt "lclstrconsts.ifsvk_next"
-msgid "Next"
-msgstr "Successivo"
-
-#: lclstrconsts.ifsvk_nonconvert
-msgid "Nonconvert"
-msgstr "Nonconvertente"
-
-#: lclstrconsts.ifsvk_numlock
-msgid "Numlock"
-msgstr "BlocNum"
-
-#: lclstrconsts.ifsvk_numpad
-msgid "Numpad %d"
-msgstr "TastNum %d"
-
-#: lclstrconsts.ifsvk_pause
-msgid "Pause key"
-msgstr "Tasto pausa"
-
-#: lclstrconsts.ifsvk_print
-msgid "Print"
-msgstr "Stampa"
-
-#: lclstrconsts.ifsvk_prior
-msgctxt "lclstrconsts.ifsvk_prior"
-msgid "Prior"
-msgstr "Precedente"
-
-#: lclstrconsts.ifsvk_rbutton
-msgid "Mouse Button Right"
-msgstr "Tasto destro del mouse"
-
-#: lclstrconsts.ifsvk_return
-msgid "Return"
-msgstr "Invio"
-
-#: lclstrconsts.ifsvk_right
-msgctxt "lclstrconsts.ifsvk_right"
-msgid "Right"
-msgstr "Destra"
-
-#: lclstrconsts.ifsvk_rwin
-msgid "right windows key"
-msgstr "tasto windows destro"
-
-#: lclstrconsts.ifsvk_scroll
-msgid "Scroll"
-msgstr "Scorrimento"
-
-#: lclstrconsts.ifsvk_select
-msgid "Select"
-msgstr "Selezione"
-
 #: lclstrconsts.ifsvk_shift
 msgid "Shift"
 msgstr "Maiusc"
-
-#: lclstrconsts.ifsvk_snapshot
-msgid "Snapshot"
-msgstr "Istantanea"
-
-#: lclstrconsts.ifsvk_space
-msgid "Space key"
-msgstr "Tasto di spaziatura"
 
 #: lclstrconsts.ifsvk_super
 msgid "Super"
 msgstr "Super"
 
-#: lclstrconsts.ifsvk_tab
-msgctxt "lclstrconsts.ifsvk_tab"
-msgid "Tab"
-msgstr "Tab"
-
 #: lclstrconsts.ifsvk_unknown
 msgid "Unknown"
 msgstr "Sconosciuto"
-
-#: lclstrconsts.ifsvk_up
-msgctxt "lclstrconsts.ifsvk_up"
-msgid "Up"
-msgstr "Su"
 
 #: lclstrconsts.lislclresourcesnotfound
 msgctxt "lclstrconsts.lislclresourcesnotfound"
@@ -290,6 +110,10 @@ msgstr "Spazio di lavoro dell'applicazione"
 #: lclstrconsts.rsaquacolorcaption
 msgid "Aqua"
 msgstr "Acqua"
+
+#: lclstrconsts.rsascannothaveasparent
+msgid "Class %s cannot have %s as parent."
+msgstr ""
 
 #: lclstrconsts.rsbackgroundcolorcaption
 msgid "Desktop"
@@ -360,6 +184,10 @@ msgstr "Differenzia maiuscolo e minuscolo"
 msgid "Control of class '%s' can't have control of class '%s' as a child"
 msgstr "Un controllo di classe '%s' non può avere figli di classe '%s'"
 
+#: lclstrconsts.rscontrolhasnoparentformorframe
+msgid "Control '%s' has no parent form or frame"
+msgstr ""
+
 #: lclstrconsts.rscontrolhasnoparentwindow
 msgid "Control '%s' has no parent window"
 msgstr "Il controllo '%s' non ha finestra padre"
@@ -371,10 +199,6 @@ msgstr "'%s' non è genitore di  '%s'"
 #: lclstrconsts.rscreamcolorcaption
 msgid "Cream"
 msgstr "Crema"
-
-#: lclstrconsts.rscreatinggdbcatchableerror
-msgid "Creating gdb catchable error:"
-msgstr "Creazione errore intercettabile gdb:"
 
 #: lclstrconsts.rscursor
 msgid "Cursor"
@@ -409,10 +233,6 @@ msgstr "Direzione"
 msgid "&Directory"
 msgstr "&Cartella"
 
-#: lclstrconsts.rsdocking
-msgid "Docking"
-msgstr "Agganciamento"
-
 #: lclstrconsts.rsdocopy
 msgid "Copy"
 msgstr ""
@@ -441,10 +261,6 @@ msgstr "Errore"
 #: lclstrconsts.rserrorcreatingdevicecontext
 msgid "Error creating device context for %s.%s"
 msgstr "Errore nella creazione del contesto dispositivo per %s.%s"
-
-#: lclstrconsts.rserrorinlcl
-msgid "ERROR in LCL: "
-msgstr "Errore nell'LCL: "
 
 #: lclstrconsts.rserroroccurredinataddressframe
 msgid "Error occurred in %s at %sAddress %s%s Frame %s"
@@ -667,6 +483,12 @@ msgstr "--no-xshm             Disabilita l'uso dell'estensione della memoria con
 msgid "--sync                Call XSynchronize (display, True) after the Xserver connection has been established. This makes debugging X protocol errors easier, because X request buffering will be disabled and X errors will be received immediately after the protocol request that generated the error has been processed by the X server."
 msgstr "--sync                Chiama XSynchronize (display, True) appena viene stabilita la connessione al server X. Ciò semplifica la correzione degli errori di protocollo X dato che la richiesta di bufferizzazione di X sarà disabilitata e quindi gli errori di X verranno ricevuti subito dopo che la richiesta di protocollo che ha generato l'errore è stata processata dal server X."
 
+#: lclstrconsts.rshelp
+#, fuzzy
+msgctxt "lclstrconsts.rshelp"
+msgid "Help"
+msgstr "Aiuto"
+
 #: lclstrconsts.rshelpalreadyregistered
 msgid "%s: Already registered"
 msgstr "%s: Già registrato"
@@ -872,9 +694,25 @@ msgstr "Verde brillante"
 msgid "List index exceeds bounds (%d)"
 msgstr "Indice della lista fuori dai limiti (%d)"
 
-#: lclstrconsts.rslistmustbeempty
-msgid "List must be empty"
-msgstr "L'elenco deve essere vuoto"
+#: lclstrconsts.rsmacosmenuhide
+msgid "Hide %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuhideothers
+msgid "Hide Others"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuquit
+msgid "Quit %s"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenuservices
+msgid "Services"
+msgstr ""
+
+#: lclstrconsts.rsmacosmenushowall
+msgid "Show All"
+msgstr ""
 
 #: lclstrconsts.rsmarooncolorcaption
 msgid "Maroon"
@@ -1048,9 +886,9 @@ msgstr "PixMap portabile"
 msgid "Post"
 msgstr "Post"
 
-#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpresscanceltok
-msgid "%s%sPress OK to ignore and risk data corruption.%sPress Cancel to kill the program."
-msgstr "%s%sPremi Ok per ignorare il messaggio e rischiare di corrompere i dati.%sPremi Annulla per terminare il programma"
+#: lclstrconsts.rspressoktoignoreandriskdatacorruptionpressaborttok
+msgid "%s%sPress OK to ignore and risk data corruption.%sPress Abort to kill the program."
+msgstr ""
 
 #: lclstrconsts.rspriorrecordhint
 msgctxt "lclstrconsts.rspriorrecordhint"
@@ -1230,6 +1068,10 @@ msgstr "Ocra"
 msgid "Text"
 msgstr "Testo"
 
+#: lclstrconsts.rsthebuiltinurlisreadonlychangethebaseurlinstead
+msgid "The built-in URL is read only. Change the BaseURL instead."
+msgstr ""
+
 #: lclstrconsts.rstiff
 msgid "Tagged Image File Format"
 msgstr "Formato del file immagine marcato"
@@ -1328,6 +1170,10 @@ msgstr "Giallo"
 #: lclstrconsts.scannotfocus
 msgid "Cannot focus a disabled or invisible window"
 msgstr "Impossibile dare il focus a finestre disabilitate o invisibili"
+
+#: lclstrconsts.scannotsetdesigntimeppi
+msgid "Cannot set design time PPI."
+msgstr ""
 
 #: lclstrconsts.sduplicatemenus
 msgid "Duplicate menus"
@@ -1459,10 +1305,6 @@ msgstr "Tab"
 msgctxt "lclstrconsts.smkcup"
 msgid "Up"
 msgstr "Su"
-
-#: lclstrconsts.snomdiform
-msgid "No MDI form present."
-msgstr "Nessun form MDI presente."
 
 #: lclstrconsts.snotimers
 msgid "No timers available"

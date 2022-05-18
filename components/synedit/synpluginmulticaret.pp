@@ -2,7 +2,7 @@ unit SynPluginMultiCaret;
 
 {$mode objfpc}{$H+}
 
-{$DEFINE SynMultiCaretAssert}
+{off $DEFINE SynMultiCaretAssert}
 {off $DEFINE SynMultiCaretDebug}
 
 {$IfDef SynMultiCaretAssert}
@@ -202,6 +202,8 @@ type
   private
     FCarets: TSynPluginMultiCaretList;
     FColor: TColor;
+    FRestoreSingleCaretPainter: Boolean;
+    FSingleCaretClass: TSynEditScreenCaretPainterClass;
     FUsedList: TSynPluginMultiCaretVisualList;
     FUnUsedList: TSynPluginMultiCaretVisualList;
     FInPaint: Boolean;
@@ -234,6 +236,7 @@ type
     function CreateVisual: TSynPluginMultiCaretVisual; virtual;
     function GetVisual: TSynPluginMultiCaretVisual;
   protected
+    procedure UpdateMainCaret;
     function  AddCaret(X, Y, Offs: Integer; flags: TCaretFlags = []; PhysX: Integer = -1): Integer;
     procedure RemoveCaret(Index: Integer);
     procedure UpdateCaretsPos;
@@ -254,6 +257,7 @@ type
 
     procedure SetCaretTypeSize(AType: TSynCaretType; AWidth, AHeight, AXOffs, AYOffs: Integer; AFlags: TSynCustomCaretSizeFlags);
     property Color: TColor read FColor write SetColor;
+    property RestoreSingleCaretPainter: Boolean read FRestoreSingleCaretPainter write FRestoreSingleCaretPainter;
   end;
 
   { TSynPluginMultiCaretMouseActions }
@@ -273,7 +277,7 @@ type
   TSynPluginMultiCaretMode = (
     mcmCancelOnCaretMove,
     mcmMoveAllCarets,
-    // Osly for ActiveMode
+    // Only for ActiveMode
     mcmNoCarets,
     mcmAddingCarets // move main caret, keep others
   );
@@ -288,6 +292,11 @@ type
     sfSkipUndoCarets
   );
   TSynPluginMultiCaretStateFlags = set of TSynPluginMultiCaretStateFlag;
+
+  TSynMultiCaretOption = (
+    smcoDeleteSkipLineBreak      // ecDeleteChar will not join lines
+  );
+  TSynMultiCaretOptions = set of TSynMultiCaretOption;
 
   { TSynEditUndoMultiCaret }
 
@@ -319,6 +328,7 @@ type
     FEnableWithColumnSelection: Boolean;
     FKeyStrokes: TSynPluginMultiCaretKeyStrokes;
     FOnBeforeCommand: TSynMultiCaretBeforeCommand;
+    FOptions: TSynMultiCaretOptions;
     FStateFlags: TSynPluginMultiCaretStateFlags;
     FMouseActions: TSynPluginMultiCaretMouseActions;
     FSelY1, FSelY2, FSelX: Integer;
@@ -391,6 +401,7 @@ type
     property DefaultMode: TSynPluginMultiCaretDefaultMode read FDefaultMode write SetDefaultMode default mcmMoveAllCarets;
     property DefaultColumnSelectMode: TSynPluginMultiCaretDefaultMode
       read FDefaultColumnSelectMode write SetDefaultColumnSelectMode default mcmCancelOnCaretMove;
+    property Options: TSynMultiCaretOptions read FOptions write FOptions;
     property OnBeforeCommand: TSynMultiCaretBeforeCommand read FOnBeforeCommand write FOnBeforeCommand;
   end;
 
@@ -620,9 +631,9 @@ begin
          )
        )
     then
-      h := Result
+      h := Result      // FCarets[Result] >= (x,y,o)
     else
-      l := Result + 1;
+      l := Result + 1; // FCarets[Result] <  (x,y,o)
     Result := cardinal(l + h) div 2;
   end;
   cp := @FCarets[Result];
@@ -1137,7 +1148,6 @@ end;
 procedure TSynPluginMultiCaretList.SetCurrentCaretKeepX(AValue: Integer);
 begin
   FCurrenCaret^.KeepX := AValue;
-  AdjustAfterChange(FCurrenCaret);
 end;
 
 procedure TSynPluginMultiCaretList.AdjustAfterChange(ACaret: PCaretData);
@@ -1158,37 +1168,42 @@ begin
 
   if (ACaret > FLowCaret) then begin
     NewCaretPos := ACaret - 1;
+    // Compare with previous Caret in list
     if (y <= NewCaretPos^.y) then begin
       x := ACaret^.x;
       if (y < NewCaretPos^.y) or (x <= NewCaretPos^.x) then begin
         o := ACaret^.offs;
         if (x < NewCaretPos^.x) or ( (x = NewCaretPos^.x) and (o <= NewCaretPos^.offs) )
         then begin
+          // ACaret is <= previous Caret in list
+          // TODO: If equal, only check for merge
           HelpCaretPos := NewCaretPos - 1;
           if (HelpCaretPos >= FLowCaret) and
              ( (y < HelpCaretPos^.y) or
                ( (y = HelpCaretPos^.y) and
-                 ( (x < HelpCaretPos^.x) or ( (x = HelpCaretPos^.x) and (o < HelpCaretPos^.offs) ) )
+                 ( (x < HelpCaretPos^.x) or ( (x = HelpCaretPos^.x) and (o <= HelpCaretPos^.offs) ) )
                ) )
           then begin
+            // ACaret is < pre-previous Caret in list
             NewCaretIdx := FindEqOrNextCaretRawIdx(x,y,o, FLowIndex, ToRawIndex(HelpCaretPos));
-            if NewCaretIdx > FHighIndex then NewCaretIdx := FHighIndex;
+            Assert((NewCaretIdx >= FLowIndex) and (NewCaretIdx <= FHighIndex), 'caret idx in range');
             NewCaretPos := @FCarets[NewCaretIdx];
           end;
 
           if (y = NewCaretPos^.y) and (x = NewCaretPos^.x) and (o = NewCaretPos^.offs) then begin
-            if FMergeLock = 0 then
+            if FMergeLock = 0 then begin
               InternalRemoveCaretEx(ToRawIndex(ACaret), ToRawIndex(NewCaretPos));
-            exit;
+              exit;
+            end;
           end;
           v := ACaret^;
           {$IfDef SynMultiCaretDebug}
-      debugln(SynMCaretDebug, ['TSynPluginMultiCaretList.AdjustAfterChange ', ToRawIndex(NewCaretPos), ' ',ToRawIndex(ACaret)]);
+          debugln(SynMCaretDebug, ['TSynPluginMultiCaretList.AdjustAfterChange ', ToRawIndex(NewCaretPos), ' ',ToRawIndex(ACaret)]);
           {$EndIf}
           Move(NewCaretPos^, (NewCaretPos+1)^, Pointer(ACaret)-Pointer(NewCaretPos));
           NewCaretPos^ := v;
 
-          assert(FBeforeNextCaret=nil, 'TSynPluginMultiCaretList.AdjustAfterChange: FBeforeNextCaret=nil');
+          assert(FBeforeNextCaret=nil, 'TSynPluginMultiCaretList.AdjustAfterChange: FBeforeNextCaret=nil Caret changed twice in same iteration');
           FCurrenCaret := NewCaretPos; // move down
           case FIteratoreMode of
             mciUp:   FBeforeNextCaret := ACaret; // continue at ACaret+1;
@@ -1198,6 +1213,8 @@ begin
               inc(FIterationDoneCount);
             end;
           end;
+
+          exit;
         end
       end;
     end;
@@ -1205,29 +1222,46 @@ begin
 
   if (ACaret < FHighCaret) then begin
     NewCaretPos := ACaret + 1;
+    // Compare with next Caret in list
     if (y >= NewCaretPos^.y) then begin
       x := ACaret^.x;
       if (y > NewCaretPos^.y) or (x >= NewCaretPos^.x) then begin
         o := ACaret^.offs;
         if (x > NewCaretPos^.x) or ( (x = NewCaretPos^.x) and (o >= NewCaretPos^.offs) )
         then begin
+          // ACaret is >= next Caret in list
           HelpCaretPos := NewCaretPos + 1;
           if (HelpCaretPos <= FHighCaret) and
              ( (y > HelpCaretPos^.y) or
                ( (y = HelpCaretPos^.y) and
-                 ( (x > HelpCaretPos^.x) or ( (x = HelpCaretPos^.x) and (o > HelpCaretPos^.offs) ) )
+                 ( (x > HelpCaretPos^.x) or ( (x = HelpCaretPos^.x) and (o >= HelpCaretPos^.offs) ) )
                ) )
           then begin
+            // ACaret is > post-next Caret in list
             NewCaretIdx := FindEqOrNextCaretRawIdx(x,y,o, ToRawIndex(HelpCaretPos), FHighIndex);
-            if NewCaretIdx < FLowIndex then NewCaretIdx := FLowIndex;
+            Assert((NewCaretIdx >= FLowIndex + 1) and (NewCaretIdx <= FHighIndex + 1), 'caret idx in range');
+            {$PUSH}{$R-}
             NewCaretPos := @FCarets[NewCaretIdx];
-          end;
+            {$POP}
+            if (NewCaretIdx <= FHighIndex) then begin
+              if (y = NewCaretPos^.y) and (x = NewCaretPos^.x) and (o = NewCaretPos^.offs) then begin
+                if FMergeLock = 0 then begin
+                  InternalRemoveCaretEx(ToRawIndex(ACaret), ToRawIndex(NewCaretPos));
+                  exit;
+                end;
+              end;
+            end;
+            dec(NewCaretPos);
+          end
 
-          if (y = NewCaretPos^.y) and (x = NewCaretPos^.x) and (o = NewCaretPos^.offs) then begin
-            if FMergeLock = 0 then
-              InternalRemoveCaretEx(ToRawIndex(ACaret), ToRawIndex(NewCaretPos));
-            exit;
-          end;
+          else
+            if (y = NewCaretPos^.y) and (x = NewCaretPos^.x) and (o = NewCaretPos^.offs) then begin
+              if FMergeLock = 0 then begin
+                InternalRemoveCaretEx(ToRawIndex(ACaret), ToRawIndex(NewCaretPos));
+                exit;
+              end;
+            end;
+
           v := ACaret^;
           {$IfDef SynMultiCaretDebug}
       debugln(SynMCaretDebug, ['TSynPluginMultiCaretList.AdjustAfterChange ', ToRawIndex(NewCaretPos), ' ',ToRawIndex(ACaret)]);
@@ -1235,7 +1269,7 @@ begin
           Move((ACaret+1)^, ACaret^, Pointer(NewCaretPos)-Pointer(ACaret));
           NewCaretPos^ := v;
 
-          assert(FBeforeNextCaret=nil, 'TSynPluginMultiCaretList.AdjustAfterChange: FBeforeNextCaret=nil');
+          assert(FBeforeNextCaret=nil, 'TSynPluginMultiCaretList.AdjustAfterChange: FBeforeNextCaret=nil Caret changed twice in same iteration');
           FCurrenCaret := NewCaretPos; // move down
           case FIteratoreMode of
             mciDown:   FBeforeNextCaret := ACaret; // continue at ACaret-1;
@@ -1374,7 +1408,7 @@ begin
   Carets.FindAndRemoveMergedCarets;
   i := Carets.FindCaretIdx(CaretObj.BytePos, CaretObj.LinePos, CaretObj.BytePosOffset);
   if i >= 0 then
-    Carets.RemoveCaret(i);
+    RemoveCaret(i);
 end;
 
 function TSynPluginMultiCaretBase.IsCaretMergeRequested: Boolean;
@@ -1428,6 +1462,34 @@ begin
   for i := low(TSynCaretType) to high(TSynCaretType) do
     Result.SetCaretTypeSize(i, FCustomPixelWidth[i], FCustomPixelHeight[i], FCustomOffsetX[i], FCustomOffsetY[i], FCustomFlags[i]);
   TSynEditScreenCaretPainterInternal(Result.Painter).Color := FColor;
+end;
+
+procedure TSynPluginMultiCaretBase.UpdateMainCaret;
+begin
+  if not FRestoreSingleCaretPainter then begin
+    // always set internal painter
+    if ScreenCaret.Painter.ClassType <> TSynEditScreenCaretPainterInternal then
+      ScreenCaret.ChangePainter(TSynEditScreenCaretPainterInternal);
+    exit;
+  end;
+
+  if Carets = nil then exit;
+
+  if Carets.Count = 0 then begin
+    if (FSingleCaretClass <> nil) and
+       (ScreenCaret.Painter.ClassType = TSynEditScreenCaretPainterInternal) and
+       (ScreenCaret.Painter.ClassType <> FSingleCaretClass)
+    then
+      ScreenCaret.ChangePainter(FSingleCaretClass);
+    FSingleCaretClass := nil;
+  end
+  else begin
+    // store current class
+    if FSingleCaretClass = nil then
+      FSingleCaretClass := TSynEditScreenCaretPainterClass(ScreenCaret.Painter.ClassType);
+    if ScreenCaret.Painter.ClassType <> TSynEditScreenCaretPainterInternal then
+      ScreenCaret.ChangePainter(TSynEditScreenCaretPainterInternal);
+  end;
 end;
 
 procedure TSynPluginMultiCaretBase.DoTextSizeChanged(Sender: TObject);
@@ -1565,6 +1627,8 @@ var
   y1, y2: Integer;
 begin
   Result := Carets.AddCaret(x,y, Offs, flags, PhysX);
+  UpdateMainCaret;
+
   if cfNoneVisual in flags then
     exit;
 
@@ -1582,7 +1646,9 @@ begin
   if (y1 < 0) or (y1 > Editor.LinesInWindow + 1) then
     y := -1; // not visible
   if y > 1 then
-    y2 := Editor.RowToScreenRow(y-1);
+    y2 := Editor.RowToScreenRow(y-1)
+  else
+    y2 := -1;
 
   if (y > 0) and (y1 <> y2) or (y=1) then begin
     if Carets.Visual[Result] = nil then
@@ -1598,6 +1664,7 @@ end;
 procedure TSynPluginMultiCaretBase.RemoveCaret(Index: Integer);
 begin
   Carets.RemoveCaret(Index);
+  UpdateMainCaret;
 end;
 
 procedure TSynPluginMultiCaretBase.UpdateCaretsPos;
@@ -1639,8 +1706,10 @@ begin
       if Carets.Visual[i] = nil then
         Carets.Visual[i] := GetVisual;
       x := ViewedTextBuffer.LogPhysConvertor.LogicalToPhysical(ToIdx(y), x, o);
+      Carets.Visual[i].Lock;
       Carets.Visual[i].DisplayPos := TextArea.RowColumnToPixels(Point(x, y1));
       Carets.Visual[i].Visible := vis;
+      Carets.Visual[i].UnLock;
 //todo: remove if duplicate
       // check if offs was adjusted
       //if o <> Carets.CaretOffs[i] then
@@ -1654,6 +1723,7 @@ end;
 procedure TSynPluginMultiCaretBase.ClearCarets;
 begin
   Carets.Clear(True);
+  UpdateMainCaret;
   FUsedList.Clear;
   FUnUsedList.Clear;
   DoCleared;
@@ -1692,14 +1762,14 @@ begin
     ViewedTextBuffer.RemoveNotifyHandler(senrAfterDecPaintLock, @DoAfterDecPaintLock);
     ViewedTextBuffer.RemoveNotifyHandler(senrBeforeIncPaintLock, @DoBeforeIncPaintLock);
     ViewedTextBuffer.RemoveEditHandler(@DoLinesEdited);
-    ViewedTextBuffer.RemoveGenericHandler(senrTextBufferChanged, TMethod(@DoBufferChanged));
+    ViewedTextBuffer.RemoveNotifyHandler(senrTextBufferChanged, @DoBufferChanged);
   end;
 end;
 
 procedure TSynPluginMultiCaretBase.DoEditorAdded(AValue: TCustomSynEdit);
 begin
   if Editor <> nil then begin
-    ViewedTextBuffer.AddGenericHandler(senrTextBufferChanged, TMethod(@DoBufferChanged));
+    ViewedTextBuffer.AddNotifyHandler(senrTextBufferChanged, @DoBufferChanged);
     ViewedTextBuffer.AddEditHandler(@DoLinesEdited);
     ViewedTextBuffer.AddNotifyHandler(senrBeforeIncPaintLock, @DoBeforeIncPaintLock);
     ViewedTextBuffer.AddNotifyHandler(senrAfterDecPaintLock, @DoAfterDecPaintLock);
@@ -1709,14 +1779,15 @@ begin
     TextArea.AddTextSizeChangeHandler(@DoTextSizeChanged);
     TextArea.AddBoundsChangeHandler(@DoBoundsChanged);
 
-    if ScreenCaret.Painter.ClassType = TSynEditScreenCaretPainterSystem then
-      ScreenCaret.ChangePainter(TSynEditScreenCaretPainterInternal);
+    FSingleCaretClass := TSynEditScreenCaretPainterClass(ScreenCaret.Painter.ClassType);
+    UpdateMainCaret;
   end;
   inherited DoEditorAdded(AValue);
 end;
 
 constructor TSynPluginMultiCaretBase.Create(AOwner: TComponent);
 begin
+  FRestoreSingleCaretPainter := True;
   inherited Create(AOwner);
   FColor := clBlack;
   FCarets := TSynPluginMultiCaretList.Create;
@@ -1867,8 +1938,12 @@ begin
   if not FinishComboOnly then
     FKeyStrokes.ResetKeyCombo;
   Command := FKeyStrokes.FindKeycodeEx(Code, SState, Data, IsStartOfCombo, FinishComboOnly, ComboKeyStrokes);
+  if (Command = ecPluginMultiCaretClearAll) and (FCarets.Count = 0) then
+    Command := ecNone;
 
   Handled := (Command <> ecNone) or IsStartOfCombo;
+  if IsStartOfCombo then
+    ComboKeyStrokes := FKeyStrokes;
 end;
 
 procedure TSynCustomPluginMultiCaret.RemoveCaretsInSelection;
@@ -1903,7 +1978,7 @@ begin
        (  ((y = be.y) or (sm = smColumn)) and (x >= be.x)  )
     then
       Continue;
-    Carets.RemoveCaret(i);
+    RemoveCaret(i);
   end;
 end;
 
@@ -2167,7 +2242,7 @@ procedure TSynCustomPluginMultiCaret.DoSelectionChanged(Sender: TObject);
     if i >= 0 then begin
       while Carets.CaretY[i] <= EndY do begin
         if (Carets.CaretX[i] = XLog) and (Carets.CaretOffs[i] = Offs) then
-          Carets.RemoveCaret(i)
+          RemoveCaret(i)
         else
           inc(i);
         if i >= CaretsCount then
@@ -2264,7 +2339,7 @@ begin
 
   i := Carets.FindCaretIdx(CaretObj.BytePos, CaretObj.LinePos, CaretObj.BytePosOffset);
   if i >= 0 then
-    Carets.RemoveCaret(i);
+    RemoveCaret(i);
 
   if ActiveMode = mcmNoCarets then
     ActiveMode := DefaultColumnSelectMode;
@@ -2322,7 +2397,7 @@ begin
       end;
     ecPluginMultiCaretToggleCaret: begin
         i := Carets.FindCaretIdx(CaretObj.BytePos, CaretObj.LinePos, CaretObj.BytePosOffset);
-        if (i > 0) or (sfCreateCaretAtCurrentPos in FStateFlags) then begin
+        if (i >= 0) or (sfCreateCaretAtCurrentPos in FStateFlags) then begin
           exclude(FStateFlags, sfCreateCaretAtCurrentPos);
           if i >= 0 then
             RemoveCaret(i);
@@ -2333,6 +2408,7 @@ begin
         ActiveMode := mcmAddingCarets;
       end;
     ecPluginMultiCaretClearAll: begin
+      Handled := FCarets.Count > 0;
       ClearCarets;
       if not SelectionObj.SelAvail then
         SelectionObj.Clear; // clear invisibel selection
@@ -2349,7 +2425,7 @@ procedure TSynCustomPluginMultiCaret.ProcessAllSynCommand(Sender: TObject; After
   var Handled: boolean; var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: pointer;
   HandlerData: pointer);
 
-  procedure ExecCommandRepeated(AOnePerLine: Boolean = False);
+  procedure ExecCommandRepeated(AOnePerLine: Boolean = False; AForceAll: Boolean = False);
   var
     i, y: Integer;
     p: TLogCaretPoint;
@@ -2374,7 +2450,7 @@ procedure TSynCustomPluginMultiCaret.ProcessAllSynCommand(Sender: TObject; After
       noChange := sfNoChangeIndicator in FStateFlags;
       Exclude(FStateFlags, sfNoChangeIndicator);
 
-      if noChange then begin
+      if noChange and not AForceAll then begin
         if Carets.MainCaretIndex >= 0 then
           RemoveCaret(Carets.MainCaretIndex)
         else
@@ -2458,7 +2534,7 @@ procedure TSynCustomPluginMultiCaret.ProcessAllSynCommand(Sender: TObject; After
       Include(FStateFlags, sfProcessingRepeat);
       case Command of
         ecLeft, ecUp, ecWordLeft, ecLineStart, ecPageUp, ecPageLeft,
-        ecPageTop, ecLineTextStart, ecWordEndLeft, ecHalfWordLeft:
+        ecPageTop, ecLineTextStart, ecWordEndLeft, ecHalfWordLeft, ecSmartWordLeft:
           begin
             Carets.StartIteratorAtFirst;
             while Carets.IterateNextUp do begin
@@ -2541,15 +2617,16 @@ begin
     exit;
 
 
+  Action := ccaDefaultAction;
   case Command of
     ecCopy, ecCut:                  Action := ccaNoneRepeatCommand;
     ecGotoMarker0..ecGotoMarker9:   Action := ccaClearCarets;
     ecSelectAll:                    Action := ccaClearCarets;
+    ecDeleteChar:                   if smcoDeleteSkipLineBreak in Options then
+                                      Command := ecDeleteCharNoCrLf;
     else
       if Command >= ecUserFirst then
-        Action := ccaNoneRepeatCommand
-      else
-        Action := ccaDefaultAction;
+        Action := ccaNoneRepeatCommand;
   end;
   Flags := [];
   if FOnBeforeCommand <> nil then
@@ -2582,12 +2659,12 @@ begin
 
   case Command of
   // TODO: delete and smColumn -- only delete once
-    ecDeleteLastChar..ecDeleteLine,
+    ecDeleteLastChar..ecDeleteLine, ecDeleteCharNoCrLf,
     ecLineBreak..ecChar:
       begin
         StartEditing;
         if Editor.ReadOnly then exit;
-        ExecCommandRepeated;
+        ExecCommandRepeated(False, Command = ecDeleteCharNoCrLf);
       end;
     ecPaste:
       begin
@@ -2644,7 +2721,7 @@ begin
         Include(FStateFlags, sfSkipUndoCarets);
         Include(FStateFlags, sfExtendingColumnSel);
       end;
-    ecLeft..ecHalfWordRight: begin
+    ecLeft..ecSmartWordRight: begin
         Include(FStateFlags, sfSkipUndoCarets);
         if ActiveMode = mcmMoveAllCarets then begin
           Include(FStateFlags, sfProcessingCmd);

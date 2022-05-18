@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -25,11 +25,10 @@
     Dialog to view and search the whole list.
 
   ToDo:
-    -quickfix for identifier not found
     -use identifier: check package version
     -check for conflict: other unit with same name already in search path
     -check for conflict: other identifier in scope, use unitname.identifier
-    -gzip? lot of cpu, may be faster on first load
+    -use gzip? lot of cpu, may be faster on first load
 }
 unit CodyIdentifiersDlg;
 
@@ -38,16 +37,22 @@ unit CodyIdentifiersDlg;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, avl_tree, contnrs, Forms,
-  Controls, Dialogs, ButtonPanel, StdCtrls, ExtCtrls, LCLType,
-  Buttons, Menus, PackageIntf, LazIDEIntf, SrcEditorIntf, ProjectIntf,
-  CompOptsIntf, IDEDialogs, IDEMsgIntf, IDEExternToolIntf, CodeCache,
-  BasicCodeTools, CustomCodeTool, CodeToolManager, UnitDictionary, CodeTree,
-  LinkScanner, DefineTemplates, CodeToolsStructs, FindDeclarationTool,
-  CodyStrConsts, CodyUtils, CodyOpts, FileProcs, LazFileUtils, LazFileCache;
+  Classes, SysUtils, LCLProc, contnrs, Laz_AVL_Tree,
+  // LCL
+  Forms, Controls, Dialogs, ButtonPanel, StdCtrls, ExtCtrls, LCLType, Buttons, Menus,
+  // IdeIntf
+  PackageIntf, LazIDEIntf, SrcEditorIntf, ProjectIntf,
+  CompOptsIntf, IDEDialogs, IDEMsgIntf, IDEExternToolIntf, ProjPackIntf,
+  // Codetools
+  CodeCache, BasicCodeTools, CustomCodeTool, CodeToolManager, UnitDictionary,
+  CodeTree, LinkScanner, DefineTemplates, FindDeclarationTool,
+  CodyStrConsts, CodyUtils, CodyOpts, FileProcs,
+  // LazUtils
+  LazFileUtils, LazFileCache, AvgLvlTree;
 
 const
   PackageNameFPCSrcDir = 'FPCSrcDir';
+  PackageNameDefault = 'PCCfg';
 type
   TCodyUnitDictionary = class;
 
@@ -140,7 +145,7 @@ type
   TCodyIdentifiersDlg = class(TForm)
     AddToImplementationUsesCheckBox: TCheckBox;
     ButtonPanel1: TButtonPanel;
-    ContainsSpeedButton: TSpeedButton;
+    ContainsRadioButton: TRadioButton;
     FilterEdit: TEdit;
     HideOtherProjectsCheckBox: TCheckBox;
     InfoLabel: TLabel;
@@ -149,16 +154,16 @@ type
     DeleteSeparatorMenuItem: TMenuItem;
     DeleteUnitMenuItem: TMenuItem;
     DeletePackageMenuItem: TMenuItem;
+    StartsRadioButton: TRadioButton;
     UseMenuItem: TMenuItem;
     PackageLabel: TLabel;
     PopupMenu1: TPopupMenu;
-    StartsSpeedButton: TSpeedButton;
     UnitLabel: TLabel;
     procedure ButtonPanel1HelpButtonClick(Sender: TObject);
     procedure DeletePackageClick(Sender: TObject);
     procedure DeleteUnitClick(Sender: TObject);
     procedure UseIdentifierClick(Sender: TObject);
-    procedure ContainsSpeedButtonClick(Sender: TObject);
+    procedure ContainsRadioButtonClick(Sender: TObject);
     procedure FilterEditChange(Sender: TObject);
     procedure FilterEditKeyDown(Sender: TObject; var Key: Word;
       {%H-}Shift: TShiftState);
@@ -171,7 +176,7 @@ type
     procedure ItemsListBoxSelectionChange(Sender: TObject; {%H-}User: boolean);
     procedure OnIdle(Sender: TObject; var {%H-}Done: Boolean);
     procedure PopupMenu1Popup(Sender: TObject);
-    procedure StartsSpeedButtonClick(Sender: TObject);
+    procedure StartsRadioButtonClick(Sender: TObject);
   private
     FDlgAction: TCodyIdentifierDlgAction;
     FJumpButton: TBitBtn;
@@ -186,6 +191,7 @@ type
     procedure SetMaxItems(AValue: integer);
     procedure UpdateGeneralInfo;
     procedure UpdateItemsList;
+    procedure UpdateItemsListIfFilterChanged;
     procedure SortItems;
     procedure UpdateIdentifierInfo;
     function GetFilterEditText: string;
@@ -193,8 +199,8 @@ type
     function FindSelectedItem(out Identifier, UnitFilename,
       GroupName, GroupFilename: string): boolean;
     procedure UpdateCurOwnerOfUnit;
-    procedure AddToUsesSection;
-    procedure UpdateTool;
+    procedure AddToUsesSection(JumpToSrcError: boolean);
+    function UpdateTool(JumpToSrcError: boolean): boolean;
     function AddButton: TBitBtn;
     function GetCurOwnerCompilerOptions: TLazCompilerOptions;
   public
@@ -212,7 +218,8 @@ type
     CurInImplementation: Boolean;
 
     CurOwner: TObject; // only valid after UpdateCurOwnerOfUnit and till next event
-    CurUnitPath: String; // depends on CurOwner
+    CurUnitPath: string; // depends on CurOwner
+    CurOwnerDir: string; // depends on CurOwner
 
     NewIdentifier: string;
     NewUnitFilename: string;
@@ -340,8 +347,12 @@ begin
     exit;
   end;
   // a fpc unit is better
+  if CheckFlag(i1.GroupName=PackageNameDefault,i2.GroupName=PackageNameDefault,Result) then begin
+    //debugln(['CompareCodyIdentifiersScope fpc.cfg unit ',i1.Identifier,' GroupName 1=',i1.GroupName,' 2=',i2.GroupName]);
+    exit;
+  end;
   if CheckFlag(i1.GroupName=PackageNameFPCSrcDir,i2.GroupName=PackageNameFPCSrcDir,Result) then begin
-    //debugln(['CompareCodyIdentifiersScope fpc unit ',i1.Identifier,' GroupName 1=',i1.GroupName,' 2=',i2.GroupName]);
+    //debugln(['CompareCodyIdentifiersScope fpcsrcdir unit ',i1.Identifier,' GroupName 1=',i1.GroupName,' 2=',i2.GroupName]);
     exit;
   end;
   // a near directory is better
@@ -396,7 +407,7 @@ var
 begin
   if not IsApplicable(Msg,Identifier) then exit;
   if LazarusIDE.DoOpenFileAndJumpToPos(Msg.GetFullFilename,
-    Point(Msg.Column,Msg.Line),-1,-1,-1,[])<>mrOk then exit;
+    Point(Msg.Column,Msg.Line),-1,-1,-1,[ofOnlyIfExists,ofRegularFile])<>mrOk then exit;
   ShowUnitDictionaryDialog(nil);
 end;
 
@@ -524,6 +535,8 @@ var
   ok: Boolean;
   OldChangeStamp: Int64;
   UnitSet: TFPCUnitSetCache;
+  CfgCache: TPCTargetConfigCache;
+  DefaultFile: String;
 begin
   // check without critical section if currently loading/saving
   if fLoadSaveThread<>nil then
@@ -576,17 +589,38 @@ begin
 
         // check if in FPC source directory
         UnitSet:=CodeToolBoss.GetUnitSetForDirectory('');
-        if (UnitSet<>nil) and (UnitSet.FPCSourceDirectory<>'')
-        and FileIsInPath(fParsingTool.MainFilename,UnitSet.FPCSourceDirectory)
-        then begin
-          BeginCritSec;
-          try
-            UDGroup:=AddUnitGroup(
-              AppendPathDelim(UnitSet.FPCSourceDirectory)+PackageNameFPCSrcDir+'.lpk',
-              PackageNameFPCSrcDir);
-            UDGroup.AddUnit(UDUnit);
-          finally
-            EndCritSec;
+        if UnitSet<>nil then begin
+          if (UnitSet.FPCSourceDirectory<>'')
+          and FileIsInPath(fParsingTool.MainFilename,UnitSet.FPCSourceDirectory)
+          then begin
+            // unit in FPC source directory
+            BeginCritSec;
+            try
+              UDGroup:=AddUnitGroup(
+                AppendPathDelim(UnitSet.FPCSourceDirectory)+PackageNameFPCSrcDir+'.lpk',
+                PackageNameFPCSrcDir);
+              UDGroup.AddUnit(UDUnit);
+            finally
+              EndCritSec;
+            end;
+          end else begin
+            CfgCache:=UnitSet.GetConfigCache(false);
+            if (CfgCache<>nil) and (CfgCache.Units<>nil) then begin
+              DefaultFile:=CfgCache.Units[ExtractFileNameOnly(fParsingTool.MainFilename)];
+              if CompareFilenames(DefaultFile,fParsingTool.MainFilename)=0 then
+              begin
+                // unit source is in default compiler unit path
+                BeginCritSec;
+                try
+                  UDGroup:=AddUnitGroup(
+                    ExtractFilePath(UnitSet.CompilerFilename)+PackageNameDefault+'.lpk',
+                    PackageNameDefault);
+                  UDGroup.AddUnit(UDUnit);
+                finally
+                  EndCritSec;
+                end;
+              end;
+            end;
           end;
         end;
 
@@ -690,7 +724,7 @@ end;
 procedure TCodyUnitDictionary.CheckFiles;
 var
   aFilename: String;
-  StrItem: PStringToStringTreeItem;
+  StrItem: PStringToStringItem;
   List: TStringList;
   UDGroup: TUDUnitGroup;
   CurUnit: TUDUnit;
@@ -875,9 +909,10 @@ begin
   UpdateItemsList;
 end;
 
-procedure TCodyIdentifiersDlg.ContainsSpeedButtonClick(Sender: TObject);
+procedure TCodyIdentifiersDlg.ContainsRadioButtonClick(Sender: TObject);
 begin
-  UpdateItemsList;
+  StartsRadioButton.Checked:=not ContainsRadioButton.Checked;
+  IdleConnected:=true;
 end;
 
 procedure TCodyIdentifiersDlg.FilterEditKeyDown(Sender: TObject; var Key: Word;
@@ -940,12 +975,12 @@ begin
   FJumpButton.OnClick:=@JumpButtonClick;
   FJumpButton.Caption:= crsJumpTo;
 
-  StartsSpeedButton.Down:=true;
-  StartsSpeedButton.Caption:=crsStarts;
-  StartsSpeedButton.Hint:=crsShowOnlyIdentifiersStartingWithFilterText;
-  ContainsSpeedButton.Down:=false;
-  ContainsSpeedButton.Caption:=crsContains;
-  ContainsSpeedButton.Hint:=crsShowOnlyIdentifiersContainingFilterText;
+  StartsRadioButton.Checked:=true;
+  StartsRadioButton.Caption:=crsStarts;
+  StartsRadioButton.Hint:=crsShowOnlyIdentifiersStartingWithFilterText;
+  ContainsRadioButton.Checked:=false;
+  ContainsRadioButton.Caption:=crsContains;
+  ContainsRadioButton.Hint:=crsShowOnlyIdentifiersContainingFilterText;
 end;
 
 procedure TCodyIdentifiersDlg.HideOtherProjectsCheckBoxChange(Sender: TObject);
@@ -974,10 +1009,7 @@ begin
     UpdateGeneralInfo;
     UpdateItemsList;
   end;
-  if (FLastFilter<>GetFilterEditText)
-  or (FLastHideOtherProjects<>HideOtherProjectsCheckBox.Checked)
-  or (FLastFilterType<>GetFilterType) then
-    UpdateItemsList;
+  UpdateItemsListIfFilterChanged;
   IdleConnected:=false;
 end;
 
@@ -1006,9 +1038,10 @@ begin
   end;
 end;
 
-procedure TCodyIdentifiersDlg.StartsSpeedButtonClick(Sender: TObject);
+procedure TCodyIdentifiersDlg.StartsRadioButtonClick(Sender: TObject);
 begin
-  UpdateItemsList;
+  StartsRadioButton.Checked:=not ContainsRadioButton.Checked;
+  IdleConnected:=true;
 end;
 
 procedure TCodyIdentifiersDlg.SetIdleConnected(AValue: boolean);
@@ -1046,12 +1079,12 @@ var
   Found: Integer;
   UnitSet: TFPCUnitSetCache;
   FPCSrcDir: String;
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
 
   procedure AddItems(AddExactMatches: boolean);
   var
     FPCSrcFilename: String;
-    Dir: String;
+    Dir, aFilename: String;
     Group: TUDUnitGroup;
     GroupNode: TAVLTreeNode;
     Item: TUDIdentifier;
@@ -1112,6 +1145,16 @@ var
                 continue; // the unit has no ppu file
             end;
           end;
+        end else if Group.Name=PackageNameDefault then begin
+          // unit was in default unit path
+          // => check if this is still the case
+          if CfgCache<>nil then begin
+            aFilename:=CfgCache.Units[Item.DUnit.Name];
+            if aFilename='' then
+              continue; // the unit is not in current default unit path
+            if CompareFilenames(aFilename,Item.DUnit.Filename)<>0 then
+              continue; // this is another unit (e.g. from another compiler target)
+          end;
         end else if FileExistsCached(Group.Filename) then begin
           // lpk exists
         end else begin
@@ -1164,8 +1207,12 @@ begin
     for i:=0 to FItems.Count-1 do begin
       Item:=TCodyIdentifier(FItems[i]);
       s:=Item.Identifier+' in '+Item.Unit_Name;
-      if Item.GroupName<>'' then
-        s:=s+' of '+Item.GroupName;
+      if Item.GroupName<>'' then begin
+        if Item.GroupName=PackageNameDefault then
+          s:=s+' in compiler unit path'
+        else
+          s:=s+' of '+Item.GroupName;
+      end;
       sl.Add(s);
     end;
     if Found>sl.Count then
@@ -1178,6 +1225,14 @@ begin
   finally
     sl.Free;
   end;
+end;
+
+procedure TCodyIdentifiersDlg.UpdateItemsListIfFilterChanged;
+begin
+  if (FLastFilter<>GetFilterEditText)
+  or (FLastHideOtherProjects<>HideOtherProjectsCheckBox.Checked)
+  or (FLastFilterType<>GetFilterType) then
+    UpdateItemsList;
 end;
 
 procedure TCodyIdentifiersDlg.SortItems;
@@ -1215,6 +1270,8 @@ begin
     if Item.GroupName='' then
       continue; // other project is always far away
     if Item.GroupName=PackageNameFPCSrcDir then
+      continue; // FPC unit
+    if Item.GroupName=PackageNameDefault then
       continue; // FPC unit
     if CurOwner=nil then continue;
     // package unit
@@ -1361,6 +1418,7 @@ var
   NewY: integer;
   NewTopLine: integer;
   CurUnit: TUDUnit;
+  NewUnitDir: String;
 
   function OpenDependency: boolean;
   // returns false to abort
@@ -1434,13 +1492,15 @@ begin
   // do some sanity checks
   NewUnitInPath:=false;
   UnitPathAdd:=ChompPathDelim(
-    CreateRelativePath(ExtractFilePath(CurMainFilename),
+    CreateRelativePath(CurOwnerDir,
                        ExtractFilePath(NewUnitFilename)));
   CurUnitName:=ExtractFileNameOnly(CurMainFilename);
   NewUnitName:=ExtractFileNameOnly(NewUnitFilename);
   FPCSrcFilename:='';
   Pkg:=nil;
   PkgDependencyAdded:=false;
+
+  debugln(['TCodyIdentifiersDlg.UseIdentifier CurUnitName="',CurUnitName,'" NewUnitName="',NewUnitName,'"']);
 
   SameUnitName:=CompareDottedIdentifiers(PChar(CurUnitName),PChar(NewUnitName))=0;
   if SameUnitName and (CompareFilenames(CurMainFilename,NewUnitFilename)<>0)
@@ -1452,27 +1512,33 @@ begin
     exit;
   end;
 
+  debugln(['TCodyIdentifiersDlg.UseIdentifier CurMainFilename="',CurMainFilename,'" NewUnitFilename="',NewUnitFilename,'"']);
   if CompareFilenames(CurMainFilename,NewUnitFilename)=0 then begin
     // same file
     NewUnitInPath:=true;
-    debugln(['TCodyIdentifiersDlg.UseIdentifier same unit']);
+    debugln(['TCodyIdentifiersDlg.UseIdentifier same unit CurMainFilename="',CurMainFilename,'" NewUnitFilename="',NewUnitFilename,'"']);
   end
   else if (CompareFilenames(ExtractFilePath(CurMainFilename),
-                        ExtractFilePath(NewUnitFilename))=0)
+                            ExtractFilePath(NewUnitFilename))=0)
   then begin
     // same directory
-    debugln(['TCodyIdentifiersDlg.UseIdentifier same directory']);
+    debugln(['TCodyIdentifiersDlg.UseIdentifier same directory CurMainFilename="',CurMainFilename,'" NewUnitFilename="',NewUnitFilename,'"']);
     NewUnitInPath:=true;
   end
   else if (CurUnitPath<>'')
-  and FilenameIsAbsolute(CurMainFilename)
-  and (FindPathInSearchPath(PChar(CurUnitPath),length(CurUnitPath),
-                            PChar(CurMainFilename),length(CurMainFilename))<>nil)
-  then begin
-    // in unit search path
-    debugln(['TCodyIdentifiersDlg.UseIdentifier in unit search path of owner']);
-    NewUnitInPath:=true;
+  and FilenameIsAbsolute(NewUnitFilename) then begin
+    NewUnitDir:=ExtractFilePath(NewUnitFilename);
+    if (FindPathInSearchPath(PChar(NewUnitDir),length(NewUnitDir),
+                             PChar(CurUnitPath),length(CurUnitPath))<>nil)
+    then begin
+      // in unit search path
+      debugln(['TCodyIdentifiersDlg.UseIdentifier in unit search path of owner NewUnitDir="',NewUnitDir,'" CurUnitPath="',CurUnitPath,'"']);
+      NewUnitInPath:=true;
+    end else
+      debugln(['TCodyIdentifiersDlg.UseIdentifier not in unitpath: NewUnitDir="',NewUnitDir,'"']);
   end;
+  if not NewUnitInPath then
+    debugln(['TCodyIdentifiersDlg.UseIdentifier not in unit path: CurMainFilename="',CurMainFilename,'" NewUnitFilename="',NewUnitFilename,'" CurUnitPath="',CurUnitPath,'"']);
 
   UnitSet:=CodeToolBoss.GetUnitSetForDirectory('');
   if not NewUnitInPath then begin
@@ -1490,6 +1556,9 @@ begin
           mtConfirmation, [mrOk, crsExtendUnitPath, mrCancel])<> mrOk then exit;
       end else
         NewUnitInPath:=true;
+    end else if NewGroupName=PackageNameDefault then begin
+      // new unit is in default compiler unit path
+      NewUnitInPath:=true;
     end else if NewGroupName<>'' then begin
       // new unit is part of a package
       debugln(['TCodyIdentifiersDlg.UseIdentifier unit is part of a package in "'+NewGroupFilename+'"']);
@@ -1506,19 +1575,25 @@ begin
         if IDEQuestionDialog(crsPackageWithSameName,
           Format(crsThereIsAlreadyAnotherPackageLoadedWithTheSameNameO, [LineEnding,
             Pkg.Filename, LineEnding, NewGroupFilename, LineEnding]),
-          mtConfirmation, [mrCancel, crsBTNCancel, mrOk,
-            crsCloseOtherPackageAndOpenNew])<> mrOk
+          mtConfirmation, [mrCancel, crsBTNCancel,
+                           mrOk, crsCloseOtherPackageAndOpenNew]) <> mrOk
         then exit;
       end;
-    end else begin
+    end;
+    if not NewUnitInPath then begin
       // new unit is a rogue unit (no package)
       debugln(['TCodyIdentifiersDlg.UseIdentifier unit is not in a package']);
+      if UnitSet.GetUnitToSourceTree(false).Contains(NewUnitName) then
+        NewUnitInPath:=true;
     end;
   end;
 
   // open package to get the compiler settings to parse the unit
-  if (CurOwner<>nil) and (not NewUnitInPath)
-  and (NewGroupName<>'') and (NewGroupName<>PackageNameFPCSrcDir) then begin
+  if (CurOwner<>nil)
+  and (not NewUnitInPath)
+  and (NewGroupName<>'')
+  and (NewGroupName<>PackageNameFPCSrcDir)
+  and (NewGroupName<>PackageNameDefault) then begin
     if not OpenDependency then exit;
   end;
 
@@ -1552,9 +1627,12 @@ begin
     debugln(['TCodyIdentifiersDlg.UseIdentifier CurOwner=',DbgSName(CurOwner),' ',NewUnitInPath]);
     if (CurOwner<>nil) and (not NewUnitInPath) then begin
       debugln(['TCodyIdentifiersDlg.UseIdentifier not in unit path, connecting pkg="',NewGroupName,'" ...']);
-      if (NewGroupName<>'') and (NewGroupName<>PackageNameFPCSrcDir) then begin
+      if (NewGroupName<>'') then begin
         // add dependency
-        if not AddDependency then exit;
+        if (NewGroupName<>PackageNameFPCSrcDir)
+        and (NewGroupName<>PackageNameDefault)
+        then
+          if not AddDependency then exit;
       end else if FilenameIsAbsolute(NewUnitFilename)
       and FilenameIsAbsolute(CurMainFilename) then begin
         // extend unit path
@@ -1566,7 +1644,7 @@ begin
     end;
 
     if not SameUnitName then
-      AddToUsesSection;
+      AddToUsesSection(true);
   finally
     CurSrcEdit.EndUndoBlock{$IFDEF SynUndoDebugBeginEnd}('TCodyIdentifiersDlg.UseIdentifier'){$ENDIF};
   end;
@@ -1593,7 +1671,9 @@ begin
   end;
 
   // open package to get proper settings
-  if (NewGroupName<>'') and (NewGroupName<>PackageNameFPCSrcDir) then begin
+  if (NewGroupName<>'')
+  and (NewGroupName<>PackageNameFPCSrcDir)
+  and (NewGroupName<>PackageNameDefault) then begin
     Pkg:=PackageEditingInterface.FindPackageWithName(NewGroupName);
     if (Pkg=nil) or (CompareFilenames(Pkg.Filename,NewGroupFilename)<>0) then
     begin
@@ -1637,7 +1717,7 @@ end;
 
 function TCodyIdentifiersDlg.GetFilterType: TCodyIdentifierFilter;
 begin
-  if ContainsSpeedButton.Down then
+  if ContainsRadioButton.Checked then
     exit(cifContains)
   else
     exit(cifStartsWith);
@@ -1663,6 +1743,7 @@ var
 begin
   CurOwner:=nil;
   CurUnitPath:='';
+  CurOwnerDir:='';
   if CurMainFilename='' then exit;
   GetBest(PackageEditingInterface.GetOwnersOfUnit(CurMainFilename));
   if CurOwner=nil then
@@ -1672,10 +1753,12 @@ begin
     CompOpts:=GetCurOwnerCompilerOptions;
     if CompOpts<>nil then
       CurUnitPath:=CompOpts.GetUnitPath(false);
+    if CurOwner is TIDEProjPackBase then
+      CurOwnerDir:= TIDEProjPackBase(CurOwner).Directory;
   end;
 end;
 
-procedure TCodyIdentifiersDlg.AddToUsesSection;
+procedure TCodyIdentifiersDlg.AddToUsesSection(JumpToSrcError: boolean);
 var
   NewUnitCode: TCodeBuffer;
   NewUnitName: String;
@@ -1686,7 +1769,7 @@ begin
     debugln(['TCodyIdentifiersDlg.AddToUsesSection failed: no tool']);
     exit;
   end;
-  UpdateTool;
+  UpdateTool(JumpToSrcError);
   if (CurNode=nil) then begin
     debugln(['TCodyIdentifiersDlg.AddToUsesSection failed: no node']);
     exit;
@@ -1739,10 +1822,15 @@ begin
     CodeToolBoss.AddUnitToImplementationUsesSection(CurMainCode,NewUnitName,'')
   else
     CodeToolBoss.AddUnitToMainUsesSection(CurMainCode,NewUnitName,'');
+  if CodeToolBoss.ErrorMessage<>'' then
+    LazarusIDE.DoJumpToCodeToolBossError;
 end;
 
-procedure TCodyIdentifiersDlg.UpdateTool;
+function TCodyIdentifiersDlg.UpdateTool(JumpToSrcError: boolean): boolean;
+var
+  Tool: TCodeTool;
 begin
+  Result:=false;
   if (CurTool=nil) or (NewUnitFilename='') then exit;
   if not LazarusIDE.BeginCodeTools then exit;
   try
@@ -1750,6 +1838,17 @@ begin
   except
   end;
   CurNode:=CurTool.FindDeepestNodeAtPos(CurCleanPos,false);
+  if CurNode<>nil then
+    Result:=true
+  else if JumpToSrcError then begin
+    CodeToolBoss.Explore(CurCodePos.Code,Tool,false);
+    if CodeToolBoss.ErrorCode=nil then
+      IDEMessageDialog(crsCaretOutsideOfCode, CurTool.CleanPosToStr(
+        CurCleanPos, true),
+        mtError,[mbOk])
+    else
+      LazarusIDE.DoJumpToCodeToolBossError;
+  end;
 end;
 
 function TCodyIdentifiersDlg.AddButton: TBitBtn;

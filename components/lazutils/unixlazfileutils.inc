@@ -218,7 +218,7 @@ begin
     CurDir := GetCurrentDirUtf8;
     if ((Length(Fn) > 1) and (Fn[1] = '~') and (Fn[2] = '/')) or (Fn = '~') then
     begin
-      HomeDir := SysToUtf8(GetEnvironmentVariable('HOME'));
+      HomeDir := GetEnvironmentVariableUTF8('HOME');
       if not FileNameIsUnixAbsolute(HomeDir) then
         HomeDir := ExpandFileNameUtf8(HomeDir,'');
       Fn := HomeDir + Copy(Fn,2,length(Fn));
@@ -344,12 +344,12 @@ end;
 
 function FileIsReadable(const AFilename: string): boolean;
 begin
-  Result:= BaseUnix.FpAccess(AFilename,BaseUnix.R_OK)=0;
+  Result := BaseUnix.FpAccess(AFilename, BaseUnix.R_OK) = 0;
 end;
 
 function FileIsWritable(const AFilename: string): boolean;
 begin
-  Result := (BaseUnix.FpAccess(AFilename, BaseUnix.W_OK) = 0);
+  Result := BaseUnix.FpAccess(AFilename, BaseUnix.W_OK) = 0;
 end;
 
 

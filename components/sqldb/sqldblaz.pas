@@ -2,20 +2,21 @@
   This source is only used to compile and install the package.
  }
 
-unit SQLDBLaz; 
+unit SQLDBLaz;
 
+{$warn 5023 off : no warning about unused units}
 interface
 
 uses
-  registersqldb, sqldb, SQLStringsPropertyEditorDlg, LazarusPackageIntf;
+  registersqldb, SQLStringsPropertyEditorDlg, LazarusPackageIntf;
 
 implementation
 
-procedure Register; 
+procedure Register;
 begin
-  RegisterUnit('registersqldb', @registersqldb.Register); 
-end; 
+  RegisterUnit('registersqldb', @registersqldb.Register);
+end;
 
 initialization
-  RegisterPackage('SQLDBLaz', @Register); 
+  RegisterPackage('SQLDBLaz', @Register);
 end.

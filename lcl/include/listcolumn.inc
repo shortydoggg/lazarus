@@ -1,5 +1,5 @@
 {%MainUnit ../comctrls.pp}
-{ $Id: listcolumn.inc 53785 2016-12-27 22:31:57Z maxim $
+{ $Id: listcolumn.inc 62667 2020-02-24 04:12:44Z dmitry $
 
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -95,6 +95,8 @@ begin
   end;
   WSC.ColumnSetImage(LV, Index, Self, FImageIndex);
   WSC.ColumnSetVisible(LV, Index, Self, FVisible);
+  if FSortIndicator<>siNone then
+    WSC.ColumnSetSortIndicator(LV, Index, Self, FSortIndicator);
 end;
 
 procedure TListColumn.WSDestroyColumn;
@@ -139,6 +141,19 @@ begin
   Result := FWidth;
 end;
 
+procedure TListColumn.SetSortIndicator(AValue: TSortIndicator);
+var
+  LV: TCustomListView;
+begin
+  if FSortIndicator = AValue then Exit;
+  FSortIndicator := AValue;
+  Changed(False);
+  if not WSUpdateAllowed then Exit;
+
+  LV := TListColumns(Collection).FOwner;
+  TWSCustomListViewClass(LV.WidgetSetClass).ColumnSetSortIndicator(LV, Index, Self, FSortIndicator);
+end;
+
 procedure TListColumn.SetAlignment(const AValue: TAlignment);
 var
   LV: TCustomListView;
@@ -178,7 +193,7 @@ begin
   else
   if (MaxWidth > 0) and (W > MaxWidth) then
     W := MaxWidth;
-  if FWidth = W then Exit;
+  if Width = W then Exit; // compare with Width instead of FWidth - FWidth is not updated from the WS automatically
   FWidth := W;
   Changed(False);
   if not WSUpdateAllowed then Exit;

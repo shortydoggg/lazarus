@@ -9,11 +9,14 @@
       <SearchPaths>
         <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
       </SearchPaths>
+      <Other>
+        <CustomOptions Value="$(IDEBuildOptions)"/>
+      </Other>
     </CompilerOptions>
     <Description Value="IDE Add-on for grouping projects, packages and project groups."/>
     <License Value="Same as IDEIntf.
-Modified LGPL-2."/>
-    <Version Minor="2"/>
+GPL-2."/>
+    <Version Minor="7"/>
     <Files Count="6">
       <Item1>
         <Filename Value="projectgroupintf.pp"/>
@@ -41,6 +44,10 @@ Modified LGPL-2."/>
         <UnitName Value="ProjectGroupStrConst"/>
       </Item6>
     </Files>
+    <i18n>
+      <EnableI18N Value="True"/>
+      <OutDir Value="languages"/>
+    </i18n>
     <RequiredPkgs Count="2">
       <Item1>
         <PackageName Value="CodeTools"/>

@@ -53,7 +53,14 @@ begin
   FItems.UpdateImages;
 end;
 
-procedure TMenu.SetBidiMode(const AValue: TBidiMode);
+procedure TMenu.SetImagesWidth(const aImagesWidth: Integer);
+begin
+  if FImagesWidth = aImagesWidth then Exit;
+  FImagesWidth := aImagesWidth;
+  FItems.UpdateImages;
+end;
+
+procedure TMenu.SetBiDiMode(const AValue: TBiDiMode);
 begin
   if FBidiMode=AValue then exit;
   FBidiMode:=AValue;
@@ -62,7 +69,7 @@ begin
     BidiModeChanged;
 end;
 
-procedure TMenu.SetParentBidiMode(const AValue: Boolean);
+procedure TMenu.SetParentBiDiMode(const AValue: Boolean);
 begin
   if FParentBiDiMode = AValue then exit;
   FParentBiDiMode := AValue;
@@ -148,6 +155,7 @@ end;
 
 procedure TMenu.DestroyHandle;
 begin
+  //debugln(['TMenu.DestroyHandle ',DbgSName(Self),' ',Items<>nil]);
   Items.DestroyHandle;
 end;
 
@@ -165,8 +173,8 @@ end;
  ------------------------------------------------------------------------------}
 destructor TMenu.Destroy;
 begin
-  FreeThenNil(FItems);
-  FreeThenNil(FImageChangeLink);
+  FreeAndNil(FItems);
+  FreeAndNil(FImageChangeLink);
   inherited Destroy;
 end;
 
@@ -262,9 +270,11 @@ begin
   //DebugLn(['TMenu.IsShortcut ',dbgsName(Self),' Result=',Result,' Message.CharCode=',Message.CharCode,' ShiftState=',dbgs(ShiftState)]);
   if Result then
   begin
+    //DebugLn(['TMenu.IsShortcut ',dbgsName(Self),' Result=',Result,' Message.CharCode=',Message.CharCode,' ShiftState=',dbgs(ShiftState)]);
     FShortcutHandled := True;
     HandleItem(Item);
     Result := FShortcutHandled;
+    //debugln(['TMenu.IsShortcut ',Result]); DumpStack;
   end;
 end;
 
@@ -275,7 +285,7 @@ end;
 
   The handle will be created if not already allocated.
  ------------------------------------------------------------------------------}
-function TMenu.GetHandle: HMenu;
+function TMenu.GetHandle: HMENU;
 begin
   HandleNeeded();
   Result := FItems.Handle;
@@ -304,11 +314,26 @@ begin
     DoChange(Source, Rebuild);
 end;
 
+procedure TMenu.AssignTo(Dest: TPersistent);
+begin
+  if Dest is TMenu then
+    Menu_Copy(Self, Dest as TMenu)
+  else
+    inherited AssignTo(Dest);
+end;
+
 procedure TMenu.Notification(AComponent: TComponent; Operation: TOperation);
 begin
   inherited Notification(AComponent, Operation);
-  if (Operation = opRemove) and (AComponent = FImages) then
-    Images := nil;
+  if (Operation = opRemove) then
+  begin
+    if (AComponent = FImages) then
+      Images := nil
+    else if AComponent=FItems then
+    begin
+      raise Exception.Create(''); // someone is stealing my
+    end;
+  end;
 end;
 
 procedure TMenu.SetChildOrder(Child: TComponent; Order: Integer);
@@ -358,7 +383,7 @@ begin
   end;
 end;
 
-function TMenu.IsBiDiModeStored: boolean;
+function TMenu.IsBiDiModeStored: Boolean;
 begin
   Result := not FParentBidiMode;
 end;

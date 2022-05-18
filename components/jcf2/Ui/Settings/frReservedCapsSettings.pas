@@ -31,7 +31,7 @@ interface
 
 uses
   Classes, StdCtrls, ExtCtrls,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -50,9 +50,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -124,9 +124,9 @@ end;
 
 procedure TfrReservedCapsSettings.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  cbEnable.Checked := FormatSettings.Caps.Enabled;
+  cbEnable.Checked := FormattingSettings.Caps.Enabled;
 
-  with FormatSettings.Caps do
+  with FormattingSettings.Caps do
   begin
     rgReservedWords.ItemIndex := Ord(ReservedWords);
     rgConstants.ItemIndex := Ord(Constants);
@@ -138,9 +138,9 @@ end;
 
 procedure TfrReservedCapsSettings.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  FormatSettings.Caps.Enabled := cbEnable.Checked;
+  FormattingSettings.Caps.Enabled := cbEnable.Checked;
 
-  with FormatSettings.Caps do
+  with FormattingSettings.Caps do
   begin
     ReservedWords := TCapitalisationType(rgReservedWords.ItemIndex);
     Constants := TCapitalisationType(rgConstants.ItemIndex);
@@ -152,7 +152,7 @@ end;
 
 class function TfrReservedCapsSettings.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 initialization

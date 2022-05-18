@@ -22,7 +22,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -46,10 +46,10 @@ uses
   // CodeTools
   FileProcs, CodeToolManager, DefineTemplates,
   // LazUtils
-  FileUtil, LazUTF8, LazUTF8Classes, LazFileUtils, LazFileCache, LazLogger,
+  FileUtil, LazUTF8, LazUTF8Classes, LazFileUtils, LazFileCache, LazLoggerBase,
   // Other
   MacroDefIntf, GDBMIDebugger, DbgIntfDebuggerBase,
-  TransferMacros, LazarusIDEStrConsts, LazConf, EnvironmentOpts,
+  TransferMacros, LazarusIDEStrConsts, LazConf, EnvironmentOpts, IDEImagesIntf,
   AboutFrm, IDETranslations, BaseBuildManager, InitialSetupProc;
   
 type
@@ -303,7 +303,7 @@ begin
     // Windows-only locations:
     if (GetDefaultSrcOSForTargetOS(GetCompiledTargetOS)='win') then begin
       // check for debugger in fpc.exe directory - could be a lucky shot
-      if CheckFile(SetDirSeparators('$Path($(CompPath))/'+DebuggerFileName+GetExecutableExt),Result)
+      if CheckFile(GetForcedPathDelims('$Path($(CompPath))/'+DebuggerFileName+GetExecutableExt),Result)
         then exit;
     end;
 
@@ -489,7 +489,7 @@ begin
   ImgIDError := Imagelist1.AddResourceName(HInstance, 'state_error');
   ImgIDWarning := Imagelist1.AddResourceName(HInstance, 'state_warning');
 
-  StopScanButton.LoadGlyphFromResourceName(HInstance, 'menu_stop');
+  IDEImages.AssignImage(StopScanButton, 'menu_stop');
 
   UpdateCaptions;
 
@@ -767,7 +767,7 @@ begin
 
   FPCSrcDirBrowseButton.Caption:=lisPathEditBrowse;
   FPCSrcDirLabel.Caption:=SimpleFormat(lisTheSourcesOfTheFreePascalPackagesAreRequiredForBro,
-    [SetDirSeparators('rtl/linux/system.pp')]);
+    [GetForcedPathDelims('rtl/linux/system.pp')]);
   ScanLabel.Caption := lisScanning;
   StopScanButton.Caption:=lisStop;
 
@@ -845,7 +845,7 @@ var
   Files: TSDFileInfoList;
 begin
   Exclude(FFlags,sdfCompilerFilenameNeedsUpdate);
-  Files:=SearchCompilerCandidates(false,CodeToolBoss.FPCDefinesCache.TestFilename);
+  Files:=SearchFPCExeCandidates(false,CodeToolBoss.CompilerDefinesCache.TestFilename);
   FreeAndNil(FCandidates[sddtCompilerFilename]);
   FCandidates[sddtCompilerFilename]:=Files;
   FillComboboxWithFileInfoList(CompilerComboBox,Files);
@@ -970,7 +970,7 @@ var
   Quality: TSDFilenameQuality;
   s: String;
   ImageIndex: Integer;
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
 begin
   if csDestroying in ComponentState then exit;
   CurCaption:=CompilerComboBox.Text;
@@ -979,15 +979,15 @@ begin
   fLastParsedCompiler:=EnvironmentOptions.GetParsedCompilerFilename;
   //debugln(['TInitialSetupDialog.UpdateCompilerNote ',fLastParsedCompiler]);
 
-  Quality:=CheckCompilerQuality(fLastParsedCompiler,Note,
-                                CodeToolBoss.FPCDefinesCache.TestFilename);
+  Quality:=CheckFPCExeQuality(fLastParsedCompiler,Note,
+                                CodeToolBoss.CompilerDefinesCache.TestFilename);
   if Quality<>sddqInvalid then begin
-    CodeToolBoss.FPCDefinesCache.ConfigCaches.Find(
+    CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
       fLastParsedCompiler,'','','',true);
     // check compiler again
-    CfgCache:=CodeToolBoss.FPCDefinesCache.ConfigCaches.Find(
+    CfgCache:=CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
                                                fLastParsedCompiler,'','','',true);
-    CfgCache.Update(CodeToolBoss.FPCDefinesCache.TestFilename);
+    CfgCache.Update(CodeToolBoss.CompilerDefinesCache.TestFilename);
     BuildBoss.SetBuildTargetIDE;
   end;
 

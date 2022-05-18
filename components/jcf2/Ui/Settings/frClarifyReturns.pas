@@ -31,7 +31,7 @@ interface
 
 uses
   Classes, StdCtrls, ExtCtrls,
-  IDEOptionsIntf;
+  IDEOptionsIntf, IDEOptEditorIntf;
 
 type
 
@@ -54,9 +54,9 @@ type
     constructor Create(AOwner: TComponent); override;
 
     function GetTitle: String; override;
-    procedure Setup(ADialog: TAbstractOptionsEditorDialog); override;
-    procedure ReadSettings(AOptions: TAbstractIDEOptions); override;
-    procedure WriteSettings(AOptions: TAbstractIDEOptions); override;
+    procedure Setup({%H-}ADialog: TAbstractOptionsEditorDialog); override;
+    procedure ReadSettings({%H-}AOptions: TAbstractIDEOptions); override;
+    procedure WriteSettings({%H-}AOptions: TAbstractIDEOptions); override;
     class function SupportedOptionsClass: TAbstractIDEOptionsClass; override;
   end;
 
@@ -108,7 +108,7 @@ end;
 
 procedure TfClarifyReturns.ReadSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Returns do
+  with FormattingSettings.Returns do
   begin
     cbRemoveReturns.Checked     := RemoveBadReturns;
     cbRemovePropertyReturns.Checked := RemovePropertyReturns;
@@ -126,7 +126,7 @@ end;
 
 procedure TfClarifyReturns.WriteSettings(AOptions: TAbstractIDEOptions);
 begin
-  with FormatSettings.Returns do
+  with FormattingSettings.Returns do
   begin
     RemoveBadReturns      := cbRemoveReturns.Checked;
     RemovePropertyReturns := cbRemovePropertyReturns.Checked;
@@ -144,7 +144,7 @@ end;
 
 class function TfClarifyReturns.SupportedOptionsClass: TAbstractIDEOptionsClass;
 begin
-  Result := TFormatSettings;
+  Result := TFormattingSettings;
 end;
 
 initialization

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -110,6 +110,7 @@ type
 procedure ExplodeAWithBlockCmd(Sender: TObject);
 procedure InsertFileAtCursor(Sender: TObject);
 procedure InsertCallInherited(Sender: TObject);
+procedure InsertInt64ID(Sender: TObject);
 
 function ParseTilCursor(out Tool: TCodeTool; out CleanPos: integer;
    out Node: TCodeTreeNode; out ErrorHandled: boolean;
@@ -316,6 +317,16 @@ begin
         ErrorNotInMethod;
     end;
   end;
+end;
+
+procedure InsertInt64ID(Sender: TObject);
+var
+  SrcEdit: TSourceEditorInterface;
+begin
+  SrcEdit:=SourceEditorManagerIntf.ActiveEditor;
+  if SrcEdit=nil then exit;
+
+  SrcEdit.Selection:=FormatDateTime('YYYYMMDDhhnnss',Now);
 end;
 
 function ParseTilCursor(out Tool: TCodeTool; out CleanPos: integer;

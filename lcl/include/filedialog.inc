@@ -35,6 +35,23 @@ begin
   inherited Destroy;
 end;
 
+procedure TFileDialog.DoCanClose(var CanClose: Boolean);
+begin
+  {$ifdef DebugCommonDialogEvents}
+  debugln(['TFileDialog.DoCanClose: FUserChoice = ',ModalResultStr[FUserChoice],' HandleAllocated=',HandleAllocated]);
+  {$endif}
+  //Only call OnCanClose if user did not cancel the dialog, see:
+  //http://docwiki.embarcadero.com/Libraries/Berlin/en/Vcl.Dialogs.TOpenDialog_Events
+  if (FUserChoice = mrOK) then
+    inherited DoCanClose(CanClose)
+  else
+  begin
+    FDoCanCloseCalled := True;
+    CanClose := True;
+  end;
+end;
+
+
 
 {------------------------------------------------------------------------------}
 {  TFileDialog DoOnTypeChange                                                         }
@@ -226,7 +243,7 @@ begin
   RegisterOpenDialog;
 end;
 
-procedure TOpenDialog.DereferenceLinks;
+procedure TOpenDialog.ResolveLinks;
 var i: integer;
 begin
   if Filename<>'' then
@@ -237,6 +254,11 @@ begin
         Files[i]:=GetPhysicalFilename(Files[i],pfeOriginal);
     end;
   end;
+end;
+
+procedure TOpenDialog.DereferenceLinks;
+begin
+  ResolveLinks;
 end;
 
 
@@ -385,8 +407,12 @@ end;
 function TOpenDialog.DoExecute: boolean;
 begin
   Result:=inherited DoExecute;
-  if (not (ofNoDereferenceLinks in Options)) then begin
-    DereferenceLinks;
+  if (not (ofNoResolveLinks in Options)) then begin
+    if TMethod(@Self.DereferenceLinks).Code <> Pointer(@TOpenDialog.DereferenceLinks)
+    then begin
+      DereferenceLinks{%H-}; // call for compatibility
+    end else
+      ResolveLinks;
   end;
   if (not (ofNoChangeDir in Options)) then begin
     if (ExtractFilePath(Filename)<>'') then
@@ -415,6 +441,18 @@ begin
   inherited Create(TheOwner);
   fCompStyle:=csOpenFileDialog;
   FOptions := DefaultOpenDialogOptions;
+end;
+
+procedure TOpenDialog.DoCanClose(var CanClose: Boolean);
+begin
+  //Delphi never calls OnCanClose in this case
+  if not (ofOldStyleDialog in Options) then
+    inherited DoCanClose(CanClose)
+  else
+  begin
+    FDoCanCloseCalled := True;
+    CanClose := True;
+  end;
 end;
 
 procedure TOpenDialog.DoFolderChange;

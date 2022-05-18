@@ -65,7 +65,8 @@ type
     class function GetTabIndexAtPos(const ATabControl: TCustomTabControl; const AClientPos: TPoint): integer; virtual;
     class function GetTabRect(const ATabControl: TCustomTabControl; const AIndex: Integer): TRect; virtual;
     class function GetCapabilities: TCTabControlCapabilities; virtual;
-    class procedure SetImageList(const ATabControl: TCustomTabControl; const AImageList: TCustomImageList); virtual;
+    class procedure SetTabSize(const ATabControl: TCustomTabControl; const ATabWidth, ATabHeight: integer); virtual;
+    class procedure SetImageList(const ATabControl: TCustomTabControl; const AImageList: TCustomImageListResolution); virtual;
     class procedure SetPageIndex(const ATabControl: TCustomTabControl; const AIndex: integer); virtual;
     class procedure SetTabCaption(const ATabControl: TCustomTabControl; const AChild: TCustomPage; const AText: string); virtual;
     class procedure SetTabPosition(const ATabControl: TCustomTabControl; const ATabPosition: TTabPosition); virtual;
@@ -119,6 +120,7 @@ type
     class procedure ColumnSetMinWidth(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const AMinWidth: integer); virtual;
     class procedure ColumnSetWidth(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const AWidth: Integer); virtual;
     class procedure ColumnSetVisible(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const AVisible: Boolean); virtual;
+    class procedure ColumnSetSortIndicator(const ALV: TCustomListView; const AIndex: Integer; const AColumn: TListColumn; const ASortIndicator: TSortIndicator); virtual;
               
     // Item          
     class procedure ItemDelete(const ALV: TCustomListView; const AIndex: Integer); virtual;
@@ -160,7 +162,7 @@ type
     class procedure SetHotTrackStyles(const ALV: TCustomListView; const AValue: TListHotTrackStyles); virtual;
     class procedure SetHoverTime(const ALV: TCustomListView; const AValue: Integer); virtual;
     class procedure SetIconArrangement(const ALV: TCustomListView; const AValue: TIconArrangement); virtual;
-    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageList); virtual;
+    class procedure SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageListResolution); virtual;
     class procedure SetItemsCount(const ALV: TCustomListView; const Avalue: Integer); virtual;
     class procedure SetOwnerData(const ALV: TCustomListView; const AValue: Boolean); virtual;
     class procedure SetProperty(const ALV: TCustomListView; const AProp: TListViewProperty; const AIsSet: Boolean); virtual;
@@ -194,7 +196,16 @@ type
 
   TWSCustomUpDown = class(TWSCustomControl)
   published
+    class procedure SetIncrement(const AUpDown: TCustomUpDown; AValue: Double); virtual;
+    class procedure SetMaxPosition(const AUpDown: TCustomUpDown; AValue: Double); virtual;
+    class procedure SetMinPosition(const AUpDown: TCustomUpDown; AValue: Double); virtual;
+    class procedure SetOrientation(const AUpDown: TCustomUpDown; AOrientation: TUDOrientation); virtual;
+    class procedure SetPosition(const AUpDown: TCustomUpDown; AValue: Double); virtual;
+    // class procedure SetRepeatInterval(const AUpDown: TWSCustomUpDown; ms: Integer); virtual;
+    class procedure SetUseArrowKeys(const AUpDown: TCustomUpDown; AUseArrow: Boolean); virtual;
+    class procedure SetWrap(const AUpDown: TCustomUpDown; ADoWrap: Boolean); virtual;
   end;
+  TWSCustomUpDownClass = class of TWSCustomUpDown;
 
   { TWSUpDown }
 
@@ -261,6 +272,50 @@ implementation
 
 uses
   LResources;
+
+{ TWSCustomUpDown }
+
+class procedure TWSCustomUpDown.SetUseArrowKeys(const AUpDown: TCustomUpDown;
+  AUseArrow: Boolean);
+begin
+
+end;
+
+class procedure TWSCustomUpDown.SetMinPosition(const AUpDown: TCustomUpDown;
+  AValue: Double);
+begin
+
+end;
+
+class procedure TWSCustomUpDown.SetMaxPosition(const AUpDown: TCustomUpDown;
+  AValue: Double);
+begin
+
+end;
+
+class procedure TWSCustomUpDown.SetPosition(const AUpDown: TCustomUpDown;
+  AValue: Double);
+begin
+
+end;
+
+class procedure TWSCustomUpDown.SetIncrement(const AUpDown: TCustomUpDown;
+  AValue: Double);
+begin
+
+end;
+
+class procedure TWSCustomUpDown.SetOrientation(const AUpDown: TCustomUpDown;
+  AOrientation: TUDOrientation);
+begin
+
+end;
+
+class procedure TWSCustomUpDown.SetWrap(const AUpDown: TCustomUpDown;
+  ADoWrap: Boolean);
+begin
+
+end;
 
 { TWSTabSheet }
 
@@ -360,8 +415,13 @@ begin
   Result:=[];
 end;
 
+class procedure TWSCustomTabControl.SetTabSize(
+  const ATabControl: TCustomTabControl; const ATabWidth, ATabHeight: integer);
+begin
+end;
+
 class procedure TWSCustomTabControl.SetImageList(
-  const ATabControl: TCustomTabControl; const AImageList: TCustomImageList);
+  const ATabControl: TCustomTabControl; const AImageList: TCustomImageListResolution);
 begin
 end;
 
@@ -477,6 +537,13 @@ end;
 class procedure TWSCustomListView.ColumnSetVisible(const ALV: TCustomListView;
   const AIndex: Integer; const AColumn: TListColumn; const AVisible: Boolean);
 begin
+end;
+
+class procedure TWSCustomListView.ColumnSetSortIndicator(
+  const ALV: TCustomListView; const AIndex: Integer;
+  const AColumn: TListColumn; const ASortIndicator: TSortIndicator);
+begin
+
 end;
 
 class procedure TWSCustomListView.ItemDelete(const ALV: TCustomListView;
@@ -652,7 +719,8 @@ class procedure TWSCustomListView.SetIconArrangement(
 begin
 end;
 
-class procedure TWSCustomListView.SetImageList(const ALV: TCustomListView; const AList: TListViewImageList; const AValue: TCustomImageList);
+class procedure TWSCustomListView.SetImageList(const ALV: TCustomListView;
+  const AList: TListViewImageList; const AValue: TCustomImageListResolution);
 begin
 end;
 

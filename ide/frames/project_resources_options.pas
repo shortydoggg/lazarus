@@ -7,9 +7,15 @@ unit project_resources_options;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ComCtrls, Dialogs, LCLType,
-  FileUtil, LazFileUtils, LazUTF8, IDEOptionsIntf, IDEImagesIntf, IDEDialogs, Project,
-  ProjectUserResources, LCLStrConsts, StdCtrls, LazarusIDEStrConsts;
+  Classes, SysUtils,
+  // LCL
+  LCLType, LCLStrConsts, Controls, ComCtrls, StdCtrls, Dialogs, Graphics,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf, IDEDialogs,
+  // IDE
+  Project, ProjectUserResources, LazarusIDEStrConsts;
 
 type
 
@@ -86,7 +92,7 @@ begin
       begin
         aFilename := Filename;
         if not FProject.IsVirtual then
-          aFileName := CreateRelativePath(aFileName, FProject.ProjectDirectory);
+          aFileName := CreateRelativePath(aFileName, FProject.Directory);
 
         AddResource(aFileName);
       end;
@@ -313,10 +319,10 @@ begin
   lbResources.Column[2].Caption := rsResource;
   btnAdd.Caption := lisBtnAdd;
   btnDelete.Caption := lisBtnDelete;
-  btnAdd.ImageIndex := IDEImages.LoadImage(16, 'laz_add');
-  btnDelete.ImageIndex := IDEImages.LoadImage(16, 'laz_delete');
+  btnAdd.ImageIndex := IDEImages.LoadImage('laz_add');
+  btnDelete.ImageIndex := IDEImages.LoadImage('laz_delete');
   btnClear.Caption := lisDeleteAll;
-  btnClear.ImageIndex := IDEImages.LoadImage(16, 'menu_clean');
+  btnClear.ImageIndex := IDEImages.LoadImage('menu_clean');
   lblResourceName.Caption := rsResource + ':';
   lblResourceType.Caption := rsResourceType + ':';
   for rt := Low(TUserResourceType) to High(TUserResourceType) do

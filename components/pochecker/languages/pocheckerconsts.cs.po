@@ -4,145 +4,133 @@ msgstr ""
 "Project-Id-Version: PoChecker\n"
 "POT-Creation-Date: \n"
 "PO-Revision-Date: \n"
-"Last-Translator: Václav Valíček <valicek1994@gmail.com>\n"
-"Language-Team:  <vaclav@valicek.name>\n"
+"Last-Translator: Chronos <robie@centrum.cz>\n"
+"Language-Team: <vaclav@valicek.name>\n"
 "MIME-Version: 1.0\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.5.4\n"
+"X-Generator: Poedit 2.2\n"
 "Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
 "Language: cs\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 
 #: pocheckerconsts.rspochecker
-msgid "PO File Checker"
-msgstr "PO File Checker"
+msgid "Check PO Files ..."
+msgstr "Kontrolovat PO soubory ..."
 
 #: pocheckerconsts.rs_lang_af_za
 msgid "Afrikaans"
-msgstr ""
+msgstr "Afrikánština"
 
 #: pocheckerconsts.rs_lang_all
 msgid "All languages"
-msgstr ""
+msgstr "Všechny jazyky"
 
 #: pocheckerconsts.rs_lang_ar
 msgid "Arabic"
-msgstr ""
+msgstr "Arabština"
 
 #: pocheckerconsts.rs_lang_ca
 msgid "Catalan"
-msgstr ""
+msgstr "Katalánština"
 
 #: pocheckerconsts.rs_lang_cs
 msgid "Czech"
-msgstr ""
+msgstr "Čeština"
 
 #: pocheckerconsts.rs_lang_de
 msgid "German"
-msgstr ""
+msgstr "Němčina"
 
 #: pocheckerconsts.rs_lang_en
 msgid "English"
-msgstr ""
+msgstr "Angličtina"
 
 #: pocheckerconsts.rs_lang_es
 msgid "Spanish"
-msgstr ""
+msgstr "Španělština"
 
 #: pocheckerconsts.rs_lang_fi
 msgid "Finnish"
-msgstr ""
+msgstr "Finština"
 
 #: pocheckerconsts.rs_lang_fr
 msgid "French"
-msgstr ""
+msgstr "Francouzština"
 
 #: pocheckerconsts.rs_lang_he
 msgid "Hebrew"
-msgstr ""
+msgstr "Hebrejština"
 
 #: pocheckerconsts.rs_lang_hu
 msgid "Hungarian"
-msgstr ""
+msgstr "Maďarština"
 
 #: pocheckerconsts.rs_lang_id
 msgid "Indonesian"
-msgstr ""
+msgstr "Indonésština"
 
 #: pocheckerconsts.rs_lang_it
 msgid "Italian"
-msgstr ""
+msgstr "Italština"
 
 #: pocheckerconsts.rs_lang_ja
 msgid "Japanese"
-msgstr ""
+msgstr "Japonština"
 
 #: pocheckerconsts.rs_lang_lt
 msgid "Lithuanian"
-msgstr ""
+msgstr "Litevština"
 
 #: pocheckerconsts.rs_lang_nl
 msgid "Dutch"
-msgstr ""
+msgstr "Holandština"
 
 #: pocheckerconsts.rs_lang_pl
 msgid "Polish"
-msgstr ""
+msgstr "Polština"
 
 #: pocheckerconsts.rs_lang_pt
 msgid "Portuguese"
-msgstr ""
+msgstr "Portugalština"
 
 #: pocheckerconsts.rs_lang_pt_br
 msgid "Brazilian Portuguese"
-msgstr ""
+msgstr "Brazilská portugalština"
 
 #: pocheckerconsts.rs_lang_ru
 msgid "Russian"
-msgstr ""
+msgstr "Ruština"
 
 #: pocheckerconsts.rs_lang_sk
 msgid "Slovak"
-msgstr ""
+msgstr "Slovenština"
 
 #: pocheckerconsts.rs_lang_tr
 msgid "Turkish"
-msgstr ""
+msgstr "Turečtina"
 
 #: pocheckerconsts.rs_lang_uk
 msgid "Ukrainian"
-msgstr ""
+msgstr "Ukrajinština"
 
 #: pocheckerconsts.rs_lang_zh_cn
 msgid "Chinese, simplified"
-msgstr ""
+msgstr "Čínština, zjednodušená"
 
 #: pocheckerconsts.salllanguages
 msgid "All Languages"
-msgstr ""
+msgstr "Všechny jazyky"
 
-#: pocheckerconsts.scannotfindmaster
-msgid ""
-"Cannot find master po file:\n"
-"%s\n"
-"for selected file\n"
-"%s\n"
-msgstr ""
-"Nemůžu najít hlavní po soubor:\n"
-"%s\n"
-"pro vybraný soubor\n"
-"%s\n"
-
-#: pocheckerconsts.scheckforduplicateuntranslatedvalues
-msgid "Check for duplicate untranslated values"
-msgstr "Zkontrolovat výskyt duplicitních nepřeložených hodnot"
+#: pocheckerconsts.scannotwritefileyoucanpressretrytorefreshthistransl
+msgid "Cannot write file%s%s%s%sYou can press \"Retry\" to refresh this translation family again and continue."
+msgstr "Nelze zapisovat do souboru%s%s%s%sMůžete stisknout \"Znovu\" pro znovu obnovení a pokračování této překladové rodiny."
 
 #: pocheckerconsts.scheckforincompatibleformatarguments
 msgid "Check for incompatible format arguments"
 msgstr "Zkontrolovat výskyt nekompatibilních argumentů funkce format"
 
 #: pocheckerconsts.scheckformismatchesinuntranslatedstrings
-msgid "Check for mismatches in untranslated strings"
+msgid "Check for mismatches of originals"
 msgstr "Zkontrolovat výskyt chyb v nepřeložených řetězcích"
 
 #: pocheckerconsts.scheckmissingidentifiers
@@ -153,33 +141,33 @@ msgstr "Kontrola chybějících identifikátorů"
 msgid "Check number of items"
 msgstr "Zkontrolovat počet položek"
 
-#: pocheckerconsts.scheckstatistics
-msgid "Check percentage of (un)translated and fuzzy strings"
-msgstr "Spočítat procentuální zastoupení (ne)přeložených a nepřesných řetězců"
-
 #: pocheckerconsts.sclearlistbox
 msgid "Clear"
-msgstr ""
+msgstr "Smazat"
 
-#: pocheckerconsts.scopycaption
-msgid "Copy to clipboard"
-msgstr "Kopírovat do schránky"
+#: pocheckerconsts.scopy
+msgid "&Copy"
+msgstr "Kopírovat"
 
 #: pocheckerconsts.screatingiconxofy
 msgid "Creating icon nr. %d of %d"
-msgstr ""
+msgstr "Vytváření ikony č. %d z %d"
 
 #: pocheckerconsts.scurrenttest
 msgid "Test: %s on %s"
-msgstr ""
+msgstr "Test: %s na %s"
 
 #: pocheckerconsts.sduplicatelinenrwithvalue
 msgid "[Line %d] %s"
 msgstr "[Řádek %d] %s"
 
 #: pocheckerconsts.sduplicateoriginals
-msgid "The (untranslated) value \"%s\" is used for more than 1 entry:"
-msgstr "(Nepřeložený) řetězec \"%s\" je využitý na více než jednom místě:"
+msgid "Original value \"%s\" is used for more than 1 entry:"
+msgstr "Původní hodnota \"%s\" je použita pro více než 1 položku:"
+
+#: pocheckerconsts.sduplicateoriginalstab
+msgid "Duplicate Originals"
+msgstr "Zdvojené originály"
 
 #: pocheckerconsts.serroroncleanup
 msgid ""
@@ -203,19 +191,33 @@ msgstr ""
 msgid "Errors / warnings reported by %s for:"
 msgstr "Chyby / varování nahlášené %s pro:"
 
+#: pocheckerconsts.sfile
+msgid "File %s"
+msgstr "Soubor %s"
+
 #: pocheckerconsts.sfilesnotfoundandremoved
 msgid ""
 "The following non-existent files were removed from the list:\n"
 "%s\n"
 msgstr ""
+"Odstraněno následujících neexistujících souborů ze seznamu:\n"
+"%s\n"
 
-#: pocheckerconsts.sfuzzy
-msgid "Fuzzy"
-msgstr ""
+#: pocheckerconsts.sfuzzystrings
+msgid "Fuzzy strings"
+msgstr "Nejednoznačné řetězce"
+
+#: pocheckerconsts.sfuzzystringstotal
+msgid "Fuzzy strings (total: %s)"
+msgstr "Nejednoznačné řetězce (celkem: %s)"
+
+#: pocheckerconsts.sgeneralinfo
+msgid "General Info"
+msgstr "Obecné informace"
 
 #: pocheckerconsts.sgrapstatformcaption
 msgid "Graphical summary"
-msgstr ""
+msgstr "Grafický přehled"
 
 #: pocheckerconsts.sguipofilecheckingtool
 msgid "GUI Po-file checking tool"
@@ -225,13 +227,17 @@ msgstr "GUI pomůcka pro kontrolu po souborů"
 msgid "Identifier [%s] not found in %s"
 msgstr "Identifikátor [%s] nenalezen v %s"
 
-#: pocheckerconsts.signorefuzzytranslations
-msgid "Ignore translated strings marked as \"fuzzy\""
-msgstr ""
-
 #: pocheckerconsts.sincompatibleformatargs
 msgid "[Line: %d] Incompatible and/or invalid format() arguments for:"
 msgstr "[Řádek %d] Nekompatibilní/vadné argumenty funkce format():"
+
+#: pocheckerconsts.slanguage
+msgid "Language:"
+msgstr "Jazyk:"
+
+#: pocheckerconsts.slastsearchpath
+msgid "Last search path:"
+msgstr "Poslední cesta hledání:"
 
 #: pocheckerconsts.slineinfilename
 msgid "[Line %d] in %s:"
@@ -245,13 +251,9 @@ msgstr "[Řádek: %d]"
 msgid "Identifier [%s] found in %s, but it does not exist in %s"
 msgstr "Identifikátor [%s] nalezen v %s, ale neexistuje v %s"
 
-#: pocheckerconsts.snoerrorsfound
-msgid "No errors found"
-msgstr "Žádné chyby nenalezeny"
-
 #: pocheckerconsts.snofileslefttocheck
 msgid "There are no files left to check."
-msgstr ""
+msgstr "Žádný další soubory pro kontrolu."
 
 #: pocheckerconsts.snotestselected
 msgid "There are no tests selected."
@@ -259,7 +261,7 @@ msgstr "Nejsou vybrány žádné testy."
 
 #: pocheckerconsts.snotetranslationisfuzzy
 msgid "Note: translation is fuzzy"
-msgstr ""
+msgstr "Poznámka: překlad je nejednoznačný"
 
 #: pocheckerconsts.snrerrorsfound
 msgid "Found %d errors."
@@ -275,17 +277,15 @@ msgstr "%s: %d položek"
 
 #: pocheckerconsts.snrwarningsfound
 msgid "Found %d warnings."
-msgstr "Nalezeno %d varování"
-
-#: pocheckerconsts.sopenapofile
-msgid "&Open a po-file"
-msgstr "&Otevřít PO  soubor"
+msgstr "Nalezeno %d varování."
 
 #: pocheckerconsts.sopenfail
 msgid ""
 "Unable to open file:\n"
 "\"%s\"\n"
 msgstr ""
+"Nelze otevřít soubor:\n"
+"\"%s\"\n"
 
 #: pocheckerconsts.sopenfailexternal
 msgid ""
@@ -294,40 +294,54 @@ msgid ""
 "in external editor\n"
 "\"%s\"\n"
 msgstr ""
-
-#: pocheckerconsts.sopenfile
-msgid "Open file %s in Ide Editor?"
-msgstr ""
-
-#: pocheckerconsts.sopenfileexternal
-msgid ""
-"Open file:\n"
+"Nelze otevřít soubor\n"
 "\"%s\"\n"
-"in external editor:\n"
-"\"%s\"?\n"
-msgstr ""
+"ve vnějším editoru\n"
+"\"%s\"\n"
+
+#: pocheckerconsts.sopenfileinexternaleditor
+msgid "Open file in external editor"
+msgstr "Otevřít soubor ve vnějším editoru"
+
+#: pocheckerconsts.sopenfileinideeditor
+msgid "Open file in IDE editor"
+msgstr "Otevřít soubor v editoru IDE"
+
+#: pocheckerconsts.sopenfileinsystempoeditor
+msgid "Open file in system PO editor"
+msgstr "Otevřít soubor v systémovém PO editoru"
 
 #: pocheckerconsts.soriginal
 msgid "Original"
 msgstr "Originál"
 
 #: pocheckerconsts.spercfuzzy
-#, fuzzy,badformat
-#| msgid "Fuzzy strings: %2.0f%%."
-msgid "%s: %4.1f%% fuzzy strings."
-msgstr "Nepřesné překlady: %2.0f%%."
+msgid "%s: %5.1f%% fuzzy strings."
+msgstr "%s: %5.1f%% nejednoznačných řetězců."
 
 #: pocheckerconsts.sperctranslated
-#, fuzzy,badformat
-#| msgid "Translated strings: %2.0f%%."
-msgid "%s: %4.1f%% translated strings."
-msgstr "Přeloženo:          %2.0f%%."
+msgid "%s: %5.1f%% translated strings."
+msgstr "%s: %5.1f%% přeložených řetězců."
 
 #: pocheckerconsts.spercuntranslated
-#, fuzzy,badformat
-#| msgid "Untranslated strings: %2.0f%%."
-msgid "%s: %4.1f%% untranslated strings."
-msgstr "Nepřeloženo:       %2.0f%%."
+msgid "%s: %5.1f%% untranslated strings."
+msgstr "%s: %5.1f%% nepřeložených řetězců."
+
+#: pocheckerconsts.sprocessingtranslationfamily
+msgid "Processing translation family..."
+msgstr "Zpracovávání překladové rodiny..."
+
+#: pocheckerconsts.sprocessingtranslationfamilyof
+msgid "Processing translation family %s of %s"
+msgstr "Zpracovávání překladové rodiny %s z %s"
+
+#: pocheckerconsts.srefreshalltranslationfamilies
+msgid "Refresh all translation families"
+msgstr "Obnovit všechny překladové rodiny"
+
+#: pocheckerconsts.srefreshcurrenttranslationfamily
+msgid "Refresh current translation family"
+msgstr "Obnovit aktuální překladovou rodinu"
 
 #: pocheckerconsts.sresults
 msgid "Results"
@@ -337,9 +351,9 @@ msgstr "Výsledky"
 msgid "&Run Selected Tests"
 msgstr "&Spustit vybrané testy"
 
-#: pocheckerconsts.ssavecaption
-msgid "Save to file"
-msgstr "Uložit do souboru"
+#: pocheckerconsts.ssaveas
+msgid "Save &As ..."
+msgstr "Uložit &jako..."
 
 #: pocheckerconsts.ssaveerror
 msgid ""
@@ -351,25 +365,19 @@ msgstr ""
 
 #: pocheckerconsts.sscandir
 msgid "Scan a folder"
-msgstr ""
+msgstr "Prozkoumat složku"
 
 #: pocheckerconsts.sscanninginprogress
 msgid "Scanning in progress, please wait ..."
-msgstr ""
+msgstr "Běží zkoumání, prosím čekejte ..."
 
 #: pocheckerconsts.sselectalllistbox
 msgid "Select all files"
-msgstr ""
+msgstr "Vybrat všechny soubory"
 
 #: pocheckerconsts.sselectalltests
 msgid "Select &All"
-msgstr ""
-
-#: pocheckerconsts.sselectbasictests
-#, fuzzy
-#| msgid "Select basic tests"
-msgid "Select &Basic"
-msgstr "Vybrat záklaní testy"
+msgstr "Vybrat &vše"
 
 #: pocheckerconsts.sselecttesttypes
 msgid "Select test types"
@@ -377,49 +385,85 @@ msgstr "Vybrat typy testu"
 
 #: pocheckerconsts.sshowstatgraph
 msgid "Show statistics graph"
-msgstr ""
+msgstr "Ukázat statistický graf"
 
 #: pocheckerconsts.sstathint
 msgid ""
-"%3d Translated (%3.1f%%)\n"
-"%3d UnTranslated (%3.1f%%)\n"
-"%3d Fuzzy (%3.1f%%)\n"
-"%d Error(s) in Selected Tests\n"
+"Translated: %d (%.1f%%)\n"
+"Untranslated: %d (%.1f%%)\n"
+"Fuzzy: %d (%.1f%%)\n"
+"Errors in selected tests: %d\n"
 msgstr ""
+"Přeložených: %d (%.1f%%)\n"
+"Nepřeložených: %d (%.1f%%)\n"
+"Nejednoznačných: %d (%.1f%%)\n"
+"Chyb ve vybraných testech: %d\n"
+
+#: pocheckerconsts.sthefollowingmissingmasterpofileswereremoved
+msgid "The following %s missing master .po file(s) were removed from the list:"
+msgstr "Následující %s cyhbějících hlavních .po souborů bylo odstraněno ze seznamu:"
+
+#: pocheckerconsts.sthefollowingorphanedpofilesfound
+msgid "The following %s orphaned .po file(s) found:"
+msgstr "Nalezeno následujících %s sirotčích .po souborů:"
 
 #: pocheckerconsts.stotalerrors
-#, fuzzy
-#| msgid "Total errors / warnings found: %d"
-msgid "Total errors found: %d"
-msgstr "Nalezeno celkem %d chyb / varování."
+msgid "Total errors: %d"
+msgstr "Celkem chyb %d"
+
+#: pocheckerconsts.stotalerrorsnonfuzzy
+msgid "Total errors: %d (formatting errors in non-fuzzy strings: %d)"
+msgstr "Celkem chyb: %d (chyb formátování mimo nejednoznačné řetězce: %d)"
+
+#: pocheckerconsts.stotalfuzzystrings
+msgid "Total fuzzy strings: %s"
+msgstr "Celkem nejednoznačných řetězců: %s"
+
+#: pocheckerconsts.stotaltranslatedstrings
+msgid "Total translated strings: %s (%.1f%%)"
+msgstr "Celkem přeložených řetězců: %s (%.1f%%)"
+
+#: pocheckerconsts.stotaluntranslatedstrings
+msgid "Total untranslated strings: %s"
+msgstr "Celkem nepřeložených řetězců: %s"
 
 #: pocheckerconsts.stotalwarnings
-msgid "Total warnings found: %d"
-msgstr "Celkem nalezeno varování: %d"
+msgid "Total warnings: %d"
+msgstr "Celkem varování: %d"
 
-#: pocheckerconsts.stranslated
-msgid "Translated"
-msgstr ""
+#: pocheckerconsts.stranslatedstrings
+msgid "Translated strings"
+msgstr "Přeložené řetězce"
+
+#: pocheckerconsts.stranslatedstringstotal
+msgid "Translated strings (total: %s [%.1f%%])"
+msgstr "Přeložených řetězců (celkem: %s [%.1f%%])"
 
 #: pocheckerconsts.stranslation
 msgid "Translation"
 msgstr "Překlad"
 
 #: pocheckerconsts.stranslationstatistics
-#, fuzzy
-#| msgid "Translation statistics for:"
-msgid "Translation statistics per language:"
-msgstr "Statistiky překladu pro:"
+msgid "Translation Statistics"
+msgstr "Statistika překladu"
+
+#: pocheckerconsts.stroublesomefiles
+msgid "Troublesome files"
+msgstr "Problémové soubory"
 
 #: pocheckerconsts.sunselectalltests
 msgid "&Unselect All"
-msgstr ""
+msgstr "&Odznačit soubory"
 
 #: pocheckerconsts.sunselectlistbox
 msgid "Unselect all files"
-msgstr ""
+msgstr "&Odznačit všechny soubory"
 
-#: pocheckerconsts.suntranslated
-msgid "Untranslated"
-msgstr ""
+#: pocheckerconsts.suntranslatedstrings
+msgid "Untranslated strings"
+msgstr "Nepřeložené řetězce"
+
+#: pocheckerconsts.suntranslatedstringstotal
+msgid "Untranslated strings (total: %s)"
+msgstr "Nepřeložené řetězce (celkem: %s)"
 

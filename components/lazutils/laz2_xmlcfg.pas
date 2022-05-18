@@ -1,6 +1,8 @@
 {
-  This file was part of the Free Component Library and was adapted to use UTF8
-  strings instead of widestrings.
+ **********************************************************************
+  This file is part of LazUtils.
+  It is copied from Free Component Library and adapted to use
+  UTF8 strings instead of widestrings.
 
   See the file COPYING.modifiedLGPL.txt, included in this distribution,
   for details about the license.
@@ -42,7 +44,9 @@ type
     FFilename: String;
     FReadFlags: TXMLReaderFlags;
     FWriteFlags: TXMLWriterFlags;
+    FPointSettings: TFormatSettings;
     procedure CreateConfigNode;
+    procedure InitFormatSettings;
     procedure SetFilename(const AFilename: String);
   protected
     type
@@ -102,7 +106,8 @@ type
     procedure DeletePath(const APath: string);
     procedure DeleteValue(const APath: string);
     function FindNode(const APath: String; PathHasValue: boolean): TDomNode;
-    function HasPath(const APath: string; PathHasValue: boolean): boolean; // checks if the path has values, set PathHasValue=true to skip the last part
+    // checks if the path has values, set PathHasValue=true to skip the last part
+    function HasPath(const APath: string; PathHasValue: boolean): boolean;
     function HasChildPaths(const APath: string): boolean;
     property Modified: Boolean read FModified write FModified;
     procedure InvalidatePathCache;
@@ -257,7 +262,7 @@ end;
 
 function TXMLConfig.GetValue(const APath: String; ADefault: Integer): Integer;
 begin
-  Result := StrToIntDef(GetValue(APath, IntToStr(ADefault)),ADefault);
+  Result := StrToIntDef(GetValue(APath, ''),ADefault);
 end;
 
 procedure TXMLConfig.GetValue(const APath: String; out ARect: TRect;
@@ -273,16 +278,11 @@ function TXMLConfig.GetValue(const APath: String; ADefault: Boolean): Boolean;
 var
   s: String;
 begin
-  if ADefault then
-    s := 'True'
-  else
-    s := 'False';
+  s := GetValue(APath, '');
 
-  s := GetValue(APath, s);
-
-  if CompareText(s,'TRUE')=0 then
+  if SameText(s, 'True') then
     Result := True
-  else if CompareText(s,'FALSE')=0 then
+  else if SameText(s, 'False') then
     Result := False
   else
     Result := ADefault;
@@ -291,7 +291,7 @@ end;
 function TXMLConfig.GetExtendedValue(const APath: String;
   const ADefault: extended): extended;
 begin
-  Result:=StrToExtended(GetValue(APath,ExtendedToStr(ADefault)),ADefault);
+  Result:=StrToExtended(GetValue(APath,''),ADefault);
 end;
 
 procedure TXMLConfig.SetValue(const APath, AValue: String);
@@ -451,31 +451,13 @@ begin
 end;
 
 function TXMLConfig.ExtendedToStr(const e: extended): string;
-var
-  OldDecimalSeparator: Char;
-  OldThousandSeparator: Char;
 begin
-  OldDecimalSeparator:=DefaultFormatSettings.DecimalSeparator;
-  OldThousandSeparator:=DefaultFormatSettings.ThousandSeparator;
-  DefaultFormatSettings.DecimalSeparator:='.';
-  DefaultFormatSettings.ThousandSeparator:=',';
-  Result:=FloatToStr(e);
-  DefaultFormatSettings.DecimalSeparator:=OldDecimalSeparator;
-  DefaultFormatSettings.ThousandSeparator:=OldThousandSeparator;
+  Result := FloatToStr(e, FPointSettings);
 end;
 
 function TXMLConfig.StrToExtended(const s: string; const ADefault: extended): extended;
-var
-  OldDecimalSeparator: Char;
-  OldThousandSeparator: Char;
 begin
-  OldDecimalSeparator:=DefaultFormatSettings.DecimalSeparator;
-  OldThousandSeparator:=DefaultFormatSettings.ThousandSeparator;
-  DefaultFormatSettings.DecimalSeparator:='.';
-  DefaultFormatSettings.ThousandSeparator:=',';
-  Result:=StrToFloatDef(s,ADefault);
-  DefaultFormatSettings.DecimalSeparator:=OldDecimalSeparator;
-  DefaultFormatSettings.ThousandSeparator:=OldThousandSeparator;
+  Result := StrToFloatDef(s, ADefault, FPointSettings);
 end;
 
 procedure TXMLConfig.ReadXMLFile(out ADoc: TXMLDocument; const AFilename: String);
@@ -631,7 +613,7 @@ begin
       end;
       SetLength(Children,aCount);
       if aCount>1 then
-        MergeSort(@Children[0],aCount,@CompareDomNodeNames); // sort ascending [0]<[1]
+        MergeSortWithLen(@Children[0],aCount,@CompareDomNodeNames); // sort ascending [0]<[1]
       for m:=0 to aCount-2 do
         if Children[m].NodeName=Children[m+1].NodeName then begin
           // duplicate found: nodes with same name
@@ -664,6 +646,7 @@ begin
   FReadFlags:=[xrfAllowLowerThanInAttributeValue,xrfAllowSpecialCharsInAttributeValue];
   FWriteFlags:=[xwfSpecialCharsInAttributeValue];
   inherited Create(AOwner);
+  InitFormatSettings;
 end;
 
 procedure TXMLConfig.SetFilename(const AFilename: String);
@@ -715,6 +698,13 @@ begin
     cfg := doc.CreateElement('CONFIG');
     doc.AppendChild(cfg);
   end;
+end;
+
+procedure TXMLConfig.InitFormatSettings;
+begin
+  FPointSettings := DefaultFormatSettings;
+  FPointSettings.DecimalSeparator := '.';
+  FPointSettings.ThousandSeparator := ',';
 end;
 
 { TRttiXMLConfig }

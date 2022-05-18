@@ -15,14 +15,14 @@ object PackageI18NOptionsFrame: TPackageI18NOptionsFrame
     AnchorSideRight.Control = Owner
     AnchorSideRight.Side = asrBottom
     Left = 0
-    Height = 76
+    Height = 96
     Top = 25
     Width = 551
     Anchors = [akTop, akLeft, akRight]
     AutoSize = True
     BorderSpacing.Top = 6
     Caption = 'i18n Options'
-    ClientHeight = 56
+    ClientHeight = 76
     ClientWidth = 547
     TabOrder = 1
     object PoOutDirLabel: TLabel
@@ -59,7 +59,7 @@ object PackageI18NOptionsFrame: TPackageI18NOptionsFrame
       Width = 536
       Anchors = [akTop, akLeft, akRight]
       BorderSpacing.Around = 6
-      ButtonWidth = 45
+      ButtonWidth = 25
       MaxLength = 0
       NumGlyphs = 1
       OnButtonClick = POOutDirButtonClick

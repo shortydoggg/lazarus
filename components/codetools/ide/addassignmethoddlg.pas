@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,8 +30,12 @@ unit AddAssignMethodDlg;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, LResources, Forms, Controls, Graphics,
-  Dialogs, ButtonPanel, StdCtrls, ComCtrls, Menus, AVL_Tree,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  LResources, Forms, Controls, Graphics,
+  Dialogs, ButtonPanel, StdCtrls, ComCtrls, Menus,
+  // LazUtils
+  FileUtil,
   // Codetools
   CodeCache, CodeToolManager, FileProcs, PascalParserTool,
   BasicCodeTools, CodeTree, FindDeclarationTool,
@@ -390,7 +394,7 @@ begin
     FAssignBodyNode:=nil;
     FInheritedDeclContext:=CleanFindContext;
     NewProcName:=ProcNameEdit.Text;
-    if (NewProcName<>'') and IsValidIdent(NewProcName) then
+    if IsValidIdent(NewProcName) then
       FProcName:=NewProcName;
 
     Result:=(FCode<>nil) and CodeToolBoss.FindAssignMethod(FCode,FX,FY,
@@ -433,7 +437,7 @@ begin
 
     DeclGroupBox.Caption:=crsCAMNewMethod;
     ProcNameLabel.Caption:=crsCAMMethodName;
-    if (NewProcName='') or (not IsValidIdent(NewProcName)) then
+    if not IsValidIdent(NewProcName) then
       ProcNameErrorLabel.Caption:=crsCAMInvalidIdentifier
     else if not Result then
       ProcNameErrorLabel.Caption:=crsCAMCursorIsNotInAPascalClassDeclaration
@@ -445,7 +449,7 @@ begin
     ParamNameLabel.Caption:=crsCAMParameterName;
     if UseInheritedParam then
       ParamNameEdit.Text:=FInheritedParamName;
-    if (ParamNameEdit.Text='') or not IsValidIdent(ParamNameEdit.Text) then
+    if not IsValidIdent(ParamNameEdit.Text) then
       ParamNameErrorLabel.Caption:=crsCAMInvalidIdentifier
     else
       ParamNameErrorLabel.Caption:='';
@@ -453,7 +457,7 @@ begin
     ParamTypeLabel.Caption:=crsCAMParameterType;
     if UseInheritedParam then
       ParamTypeEdit.Text:=FInheritedParamType;
-    if (ParamTypeEdit.Text='') or not IsValidIdent(ParamTypeEdit.Text) then
+    if not IsValidIdent(ParamTypeEdit.Text) then
       ParamTypeErrorLabel.Caption:=crsCAMInvalidIdentifier
     else
       ParamTypeErrorLabel.Caption:='';

@@ -31,15 +31,39 @@ begin
   {$IFDEF VerboseObject}
     DebugLn('TCocoaWidgetSet.AppInit');
   {$ENDIF}
+  InternalInit;
+
+  WakeMainThread := @OnWakeMainThread;
+  ScreenInfo.PixelsPerInchX := CocoaBasePPI;
+  ScreenInfo.PixelsPerInchY := CocoaBasePPI;
 
   { Creates the application NSApp object }
-  FNSApp := NSApplication.sharedApplication;
+  FNSApp := TCocoaApplication(TCocoaApplication.sharedApplication);
   FNSApp_Delegate := TAppDelegate.alloc.init;
   FNSApp.setDelegate(FNSApp_Delegate);
+  {$ifdef COCOALOOPOVERRIDE}
+  FNSApp.finishLaunching;
+  {$endif}
 
   // Sandboxing
   lDict := NSProcessInfo.processInfo.environment;
   SandboxingOn := lDict.valueForKey(NSStr('APP_SANDBOX_CONTAINER_ID')) <> nil;
+end;
+
+procedure TCocoaWidgetSet.SendCheckSynchronizeMessage;
+begin
+  TCocoaApplication.sharedApplication
+    .performSelectorOnMainThread_withObject_waitUntilDone(
+       ObjCSelector('lclSyncCheck:'), nil, false);
+end;
+
+{------------------------------------------------------------------------------
+  Method:  TCocoaWidgetSet.OnWakeMainThread
+  Params:  Sender
+ ------------------------------------------------------------------------------}
+procedure TCocoaWidgetSet.OnWakeMainThread(Sender: TObject);
+begin
+   SendCheckSynchronizeMessage;
 end;
 
 {------------------------------------------------------------------------------
@@ -48,9 +72,36 @@ end;
  ------------------------------------------------------------------------------}
 procedure TCocoaWidgetSet.AppRun(const ALoop: TApplicationMainLoop);
 begin
-  NSApp.finishLaunching;
   if Assigned(ALoop) then
-    ALoop;
+  begin
+    TCocoaApplication(NSApp).aloop:=ALoop;
+    NSApp.run();
+  end;
+end;
+
+procedure TCocoaWidgetSet.AppRunMessages(onlyOne: Boolean; eventExpDate: NSDate);
+var
+  event: NSEvent;
+  pool:NSAutoReleasePool;
+begin
+  repeat
+    pool := NSAutoreleasePool.alloc.init;
+    {$ifdef BOOLFIX}
+    event := NSApp.nextEventMatchingMask_untilDate_inMode_dequeue_(NSAnyEventMask, eventExpDate, NSDefaultRunLoopMode, Ord(true));
+    {$else}
+    event := NSApp.nextEventMatchingMask_untilDate_inMode_dequeue(NSAnyEventMask, eventExpDate, NSDefaultRunLoopMode, true);
+    {$endif}
+    if event <> nil then
+    begin
+      NSApp.sendEvent(event);
+      NSApp.updateWindows;
+    end;
+
+    SyncClipboard(); // NSPasteboard doesn't provide any notifications regarding the change
+                     // Thus we have to check the clipboard on every loop
+
+    pool.release;
+  until onlyOne or (event = nil);
 end;
 
 {------------------------------------------------------------------------------
@@ -59,15 +110,8 @@ end;
   Handle all pending messages
  ------------------------------------------------------------------------------}
 procedure TCocoaWidgetSet.AppProcessMessages;
-var
-  event: NSEvent;
-  pool:NSAutoReleasePool;
 begin
-  pool := NSAutoreleasePool.alloc.init;
-  event := NSApp.nextEventMatchingMask_untilDate_inMode_dequeue(NSAnyEventMask, nil, NSDefaultRunLoopMode, true);
-  NSApp.sendEvent(event);
-  NSApp.updateWindows;
-  pool.release;
+  AppRunMessages(false, nil);
 end;
 
 {------------------------------------------------------------------------------
@@ -76,15 +120,8 @@ end;
   Passes execution control to Cocoa
  ------------------------------------------------------------------------------}
 procedure TCocoaWidgetSet.AppWaitMessage;
-var
-  event : NSEvent;
-  pool:NSAutoReleasePool;
 begin
-  pool := NSAutoreleasePool.alloc.init;
-  event := NSApp.nextEventMatchingMask_untilDate_inMode_dequeue(NSAnyEventMask, NSDate.distantFuture, NSDefaultRunLoopMode, true);
-  NSApp.sendEvent(event);
-  NSApp.updateWindows;
-  pool.release;
+  AppRunMessages(true, NSDate.distantFuture);
 end;
 
 {------------------------------------------------------------------------------
@@ -106,9 +143,9 @@ begin
   NSMessageLParam := NSStringUTF8('LPARAM');
   NSMessageResult := NSStringUTF8('RESULT');
 
-  DefaultBrush := TCocoaBrush.CreateDefault;
-  DefaultPen := TCocoaPen.CreateDefault;
-  DefaultFont := TCocoaFont.CreateDefault;
+  DefaultBrush := TCocoaBrush.CreateDefault(True);
+  DefaultPen := TCocoaPen.CreateDefault(True);
+  DefaultFont := TCocoaFont.CreateDefault(True);
   DefaultBitmap := TCocoaBitmap.CreateDefault;
   DefaultContext := TCocoaBitmapContext.Create;
   DefaultContext.Bitmap := DefaultBitmap;
@@ -117,7 +154,8 @@ begin
 
   InitStockItems;
 
-  InitClipboard(); // must be here otherwise clipboard calls before Application.Initialize crash
+  fClipboard := TCocoaWSClipboard.Create; // must be here otherwise clipboard calls before Application.Initialize crash
+  ToCollect := TList.Create;
 end;
 
 {------------------------------------------------------------------------------
@@ -127,6 +165,7 @@ end;
  ------------------------------------------------------------------------------}
 destructor TCocoaWidgetSet.Destroy;
 begin
+  ReleaseToCollect(0);
   inherited Destroy;
 
   FreeStockItems;
@@ -140,7 +179,7 @@ begin
 
   FreeSysColorBrushes;
 
-  FreeClipboard();
+  fClipboard.Free;
 
   // The CocoaCaret is based WidgetSet timer.
   // The GlobalCaret is freed in finalization section, which is called
@@ -148,6 +187,22 @@ begin
   // Need to destroy the caret here.. or CustomTimer must be verified.
   // or CocoaCaret should not use TTimer at all (use raw cocoa timer)
   DestroyGlobalCaret;
+
+  NSMessageWnd.release;
+  NSMessageMsg.release;
+  NSMessageWParam.release;
+  NSMessageLParam.release;
+  NSMessageResult.release;
+
+  // NSApp.terminate(nil);   // causes app to quit immediately, which is undesirable
+
+  // Must release the Main autorelease pool here.
+  // Some objects still in the pool my depend on releasing Widgetset objects
+  // (i.e. images). If autorelease pool is released After the widgetset object
+  // then it finalization of WS dependent objects would fail (suppressed AVs)
+  // and would cause leaks. (see #35400)
+  InternalFinal;
+  ToCollect.Free;
 
   CocoaWidgetSet := nil;
 end;
@@ -161,7 +216,11 @@ procedure TCocoaWidgetSet.AppTerminate;
 begin
   if FTerminating then Exit;
   // TODO: Check if there is more cleanup to do here
-  // NSApp.terminate(nil);   // causes app to quit directly
+  // NSApp.terminate(nil);   // causes app to quit immediately, which is undesirable
+
+  {$ifdef COCOALOOPNATIVE}
+  NSApp.stop(nil);
+  {$endif}
 end;
 
 {------------------------------------------------------------------------------
@@ -191,7 +250,11 @@ end;
  ------------------------------------------------------------------------------}
 procedure TCocoaWidgetSet.AppBringToFront;
 begin
+  {$ifdef BOOLFIX}
+  NSApp.activateIgnoringOtherApps_(Ord(True));
+  {$else}
   NSApp.activateIgnoringOtherApps(True);
+  {$endif}
 end;
 
 procedure TCocoaWidgetSet.AppSetIcon(const Small, Big: HICON);
@@ -209,17 +272,8 @@ end;
   Changes the application title
  ------------------------------------------------------------------------------}
 procedure TCocoaWidgetSet.AppSetTitle(const ATitle: string);
-var
-  ns: NSString;
 begin
-  if not Assigned(NSApp.dockTile) then Exit;
-  //todo: setBadgeLabel is for 10.5 only, should be removed
-  if NSApp.dockTile.respondsToSelector_(objcselector('setBadgeLabel:')) then
-  begin
-    ns := NSStringUtf8(ATitle);
-    NSApp.dockTile.setBadgeLabel(ns);
-    ns.release;
-  end;
+  // There is no way to change the dock title
 end;
 
 function TCocoaWidgetSet.GetLCLCapability(ACapability: TLCLCapability): PtrUInt;
@@ -228,7 +282,6 @@ begin
     lcCanDrawOutsideOnPaint,
     lcNeedMininimizeAppWithMainForm,
     lcApplicationTitle,
-    lcFormIcon,
     {$ifndef COCOA_USE_NATIVE_MODAL}
     lcModalWindow,
     {$endif}
@@ -237,8 +290,10 @@ begin
     {$ifdef COCOA_USE_NATIVE_MODAL}
     lcModalWindow,
     {$endif}
+    lcFormIcon,
     lcAntialiasingEnabledByDefault:
       Result := LCL_CAPABILITY_YES;
+    lcTransparentWindow: Result := LCL_CAPABILITY_YES;
   else
     Result := inherited;
   end;
@@ -252,12 +307,15 @@ begin
   {$IFDEF VerboseObject}
     DebugLn('TCocoaWidgetSet.CreateTimer');
   {$ENDIF}
-  user:=TCocoaTimerObject.initWithFunc(TimerFunc);
+  user:=TCocoaTimerObject.newWithFunc(TimerFunc);
 
   timer:=NSTimer.timerWithTimeInterval_target_selector_userInfo_repeats(
     Interval/1000, user, objcselector(user.timerEvent), user, True);
 
+  // adding timer to all "common" loop mode.
   NSRunLoop.currentRunLoop.addTimer_forMode(timer, NSDefaultRunLoopMode);
+  NSRunLoop.currentRunLoop.addTimer_forMode(timer, NSModalPanelRunLoopMode);
+  NSRunLoop.currentRunLoop.addTimer_forMode(timer, NSEventTrackingRunLoopMode);
 
   {user is retained (twice, because it's target), by the timer and }
   {released (twice) on timer invalidation}
@@ -281,60 +339,6 @@ begin
   end;
   if not Result then Exit;
   NSTimer(obj).invalidate;
-end;
-
-function TCocoaWidgetSet.PrepareUserEventInfo(Handle: HWND; Msg: Cardinal;
-  wParam: WParam; lParam: LParam): NSMutableDictionary;
-var
-  LocalPool: NSAutoReleasePool;
-  Keys, Objs: NSMutableArray;
-begin
-  // create a dinctionary
-  LocalPool := NSAutoReleasePool.alloc.init;
-  Keys := NSMutableArray.arrayWithObjects(
-    NSMessageWnd,
-    NSMessageMsg,
-    NSMessageWParam,
-    NSMessageLParam,
-    NSMessageResult,
-    nil);
-  Objs := NSMutableArray.arrayWithObjects(
-    NSNumber.numberWithUnsignedInteger(Handle),
-    NSNumber.numberWithUnsignedLong(Msg),
-    NSNumber.numberWithInteger(wParam),
-    NSNumber.numberWithInteger(lParam),
-    NSNumber.numberWithInteger(0),
-    nil);
-  Result := NSMutableDictionary.dictionaryWithObjects_forKeys(Objs, Keys);
-  Result.retain;
-  // release everything
-  LocalPool.release;
-end;
-
-function TCocoaWidgetSet.PrepareUserEvent(Handle: HWND; Info: NSDictionary): NSEvent;
-var
-  Obj: NSObject;
-  Win: NSWindow;
-begin
-  Obj := NSObject(Handle);
-  if Obj.isKindOfClass(NSWindow) then
-    Win := NSWindow(Obj)
-  else if Obj.isKindOfClass(NSView) then
-    Win := NSView(Handle).window
-  else if GetNSObjectView(Obj) <> nil then
-    Win := GetNSObjectView(Obj).window
-  else
-    Exit(nil);
-  Result := NSEvent.otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
-    NSApplicationDefined,
-    NSZeroPoint,
-    0,
-    GetCurrentEventTime,
-    Win.windowNumber,
-    nil,
-    LCLEventSubTypeMessage,
-    NSInteger(Info),
-    0);
 end;
 
 procedure TCocoaWidgetSet.InitStockItems;
@@ -425,67 +429,6 @@ begin
     DeleteAndNilObject(FSysColorBrushes[i]);
 end;
 
-procedure TCocoaWidgetSet.SetMainMenu(const AMenu: HMENU; const ALCLMenu: TMenu);
-var
-  i: Integer;
-  lCurItem: TMenuItem;
-  lMenuObj: NSObject;
-  lNSMenu: NSMenu absolute AMenu;
-begin
-  if AMenu<>0 then
-  begin
-    NSApp.setMainMenu(lNSMenu);
-    if (ALCLMenu = nil) or not ALCLMenu.HandleAllocated then Exit;
-
-    // Some older docs say we should use setAppleMenu to obtain the Services/Hide/Quit items,
-    // but its now private and in 10.10 it doesn't seam to do anything
-    for i := 0 to ALCLMenu.Items.Count-1 do
-    begin
-      lCurItem := ALCLMenu.Items.Items[i];
-      if not lCurItem.HandleAllocated or (lCurItem.Caption <> '') then Continue;
-
-      lMenuObj := NSObject(lCurItem.Handle);
-      if lMenuObj.isKindOfClass_(TCocoaMenuItem) and NSMenuItem(lMenuObj).hasSubmenu and
-        (NSMenuItem(lMenuObj).submenu <> nil) then
-      begin
-        TCocoaMenuItem(lMenuObj).attachAppleMenuItems();
-        //NSApp.setAppleMenu(NSMenuItem(lMenuObj).submenu);
-        Exit;
-      end;
-      {else if lMenuObj.isKindOfClass_(NSMenu) then
-      begin
-        //NSApp.setAppleMenu(NSMenu(lMenuObj));
-        Exit;
-      end;}
-    end;
-
-    // for modal windows work around bug, but doesn't work :(
-    {$ifdef COCOA_USE_NATIVE_MODAL}
-    {if CurModalForm <> nil then
-    for i := 0 to lNSMenu.numberOfItems()-1 do
-    begin
-      lNSMenu.itemAtIndex(i).setTarget(TCocoaWSCustomForm.GetWindowFromHandle(CurModalForm));
-    end;}
-    {$endif}
-  end;
-end;
-
-function TCocoaWidgetSet.IsControlDisabledDueToModal(AControl: NSView): Boolean;
-var
-  lNSObj: NSWindow;
-  lNSWin: TCocoaWindow absolute lNSObj;
-begin
-  Result := False;
-  {$ifndef COCOA_USE_NATIVE_MODAL}
-  if CurModalForm = nil then Exit;
-  lNSObj := AControl.window();
-  if lNSObj = nil then Exit;
-  if not lNSObj.isKindOfClass_(TCocoaWindow) then Exit;
-  if lNSWin.LCLForm = CurModalForm then Exit;
-  Result := True;
-  {$endif}
-end;
-
 {------------------------------------------------------------------------------
   Method:  TCocoaWidgetSet.GetAppHandle
   Returns: Returns NSApp object, created via NSApplication.sharedApplication
@@ -539,15 +482,6 @@ begin
   Result:= lpCocoa;
 end;
 
-procedure InternalInit;
-begin
-end;
-
-procedure InternalFinal;
-begin
-end;
-
-
 { TCocoaTimerObject }
 
 procedure TCocoaTimerObject.timerEvent;
@@ -555,19 +489,10 @@ begin
   if Assigned(@func) then func;
 end;
 
-class function TCocoaTimerObject.initWithFunc(afunc: TWSTimerProc): TCocoaTimerObject;
+class function TCocoaTimerObject.newWithFunc(afunc: TWSTimerProc): TCocoaTimerObject;
 begin
   Result:=alloc;
   Result.func:=afunc;
-end;
-
-{ TCocoaClipboardData }
-
-constructor TCocoaClipboardData.Create(AMimeType: string; ACocoaFormat: NSString; ADataType: TCocoaClipboardDataType);
-begin
-  MimeType := AMimeType;
-  CocoaFormat := ACocoaFormat;
-  DataType := ADataType;
 end;
 
 procedure TAppDelegate.application_openFiles(sender: NSApplication; filenames: NSArray);
@@ -583,6 +508,116 @@ begin
     lFiles[i] := NSStringToString(lNSStr);
   end;
   Application.IntfDropFiles(lFiles);
+  if Application.MainForm<>nil then
+    Application.MainForm.IntfDropFiles(lFiles);
+end;
+
+procedure TAppDelegate.applicationDidHide(notification: NSNotification);
+begin
+  Application.IntfAppMinimize;
+end;
+
+procedure TAppDelegate.applicationDidUnhide(notification: NSNotification);
+begin
+  Application.IntfAppRestore;
+end;
+
+procedure TAppDelegate.applicationWillBecomeActive(notification: NSNotification
+  );
+var
+  app : NSApplication;
+  i: integer;
+  vis: Boolean;
+  info: PWinLevelOrder;
+  ord: NSArray;
+begin
+  app := NSApplication(NSApp);
+  ord := app.orderedWindows;
+  orderArrayCount := ord.count;
+  orderArray := GetMem(orderArrayCount * sizeof(TWinLevelOrder));
+  for i := 0 to orderArrayCount - 1 do
+  begin
+    info := @orderArray^[i];
+    info^.win := ord.objectAtIndex(i);
+    info^.lvl := info^.win.level;
+    info^.ord := info^.win.orderedIndex;
+    info^.vis := info^.win.isVisible;
+  end;
+end;
+
+procedure TAppDelegate.applicationDidBecomeActive(notification: NSNotification);
+var
+  i : integer;
+begin
+  // Cocoa changes level and order of windows to it's liking
+  // (it happens between Will- and DidBecomeActive)
+  // for example Model windows becoming level 8,
+  // even if LCL set them to level 0 before.
+  // As a result the OrderedIndex also goes messed up.
+  // It's being restored here
+  for i := orderArrayCount -1 downto 0 do
+  begin
+    if not orderArray^[i].vis then continue;
+    orderArray^[i].win.setLevel( orderArray^[i].lvl );
+    orderArray^[i].win.setOrderedIndex( orderArray^[i].ord );
+    orderArray^[i].win.orderFrontRegardless;
+  end;
+  orderArrayCount := 0;
+  if orderArray <> nil then
+  begin
+    Freemem(orderArray);
+    orderArray := nil;
+  end;
+
+  Application.IntfAppActivate;
+end;
+
+procedure TAppDelegate.applicationDidResignActive(notification: NSNotification);
+begin
+  Application.IntfAppDeactivate;
+end;
+
+procedure TAppDelegate.applicationDidChangeScreenParameters(notification: NSNotification);
+begin
+  Screen.UpdateMonitors;
+  Screen.UpdateScreen;
+end;
+
+procedure TAppDelegate.applicationWillFinishLaunching(notification: NSNotification);
+begin
+  NSAppleEventManager.sharedAppleEventManager.setEventHandler_andSelector_forEventClass_andEventID(
+    Self, ObjCSelector('handleQuitAppEvent:withReplyEvent:'), kCoreEventClass,
+    kAEQuitApplication);
+end;
+
+procedure TAppDelegate.handleQuitAppEvent_withReplyEvent(event: NSAppleEventDescriptor; replyEvent: NSAppleEventDescriptor);
+{ Capture "Quit Application" Apple Events, either from system shutdown/logout
+  or sent by another application.  Don't use [applicationShouldTerminate:]
+  because that terminates the app immediately after [applicationWillTerminate:]
+  returns, so there's no chance to run finalization blocks }
+var
+  Cancel: Boolean;
+  Reason: NSAppleEventDescriptor;
+begin
+  Cancel := False;
+  // Check if it's a system-wide event
+  Reason := event.attributeDescriptorForKeyword(kEventParamReason);
+  if (Reason <> nil) and
+     ((Reason.typeCodeValue = kAEQuitAll) or
+      (reason.typeCodeValue = kAEReallyLogOut) or
+      (reason.typeCodeValue = kAERestart) or
+      (reason.typeCodeValue = kAEShutDown)) then
+  begin
+    Application.IntfQueryEndSession(Cancel);
+    if not Cancel then
+      Application.IntfEndSession;
+  end;
+  // Try to quit
+  if not Cancel then
+    Application.MainForm.Close;
+  // Let caller know if the shutdown was cancelled
+  if (not Application.Terminated) and (replyEvent.descriptorType <> typeNull) then
+    replyEvent.setParamDescriptor_forKeyword(NSAppleEventDescriptor.descriptorWithInt32(userCanceledErr), keyErrorNumber);
 end;
 
 {------------------------------------------------------------------------------
@@ -635,7 +670,10 @@ begin
   ADesc.BluePrec := Prec;
 
   // gray or mono
-  if ADesc.Format = ricfGray then Exit;
+  if ADesc.Format = ricfGray then begin
+    Result := true;
+    Exit;
+  end;
 
   // alpha
   if ABitmap.BitmapType in [cbtARGB, cbtRGBA] then
@@ -739,11 +777,23 @@ begin
       and (ADesc.BlueShift  = 0 )
       then bmpType := cbtARGB
       else
-      if  (ADesc.AlphaShift = 0)
+      if  (ADesc.AlphaShift = 24)
+      and (ADesc.RedShift   = 0 )
+      and (ADesc.GreenShift = 8 )
+      and (ADesc.BlueShift  = 16)
+      then bmpType := cbtABGR
+      else
+      if  (ADesc.AlphaShift = 0 )
       and (ADesc.RedShift   = 24)
-      and (ADesc.GreenShift = 16 )
+      and (ADesc.GreenShift = 16)
       and (ADesc.BlueShift  = 8 )
       then bmpType := cbtRGBA
+      else
+      if  (ADesc.AlphaShift = 0 )
+      and (ADesc.RedShift   = 8 )
+      and (ADesc.GreenShift = 16)
+      and (ADesc.BlueShift  = 24)
+      then bmpType := cbtBGRA
       else Exit;
     end
     else begin
@@ -753,11 +803,23 @@ begin
       and (ADesc.BlueShift  = 24)
       then bmpType := cbtARGB
       else
-      if  (ADesc.AlphaShift = 24 )
+      if  (ADesc.AlphaShift = 0 )
+      and (ADesc.RedShift   = 24)
+      and (ADesc.GreenShift = 16)
+      and (ADesc.BlueShift  = 8 )
+      then bmpType := cbtABGR
+      else
+      if  (ADesc.AlphaShift = 24)
       and (ADesc.RedShift   = 0 )
-      and (ADesc.GreenShift = 8)
+      and (ADesc.GreenShift = 8 )
       and (ADesc.BlueShift  = 16)
       then bmpType := cbtRGBA
+      else
+      if  (ADesc.AlphaShift = 24)
+      and (ADesc.RedShift   = 16)
+      and (ADesc.GreenShift = 8 )
+      and (ADesc.BlueShift  = 0 )
+      then bmpType := cbtBGRA
       else Exit;
     end;
   end

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="9"/>
+    <Version Value="11"/>
     <PathDelim Value="\"/>
     <General>
       <Flags>
@@ -10,6 +10,7 @@
       <SessionStorage Value="InIDEConfig"/>
       <MainUnit Value="0"/>
       <Title Value="Run Lazarus tests"/>
+      <ResourceType Value="res"/>
     </General>
     <BuildModes Count="1">
       <Item1 Name="default" Default="True"/>
@@ -21,26 +22,36 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <FormatVersion Value="1"/>
         <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T 'Lazarus Run Output' -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
       </local>
+      <FormatVersion Value="2"/>
+      <Modes Count="1">
+        <Mode0 Name="default">
+          <local>
+            <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T 'Lazarus Run Output' -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
+          </local>
+        </Mode0>
+      </Modes>
     </RunParams>
-    <RequiredPackages Count="5">
+    <RequiredPackages Count="6">
       <Item1>
-        <PackageName Value="LazMouseAndKeyInput"/>
+        <PackageName Value="IDEIntf"/>
       </Item1>
       <Item2>
-        <PackageName Value="LCL"/>
+        <PackageName Value="LazMouseAndKeyInput"/>
       </Item2>
       <Item3>
-        <PackageName Value="FPCUnitTestRunner"/>
+        <PackageName Value="LCL"/>
       </Item3>
       <Item4>
-        <PackageName Value="FCL"/>
+        <PackageName Value="FPCUnitTestRunner"/>
       </Item4>
       <Item5>
-        <PackageName Value="CodeTools"/>
+        <PackageName Value="FCL"/>
       </Item5>
+      <Item6>
+        <PackageName Value="CodeTools"/>
+      </Item6>
     </RequiredPackages>
     <Units Count="14">
       <Unit0>
@@ -50,6 +61,7 @@
       <Unit1>
         <Filename Value="testlpi.pas"/>
         <IsPartOfProject Value="True"/>
+        <UnitName Value="TestLpi"/>
       </Unit1>
       <Unit2>
         <Filename Value="testglobals.pas"/>
@@ -66,43 +78,44 @@
       <Unit5>
         <Filename Value="testunits.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="testunits"/>
       </Unit5>
       <Unit6>
-        <Filename Value="bugs\testfileproc.pas"/>
+        <Filename Value="bugtestcase.pas"/>
         <IsPartOfProject Value="True"/>
+        <UnitName Value="BugTestCase"/>
       </Unit6>
       <Unit7>
-        <Filename Value="bugtestcase.pas"/>
+        <Filename Value="lcltests\testpen.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit7>
       <Unit8>
-        <Filename Value="lcltests\testpen.pas"/>
+        <Filename Value="semiauto\semiautotest.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit8>
       <Unit9>
-        <Filename Value="semiauto\semiautotest.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="semiautotest"/>
-      </Unit9>
-      <Unit10>
         <Filename Value="semiauto\idesemiautotests.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="idesemiautotests"/>
-      </Unit10>
-      <Unit11>
+      </Unit9>
+      <Unit10>
         <Filename Value="semiauto\lclsemiautotests.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="lclsemiautotests"/>
-      </Unit11>
-      <Unit12>
+      </Unit10>
+      <Unit11>
         <Filename Value="lazutils\testlazutils.pas"/>
         <IsPartOfProject Value="True"/>
-      </Unit12>
-      <Unit13>
+      </Unit11>
+      <Unit12>
         <Filename Value="lcltests\testpagecontrol.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="TestPageControl"/>
+      </Unit12>
+      <Unit13>
+        <Filename Value="ideintf\testmenuintf.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="TestMenuIntfDlg"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="TestMenuIntf"/>
       </Unit13>
     </Units>
   </ProjectOptions>
@@ -113,7 +126,7 @@
       <Filename Value="runtestsgui"/>
     </Target>
     <SearchPaths>
-      <OtherUnitFiles Value="bugs;codetoolstests;lcltests;semiauto;lazutils"/>
+      <OtherUnitFiles Value="bugs;codetoolstests;lcltests;semiauto;lazutils;ideintf"/>
       <UnitOutputDirectory Value="unitsgui\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>

@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
  
@@ -39,13 +39,17 @@ unit MakeResStrDlg;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Buttons, StdCtrls,
-  Dialogs, ExtCtrls, ButtonPanel, IDEWindowIntf,
+  Classes, SysUtils,
+  // LCL
+  LCLProc, Forms, Controls, StdCtrls, Dialogs, ExtCtrls, ButtonPanel,
+  // SynEdit
   SynHighlighterPas, SynEdit,
+  // CodeTools
   CodeToolManager, CodeToolsStructs, CodeCache,
-  IDEHelpIntf, IDEDialogs,
-  LazarusIDEStrConsts,
-  EditorOptions, InputHistory, MiscOptions, IDEProcs;
+  // IdeIntf
+  IDEWindowIntf, IDEHelpIntf, IDEDialogs,
+  // IDE
+  LazarusIDEStrConsts, EditorOptions, InputHistory, MiscOptions, IDEProcs;
 
 type
 

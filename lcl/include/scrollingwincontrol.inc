@@ -115,8 +115,15 @@ begin
   if NeededClientH>0 then
     NeededClientH-=FrameHeight;
 
-  HorzScrollBar.InternalSetRange(NeededClientW);
-  VertScrollBar.InternalSetRange(NeededClientH);
+  if HorzScrollBar.Visible then
+    HorzScrollBar.InternalSetRange(NeededClientW)
+  else
+    HorzScrollBar.InternalSetRange(0);
+
+  if VertScrollBar.Visible then
+    VertScrollBar.InternalSetRange(NeededClientH)
+  else
+    VertScrollBar.InternalSetRange(0);
 end;
 
 class function TScrollingWinControl.GetControlClassDefaultSize: TSize;
@@ -161,23 +168,6 @@ begin
 end;
 
 procedure TScrollingWinControl.ComputeScrollbars;
-// true if something has changed
-// update Page, AutoRange
-
-  {procedure trav(aControl: TControl; Prefix: string);
-  var
-    w: integer;
-    h: integer;
-    i: Integer;
-  begin
-    if not aControl.IsVisible then exit;
-    aControl.GetPreferredSize(w,h,true,true);
-    debugln([Prefix,'W ',DbgSName(aControl),' ',dbgs(aControl.BoundsRect),' Pref=',w,'x',h]);
-    if aControl is TWinControl then
-      for i:=0 to TWinControl(aControl).ControlCount-1 do
-        trav(TWinControl(aControl).Controls[i],Prefix+'  ');
-  end;}
-
   procedure UpdateBar(aBar: TControlScrollBar; aClientSize: integer);
   begin
     // page (must be smaller than Range but at least 1)
@@ -197,7 +187,7 @@ begin
   ClientW:=VertScrollBar.ClientSizeWithoutBar;
   ClientH:=HorzScrollBar.ClientSizeWithoutBar;
   {$IFDEF VerboseScrollingWinControl}
-  debugln(['TScrollingWinControl.ComputeScrollbars ',DbgSName(Self),' Bounds=',dbgs(BoundsRect),' ClientRect=',dbgs(ClientRect),' ClientRectNoScrollBars=',ClientW,'x',ClientH,' Needed=',NeededClientW,'x',NeededClientH]);
+  debugln(['TScrollingWinControl.ComputeScrollbars ',DbgSName(Self),' Bounds=',dbgs(BoundsRect),' ClientRect=',dbgs(ClientRect),' ClientRectNoScrollBars=',ClientW,'x',ClientH]);
   {$ENDIF}
 
   if VertScrollBar.Range > ClientH then
@@ -304,18 +294,6 @@ begin
   HorzScrollbar.ScrollHandler(Message);
 end;
 
-procedure TScrollingWinControl.WMMouseWheel(var Message: TLMMouseEvent);
-begin
-  // support VertScrollBar.Increment on Windows.
-  // The code has no meaning on other OS because scrolling is handled there directly by the OS
-  if Mouse.WheelScrollLines > 0 then
-    Message.WheelDelta :=
-      (Min(High(Message.WheelDelta), Max(Low(Message.WheelDelta),
-        (VertScrollBar.Increment * Message.WheelDelta))) div 120) * 120;
-
-  inherited WMMouseWheel(Message);
-end;
-
 constructor TScrollingWinControl.Create(TheOwner : TComponent);
 begin
   Inherited Create(TheOwner);
@@ -336,6 +314,26 @@ begin
   FreeThenNil(FHorzScrollBar);
   FreeThenNil(FVertScrollBar);
   inherited Destroy;
+end;
+
+function TScrollingWinControl.ScreenToClient(const APoint: TPoint): TPoint;
+var
+  P: TPoint;
+begin
+  P := GetClientScrollOffset;
+  Result := inherited;
+  Result.x := Result.x - P.x;
+  Result.y := Result.y - P.y;
+end;
+
+function TScrollingWinControl.ClientToScreen(const APoint: TPoint): TPoint;
+var
+  P: TPoint;
+begin
+  P := GetClientScrollOffset;
+  Result := inherited;
+  Result.x := Result.x + P.x;
+  Result.y := Result.y + P.y;
 end;
 
 // included by forms.pp

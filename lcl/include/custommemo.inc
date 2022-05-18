@@ -1,5 +1,5 @@
 {%MainUnit ../stdctrls.pp}
-{  $Id: custommemo.inc 50523 2015-11-29 18:45:53Z juha $  }
+{  $Id: custommemo.inc 58260 2018-06-14 10:11:43Z ondrej $  }
 
 {******************************************************************************
                                      TCustomMemo
@@ -80,6 +80,14 @@ class procedure TCustomMemo.WSRegisterClass;
 begin
   inherited WSRegisterClass;
   RegisterCustomMemo;
+end;
+
+function TCustomMemo.CanShowEmulatedTextHint: Boolean;
+begin
+  Result :=
+        Assigned(Lines) // CM_EXIT is sent in destroy -> this function is called in destructor when Lines are already destroyed
+    and (Lines.Count = 0)
+    and inherited CanShowEmulatedTextHint;
 end;
 
 procedure TCustomMemo.CreateParams(var Params: TCreateParams);
@@ -198,16 +206,6 @@ begin
     FLines.Assign(Value);
 end;
 
-procedure TCustomMemo.SetSelText(const Val: string);
-begin
-  Lines.BeginUpdate;
-  try
-    inherited SetSelText(Val);
-  finally
-    Lines.EndUpdate;
-  end;
-end;
-
 procedure TCustomMemo.SetScrollBars(const Value: TScrollStyle);
 begin
   if Value <> FScrollbars then begin
@@ -238,14 +236,27 @@ begin
   end;
 end;
 
-procedure TCustomMemo.WMGetDlgCode(var Message: TLMNoParams);
+procedure TCustomMemo.WMGetDlgCode(var Message: TLMGetDlgCode);
 begin
   inherited;
-  Message.Result := Message.Result and not (DLGC_WANTTAB or DLGC_WANTALLKEYS);
-  if WantTabs then
-    Message.Result := Message.Result or DLGC_WANTTAB;
-  if WantReturns then
-    Message.Result := Message.Result or DLGC_WANTALLKEYS;
+  case Message.CharCode of
+    VK_TAB:
+    begin
+      if WantTabs then
+        Message.Result := Message.Result or (DLGC_WANTTAB or DLGC_WANTALLKEYS)
+      else
+        Message.Result := Message.Result and not (DLGC_WANTTAB or DLGC_WANTALLKEYS);
+    end;
+    VK_RETURN:
+    begin
+      if WantReturns then
+        Message.Result := Message.Result or DLGC_WANTALLKEYS
+      else
+        Message.Result := Message.Result and not DLGC_WANTALLKEYS;
+    end;
+    VK_ESCAPE:
+      Message.Result := Message.Result and not DLGC_WANTALLKEYS;
+  end;
 end;
 
 class function TCustomMemo.GetControlClassDefaultSize: TSize;

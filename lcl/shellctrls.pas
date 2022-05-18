@@ -22,10 +22,13 @@ unit ShellCtrls;
 interface
 
 uses
-  Classes, SysUtils, Forms, Graphics, LCLType, AvgLvlTree,
-  ComCtrls, LCLProc, FileUtil, LazFileUtils, LazUtf8, LCLStrConsts;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  Forms, Graphics, ComCtrls, LCLProc, LCLStrConsts,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8;
 
-{$if defined(Windows) or defined(darwin)}
+{$if defined(Windows) or defined(darwin) or defined(HASAMIGA))}
 {$define CaseInsensitiveFilenames}
 {$endif}
 {$IF defined(CaseInsensitiveFilenames) or defined(darwin)}
@@ -84,7 +87,6 @@ type
       AMask: string; AObjectTypes: TObjectTypes; AResult: TStrings; AFileSortType: TFileSortType = fstNone);
     { Other methods specific to Lazarus }
     function  GetPathFromNode(ANode: TTreeNode): string;
-    function  GetSelectedNodePath: string; deprecated 'Use property Path instead';
     procedure PopulateWithBaseFiles;
     procedure Refresh(ANode: TTreeNode); overload;
 
@@ -250,6 +252,7 @@ type
 //    property HotTrackStyles;
 //    property HoverTime;
     property LargeImages;
+    property Mask;
     property MultiSelect;
 //    property OwnerData;
 //    property OwnerDraw;
@@ -510,7 +513,7 @@ var
 begin
   if FFileSortType=AValue then exit;
   FFileSortType:=AValue;
-  if (csLoading in ComponentState) then Exit;
+  if (([csLoading,csDesigning] * ComponentState) <> []) then Exit;
   CurrPath := GetPath;
   try
     BeginUpdate;
@@ -637,7 +640,7 @@ var
   FileItem: TFileItem;
   i: Integer;
   MaskStrings: TStringList;
-  FileTree: TAvgLvlTree;
+  FileTree: TAvlTree;
   ShortFilename: AnsiString;
   j: Integer;
   {$if defined(windows) and not defined(wince)}
@@ -658,7 +661,7 @@ begin
   // The string list implements support for multiple masks separated
   // by semi-colon ";"
   MaskStrings := TStringList.Create;
-  FileTree:=TAvgLvlTree.Create(@STVCompareFiles);
+  FileTree:=TAvlTree.Create(@STVCompareFiles);
   try
     {$ifdef NotLiteralFilenames}
     MaskStrings.CaseSensitive := False;
@@ -695,7 +698,7 @@ begin
 
         IsValidDirectory := (ShortFilename <> '.') and (ShortFilename <> '..');
 
-        IsHidden := (DirInfo.Attr and faHidden = faHidden);
+        IsHidden := (DirInfo.Attr and faHidden{%H-} = faHidden{%H-});
 
         // First check if we show hidden files
         if IsHidden then AddFile := (otHidden in AObjectTypes)
@@ -770,6 +773,9 @@ begin
   {$ifdef unix}
   Result := '/';
   {$endif}
+  {$ifdef HASAMIGA}
+  Result := '';
+  {$endif}
 end;
 
 function TCustomShellTreeView.GetRootPath: string;
@@ -800,14 +806,14 @@ var
      Result:=False;
      try
        Attr := faDirectory;
-       if (otHidden in fObjectTypes) then Attr := Attr or faHidden;
+       if (otHidden in fObjectTypes) then Attr := Attr or faHidden{%H-};
        FindRes := FindFirstUTF8(AppendPathDelim(ADir) + AllFilesMask, Attr , SR);
        while (FindRes = 0) do
        begin
          if ((SR.Attr and faDirectory <> 0) and (SR.Name <> '.') and
             (SR.Name <> '..')) then
          begin
-           IsHidden := ((Attr and faHidden) > 0);
+           IsHidden := ((Attr and faHidden{%H-}) > 0);
            if not (IsHidden and (not ((otHidden in fObjectTypes)))) then
            begin
              Result := True;
@@ -860,7 +866,6 @@ begin
   // avoids crashes in the IDE by not populating during design
   if (csDesigning in ComponentState) then Exit;
   Items.Clear;
-
   r := GetLogicalDriveStrings(SizeOf(Drives), Drives);
   if r = 0 then Exit;
   if r > SizeOf(Drives) then Exit;
@@ -945,10 +950,6 @@ begin
     Result := '';
 end;
 
-function TCustomShellTreeView.GetSelectedNodePath: string;
-begin
-  Result := GetPathFromNode(Selected);
-end;
 
 procedure TCustomShellTreeView.Refresh(ANode: TTreeNode);
 //nil will refresh root
@@ -1070,7 +1071,7 @@ var
     else
     begin
       Attr := FileGetAttrUtf8(Fn);
-      Result := ((Attr and faHidden) = faHidden) and not PathIsDriveRoot(Fn);
+      Result := ((Attr and faHidden{%H-}) = faHidden{%H-}) and not PathIsDriveRoot(Fn);
       if not Result then
       begin
         //it also is not allowed that any folder above is hidden
@@ -1102,7 +1103,7 @@ var
             if (Length(Fn) = 2) and (Fn[2] = ':') then Continue;
             {$endif}
             Attr := FileGetAttrUtf8(Fn);
-            if (Attr <> -1) and ((Attr and faHidden) > 0) and not PathIsDriveRoot(Fn) then
+            if (Attr <> -1) and ((Attr and faHidden{%H-}) > 0) and not PathIsDriveRoot(Fn) then
             begin
               Result := True;
               {$ifdef debug_shellctrls}

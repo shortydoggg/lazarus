@@ -1,4 +1,4 @@
-{ $Id: lclmessageglue.pas 46584 2014-10-18 09:22:19Z mattias $ }
+{ $Id: lclmessageglue.pas 57496 2018-03-10 16:32:56Z mattias $ }
 {
  *****************************************************************************
  *                              LCLMessageGlue.pas                           *
@@ -95,7 +95,7 @@ begin
     and (TLMessage(AMessage).Msg <>LM_PAINT)
     and (TLMessage(AMessage).Msg <>LM_KEYDOWN)
     and (TLMessage(AMessage).Msg <>LM_KEYUP)
-    and (TLMessage(AMessage).Msg < CN_KEYDOWN ) then
+    and (TLMessage(AMessage).Msg <> CN_KEYDOWN ) then
     DebugLn('DeliverMessage ',DbgS(Target),
     ' ',TComponent(Target).Name,':',TObject(Target).ClassName,
     ' Message=',GetMessageName(TLMessage(AMessage).Msg));

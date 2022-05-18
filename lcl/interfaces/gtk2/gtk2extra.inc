@@ -1,5 +1,5 @@
 {%MainUnit Gtk2Extra.pp}
-{ $Id: gtk2extra.inc 52174 2016-04-11 22:22:13Z maxim $ }
+{ $Id: gtk2extra.inc 55913 2017-09-24 16:07:20Z zeljko $ }
 {
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -77,8 +77,11 @@ initialization
     end;
   end;
   gdklibhandle := LoadLibrary(gdklib);
-  if gdklibhandle <> 0
-  then pointer(gdk_window_get_cursor):=GetProcAddress(gdklibhandle,'gdk_window_get_cursor');
+  if gdklibhandle <> 0 then
+  begin
+   pointer(gdk_window_get_cursor) := GetProcAddress(gdklibhandle,'gdk_window_get_cursor');
+   pointer(gdk_screen_get_primary_monitor) := GetProcAddress(gdklibhandle,'gdk_screen_get_primary_monitor');
+  end;
 
 finalization
   if gtkhandle <> 0 then

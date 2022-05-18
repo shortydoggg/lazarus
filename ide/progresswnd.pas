@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -249,7 +249,7 @@ var
   i: Integer;
 begin
   inherited Notification(AComponent, Operation);
-  if Operation=opRemove then
+  if (Operation=opRemove) and (Count>0) then
   begin
     DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TIDEProgressWindow.Notification'){$ENDIF};
     try
@@ -328,12 +328,15 @@ begin
   Result.Panel.AutoSize:=true;
   Result.Panel.Constraints.MinWidth:=100;
   Result.Panel.Constraints.MinHeight:=30;
+  Result.Panel.BevelInner:=bvNone;
+  Result.Panel.BevelOuter:=bvNone;
   // add a label into the panel
   Result.CaptionLabel:=TLabel.Create(Result.Panel);
   Result.CaptionLabel.Align:=alTop;
   Result.CaptionLabel.AutoSize:=true;
   Result.CaptionLabel.Parent:=Result.Panel;
   Result.CaptionLabel.ShowHint:=true;
+  Result.CaptionLabel.BorderSpacing.Around:=6;
   // add a progressbar below the label
   Result.ProgressBar:=TProgressBar.Create(Result.Panel);
   Result.ProgressBar.Align:=alTop;
@@ -341,6 +344,7 @@ begin
   Result.ProgressBar.Parent:=Result.Panel;
   Result.ProgressBar.ShowHint:=true;
   Result.ProgressBar.Top:=10;
+  Result.ProgressBar.BorderSpacing.Around:=6;
 
   // show panel
   DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TIDEProgressWindow.AddItem'){$ENDIF};

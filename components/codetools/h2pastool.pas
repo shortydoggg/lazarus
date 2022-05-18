@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -94,10 +94,12 @@ unit H2PasTool;
 interface
 
 uses
-  Classes, SysUtils, CodeToolsStructs, AVL_Tree,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LazUtils
+  AvgLvlTree,
+  // Codetools
   FileProcs, BasicCodeTools, CCodeParserTool,
-  NonPascalCodeTools, KeywordFuncLists, CodeCache,
-  CodeTree, CodeAtom;
+  NonPascalCodeTools, KeywordFuncLists, CodeCache, CodeTree, CodeAtom;
   
 const
   DefaultMaxPascalIdentLen = 70;
@@ -2520,8 +2522,8 @@ function TH2PasTool.CreateH2PNode(var PascalName: string; const CName: string;
   const PascalCode: string;
   ParentNode: TH2PNode; IsGlobal: boolean; InsertAsPreLast: boolean): TH2PNode;
 begin
-  if (PascalName<>'') and (PascalDesc<>ctnNone) and IsValidIdent(PascalName)
-  then begin
+  if (PascalDesc<>ctnNone) and IsValidIdent(PascalName) then
+  begin
     if WordIsKeyWord.DoItCaseInsensitive(PChar(PascalName)) then begin
       // C name is keyword => auto rename
       PascalName:=PascalName+'_';

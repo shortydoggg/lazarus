@@ -1,4 +1,4 @@
-{ DividerBevel
+{ TDividerBevel
 
   Copyright (C) 2010 Lazarus team
 
@@ -16,8 +16,9 @@ unit DividerBevel;
 interface
 
 uses
-  Classes, LResources, Forms, Controls, Graphics, Dialogs, Types,
-  LCLType, LCLIntf, LCLProc, Math, GraphType, ComCtrls, ExtCtrls, Themes;
+  Classes, Types, Math,
+  // LCL
+  LCLType, LCLIntf, Controls, Graphics, GraphType, ComCtrls, ExtCtrls, Themes;
 
 type
   { TDividerBevel }
@@ -54,6 +55,7 @@ type
                          {%H-}WithThemeSpace: Boolean); override;
   public
     constructor Create(AOwner: TComponent); override;
+    procedure ShouldAutoAdjust(var AWidth, AHeight: Boolean); override;
   published
     property Caption;
     property Align;
@@ -100,14 +102,7 @@ type
     property OnStartDrag;
 end;
 
-procedure Register;
-
 implementation
-
-procedure Register;
-begin
-  RegisterComponents('LazControls', [TDividerBevel]);
-end;
 
 { TDividerBevel }
 
@@ -401,6 +396,13 @@ begin
     PreferredHeight := 0;
     PreferredWidth := Max(FTextExtent.cy, FBevelHeight);
   end;
+end;
+
+procedure TDividerBevel.ShouldAutoAdjust(var AWidth,
+  AHeight: Boolean);
+begin
+  AWidth := not (AutoSize and (Orientation = trVertical));
+  AHeight := not (AutoSize and (Orientation = trHorizontal));
 end;
 
 constructor TDividerBevel.Create(AOwner: TComponent);

@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -38,11 +38,17 @@ unit ComponentPalette;
 interface
 
 uses
-  Classes, SysUtils, AVL_Tree, fgl,
-  Controls, Forms, Graphics, ComCtrls, Buttons, Menus, ExtCtrls,
-  LazFileUtils, LazFileCache, PropEdits, LCLProc, MainBase, LazarusIDEStrConsts,
-  FormEditingIntf, LazIDEIntf, IDEImagesIntf,
-  ComponentReg, DesignerProcs, PackageDefs, EnvironmentOpts;
+  Classes, SysUtils, fgl, Laz_AVL_Tree,
+  // LCL
+  LCLProc, Controls, Forms, Graphics, ComCtrls, Buttons, Menus, ExtCtrls,
+  // LazUtils
+  LazFileUtils, LazFileCache,
+  // IdeIntf
+  FormEditingIntf, LazIDEIntf, IDEImagesIntf, PropEdits, ComponentReg,
+  // IDE
+  ComponentPalette_Options,
+  MainBase, LazarusIDEStrConsts, DesignerProcs, PackageDefs, EnvironmentOpts,
+  ImgList;
 
 const
   CompPalSelectionToolBtnPrefix = 'PaletteSelectBtn';
@@ -98,7 +104,6 @@ type
     FOnOpenPackage: TNotifyEvent;
     FOnOpenUnit: TNotifyEvent;
     FOnChangeActivePage: TNotifyEvent;
-    fUnregisteredIcon: TCustomBitmap;
     fSelectButtonIcon: TCustomBitmap;
     fUpdatingPageControl: boolean;
     // Used by UpdateNoteBookButtons
@@ -123,7 +128,7 @@ type
     procedure CreatePopupMenu;
     procedure UnselectAllButtons;
     procedure SelectionWasChanged;
-    function GetUnregisteredIcon: TCustomBitmap;
+    procedure GetUnregisteredIcon(var ImageList: TCustomImageList; var ImageIndex: TImageIndex);
     function GetSelectButtonIcon: TCustomBitmap;
     function SelectAButton(Button: TSpeedButton): boolean;
     procedure ComponentWasAdded({%H-}ALookupRoot, {%H-}AComponent: TComponent;
@@ -133,7 +138,7 @@ type
     constructor Create;
     destructor Destroy; override;
     procedure OnGetNonVisualCompIcon(Sender: TObject;
-                                     AComponent: TComponent; var Icon: TCustomBitmap);
+      AComponent: TComponent; var ImageList: TCustomImageList; var ImageIndex: TImageIndex);
     procedure Update(ForceUpdateAll: Boolean); override;
   public
     property PageControl: TPageControl read FPageControl write SetPageControl;
@@ -145,7 +150,7 @@ type
 function CompareControlsWithTag(Control1, Control2: Pointer): integer;
 
 implementation
-uses componentpalette_options;
+
 {$R ../images/components_images.res}
 {$DEFINE USE_PageIndex}
 
@@ -201,7 +206,8 @@ var
   ButtonTree: TAVLTree;
   Node: TAVLTreeNode;
   ScrollBox: TScrollBox;
-  buttonx, MaxBtnPerRow, i: integer;
+  buttonx, MaxBtnPerRow, i, ComponentPaletteBtnWidthScaled,
+    ComponentPaletteBtnHeightScaled: integer;
 begin
   if (PageComponent=Nil) or (PageComponent.ComponentCount=0)
   or not (PageComponent.Components[0] is TScrollBox) then
@@ -215,6 +221,8 @@ begin
   Pal := TComponentPalette(Palette);
   if Pal.PageControl<>nil then
     Pal.PageControl.DisableAutoSizing{$IFDEF DebugDisableAutoSizing}('TComponentPage.ReAlignButtons'){$ENDIF};
+  ComponentPaletteBtnWidthScaled := Pal.PageControl.Scale96ToForm(ComponentPaletteBtnWidth);
+  ComponentPaletteBtnHeightScaled := Pal.PageControl.Scale96ToForm(ComponentPaletteBtnHeight);
   ButtonTree:=nil;
   try
     ScrollBox:=TScrollBox(PageComponent.Components[0]);
@@ -227,7 +235,7 @@ begin
     end;
     if ButtonTree.Count=0 then exit;
 
-    ButtonX:= ((ComponentPaletteBtnWidth*3) div 2) + 2;
+    ButtonX:= ((ComponentPaletteBtnWidthScaled*3) div 2) + 2;
 
     {$IFDEF VerboseComponentPalette}
     if PageComponent.Caption = CompPalVerbPgName then
@@ -245,20 +253,20 @@ begin
         ]);
     {$ENDIF}
 
-    MaxBtnPerRow:=((ScrollBox.VertScrollBar.ClientSizeWithoutBar - ButtonX) div ComponentPaletteBtnWidth);
+    MaxBtnPerRow:=((ScrollBox.VertScrollBar.ClientSizeWithoutBar - ButtonX) div ComponentPaletteBtnWidthScaled);
 
     // If we need to wrap, make sure we have space for the scrollbar
     if MaxBtnPerRow < ButtonTree.Count then
-      MaxBtnPerRow:=((ScrollBox.VertScrollBar.ClientSizeWithBar - ButtonX) div ComponentPaletteBtnWidth);
-    //debugln(['TComponentPage.ReAlignButtons MaxBtnPerRow=',MaxBtnPerRow,' ButtonTree.Count=',ButtonTree.Count,' ',ButtonX + MaxBtnPerRow * ComponentPaletteBtnWidth]);
+      MaxBtnPerRow:=((ScrollBox.VertScrollBar.ClientSizeWithBar - ButtonX) div ComponentPaletteBtnWidthScaled);
+    //debugln(['TComponentPage.ReAlignButtons MaxBtnPerRow=',MaxBtnPerRow,' ButtonTree.Count=',ButtonTree.Count,' ',ButtonX + MaxBtnPerRow * ComponentPaletteBtnWidthScaled]);
     if MaxBtnPerRow<1 then MaxBtnPerRow:=1;
 
     i:=0;
     Node:=ButtonTree.FindLowest;
     while Node<>nil do begin
       CurButton:=TSpeedbutton(Node.Data);
-      CurButton.SetBounds(ButtonX + (i mod MaxBtnPerRow) * ComponentPaletteBtnWidth,
-                          (i div MaxBtnPerRow) * ComponentPaletteBtnHeight,
+      CurButton.SetBounds(ButtonX + (i mod MaxBtnPerRow) * ComponentPaletteBtnWidthScaled,
+                          (i div MaxBtnPerRow) * ComponentPaletteBtnHeightScaled,
                           CurButton.Width, CurButton.Height);
       {$IFDEF VerboseComponentPalette}
       if PageComponent.Caption = CompPalVerbPgName then
@@ -330,7 +338,7 @@ begin
       VertScrollBar.Visible := false;
       AutoScroll:=false;
       {$ENDIF}
-      VertScrollBar.Increment := ComponentPaletteBtnHeight;
+      VertScrollBar.Increment := PageComponent.Scale96ToForm(ComponentPaletteBtnHeight);
       VertScrollBar.Tracking := True;
       Parent := PageComponent;
     end;
@@ -340,23 +348,23 @@ begin
       Align := alRight;
       Caption := '';
       BevelOuter := bvNone;
-      Width := OVERVIEW_PANEL_WIDTH;
       Visible := True; // EnvironmentOptions.IDESpeedButtonsVisible;
       Parent := PageComponent;
+      Width := Scale96ToForm(OVERVIEW_PANEL_WIDTH);
       OnMouseWheel := @Pal.OnPageMouseWheel;
     end;
     BtnRight:=TSpeedButton.Create(PageComponent);
     with BtnRight do
     begin
-      LoadGlyphFromResourceName(HInstance, 'SelCompPage');
+      IDEImages.AssignImage(BtnRight, 'SelCompPage');
       Flat := True;
-      SetBounds(2,1,16,16);
       Hint := lisClickToSelectPalettePage;
       ShowHint := True;
       OnMouseDown := @MainIDE.SelComponentPageButtonMouseDown;
       OnClick := @MainIDE.SelComponentPageButtonClick;
       OnMouseWheel := @Pal.OnPageMouseWheel;
       Parent := PanelRight;
+      SetBounds(Scale96ToForm(2), Scale96ToForm(1), Scale96ToForm(16), Scale96ToForm(16));
     end;
   end
   else begin
@@ -401,13 +409,13 @@ begin
     Name := CompPalSelectionToolBtnPrefix + aButtonUniqueName;
     OnClick := @Pal.SelectionToolClick;
     OnMouseWheel := @Pal.OnPageMouseWheel;
-    LoadGlyphFromResourceName(hInstance, 'tmouse');
+    IDEImages.AssignImage(Btn, 'tmouse');
     Flat := True;
     GroupIndex:= 1;
     Down := True;
     Hint := lisSelectionTool;
     ShowHint := EnvironmentOptions.ShowHintsForComponentPalette;
-    SetBounds(0,0,ComponentPaletteBtnWidth,ComponentPaletteBtnHeight);
+    SetBounds(0,0,aScrollBox.Scale96ToForm(ComponentPaletteBtnWidth),aScrollBox.Scale96ToForm(ComponentPaletteBtnHeight));
     Parent := aScrollBox;
   end;
 end;
@@ -435,8 +443,11 @@ begin
       Pal.fComponentButtons[CompCN] := Btn;
       Btn.Name := CompPaletteCompBtnPrefix + aButtonUniqueName + CompCN;
       // Left and Top will be set in ReAlignButtons.
-      Btn.SetBounds(Btn.Left,Btn.Top,ComponentPaletteBtnWidth,ComponentPaletteBtnHeight);
-      Btn.Glyph.Assign(aComp.Icon);
+      Btn.SetBounds(Btn.Left, Btn.Top,
+                    aScrollBox.Scale96ToForm(ComponentPaletteBtnWidth),
+                    aScrollBox.Scale96ToForm(ComponentPaletteBtnHeight));
+      Btn.Images := aComp.Images;
+      Btn.ImageIndex := aComp.ImageIndex;
       Btn.GroupIndex := 1;
       Btn.Flat := true;
       Btn.OnMouseDown := @Pal.ComponentBtnMouseDown;
@@ -444,7 +455,8 @@ begin
       Btn.OnDblClick := @Pal.ComponentBtnDblClick;
       Btn.OnMouseWheel := @Pal.OnPageMouseWheel;
       Btn.ShowHint := EnvironmentOptions.ShowHintsForComponentPalette;
-      Btn.Hint := CompCN + sLineBreak + '(' + aComp.ComponentClass.UnitName + ')';
+      Btn.Hint := CompCN + sLineBreak +
+        '(' + aComp.ComponentClass.UnitName+', '+aComp.PkgFile.LazPackage.Name + ')';
       Btn.PopupMenu:=Pal.PopupMenu;
       {$IFDEF VerboseComponentPalette}
       if aComp.RealPage.PageName = CompPalVerbPgName then
@@ -627,7 +639,7 @@ begin
         Name:='OptionsMenuItem';
         Caption:=lisOptions;
         OnClick:=@OptionsClicked;
-        ImageIndex := IDEImages.LoadImage(16, 'menu_environment_options');
+        ImageIndex := IDEImages.LoadImage('menu_environment_options');
       end;
       PalettePopupMenu.Items.Add(miOptions);
     end;
@@ -784,7 +796,7 @@ begin
     Name:='OptionsMenuItem';
     Caption:=lisOptions;
     OnClick:=@OptionsClicked;
-    ImageIndex := IDEImages.LoadImage(16, 'menu_environment_options');
+    ImageIndex := IDEImages.LoadImage('menu_environment_options');
   end;
   PopupMenu.Items.Add(MenuItem);
 end;
@@ -795,10 +807,16 @@ begin
   if (WheelDelta > 0) then
   begin
     if (PageControl.ActivePageIndex > 0) then
+    begin
       PageControl.ActivePageIndex := PageControl.ActivePageIndex - 1;
+      PageControl.OnChange(PageControl);
+    end;
   end else begin
     if (PageControl.ActivePageIndex < PageControl.PageCount-1) then
+    begin
       PageControl.ActivePageIndex := PageControl.ActivePageIndex + 1;
+      PageControl.OnChange(PageControl);
+    end;
   end;
   Handled := True;
 end;
@@ -848,7 +866,6 @@ begin
   for i := 0 to fComponentButtons.Count-1 do
     fComponentButtons.Data[i].Free;
   FreeAndNil(fComponentButtons);
-  FreeAndNil(fUnregisteredIcon);
   FreeAndNil(fSelectButtonIcon);
   FreeAndNil(PopupMenu);
   FreeAndNil(PalettePopupMenu);
@@ -869,15 +886,16 @@ begin
     FPageControl.EnableAlign;
 end;
 
-function TComponentPalette.GetUnregisteredIcon: TCustomBitmap;
+procedure TComponentPalette.GetUnregisteredIcon(
+  var ImageList: TCustomImageList; var ImageIndex: TImageIndex);
+var
+  IL: TLCLGlyphs;
 begin
-  if fUnregisteredIcon = nil then 
-  begin
-    fUnregisteredIcon := CreateBitmapFromResourceName(hInstance, 'unregisteredcomponent');
-    if fUnregisteredIcon = nil then
-      fUnregisteredIcon := CreateBitmapFromResourceName(hInstance, 'default');
-  end;
-  Result := fUnregisteredIcon;
+  IL := IDEImages.Images_24;
+  ImageList := IL;
+  ImageIndex := IL.GetImageIndex('unregisteredcomponent');
+  if ImageIndex<0 then
+    ImageIndex := IL.GetImageIndex('default');
 end;
 
 function TComponentPalette.GetSelectButtonIcon: TCustomBitmap;
@@ -957,7 +975,7 @@ begin
     // remove every page in the PageControl without a visible page
     for i:=FPageControl.PageCount-1 downto 0 do
       RemoveUnneededPage(FPageControl.Pages[i]);
-    Application.ProcessMessages; // PageIndex of tabs are not updated without this.
+
     {$IFDEF VerboseComponentPalette}
     DebugLn(['TComponentPalette.UpdateNoteBookButtons: FPageCount after=', FPageControl.PageCount,
     ' PageCount=', Pages.count]);
@@ -975,7 +993,7 @@ begin
       Assert(Pages[i].PageName=UserOrder.ComponentPages[i],
              'UpdateNoteBookButtons: Page names do not match.');
       Pg := TComponentPage(Pages[i]);
-      {$IFDEF LCLQt}   // Qt has some problems in moving existing tabs!
+      {$IF DEFINED(LCLQt) OR DEFINED(LCLQt5)}   // Qt has some problems in moving existing tabs!
       if Assigned(Pg.PageComponent) then begin
         Pg.PageComponent.Free;
         Pg.RemoveSheet;
@@ -1012,7 +1030,8 @@ begin
 end;
 
 procedure TComponentPalette.OnGetNonVisualCompIcon(Sender: TObject;
-  AComponent: TComponent; var Icon: TCustomBitmap);
+  AComponent: TComponent; var ImageList: TCustomImageList;
+  var ImageIndex: TImageIndex);
 var
   ARegComp: TRegisteredComponent;
 begin
@@ -1021,9 +1040,13 @@ begin
   else
     ARegComp:=nil;
   if ARegComp<>nil then
-    Icon:=TPkgComponent(ARegComp).Icon
-  else
-    Icon:=GetUnregisteredIcon;
+  begin
+    ImageList := TPkgComponent(ARegComp).Images;
+    ImageIndex := TPkgComponent(ARegComp).ImageIndex;
+  end else
+  begin
+    GetUnregisteredIcon(ImageList, ImageIndex);
+  end;
 end;
 
 function TComponentPalette.IndexOfPageComponent(AComponent: TComponent): integer;

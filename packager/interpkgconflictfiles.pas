@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -53,18 +53,20 @@ unit InterPkgConflictFiles;
 interface
 
 uses
-  // RTL + FCL + LCL
-  Classes, SysUtils, types, math, contnrs, InterfaceBase,
+  // RTL + FCL
+  Classes, SysUtils, types, math, contnrs, Laz_AVL_Tree,
+  // LCL
   Forms, ComCtrls, Controls, ButtonPanel, Themes, Graphics, StdCtrls, Buttons,
+  InterfaceBase,
   // CodeTools
   BasicCodeTools, DefineTemplates, CodeToolManager, FileProcs,
   // LazUtils
-  LazFileUtils, LazFileCache, AvgLvlTree,
+  LazFileUtils, LazFileCache, LazTracer,
   // IDEIntf
   ProjectIntf, CompOptsIntf, IDEWindowIntf, LazIDEIntf, IDEMsgIntf, IDEExternToolIntf,
   // IDE
   CompilerOptions, EnvironmentOpts, IDEProcs, DialogProcs, LazarusIDEStrConsts,
-  TransferMacros, LazConf, PackageDefs, PackageSystem;
+  TransferMacros, PackageDefs, PackageSystem;
 
 type
   TPGInterPkgOwnerInfo = class
@@ -175,17 +177,16 @@ end;
 
 { TPGIPAmbiguousFileGroup }
 
-function TPGIPAmbiguousFileGroup.Add(SrcFile, PPUFile: TPGInterPkgFile
-  ): integer;
+function TPGIPAmbiguousFileGroup.Add(SrcFile, PPUFile: TPGInterPkgFile): integer;
 begin
   if (SrcFile=nil) and (PPUFile=nil) then
-    RaiseException('');
+    RaiseGDBException('');
   if (SrcFile<>nil) and (PPUFile<>nil) and (PPUFile.OwnerInfo<>SrcFile.OwnerInfo) then
-    RaiseException('bug: not equal: PPUFile.OwnerInfo='+PPUFile.OwnerInfo.Name+' SrcFile.OwnerInfo='+SrcFile.OwnerInfo.Name);
+    RaiseGDBException('bug: not equal: PPUFile.OwnerInfo='+PPUFile.OwnerInfo.Name+' SrcFile.OwnerInfo='+SrcFile.OwnerInfo.Name);
   if (SrcFile<>nil) and FilenameIsCompiledSource(SrcFile.ShortFilename) then
-    RaiseException('bug: src is compiled file: SrcFile.Filename='+SrcFile.FullFilename);
+    RaiseGDBException('bug: src is compiled file: SrcFile.Filename='+SrcFile.FullFilename);
   if (PPUFile<>nil) and not FilenameIsCompiledSource(PPUFile.ShortFilename) then
-    RaiseException('bug: compiled file is source:'+PPUFile.FullFilename);
+    RaiseGDBException('bug: compiled file is source:'+PPUFile.FullFilename);
   Result:=length(CompiledFiles);
   SetLength(CompiledFiles,Result+1);
   SetLength(Sources,Result+1);
@@ -369,7 +370,7 @@ var
   aSize: TSize;
   Img: TBitmap;
 begin
-  IDEDialogLayoutList.ApplyLayout(Self,Width,Height);
+  IDEDialogLayoutList.ApplyLayout(Self);
 
   DeleteSelectedFilesButton:=TButton.Create(Self);
   with DeleteSelectedFilesButton do
@@ -554,9 +555,9 @@ var
   TargetOS: String;
   TargetCPU: String;
   LCLWidgetType: String;
-  FullFiles: TAvgLvlTree; // tree of TPGInterPkgFile sorted for FullFilename
-  Units: TAvgLvlTree; // tree of TPGInterPkgFile sorted for AnUnitName
-  ShortFiles: TAvgLvlTree; // tree of TPGInterPkgFile sorted for ShortFilename
+  FullFiles: TAvlTree; // tree of TPGInterPkgFile sorted for FullFilename
+  Units: TAvlTree; // tree of TPGInterPkgFile sorted for AnUnitName
+  ShortFiles: TAvlTree; // tree of TPGInterPkgFile sorted for ShortFilename
   AmbiguousFileGroups: TObjectList; // list of TPGIPAmbiguousFileGroup
 
   procedure AddOwnerInfo(TheOwner: TObject);
@@ -695,12 +696,12 @@ var
   // remove each .o file if there is an .ppu file, so that there is only one
   // warning per ppu file
   var
-    Node: TAvgLvlTreeNode;
-    ONode: TAvgLvlTreeNode;
+    Node: TAvlTreeNode;
+    ONode: TAvlTreeNode;
     OFile: TPGInterPkgFile;
     PPUFileName: String;
     SearchFile: TPGInterPkgFile;
-    PPUNode: TAvgLvlTreeNode;
+    PPUNode: TAvlTreeNode;
   begin
     Node:=Units.FindLowest;
     while Node<>nil do begin
@@ -805,7 +806,7 @@ var
     SearchPPU: Boolean;
     AnUnitName: string;
 
-    function FindOther(Node: TAvgLvlTreeNode; Left: boolean): TPGInterPkgFile;
+    function FindOther(Node: TAvlTreeNode; Left: boolean): TPGInterPkgFile;
     var
       IsPPU: Boolean;
     begin
@@ -827,7 +828,7 @@ var
     end;
 
   var
-    StartNode: TAvgLvlTreeNode;
+    StartNode: TAvlTreeNode;
     h: TPGInterPkgFile;
   begin
     UnitPPU:=nil;
@@ -848,10 +849,10 @@ var
   { Check two or more packages have the same unit (ppu/o/pas/pp/p)
     Unless A uses B and B has -Ur or A has -Ur and B uses A }
   var
-    CurNode: TAvgLvlTreeNode;
+    CurNode: TAvlTreeNode;
     CurUnit: TPGInterPkgFile;
-    FirstNodeSameUnitname: TAvgLvlTreeNode;
-    OtherNode: TAvgLvlTreeNode;
+    FirstNodeSameUnitname: TAvlTreeNode;
+    OtherNode: TAvlTreeNode;
     OtherFile: TPGInterPkgFile;
     PPUFile: TPGInterPkgFile;
     FileGroup: TPGIPAmbiguousFileGroup;
@@ -957,10 +958,10 @@ var
     => IDE: ignore or cancel
     => lazbuild: warn }
   var
-    CurNode: TAvgLvlTreeNode;
+    CurNode: TAvlTreeNode;
     CurFile: TPGInterPkgFile;
-    FirstNodeSameShortName: TAvgLvlTreeNode;
-    OtherNode: TAvgLvlTreeNode;
+    FirstNodeSameShortName: TAvlTreeNode;
+    OtherNode: TAvlTreeNode;
     OtherFile: TPGInterPkgFile;
     FileGroup: TPGIPAmbiguousFileGroup;
     i: Integer;
@@ -1030,9 +1031,9 @@ begin
   FilesChanged:=false;
   if (PkgList=nil) or (PkgList.Count=0) then exit;
   OwnerInfos:=TObjectList.create(true);
-  FullFiles:=TAvgLvlTree.Create(@ComparePGInterPkgFullFilenames);
-  Units:=TAvgLvlTree.Create(@ComparePGInterPkgUnitnames);
-  ShortFiles:=TAvgLvlTree.Create(@ComparePGInterPkgShortFilename);
+  FullFiles:=TAvlTree.Create(@ComparePGInterPkgFullFilenames);
+  Units:=TAvlTree.Create(@ComparePGInterPkgUnitnames);
+  ShortFiles:=TAvlTree.Create(@ComparePGInterPkgShortFilename);
   AmbiguousFileGroups:=TObjectList.create(true);
   {$IFDEF EnableCheckInterPkgFiles}
   Dlg:=nil;
@@ -1047,7 +1048,8 @@ begin
     if TargetCPU='' then TargetCPU:=GetCompiledTargetCPU;
     LCLWidgetType:='$(LCLWidgetType)';
     GlobalMacroList.SubstituteStr(LCLWidgetType);
-    if LCLWidgetType='' then LCLWidgetType:=LCLPlatformDirNames[GetDefaultLCLWidgetType];
+    if LCLWidgetType='' then
+      LCLWidgetType:=GetLCLWidgetTypeName;
 
     {$IFDEF VerboseCheckInterPkgFiles}
     debugln(['CheckInterPkgFiles TargetOS=',TargetOS,' TargetCPU=',TargetCPU,' LCLWidgetType=',LCLWidgetType]);

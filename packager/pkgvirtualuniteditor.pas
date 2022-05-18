@@ -1,4 +1,4 @@
-{  $Id: pkgvirtualuniteditor.pas 49494 2015-07-04 23:08:00Z juha $  }
+{  $Id: pkgvirtualuniteditor.pas 54405 2017-03-15 13:13:36Z juha $  }
 {
  /***************************************************************************
                           pkgvirtualuniteditor.pas
@@ -22,7 +22,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -38,8 +38,15 @@ unit PkgVirtualUnitEditor;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Dialogs,
-  PackageDefs, FileUtil, LazFileUtils, LazarusIDEStrConsts;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Dialogs,
+  // LazUtils
+  FileUtil, LazFileUtils,
+  // IdeIntf
+  PackageDependencyIntf,
+  // IDE
+  PackageDefs, LazarusIDEStrConsts;
 
 function ShowEditVirtualPackageDialog(PkgFile: TPkgFile): TModalResult;
 

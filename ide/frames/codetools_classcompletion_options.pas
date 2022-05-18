@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,20 +25,32 @@ unit codetools_classcompletion_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, ExtCtrls, StdCtrls, Buttons, Dialogs,
-  SourceChanger, CodeToolsOptions, LazarusIDEStrConsts, IDEOptionsIntf;
+  SysUtils,
+  // LCL
+  Forms, ExtCtrls, StdCtrls, Dialogs,
+  // CodeTools
+  SourceChanger,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf,
+  // IDE
+  CodeToolsOptions, LazarusIDEStrConsts;
 
 type
 
   { TCodetoolsClassCompletionOptionsFrame }
 
   TCodetoolsClassCompletionOptionsFrame = class(TAbstractIDEOptionsEditor)
+    ClassPartInsertPolicyComboBox: TComboBox;
+    ClassPartInsertPolicyLabel: TLabel;
+    InsertPoliciesPanel: TPanel;
+    MethodDefaultSectionComboBox: TComboBox;
+    MethodDefaultSectionLabel: TLabel;
+    MethodInsertPolicyComboBox: TComboBox;
+    MethodInsertPolicyLabel: TLabel;
     SetPropertyVariableIsPrefixCheckBox: TCheckBox;
     SetPropertyVariableUseConstCheckBox: TCheckBox;
     ClassHeaderCommentsCheckBox: TCheckBox;
     ClassImplementationCommentsCheckBox: TCheckBox;
-    ClassPartInsertPolicyRadioGroup: TRadioGroup;
-    MethodInsertPolicyRadioGroup: TRadioGroup;
     MixMethodsAndPropertiesCheckBox: TCheckBox;
     PropPrefixesPanel: TPanel;
     PrivateVariablePrefixEdit: TEdit;
@@ -76,27 +88,35 @@ end;
 
 procedure TCodetoolsClassCompletionOptionsFrame.Setup(
   ADialog: TAbstractOptionsEditorDialog);
+var
+  s: String;
+  ics: TInsertClassSection;
 begin
-  with ClassPartInsertPolicyRadioGroup do begin
-    Caption:=dlgInsertClassParts;
-    with Items do begin
-      BeginUpdate;
-      Add(dlgAlphabetically);
-      Add(dlgCDTLast);
-      EndUpdate;
-    end;
-  end;
+  ClassPartInsertPolicyLabel.Caption:=dlgInsertClassParts;
+  ClassPartInsertPolicyLabel.Hint:=
+    lisNewMethodsAndMembersAreInsertedAlphabeticallyOrAdd;
+  ClassPartInsertPolicyComboBox.Hint:=ClassPartInsertPolicyLabel.Hint;
+  ClassPartInsertPolicyComboBox.Items.Text:=
+    dlgAlphabetically+LineEnding+
+    dlgCDTLast;
 
-  with MethodInsertPolicyRadioGroup do begin
-    Caption:=dlgInsertMethods;
-    with Items do begin
-      BeginUpdate;
-      Add(dlgAlphabetically);
-      Add(dlgCDTLast);
-      Add(dlgCDTClassOrder);
-      EndUpdate;
-    end;
-  end;
+  MethodInsertPolicyLabel.Caption:=dlgInsertMethods;
+  MethodInsertPolicyLabel.Hint:=
+    lisNewMethodImplementationsAreInsertedBetweenExisting;
+  MethodInsertPolicyComboBox.Hint:=MethodInsertPolicyLabel.Hint;
+  MethodInsertPolicyComboBox.Items.Text:=
+    dlgAlphabetically+LineEnding+
+    dlgCDTLast+LineEnding+
+    dlgCDTClassOrder;
+
+  MethodDefaultSectionLabel.Caption:=lisDefaultSectionOfMethods;
+  MethodDefaultSectionLabel.Hint:=
+    lisDefaultClassVisibilitySectionOfNewMethodsForExampl;
+  MethodDefaultSectionComboBox.Hint:=MethodDefaultSectionLabel.Hint;
+  s:='';
+  for ics in TInsertClassSection do
+    s:=s+InsertClassSectionNames[ics]+LineEnding;
+  MethodDefaultSectionComboBox.Items.Text:=s;
 
   MixMethodsAndPropertiesCheckBox.Caption:=dlgMixMethodsAndProperties;
   UpdateAllMethodSignaturesCheckBox.Caption:=lisCTOUpdateAllMethodSignatures;
@@ -125,10 +145,10 @@ begin
   begin
     case ClassPartInsertPolicy of
       cpipAlphabetically:
-        ClassPartInsertPolicyRadioGroup.ItemIndex:=0;
+        ClassPartInsertPolicyComboBox.ItemIndex:=0;
     else
       // cpipLast
-      ClassPartInsertPolicyRadioGroup.ItemIndex:=1;
+      ClassPartInsertPolicyComboBox.ItemIndex:=1;
     end;
 
     MixMethodsAndPropertiesCheckBox.Checked := MixMethodsAndProperties;
@@ -137,13 +157,15 @@ begin
     ClassImplementationCommentsCheckBox.Checked := ClassImplementationComments;
     case MethodInsertPolicy of
       mipAlphabetically:
-        MethodInsertPolicyRadioGroup.ItemIndex:=0;
+        MethodInsertPolicyComboBox.ItemIndex:=0;
       mipLast:
-        MethodInsertPolicyRadioGroup.ItemIndex:=1;
+        MethodInsertPolicyComboBox.ItemIndex:=1;
     else
       // mipClassOrder
-      MethodInsertPolicyRadioGroup.ItemIndex:=2;
+      MethodInsertPolicyComboBox.ItemIndex:=2;
     end;
+
+    MethodDefaultSectionComboBox.ItemIndex:=ord(MethodDefaultSection);
 
     PropertyCompletionCheckBox.Checked := CompleteProperties;
     PropertyReadIdentPrefixEdit.Text := PropertyReadIdentPrefix;
@@ -161,7 +183,7 @@ procedure TCodetoolsClassCompletionOptionsFrame.WriteSettings(
 begin
   with AOptions as TCodetoolsOptions do
   begin
-    case ClassPartInsertPolicyRadioGroup.ItemIndex of
+    case ClassPartInsertPolicyComboBox.ItemIndex of
       0: ClassPartInsertPolicy := cpipAlphabetically;
       1: ClassPartInsertPolicy := cpipLast;
     end;
@@ -171,11 +193,14 @@ begin
     ClassHeaderComments := ClassHeaderCommentsCheckBox.Checked;
     ClassImplementationComments := ClassImplementationCommentsCheckBox.Checked;
 
-    case MethodInsertPolicyRadioGroup.ItemIndex of
+    case MethodInsertPolicyComboBox.ItemIndex of
       0: MethodInsertPolicy := mipAlphabetically;
       1: MethodInsertPolicy := mipLast;
       2: MethodInsertPolicy := mipClassOrder;
     end;
+
+    if MethodDefaultSectionComboBox.ItemIndex>=0 then
+      MethodDefaultSection:=TInsertClassSection(MethodDefaultSectionComboBox.ItemIndex);
 
     CompleteProperties:=PropertyCompletionCheckBox.Checked;
     PropertyReadIdentPrefix :=

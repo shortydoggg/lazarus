@@ -27,7 +27,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -66,13 +66,18 @@ type
     procedure BeforeContinue; override;
     function ResetInstructionPointerAfterBreakpoint: boolean; override;
     function ReadThreadState: boolean;
+
+    function GetInstructionPointerRegisterValue: TDbgPtr; override;
+    function GetStackBasePointerRegisterValue: TDbgPtr; override;
+    function GetStackPointerRegisterValue: TDbgPtr; override;
+    property Process;
   end;
 
 
   { TDbgWinBreakpoint }
 
-  TDbgWinBreakpointEvent = procedure(const ASender: TDbgBreakpoint; const AContext: TContext) of object;
-  TDbgWinBreakpoint = class(TDbgBreakpoint)
+  TDbgWinBreakpointEvent = procedure(const ASender: TFpInternalBreakpoint; const AContext: TContext) of object;
+  TDbgWinBreakpoint = class(TFpInternalBreakpoint)
   public
     procedure SetBreak; override;
     procedure ResetBreak; override;
@@ -113,9 +118,6 @@ type
 
     procedure StartProcess(const AThreadID: DWORD; const AInfo: TCreateProcessDebugInfo);
 
-    function GetInstructionPointerRegisterValue: TDbgPtr; override;
-    function GetStackBasePointerRegisterValue: TDbgPtr; override;
-    function GetStackPointerRegisterValue: TDbgPtr; override;
     function Pause: boolean; override;
 
     procedure TerminateProcess; override;
@@ -254,7 +256,7 @@ end;
 
 procedure tDbgWinLibrary.InitializeLoaders;
 begin
-  LoaderList.Add(TDbgImageLoader.Create(FInfo.hFile));
+  TDbgImageLoader.Create(FInfo.hFile).AddToLoaderList(LoaderList);
 end;
 
 constructor tDbgWinLibrary.Create(const AProcess: TDbgProcess;
@@ -287,7 +289,7 @@ end;
 
 procedure TDbgWinProcess.InitializeLoaders;
 begin
-  LoaderList.Add(TDbgImageLoader.Create(FInfo.hFile));
+  TDbgImageLoader.Create(FInfo.hFile).AddToLoaderList(LoaderList);
 end;
 
 destructor TDbgWinProcess.Destroy;
@@ -506,14 +508,17 @@ begin
     end;
   end;
 
-  case MDebugEvent.Exception.ExceptionRecord.ExceptionCode of
-   EXCEPTION_BREAKPOINT,
-   EXCEPTION_SINGLE_STEP: begin
-     Windows.ContinueDebugEvent(MDebugEvent.dwProcessId, MDebugEvent.dwThreadId, DBG_CONTINUE);
-   end
+  if MDebugEvent.dwDebugEventCode = EXCEPTION_DEBUG_EVENT then
+    case MDebugEvent.Exception.ExceptionRecord.ExceptionCode of
+     EXCEPTION_BREAKPOINT,
+     EXCEPTION_SINGLE_STEP: begin
+       Windows.ContinueDebugEvent(MDebugEvent.dwProcessId, MDebugEvent.dwThreadId, DBG_CONTINUE);
+     end
+    else
+      Windows.ContinueDebugEvent(MDebugEvent.dwProcessId, MDebugEvent.dwThreadId, DBG_EXCEPTION_NOT_HANDLED);
+    end
   else
-    Windows.ContinueDebugEvent(MDebugEvent.dwProcessId, MDebugEvent.dwThreadId, DBG_EXCEPTION_NOT_HANDLED);
-  end;
+    Windows.ContinueDebugEvent(MDebugEvent.dwProcessId, MDebugEvent.dwThreadId, DBG_CONTINUE);
   result := true;
 end;
 
@@ -522,11 +527,20 @@ begin
   result := Windows.WaitForDebugEvent(MDebugEvent, INFINITE);
   ProcessIdentifier:=MDebugEvent.dwProcessId;
   ThreadIdentifier:=MDebugEvent.dwThreadId;
+
+  // Should be done in AnalyseDebugEvent, but that is not called for forked processes
+  if (MDebugEvent.dwDebugEventCode = CREATE_PROCESS_DEBUG_EVENT) and
+     (MDebugEvent.dwProcessId <> ProcessID) and
+     (MDebugEvent.CreateProcessInfo.hFile <> 0)
+  then begin
+    CloseHandle(MDebugEvent.CreateProcessInfo.hFile);
+    MDebugEvent.CreateProcessInfo.hFile := 0;
+  end;
 end;
 
 function TDbgWinProcess.AnalyseDebugEvent(AThread: TDbgThread): TFPDEvent;
 
-  procedure HandleException(const AEvent: TDebugEvent);
+  procedure HandleException(const AEvent: TDebugEvent; out InterceptAtFirstChance: Boolean);
   const
     PARAMCOLS = 12 - SizeOf(Pointer);
   var
@@ -536,6 +550,7 @@ function TDbgWinProcess.AnalyseDebugEvent(AThread: TDbgThread): TFPDEvent;
     ExInfo32: TExceptionDebugInfo32 absolute AEvent.Exception;
     ExInfo64: TExceptionDebugInfo64 absolute AEvent.Exception;
   begin
+    InterceptAtFirstChance := True;
     // Kept the debug-output as comments, since they provide deeper information
     // on how to interprete the exception-information.
     {
@@ -547,7 +562,7 @@ function TDbgWinProcess.AnalyseDebugEvent(AThread: TDbgThread): TFPDEvent;
     case AEvent.Exception.ExceptionRecord.ExceptionCode of
       EXCEPTION_ACCESS_VIOLATION         : ExceptionClass:='ACCESS VIOLATION';
       EXCEPTION_ARRAY_BOUNDS_EXCEEDED    : ExceptionClass:='ARRAY BOUNDS EXCEEDED';
-      EXCEPTION_BREAKPOINT               : ExceptionClass:='BREAKPOINT';
+      EXCEPTION_BREAKPOINT               : ExceptionClass:='BREAKPOINT';  // should never be here
       EXCEPTION_DATATYPE_MISALIGNMENT    : ExceptionClass:='DATATYPE MISALIGNMENT';
       EXCEPTION_FLT_DENORMAL_OPERAND     : ExceptionClass:='FLT DENORMAL OPERAND';
       EXCEPTION_FLT_DIVIDE_BY_ZERO       : ExceptionClass:='FLT DIVIDE BY ZERO';
@@ -565,7 +580,7 @@ function TDbgWinProcess.AnalyseDebugEvent(AThread: TDbgThread): TFPDEvent;
       EXCEPTION_NONCONTINUABLE_EXCEPTION : ExceptionClass:='NONCONTINUABLE EXCEPTION';
       EXCEPTION_POSSIBLE_DEADLOCK        : ExceptionClass:='POSSIBLE DEADLOCK';
       EXCEPTION_PRIV_INSTRUCTION         : ExceptionClass:='PRIV INSTRUCTION';
-      EXCEPTION_SINGLE_STEP              : ExceptionClass:='SINGLE STEP';
+      EXCEPTION_SINGLE_STEP              : ExceptionClass:='SINGLE STEP';    // should never be here
       EXCEPTION_STACK_OVERFLOW           : ExceptionClass:='STACK OVERFLOW';
 
       // add some status - don't know if we can get them here
@@ -581,6 +596,7 @@ function TDbgWinProcess.AnalyseDebugEvent(AThread: TDbgThread): TFPDEvent;
       STATUS_SXS_INVALID_DEACTIVATION    : DebugLn('STATUS_SXS_INVALID_DEACTIVATION');
       }
     else
+      InterceptAtFirstChance := False;
       ExceptionClass := 'Unknown exception code $' + IntToHex(ExInfo32.ExceptionRecord.ExceptionCode, 8);
       {
       DebugLn(' [');
@@ -771,6 +787,8 @@ function TDbgWinProcess.AnalyseDebugEvent(AThread: TDbgThread): TFPDEvent;
     log('[%d:%d]: %s', [AEvent.dwProcessId, AEvent.dwThreadId, S]);
   end;
 
+var
+  InterceptAtFirst: Boolean;
 begin
   if HandleDebugEvent(MDebugEvent)
   then result := deBreakpoint
@@ -802,9 +820,9 @@ begin
             result := deBreakpoint;
           end
         else begin
-          HandleException(MDebugEvent);
-          if MDebugEvent.Exception.dwFirstChance = 1 then
-            result := deInternalContinue
+          HandleException(MDebugEvent, InterceptAtFirst);
+          if (MDebugEvent.Exception.dwFirstChance = 1) and (not InterceptAtFirst) then
+            result := deInternalContinue // might be an SEH exception
           else
             result := deException;
         end;
@@ -816,9 +834,19 @@ begin
       end;
       CREATE_PROCESS_DEBUG_EVENT: begin
         //DumpEvent('CREATE_PROCESS_DEBUG_EVENT');
-        StartProcess(MDebugEvent.dwThreadId, MDebugEvent.CreateProcessInfo);
-        FJustStarted := true;
-        result := deCreateProcess;
+        if MDebugEvent.dwProcessId = TDbgWinThread(AThread).Process.ProcessID then begin
+          //main process
+          StartProcess(MDebugEvent.dwThreadId, MDebugEvent.CreateProcessInfo); // hfile will be closed by TDbgImageLoader
+          FJustStarted := true;
+          result := deCreateProcess;
+        end
+        else begin
+          //child process: ignore
+          // we currently do not use the file handle => close it
+          if MDebugEvent.CreateProcessInfo.hFile <> 0 then
+            CloseHandle(MDebugEvent.CreateProcessInfo.hFile);
+          result := deInternalContinue;
+        end;
       end;
       EXIT_THREAD_DEBUG_EVENT: begin
         //DumpEvent('EXIT_THREAD_DEBUG_EVENT');
@@ -884,33 +912,6 @@ begin
   s := GetProcFilename(Self, AInfo.lpImageName, AInfo.fUnicode, 0);
   if s <> ''
   then SetFileName(s);
-end;
-
-function TDbgWinProcess.GetInstructionPointerRegisterValue: TDbgPtr;
-begin
-{$ifdef cpui386}
-  Result := GCurrentContext^.Eip;
-{$else}
-  Result := GCurrentContext^.Rip;
-{$endif}
-end;
-
-function TDbgWinProcess.GetStackBasePointerRegisterValue: TDbgPtr;
-begin
-{$ifdef cpui386}
-  Result := GCurrentContext^.Ebp;
-{$else}
-  Result := GCurrentContext^.Rbp;
-{$endif}
-end;
-
-function TDbgWinProcess.GetStackPointerRegisterValue: TDbgPtr;
-begin
-{$ifdef cpui386}
-  Result := GCurrentContext^.Esp;
-{$else}
-  Result := GCurrentContext^.Rsp;
-{$endif}
 end;
 
 function DebugBreakProcess(Process:HANDLE): WINBOOL; external 'kernel32' name 'DebugBreakProcess';
@@ -997,15 +998,21 @@ end;
 { TDbgWinBreakpoint }
 
 procedure TDbgWinBreakpoint.SetBreak;
+var
+  a: TDBGPtr;
 begin
   inherited;
-  FlushInstructionCache(Process.Handle, Pointer(PtrUInt(Location)), 1);
+  for a in Location do
+    FlushInstructionCache(Process.Handle, Pointer(PtrUInt(a)), 1);
 end;
 
 procedure TDbgWinBreakpoint.ResetBreak;
+var
+  a: TDBGPtr;
 begin
   inherited;
-  FlushInstructionCache(Process.Handle, Pointer(PtrUInt(Location)), 1);
+  for a in Location do
+    FlushInstructionCache(Process.Handle, Pointer(PtrUInt(a)), 1);
 end;
 
 { TDbgWinThread }
@@ -1200,6 +1207,33 @@ begin
   SetLastError(0);
   result := GetThreadContext(Handle, GCurrentContext^);
   FRegisterValueListValid:=False;
+end;
+
+function TDbgWinThread.GetInstructionPointerRegisterValue: TDbgPtr;
+begin
+{$ifdef cpui386}
+  Result := GCurrentContext^.Eip;
+{$else}
+  Result := GCurrentContext^.Rip;
+{$endif}
+end;
+
+function TDbgWinThread.GetStackBasePointerRegisterValue: TDbgPtr;
+begin
+{$ifdef cpui386}
+  Result := GCurrentContext^.Ebp;
+{$else}
+  Result := GCurrentContext^.Rbp;
+{$endif}
+end;
+
+function TDbgWinThread.GetStackPointerRegisterValue: TDbgPtr;
+begin
+{$ifdef cpui386}
+  Result := GCurrentContext^.Esp;
+{$else}
+  Result := GCurrentContext^.Rsp;
+{$endif}
 end;
 
 end.

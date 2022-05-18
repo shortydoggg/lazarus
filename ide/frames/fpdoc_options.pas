@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,24 +25,28 @@ unit fpdoc_options;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, Forms, Dialogs, StdCtrls,
-  EnvironmentOpts, LazarusIDEStrConsts, IDEProcs, IDEOptionsIntf;
+  SysUtils,
+  // LCL
+  Dialogs, StdCtrls, EditBtn, Buttons,
+  // LazUtils
+  LazStringUtils,
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, IDEImagesIntf,
+  // IDE
+  EnvironmentOpts, LazarusIDEStrConsts;
 
 type
 
   { TFpDocOptionsFrame }
 
   TFpDocOptionsFrame = class(TAbstractIDEOptionsEditor)
-    LazDocAddPathButton: TButton;
-    LazDocBrowseButton: TButton;
-    LazDocDeletePathButton: TButton;
+    LazDocAddPathButton: TBitBtn;
+    LazDocDeletePathButton: TBitBtn;
     LazDocListBox: TListBox;
-    LazDocPathEdit: TEdit;
+    LazDocPathEdit: TDirectoryEdit;
     LazDocPathsGroupBox: TGroupBox;
-    SelectDirectoryDialog: TSelectDirectoryDialog;
     procedure LazDocDeletePathButtonClick(Sender: TObject);
     procedure LazDocAddPathButtonClick(Sender: TObject);
-    procedure LazDocBrowseButtonClick(Sender: TObject);
     procedure LazDocListBoxSelectionChange(Sender: TObject; {%H-}User: boolean);
     procedure LazDocPathEditChange(Sender: TObject);
   private
@@ -69,7 +73,9 @@ procedure TFpDocOptionsFrame.Setup(ADialog: TAbstractOptionsEditorDialog);
 begin
   LazDocPathsGroupBox.Caption := lisCodeHelpGroupBox;
   LazDocAddPathButton.Caption := lisCodeHelpAddPathButton;
+  IDEImages.AssignImage(LazDocAddPathButton, 'laz_add');
   LazDocDeletePathButton.Caption := lisCodeHelpDeletePathButton;
+  IDEImages.AssignImage(LazDocDeletePathButton, 'laz_delete');
 
   LazDocPathEdit.Clear;
 end;
@@ -102,12 +108,6 @@ begin
   end;
 end;
 
-procedure TFpDocOptionsFrame.LazDocBrowseButtonClick(Sender: TObject);
-begin
-  if SelectDirectoryDialog.Execute then
-    LazDocPathEdit.Text := SelectDirectoryDialog.FileName;
-end;
-
 procedure TFpDocOptionsFrame.LazDocListBoxSelectionChange(Sender: TObject; User: boolean);
 begin
   LazDocDeletePathButton.Enabled:=(Sender as TListBox).ItemIndex <> -1;
@@ -115,7 +115,7 @@ end;
 
 procedure TFpDocOptionsFrame.LazDocPathEditChange(Sender: TObject);
 begin
-  LazDocAddPathButton.Enabled:=(Sender as TEdit).Text <> '';
+  LazDocAddPathButton.Enabled:= LazDocPathEdit.Text <> '';
 end;
 
 class function TFpDocOptionsFrame.SupportedOptionsClass: TAbstractIDEOptionsClass;

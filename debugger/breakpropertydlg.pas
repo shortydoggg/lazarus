@@ -5,9 +5,16 @@ unit BreakPropertyDlg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, StdCtrls, ButtonPanel,
-  EditBtn, Spin, IDEHelpIntf, DbgIntfDebuggerBase, BreakPropertyDlgGroups, DebuggerDlg,
-  Debugger, BaseDebugManager, LazarusIDEStrConsts, InputHistory, IDEProcs;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, ExtCtrls, StdCtrls, ButtonPanel, EditBtn, Spin,
+  // IdeIntf
+  IDEHelpIntf,
+  // DebuggerIntf
+  DbgIntfDebuggerBase,
+  // IDE
+  BreakPropertyDlgGroups, DebuggerDlg, Debugger,
+  BaseDebugManager, LazarusIDEStrConsts, InputHistory, IDEProcs;
 
 type
 
@@ -276,8 +283,15 @@ begin
     FBreakpoint.LogMessage := edtLogMessage.Text;
     FBreakpoint.LogCallStackLimit := edtLogCallStack.Value;
 
-    InputHistories.HistoryLists.GetList('BreakPointExpression', True,
-      rltCaseSensitive).Add(edtCondition.Text);
+    if edtCondition.Text <> '' then
+      with InputHistories.HistoryLists.GetList('BreakPointExpression',
+        True, rltCaseSensitive) do
+      begin
+        i := IndexOf(edtCondition.Text);
+        if i <> -1 then Delete(i);
+        Insert(0, edtCondition.Text);
+      end;
+
   finally
     EnableGroupList.Free;
     DisableGroupList.Free;

@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -35,11 +35,18 @@ unit ShowCompilerOpts;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Buttons, StdCtrls, ComCtrls, ExtCtrls,
-  LazFileUtils, LazUTF8, CodeToolsCfgScript,
-  LazIDEIntf, IDEImagesIntf, CompOptsIntf, ProjectIntf,
-  LazarusIDEStrConsts, CompilerOptions,
-  IDEProcs, Project, ModeMatrixOpts, PackageDefs, MiscOptions;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Buttons, StdCtrls, ComCtrls, ExtCtrls,
+  // LazUtils
+  LazFileUtils, LazUTF8, LazStringUtils,
+  // CodeTools
+  CodeToolsCfgScript,
+  // IdeIntf
+  BaseIDEIntf, LazIDEIntf, IDEImagesIntf, CompOptsIntf, ProjectIntf, PackageIntf,
+  // IDE
+  LazarusIDEStrConsts, Project, PackageDefs,
+  CompilerOptions, ModeMatrixOpts, MiscOptions;
 
 type
 
@@ -53,12 +60,14 @@ type
     InhItemMemo: TMemo;
     InhSplitter: TSplitter;
     InhTreeView: TTreeView;
+    MultilineCheckBox: TCheckBox;
     PageControl1: TPageControl;
     RelativePathsCheckBox: TCheckBox;
     procedure FormClose(Sender: TObject; var {%H-}CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure InhTreeViewSelectionChanged(Sender: TObject);
+    procedure MultilineCheckBoxChange(Sender: TObject);
     procedure RelativePathsCheckBoxChange(Sender: TObject);
   private
     FCompilerOpts: TBaseCompilerOptions;
@@ -159,11 +168,16 @@ begin
   end;
 end;
 
+procedure TShowCompilerOptionsDlg.MultilineCheckBoxChange(Sender: TObject);
+begin
+  UpdateMemo;
+end;
+
 procedure TShowCompilerOptionsDlg.FormCreate(Sender: TObject);
 begin
-  ImageIndexPackage := IDEImages.LoadImage(16, 'item_package');
-  ImageIndexRequired := IDEImages.LoadImage(16, 'pkg_required');
-  ImageIndexInherited := IDEImages.LoadImage(16, 'pkg_inherited');
+  ImageIndexPackage := IDEImages.LoadImage('item_package');
+  ImageIndexRequired := IDEImages.LoadImage('pkg_required');
+  ImageIndexInherited := IDEImages.LoadImage('pkg_inherited');
 
   Caption:=dlgCompilerOptions;
 
@@ -171,6 +185,8 @@ begin
   CmdLineParamsTabSheet.Caption:=lisCommandLineParameters;
   RelativePathsCheckBox.Caption:=lisShowRelativePaths;
   RelativePathsCheckBox.Checked:=not MiscellaneousOptions.ShowCompOptFullFilenames;
+  MultilineCheckBox.Caption:=lisShowMultipleLines;
+  MultilineCheckBox.Checked:=not MiscellaneousOptions.ShowCompOptMultiLine;
 
   InheritedParamsTabSheet.Caption:=lisInheritedParameters;
   InhTreeView.Images := IDEImages.Images_16;
@@ -183,6 +199,7 @@ procedure TShowCompilerOptionsDlg.FormClose(Sender: TObject;
   var CloseAction: TCloseAction);
 begin
   MiscellaneousOptions.ShowCompOptFullFilenames:=not RelativePathsCheckBox.Checked;
+  MiscellaneousOptions.ShowCompOptMultiLine:=MultilineCheckBox.Checked;
   MiscellaneousOptions.Save;
 end;
 
@@ -203,14 +220,30 @@ end;
 procedure TShowCompilerOptionsDlg.UpdateMemo;
 var
   Flags: TCompilerCmdLineOptions;
-  CurOptions: String;
+  CurOptions, CompPath: String;
+  ParamList: TStrings;
 begin
   if CompilerOpts=nil then exit;
+
   Flags:=CompilerOpts.DefaultMakeOptionsFlags;
   if not RelativePathsCheckBox.Checked then
     Include(Flags,ccloAbsolutePaths);
   CurOptions := CompilerOpts.MakeOptionsString(Flags);
-  CmdLineMemo.Lines.Text:=CurOptions;
+  CompPath:=CompilerOpts.ParsedOpts.GetParsedValue(pcosCompilerPath);
+  if MultilineCheckBox.Checked then begin
+    ParamList:=TStringList.Create;
+    try
+      ParamList.Add(CompPath);
+      SplitCmdLineParams(CurOptions,ParamList);
+      CmdLineMemo.Lines.Assign(ParamList);
+    finally
+      ParamList.Free;
+    end;
+    CmdLineMemo.ScrollBars:=ssAutoBoth;
+  end else begin
+    CmdLineMemo.ScrollBars:=ssAutoVertical;
+    CmdLineMemo.Lines.Text:=QuotedStr(CompPath)+' '+CurOptions;
+  end;
 end;
 
 procedure TShowCompilerOptionsDlg.UpdateInheritedTree;

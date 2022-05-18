@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -95,6 +95,7 @@ type
     FFindRenameIdentifierOptions: TFindRenameIdentifierOptions;
     FMakeResourceStringInsertPolicy: TResourcestringInsertPolicy;
     FShowCompOptFullFilenames: boolean;
+    FShowCompOptMultiLine: boolean;
     FSortSelDirection: TSortDirection;
     FSortSelDomain: TSortDomain;
     fSavedStamp: integer;
@@ -106,6 +107,7 @@ type
       AValue: TResourcestringInsertPolicy);
     procedure SetModified(AValue: boolean);
     procedure SetShowCompOptFullFilenames(AValue: boolean);
+    procedure SetShowCompOptMultiLine(const AValue: boolean);
     procedure SetSortSelDirection(AValue: TSortDirection);
   public
     constructor Create;
@@ -130,6 +132,8 @@ type
                                               read FFindRenameIdentifierOptions;
     property ShowCompOptFullFilenames: boolean read FShowCompOptFullFilenames
                                               write SetShowCompOptFullFilenames;
+    property ShowCompOptMultiLine: boolean read FShowCompOptMultiLine
+                                              write SetShowCompOptMultiLine;
   end;
 
 const
@@ -222,7 +226,7 @@ var
   ConfFileName: string;
 begin
   if fFilename='' then begin
-    ConfFileName:=SetDirSeparators(GetPrimaryConfigPath+'/'+MiscOptsFilename);
+    ConfFileName:=AppendPathDelim(GetPrimaryConfigPath)+MiscOptsFilename;
     CopySecondaryConfigFile(MiscOptsFilename);
     if (not FileExistsUTF8(ConfFileName)) then begin
       //DebugLn('Note: miscellaneous options file not found - using defaults');
@@ -269,6 +273,13 @@ begin
   IncreaseChangeStamp;
 end;
 
+procedure TMiscellaneousOptions.SetShowCompOptMultiLine(const AValue: boolean);
+begin
+  if FShowCompOptMultiLine=AValue then Exit;
+  FShowCompOptMultiLine:=AValue;
+  IncreaseChangeStamp;
+end;
+
 procedure TMiscellaneousOptions.SetSortSelDirection(AValue: TSortDirection);
 begin
   if FSortSelDirection=AValue then Exit;
@@ -308,6 +319,7 @@ begin
       FindRenameIdentifierOptions.LoadFromXMLConfig(XMLConfig,
                                                   Path+'FindRenameIdentifier/');
       ShowCompOptFullFilenames:=XMLConfig.GetValue(Path+'ShowCompOpts/Filenames/Full',false);
+      ShowCompOptMultiLine:=XMLConfig.GetValue(Path+'ShowCompOpts/MultiLine',true);
     finally
       XMLConfig.Free;
     end;
@@ -352,7 +364,7 @@ begin
                                'NewProc');
       FindRenameIdentifierOptions.SaveToXMLConfig(XMLConfig,
                                                   Path+'FindRenameIdentifier/');
-      XMLConfig.SetDeleteValue(Path+'ShowCompOpts/Filenames/Full',ShowCompOptFullFilenames,false);
+      XMLConfig.SetDeleteValue(Path+'ShowCompOpts/MultLine',ShowCompOptMultiLine,true);
       XMLConfig.Flush;
     finally
       XMLConfig.Free;

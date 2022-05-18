@@ -1192,7 +1192,7 @@ begin
           WM_CHAR:
           begin
             // if want chars, then handled already
-            PLMsg^.Result := CallDefaultWindowProc(Window, WM_GETDLGCODE, 0, 0) and DLGC_WANTCHARS;
+            PLMsg^.Result := CallDefaultWindowProc(Window, WM_GETDLGCODE, WParam, 0) and DLGC_WANTCHARS;
             LMChar.CharCode := Word(WParam);
             LMChar.Msg := LM_CHAR;
           end;
@@ -1281,7 +1281,7 @@ end;
  Calls the timerfunction in the Timer Object in the LCL
  ------------------------------------------------------------------------------}
 
-procedure TimerCallBackProc(window_hwnd : hwnd; msg , idEvent: UINT_PTR; dwTime: DWORD);
+procedure TimerCallBackProc(window_hwnd : hwnd; msg :UINT; idEvent: UINT_PTR; dwTime: DWORD);
  {$if defined(win32) or defined(win64)}stdcall{$else}cdecl{$endif};
 Var
   TimerInfo: PWinCETimerInfo;

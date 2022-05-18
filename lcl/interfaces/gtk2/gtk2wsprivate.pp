@@ -1,11 +1,11 @@
-{ $Id: gtk2wsprivate.pp 45601 2014-06-22 08:57:16Z mattias $ }
+{ $Id: gtk2wsprivate.pp 60382 2019-02-09 08:46:44Z mattias $ }
 {
                  ------------------------------------------
                  gtk2wsprivate.pp  -  Gtk2 internal classes
                  ------------------------------------------
 
  @created(Thu Feb 1st WET 2007)
- @lastmod($Date: 2014-06-22 10:57:16 +0200 (So, 22 Jun 2014) $)
+ @lastmod($Date: 2019-02-09 09:46:44 +0100 (Sa, 09 Feb 2019) $)
  @author(Marc Weustink <marc@@lazarus.dommelstein.net>)
 
  This unit contains the private classhierarchy for the gtk implemetations
@@ -230,6 +230,16 @@ type
   protected
   public
     class procedure SetCallbacks(const AGtkWidget: PGtkWidget; const AWidgetInfo: PWidgetInfo); override;
+  end;
+
+  { TGtk2PrivateMemo }
+  { Private class for gtkmemos }
+
+  TGtk2PrivateMemo = class(TGtkPrivateScrolling)
+  private
+  protected
+  public
+    class procedure UpdateCursor(AInfo: PWidgetInfo); override;
   end;
 
   { TGtk2PrivateNotebook }

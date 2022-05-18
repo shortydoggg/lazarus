@@ -1,10 +1,10 @@
-{ $Id: carbonproc.pp 48541 2015-03-30 17:03:27Z jesus $
+{ $Id: carbonproc.pp 61638 2019-07-28 10:44:39Z martin $
                   ----------------------------------------
                   carbonproc.pp  -  Carbon interface procs
                   ----------------------------------------
 
  @created(Wed Aug 26st WET 2005)
- @lastmod($Date: 2015-03-30 19:03:27 +0200 (Mo, 30 Mär 2015) $)
+ @lastmod($Date: 2019-07-28 12:44:39 +0200 (So, 28 Jul 2019) $)
  @author(Marc Weustink <marc@@lazarus.dommelstein.net>)
 
  This unit contains procedures/functions needed for the Carbon <-> LCL interface
@@ -30,7 +30,7 @@ interface
 uses
   MacOSAll,
   Classes, SysUtils, DateUtils, Types, LCLType, LCLProc,
-  Controls, Forms, Graphics, Math, GraphType;
+  Controls, Forms, Graphics, Math, GraphType, StrUtils;
 
 const
   CleanPMRect: PMRect = (top: 0; left: 0; bottom: 0; right: 0);
@@ -57,21 +57,26 @@ var
 
 var
   CarbonDefaultFont     : AnsiString = '';
+  CarbonDefaultMonoFont : AnsiString = 'Menlo Regular'; { Default introduced in Snow Leopard }
+                                                        { TODO: Find from system }
   CarbonDefaultFontSize : Integer = 0;
 
 {$I mackeycodes.inc}
 
 function VirtualKeyCodeToMac(AKey: Word): Word;
+function VirtualKeyCodeToCharCode(AKey: Word): Word;
 
 function GetBorderWindowAttrs(const ABorderStyle: TFormBorderStyle;
   const ABorderIcons: TBorderIcons): WindowAttributes;
 
+function GetCarbonMouseClickCount(AEvent: EventRef): Integer;
 function GetCarbonMouseButton(AEvent: EventRef): Integer;
 function GetCarbonMsgKeyState: PtrInt;
 function GetCarbonShiftState: TShiftState;
 function ShiftStateToModifiers(const Shift: TShiftState): Byte;
 
-function FindCarbonFontID(const FontName: String): ATSUFontID;
+function FindCarbonFontID(const FontName: String): ATSUFontID; overload;
+function FindCarbonFontID(FontName: string; var Bold, Italic: Boolean; MonoSpace: Boolean): ATSUFontID; overload;
 function CarbonFontIDToFontName(ID: ATSUFontID): String;
 function FindQDFontFamilyID(const FontName: String; var Family: FontFamilyID): Boolean;
 
@@ -294,8 +299,8 @@ begin
   VK_NUMPAD7   : Result := MK_NUMPAD7;
   VK_NUMPAD8   : Result := MK_NUMPAD8;
   VK_NUMPAD9   : Result := MK_NUMPAD9;
-  VK_MULTIPLY  : Result := MK_PADMULT;
-  VK_ADD       : Result := MK_PADADD;
+//VK_MULTIPLY  : Result := MK_PADMULT;
+//VK_ADD       : Result := MK_PADADD;
   VK_SEPARATOR : Result := MK_PADDEC;
   VK_SUBTRACT  : Result := MK_PADSUB;
   VK_DECIMAL   : Result := MK_PADDEC;
@@ -315,13 +320,18 @@ begin
   VK_F13       : Result := MK_F13;
   VK_F14       : Result := MK_F14;
   VK_F15       : Result := MK_F15;
+  VK_F16       : Result := MK_F16;
+  VK_F17       : Result := MK_F17;
+  VK_F18       : Result := MK_F18;
+  VK_F19       : Result := MK_F19;
   VK_NUMLOCK   : Result := MK_NUMLOCK;
+  VK_CLEAR     : Result := MK_CLEAR;
   VK_SCROLL    : Result := MK_SCRLOCK;
   VK_SHIFT     : Result := MK_SHIFTKEY;
   VK_CONTROL   : Result := MK_COMMAND;
-  VK_MENU      : Result := MK_ALT;
+  VK_MENU      : Result := CarbonProc.MK_ALT; // see LCLType.MK_ALT
   VK_OEM_3     : Result := MK_TILDE;
-  VK_OEM_MINUS : Result := MK_MINUS;
+//VK_OEM_MINUS : Result := MK_MINUS;
   VK_OEM_PLUS  : Result := MK_EQUAL;
   VK_OEM_5     : Result := MK_BACKSLASH;
   VK_OEM_4     : Result := MK_LEFTBRACKET;
@@ -329,10 +339,29 @@ begin
   VK_OEM_1     : Result := MK_SEMICOLON;
   VK_OEM_7     : Result := MK_QUOTE;
   VK_OEM_COMMA : Result := MK_COMMA;
-  VK_OEM_PERIOD: Result := MK_PERIOD;
-  VK_OEM_2     : Result := MK_SLASH;
+//VK_OEM_PERIOD: Result := MK_PERIOD;
+//VK_OEM_2     : Result := MK_SLASH;
   else
     Result := 0;
+  end;
+end;
+
+{------------------------------------------------------------------------------
+  Name:    VirtualKeyCodeToCharCode
+  Returns: The char code for the specified virtual key or the original
+  virtual key.  Must be called after VirtualKeyCodeToMac since char codes
+  overlap VK_ codes.
+ ------------------------------------------------------------------------------}
+function VirtualKeyCodeToCharCode(AKey: Word): Word;
+begin
+  case AKey of
+  VK_MULTIPLY  : Result := Ord('*');
+  VK_ADD       : Result := Ord('+');
+  VK_OEM_MINUS : Result := Ord('-');
+  VK_OEM_PERIOD: Result := Ord('.');
+  VK_OEM_2     : Result := Ord('/');
+  else
+    Result := AKey;
   end;
 end;
 
@@ -375,6 +404,27 @@ begin
   else
     Result := Result and not (kWindowCloseBoxAttribute or
       kWindowCollapseBoxAttribute or kWindowFullZoomAttribute);
+end;
+
+{------------------------------------------------------------------------------
+  Name:    GetCarbonMouseClickCount
+  Returns: The click count of mouse
+ ------------------------------------------------------------------------------}
+function GetCarbonMouseClickCount(AEvent: EventRef): Integer;
+var
+  ClickCount: UInt32;
+const
+  SName = 'CarbonWindow_MouseProc';
+begin
+  Result := 1;
+
+  if OSError(
+    GetEventParameter(AEvent, kEventParamClickCount, typeUInt32, nil,
+      SizeOf(ClickCount), nil, @ClickCount),
+    SName, SGetEvent, 'kEventParamClickCount') then Exit;
+
+  Result := Integer(ClickCount);
+  {debugln('GetClickCount ClickCount=',dbgs(ClickCount));}
 end;
 
 {------------------------------------------------------------------------------
@@ -432,7 +482,7 @@ begin
   if (ButtonState and 4)         > 0 then Inc(Result, MK_MButton);
   if (shiftKey    and Modifiers) > 0 then Inc(Result, MK_Shift);
   if (controlKey  and Modifiers) > 0 then Inc(Result, MK_Control);
-  if (optionKey   and Modifiers) > 0 then Inc(Result, $20000000);
+  if (optionKey   and Modifiers) > 0 then Inc(Result, LCLType.MK_ALT); // see CarbonProc.MK_ALT
 
   //DebugLn('GetCarbonMsgKeyState Result=',dbgs(KeysToShiftState(Result)),' Modifiers=',hexstr(Modifiers,8),' ButtonState=',hexstr(ButtonState,8));
 end;
@@ -486,10 +536,10 @@ begin
 end;
 
 const
-  lclFontName      = kFontFamilyName;
+  lclFontName      = kFontFullName;
   lclFontPlatform  = kFontMacintoshPlatform;
-  lclFontScript    = kFontRomanScript;
-  lclFontLanguage  = kFontEnglishLanguage;
+  lclFontScript    = kFontNoScriptCode;
+  lclFontLanguage  = kFontNoLanguageCode;
 
 
 {------------------------------------------------------------------------------
@@ -505,7 +555,7 @@ begin
 
   //DebugLn('FindCarbonFontID ' + FontName);
 
-  if SameText(FontName, 'default')
+  if IsFontNameDefault(FontName)
     then fn:=CarbonDefaultFont
     else fn:=FontName;
   if (fn <> '') then
@@ -515,6 +565,60 @@ begin
         lclFontLanguage, Result),
       'FindCarbonFontID', 'ATSUFindFontFromName');
   end;
+end;
+
+{------------------------------------------------------------------------------
+  Name:    FindCarbonFontID
+  Params:  FontName - The font name, UTF-8 encoded
+           Bold, Italic - Font style, cleared if the style was found
+           MonoSpace: Indication that Fixed Pitch font is wanted.
+                      Currently only implemented for font name 'default'
+  Returns: Carbon font ID of font with the specified name
+
+  Finds the font ID for the given font name.  The ATSU bold/italic styles
+  are manufactured, so if possible this will match the full font name including
+  styles. If a match is found it will clear Bold/Italic.
+ ------------------------------------------------------------------------------}
+function FindCarbonFontID(FontName: string; var Bold, Italic: Boolean; MonoSpace: Boolean): ATSUFontID;
+
+  function FindFont(const fn: string; code: FontNameCode; out ID: ATSUFontID): Boolean;
+  begin
+    Result := ATSUFindFontFromName(PChar(fn), Length(fn), code,
+      lclFontPlatform, lclFontScript, lclFontLanguage, ID) = noErr;
+    if not Result then
+      ID := 0;
+  end;
+
+const
+  SRegular = ' Regular';
+  SBold = ' Bold';
+  SItalic = ' Italic';
+  SOblique = ' Oblique';
+var
+  FamilyName: string;
+begin
+  if IsFontNameDefault(FontName) then
+    if MonoSpace then
+      FontName := CarbonDefaultMonoFont
+    else
+    FontName := CarbonDefaultFont;
+  FamilyName := FontName;
+  if AnsiEndsStr(SRegular, FamilyName) then
+    SetLength(FamilyName, Length(FamilyName) - Length(SRegular));
+  if (Bold and Italic) and
+     (FindFont(FamilyName + SBold + SItalic, kFontFullName, Result) or
+      FindFont(FamilyName + SBold + SOblique, kFontFullName, Result)) then begin
+    Bold := False;
+    Italic := False;
+  end
+  else if Bold and FindFont(FamilyName + SBold, kFontFullName, Result) then
+    Bold := False
+  else if Italic and
+     (FindFont(FamilyName + SItalic, kFontFullName, Result) or
+      FindFont(FamilyName + SOblique, kFontFullName, Result)) then
+    Italic := False
+  else if not FindFont(FontName, kFontFullName, Result) then
+    FindFont(FontName, kFontFamilyName, Result)
 end;
 
 {------------------------------------------------------------------------------
@@ -925,8 +1029,6 @@ var
   absTime: CFAbsoluteTime;
   gDate: CFGregorianDate;
   tz: CFTimeZoneRef;
-  aTime: TDateTime;
-  ok: boolean;
 begin
   absTime := CFDateGetAbsoluteTime(dateRef);
   tz := CFTimeZoneCopySystem;

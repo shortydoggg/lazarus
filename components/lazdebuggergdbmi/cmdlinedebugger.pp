@@ -1,11 +1,11 @@
-{ $Id: cmdlinedebugger.pp 52609 2016-07-03 20:41:10Z maxim $ }
+{ $Id: cmdlinedebugger.pp 58679 2018-08-05 12:26:21Z martin $ }
 {                        ----------------------------------------------  
                          CMDLineDebugger.pp  -  Debugger class for 
                                                 commandline debuggers
                          ---------------------------------------------- 
  
  @created(Wed Feb 28st WET 2001)
- @lastmod($Date: 2016-07-03 22:41:10 +0200 (So, 03 Jul 2016) $)
+ @lastmod($Date: 2018-08-05 14:26:21 +0200 (So, 05 Aug 2018) $)
  @author(Marc Weustink <marc@@lazarus.dommelstein.net>)                       
 
  This unit contains the Commandline debugger class for external commandline
@@ -27,7 +27,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -78,8 +78,7 @@ type
   public
     constructor Create(const AExternalDebugger: String); override;
     destructor Destroy; override;
-    procedure TestCmd(const ACommand: String); virtual;// For internal debugging purposes
-    class function CanExternalDebugSymbolsFile: boolean; override;
+    procedure TestCmd(const ACommand: String); override;// For internal debugging purposes
   public
     property DebugProcess: TProcessUTF8 read FDbgProcess;
     property DebugProcessRunning: Boolean read GetDebugProcessRunning;
@@ -335,7 +334,7 @@ begin
   then begin
     FDbgProcess := TProcessUTF8.Create(nil);
     try
-      FDbgProcess.CommandLine := ExternalDebugger + ' ' + AOptions;
+      FDbgProcess.ParseCmdLine(ExternalDebugger + ' ' + AOptions);
       FDbgProcess.Options:= [poUsePipes, poNoConsole, poStdErrToOutPut, poNewProcessGroup];
       {$if defined(windows) and not defined(wince)}
       // under win9x and winMe should be created with console,
@@ -425,8 +424,8 @@ function TCmdLineDebugger.ReadLine(const APeek: Boolean; ATimeOut: Integer = -1)
   var
     S: String;
   begin
-    SetLength(S, 1024);
-    Result := AStream.Read(S[1], 1024);
+    SetLength(S, 8192);
+    Result := AStream.Read(S[1], 8192);
     if Result > 0
     then begin
       SetLength(S, Result);
@@ -607,13 +606,8 @@ begin
   SendCmdLn(ACommand);
 end;
 
-class function TCmdLineDebugger.CanExternalDebugSymbolsFile: boolean;
-begin
-  Result:=true;
-end;
-
 initialization
-  DBG_CMD_ECHO      := DebugLogger.RegisterLogGroup('DBG_CMD_ECHO' {$IF defined(DBG_VERBOSE) or defined(DBG_CMD_ECHO)} , True {$ENDIF} );
-  DBG_CMD_ECHO_FULL := DebugLogger.RegisterLogGroup('DBG_CMD_ECHO_FULL' {$IF defined(DBG_VERBOSE_FULL_DATA) or defined(DBG_CMD_ECHO_FULL)} , True {$ENDIF} );
+  DBG_CMD_ECHO      := DebugLogger.FindOrRegisterLogGroup('DBG_CMD_ECHO' {$IF defined(DBG_VERBOSE) or defined(DBG_CMD_ECHO)} , True {$ENDIF} );
+  DBG_CMD_ECHO_FULL := DebugLogger.FindOrRegisterLogGroup('DBG_CMD_ECHO_FULL' {$IF defined(DBG_VERBOSE_FULL_DATA) or defined(DBG_CMD_ECHO_FULL)} , True {$ENDIF} );
 
 end.

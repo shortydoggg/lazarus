@@ -68,7 +68,7 @@ begin
   PageIndex := Windows.SendMessage(TabControlHandle, TCM_GETCURSEL, 0, 0);
   PageIndex := TabControl.TabToPageIndex(PageIndex);
 
-  if TabControl.IsUnpaged then
+  if (TabControl is TTabControl) then
     exit(PageIndex);
 
   if PageIndex = -1 then
@@ -142,14 +142,14 @@ begin
     RealIndex := TCustomTabControl(AWinControl.Parent).PageToTabIndex(PageIndex);
     if RealIndex <> -1 then
     begin
-      Windows.SendMessage(PageControlHandle, TCM_DELETEITEM, Windows.WPARAM(RealIndex), 0);
+      TWin32WSCustomTabControl.DeletePage(TCustomTabControl(AWinControl.Parent), RealIndex);
       AWinControl.Parent.InvalidateClientRectCache(False);
     end;
   end;
   TWSWinControlClass(ClassParent).DestroyHandle(AWinControl);
 end;
 
-class procedure TWin32WSCustomPage.ThemeChange(Wnd: HWnd);
+class procedure TWin32WSCustomPage.ThemeChange(Wnd: HWND);
 var
   WindowInfo: PWin32WindowInfo;
 begin
@@ -185,16 +185,8 @@ begin
     if PtrUInt(TCI.lParam) = PtrUInt(AWinControl) then
     begin
       TCI.mask := TCIF_TEXT;
-      if UnicodeEnabledOS then
-      begin
-        TCI.pszText := PChar(PWideChar(UTF8ToUTF16(AText)));
-        Windows.SendMessage(TabControlHandle, TCM_SETITEMW, RealIndex, LPARAM(@TCI));
-      end
-      else
-      begin
-        TCI.pszText := PChar(UTF8ToAnsi(AText));
-        Windows.SendMessage(TabControlHandle, TCM_SETITEM, RealIndex, LPARAM(@TCI));
-      end;
+      TCI.pszText := PChar(PWideChar(UTF8ToUTF16(AText)));
+      Windows.SendMessage(TabControlHandle, TCM_SETITEMW, RealIndex, LPARAM(@TCI));
       LCLControlSizeNeedsUpdate(TabControl, True);
     end;
   end;
@@ -274,6 +266,82 @@ begin
   end;
 end;
 
+procedure TabControlClientOffset(const AWinControl: TWinControl;
+  var ORect: Rect);
+var
+  ARect: TRect;
+begin
+  // Can't use complete client rect in win32 interface, top part contains the tabs
+  Windows.GetClientRect(AWinControl.Handle, @ARect);
+  ORect := ARect;
+  Windows.SendMessage(AWinControl.Handle, TCM_AdjustRect, 0, LPARAM(@ORect));
+  Dec(ORect.Right, ARect.Right);
+  Dec(ORect.Bottom, ARect.Bottom);
+end;
+
+class procedure TWin32WSCustomTabControl.DeletePage(
+  const ATabControl: TCustomTabControl; const AIndex: integer);
+
+var
+  Wnd: HWND;
+
+  function TabsScrollingNeeded: Boolean;
+  var
+    HitTestInfo: TC_HITTESTINFO;
+    ARect: TRect;
+    TabCount, FirstShowedIndex: Integer;
+  begin
+    if AIndex <= 0 then Exit(False);
+
+    TabCount := Windows.SendMessage(Wnd, TCM_GETITEMCOUNT, 0, 0);
+    if AIndex < TabCount - 1 then Exit(False);
+
+    // we have to look, if the first shown tab is the tab that is to be deleted
+    Windows.GetClientRect(Wnd, @ARect);
+    Windows.SendMessage(Wnd, TCM_AdjustRect, 0, LPARAM(@ARect));
+
+    HitTestInfo.pt.x := ARect.Left;
+    HitTestInfo.pt.y := ARect.Top div 2;
+    FirstShowedIndex := Windows.SendMessage(Wnd, TCM_HITTEST, 0, LPARAM(@HitTestInfo));
+
+    Result := (FirstShowedIndex > 0) and (FirstShowedIndex = AIndex);
+  end;
+
+begin
+// There is a bug in Windows. When only one tab is left in a scrolled Tab Control
+// and this is deleted, Windows doesn't scroll it automatically. So we have to
+// do it manually. See Mantis #19278
+  Wnd := ATabControl.Handle;
+  if TabsScrollingNeeded then
+    Windows.SendMessage(Wnd, TCM_SETCURSEL, Windows.WPARAM(AIndex - 1), 0);
+  Windows.SendMessage(Wnd, TCM_DELETEITEM, Windows.WPARAM(AIndex), 0);
+end;
+
+function CustomTabControlWndProc(Window: HWnd; Msg: UInt; WParam: Windows.WParam;
+    LParam: Windows.LParam): LResult; stdcall;
+var
+  Control: TWinControl;
+  LMessage: TLMessage;
+begin
+  case Msg of
+    WM_ERASEBKGND:
+      begin
+        if not ThemeServices.ThemesEnabled then
+        begin
+          // prevent flickering
+          Control := GetWin32WindowInfo(Window)^.WinControl;
+          LMessage.msg := Msg;
+          LMessage.wParam := WParam;
+          LMessage.lParam := LParam;
+          LMessage.Result := 0;
+          Result := DeliverMessage(Control, LMessage);
+          Exit;
+        end;
+      end;
+  end;
+  Result := WindowProc(Window, Msg, WParam, LParam);
+end;
+
 class function TWin32WSCustomTabControl.CreateHandle(const AWinControl: TWinControl;
   const AParams: TCreateParams): HWND;
 const
@@ -285,20 +353,25 @@ const
   );
 var
   Params: TCreateWindowExParams;
+  T: TCustomTabControl;
 begin
+  T := TCustomTabControl(AWinControl);
   // general initialization of Params
   PrepareCreateWindow(AWinControl, AParams, Params);
   // customization of Params
   with Params do
   begin
+    SubClassWndProc := @CustomTabControlWndProc;
     if AWinControl is TTabControl then begin
       // TTabControl is not really a TabControl, it is a container, and has a child that does the tabs
       pClassName := @ClsName[0];
     end
     else begin
-      Flags := Flags or TabPositionFlags[TCustomTabControl(AWinControl).TabPosition];
-      if nboMultiLine in TCustomTabControl(AWinControl).Options then
+      Flags := Flags or TabPositionFlags[T.TabPosition];
+      if nboMultiLine in T.Options then
         Flags := Flags or TCS_MULTILINE;
+      if T.TabWidth > 0 then
+        Flags := Flags or TCS_FIXEDWIDTH;
       pClassName := WC_TABCONTROL;
     end;
   end;
@@ -307,13 +380,18 @@ begin
   Result := Params.Window;
 
   if not (AWinControl is TTabControl) then begin
-    if TCustomTabControl(AWinControl).Images <> nil then
-      SendMessage(Result, TCM_SETIMAGELIST, 0, TCustomTabControl(AWinControl).Images.Reference._Handle);
+    if T.Images <> nil then
+      SendMessage(Result, TCM_SETIMAGELIST, 0, T.Images.ReferenceForPPI[T.ImagesWidth, T.Font.PixelsPerInch]._Handle);
 
     // although we may be child of tabpage, cut the paint chain
     // to improve speed and possible paint anomalities
     Params.WindowInfo^.ParentMsgHandler := @TabControlParentMsgHandler;
     Params.WindowInfo^.needParentPaint := false;
+    Params.WindowInfo^.ClientOffsetProc := @TabControlClientOffset;
+
+    SendMessage(Result, TCM_SETITEMSIZE, 0, MakeLParam(
+      T.TabWidth,
+      T.TabHeight));
   end;
 end;
 
@@ -331,7 +409,7 @@ begin
     // but on windows page handle is differ from tab and thus allocation can be
     // postponed, but this cause problems with event handling like bug #0012434
     // so to overcome such problems we need to allocate this handle
-    if not ATabControl.IsUnpaged then
+    if not (ATabControl is TTabControl) then
       AChild.HandleNeeded;
     if ShowTabs then
     begin
@@ -339,16 +417,8 @@ begin
       // store object as extra, so we can verify we got the right page later
       TCI.lParam := PtrInt(AChild);
       TCI.iImage := ATabControl.GetImageIndex(ATabControl.TabToPageIndex(AIndex));
-      if UnicodeEnabledOS then
-      begin
-        TCI.pszText := PChar(PWideChar(UTF8ToUTF16(AChild.Caption)));
-        Windows.SendMessage(Handle, TCM_INSERTITEMW, AIndex, LPARAM(@TCI));
-      end
-      else
-      begin
-        TCI.pszText := PChar(Utf8ToAnsi(AChild.Caption));
-        Windows.SendMessage(Handle, TCM_INSERTITEM, AIndex, LPARAM(@TCI));
-      end;
+      TCI.pszText := PChar(PWideChar(UTF8ToUTF16(AChild.Caption)));
+      Windows.SendMessage(Handle, TCM_INSERTITEMW, AIndex, LPARAM(@TCI));
     end;
     // clientrect possible changed, adding first tab, or deleting last
     // windows should send a WM_SIZE message because of this, but it doesn't
@@ -372,22 +442,11 @@ begin
 
   Index := AChild.VisibleIndex;
   TCI.Mask := TCIF_IMAGE or TCIF_PARAM;
-  if UnicodeEnabledOS then
-    Windows.SendMessage(ATabControl.Handle, TCM_GETITEMW, Windows.WPARAM(Index), LParam(@TCI))
-  else
-    Windows.SendMessage(ATabControl.Handle, TCM_GETITEM, Windows.WPARAM(Index), LParam(@TCI));
+  Windows.SendMessage(ATabControl.Handle, TCM_GETITEMW, Windows.WPARAM(Index), LParam(@TCI));
   Windows.SendMessage(ATabControl.Handle, TCM_DELETEITEM, Windows.WPARAM(Index), 0);
   TCI.Mask := TCI.Mask or TCIF_TEXT;
-  if UnicodeEnabledOS then
-  begin
-    TCI.pszText := PChar(PWideChar(UTF8ToUTF16(AChild.Caption)));
-    Windows.SendMessage(ATabControl.Handle, TCM_INSERTITEMW, NewIndex, LPARAM(@TCI));
-  end
-  else
-  begin
-    TCI.pszText := PChar(Utf8ToAnsi(AChild.Caption));
-    Windows.SendMessage(ATabControl.Handle, TCM_INSERTITEM, NewIndex, LPARAM(@TCI));
-  end;
+  TCI.pszText := PChar(PWideChar(UTF8ToUTF16(AChild.Caption)));
+  Windows.SendMessage(ATabControl.Handle, TCM_INSERTITEMW, NewIndex, LPARAM(@TCI));
   if LCLControlSizeNeedsUpdate(ATabControl, True) then
     AdjustSizeTabControlPages(ATabControl);
 end;
@@ -398,7 +457,7 @@ begin
   if ATabControl is TTabControl then
     exit;
 
-  Windows.SendMessage(ATabControl.Handle, TCM_DELETEITEM, Windows.WPARAM(AIndex), 0);
+  DeletePage(ATabControl, AIndex);
   if LCLControlSizeNeedsUpdate(ATabControl, True) then
     AdjustSizeTabControlPages(ATabControl);
 end;
@@ -468,16 +527,8 @@ begin
       TCI.Mask := TCIF_TEXT or TCIF_PARAM or TCIF_IMAGE;
       TCI.lParam := PtrUInt(APage);
       TCI.iImage := ATabControl.GetImageIndex(I);
-      if UnicodeEnabledOS then
-      begin
-        TCI.pszText := PChar(PWideChar(UTF8ToUTF16(APage.Caption)));
-        Windows.SendMessage(WinHandle, TCM_INSERTITEMW, RealIndex, LPARAM(@TCI));
-      end
-      else
-      begin
-        TCI.pszText := PChar(Utf8ToAnsi(APage.Caption));
-        Windows.SendMessage(WinHandle, TCM_INSERTITEM, RealIndex, LPARAM(@TCI));
-      end;
+      TCI.pszText := PChar(PWideChar(UTF8ToUTF16(APage.Caption)));
+      Windows.SendMessage(WinHandle, TCM_INSERTITEMW, RealIndex, LPARAM(@TCI));
     end;
     Inc(RealIndex);
   end;
@@ -586,7 +637,7 @@ end;
 
 class function TWin32WSCustomTabControl.GetCapabilities: TCTabControlCapabilities;
 begin
-  Result:=[nbcMultiLine];
+  Result:=[nbcMultiLine, nbcTabsSizeable];
 end;
 
 class function TWin32WSCustomTabControl.GetDesignInteractive(
@@ -607,8 +658,19 @@ begin
   Result := (AIndex <> -1) and (AIndex <> ACurIndex);
 end;
 
+class procedure TWin32WSCustomTabControl.SetTabSize(
+  const ATabControl: TCustomTabControl;
+  const ATabWidth, ATabHeight: integer);
+begin
+  if ATabControl is TTabControl then
+    exit;
+
+  Windows.SendMessage(ATabControl.Handle, TCM_SETITEMSIZE,
+    0, MakeLParam(ATabWidth, ATabHeight));
+end;
+
 class procedure TWin32WSCustomTabControl.SetImageList(
-  const ATabControl: TCustomTabControl; const AImageList: TCustomImageList);
+  const ATabControl: TCustomTabControl; const AImageList: TCustomImageListResolution);
 begin
   if ATabControl is TTabControl then
     exit;
@@ -641,7 +703,7 @@ begin
 
   SendMessage(TabControlHandle, TCM_SETCURSEL, Windows.WParam(NewRealIndex), 0);
 
-  if ATabControl.IsUnpaged then
+  if (ATabControl is TTabControl) then
     exit; //all done
 
   if not (csDestroying in ATabControl.ComponentState) then

@@ -27,7 +27,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synedittypes.pp 48197 2015-03-10 11:51:09Z martin $
+$Id: synedittypes.pp 53024 2016-09-24 00:08:14Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -41,7 +41,7 @@ unit SynEditTypes;
 
 interface
 uses
-  SysUtils, types;
+  SysUtils, types, Controls;
 
 const
   TSynSpecialChars = [#128..#255]; // MG: special chars. Meaning depends on system encoding/codepage.
@@ -116,7 +116,15 @@ type
     dx, dy: Integer; const rcScroll, rcClip: TRect
   ) of object;
 
-  TSynVisibleSpecialChar = (vscSpace, vscTabAtFirst, vscTabAtLast);
+  TSynMouseLocationInfo = record
+    LastMouseCaret: TPoint;  // Char; physical (screen)
+    LastMousePoint: TPoint;  // Pixel
+  end;
+
+  TSynQueryMouseCursorEvent = procedure(Sender: TObject; const AMouseLocation: TSynMouseLocationInfo;
+    var AnCursor: TCursor; var APriority: Integer; var AChangedBy: TObject) of object;
+
+TSynVisibleSpecialChar = (vscSpace, vscTabAtFirst, vscTabAtLast);
   TSynVisibleSpecialChars = set of TSynVisibleSpecialChar;
 
   TSynLineStyle = (

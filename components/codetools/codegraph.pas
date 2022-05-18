@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,7 +30,9 @@ unit CodeGraph;
 interface
 
 uses
-  Classes, SysUtils, CodeTree, FileProcs, AVL_Tree;
+  Classes, SysUtils, Laz_AVL_Tree,
+  // Codetools
+  CodeTree, FileProcs;
   
 type
 
@@ -921,10 +923,8 @@ begin
     e('');
   if Edges=nil then
     e('');
-  if Nodes.ConsistencyCheck<>0 then
-    e('');
-  if Edges.ConsistencyCheck<>0 then
-    e('');
+  Nodes.ConsistencyCheck;
+  Edges.ConsistencyCheck;
   if AVLTreeHasDoubles(Nodes)<>nil then
     e('');
   if AVLTreeHasDoubles(Edges)<>nil then
@@ -934,8 +934,7 @@ begin
   while AVLNode<>nil do begin
     GraphNode:=TCodeGraphNode(AVLNode.Data);
     if GraphNode.InTree<>nil then begin
-      if GraphNode.InTree.ConsistencyCheck<>0 then
-        e('');
+      GraphNode.InTree.ConsistencyCheck;
       if AVLTreeHasDoubles(GraphNode.InTree)<>nil then
         e('');
       EdgeAVLNode:=GraphNode.InTree.FindLowest;
@@ -949,8 +948,7 @@ begin
       end;
     end;
     if GraphNode.OutTree<>nil then begin
-      if GraphNode.OutTree.ConsistencyCheck<>0 then
-        e('');
+      GraphNode.InTree.ConsistencyCheck;
       if AVLTreeHasDoubles(GraphNode.OutTree)<>nil then
         e('');
       EdgeAVLNode:=GraphNode.OutTree.FindLowest;

@@ -8,7 +8,7 @@ uses
   SysUtils, Classes, Controls, Graphics, LCLType, LCLIntf, LCLProc, Menus,
   SynEditMarks, SynEditTypes, SynEditMiscClasses, SynEditMiscProcs, LazSynTextArea,
   SynTextDrawer, SynGutterBase, SynGutterLineNumber, SynGutterCodeFolding,
-  SynGutterMarks, SynGutterChanges, SynEditMouseCmds;
+  SynGutterMarks, SynGutterChanges, SynEditMouseCmds, SynGutterLineOverview;
 
 type
 
@@ -53,6 +53,7 @@ type
     Function ChangesPart(Index: Integer = 0): TSynGutterChanges;
     Function MarksPart(Index: Integer = 0): TSynGutterMarks;
     Function SeparatorPart(Index: Integer = 0): TSynGutterSeparator;
+    Function LineOverviewPart(Index: Integer = 0): TSynGutterLineOverview;
   published
     property AutoSize;
     property Color;
@@ -105,10 +106,11 @@ type
     function GetTextBounds: TRect;
   protected
     procedure DoPaint(ACanvas: TCanvas; AClip: TRect); override;
+    procedure SetTextArea(const ATextArea: TLazSynTextArea); virtual;
   public
     procedure InvalidateLines(FirstTextLine, LastTextLine: TLineIdx); override;
     procedure Assign(Src: TLazSynSurface); override;
-    property TextArea: TLazSynTextArea read FTextArea write FTextArea;
+    property TextArea: TLazSynTextArea read FTextArea write SetTextArea;
     property Gutter: TSynGutter read FGutter write FGutter;
     property TextBounds: TRect read GetTextBounds;
   end;
@@ -156,6 +158,11 @@ begin
   {$ENDIF}
   if (rcInval.Top < rcInval.Bottom) and (rcInval.Left < rcInval.Right) then
     InvalidateRect(Handle, @rcInval, FALSE);
+end;
+
+procedure TLazSynGutterArea.SetTextArea(const ATextArea: TLazSynTextArea);
+begin
+  FTextArea := ATextArea;
 end;
 
 procedure TLazSynGutterArea.Assign(Src: TLazSynSurface);
@@ -265,7 +272,7 @@ begin
      TextDrawer.ExtTextOut(Left, Top, ETO_OPAQUE, AClip, nil, 0);
   TextDrawer.EndDrawing;
 
-  AClip.Left := Surface.Left;
+  AClip.Left := Surface.Left + LeftOffset;
   AClip.Top  := Surface.TextBounds.Top + FirstLine * TCustomSynEdit(SynEdit).LineHeight;
 
   rcLine := AClip;
@@ -379,6 +386,11 @@ end;
 function TSynGutter.SeparatorPart(Index: Integer = 0): TSynGutterSeparator;
 begin
   Result := TSynGutterSeparator(Parts.ByClass[TSynGutterSeparator, Index]);
+end;
+
+function TSynGutter.LineOverviewPart(Index: Integer): TSynGutterLineOverview;
+begin
+  Result := TSynGutterLineOverview(Parts.ByClass[TSynGutterLineOverview, Index]);
 end;
 
 { TSynGutterSeparator }

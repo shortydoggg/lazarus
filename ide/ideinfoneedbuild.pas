@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,9 +30,14 @@ unit IDEInfoNeedBuild;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, StdCtrls, ButtonPanel, LCLType,
-  AvgLvlTree, LazUtilities,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  Forms, Controls, StdCtrls, ButtonPanel, LCLType,
+  // LazUtils
+  LazUtilities,
+  // IdeIntf
   IDEWindowIntf, LazIDEIntf, ProjectIntf, PackageIntf,
+  // IDE
   LazarusIDEStrConsts, PackageDefs, PackageSystem, Project, InputHistory,
   EnvironmentOpts, IDEProcs, BuildManager;
 
@@ -70,7 +75,7 @@ type
     FIdleConnected: boolean;
     FMainTarget: TObject;
     FSkipDesignTimePackages: boolean;
-    FTargetToItem: TAvgLvlTree; // tree of TInfoNeedBuildItem sorted for Target
+    FTargetToItem: TAvlTree; // tree of TInfoNeedBuildItem sorted for Target
     FTargets: TFPList; // topologically sorted list of TInfoNeedBuildItem, last=main
     procedure FillTargets;
     function ProjectAsTarget(AProject: TProject): string;
@@ -130,7 +135,7 @@ procedure TIDEInfoNeedBuildDlg.FormCreate(Sender: TObject);
 var
   Target: String;
 begin
-  FTargetToItem:=TAvgLvlTree.Create(@CompareInfoNeedBuildItemWithTargets);
+  FTargetToItem:=TAvlTree.Create(@CompareInfoNeedBuildItemWithTargets);
   FTargets:=TFPList.Create;
 
   Caption:=lisWhatNeedsBuilding;

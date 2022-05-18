@@ -32,6 +32,13 @@ const
   CHART_COMPONENT_IDE_PAGE = 'Chart';
   PERCENT = 0.01;
   clTAColor = $20000000; // = clDefault, but avoiding dependency on Graphics
+  DEFAULT_FONT_SIZE = 10;
+  DEFAULT_EPSILON = 1e-6;
+  RANGE_EPSILON = 1e-12;
+
+  // Replacement for +INF, Canvas does not work correctly when MaxInt is used.
+  // Any screen coordinates are clipped to range -MAX_COORD ... MAX_COORD.
+  MAX_COORD = 100*1000*1000;
 
 type
   EChartError = class(Exception);
@@ -41,6 +48,12 @@ type
 
   // Like TColor, but avoiding dependency on Graphics.
   TChartColor = -$7FFFFFFF-1..$7FFFFFFF;
+
+  // dto with TFontStyle
+  TChartFontStyle = (cfsBold, cfsItalic, cfsUnderline, cfsStrikeout);
+  TChartFontStyles = set of TChartFontStyle;
+
+  TChartTextFormat = (tfNormal, tfHTML);
 
   TDoublePoint = record
     X, Y: Double;
@@ -57,6 +70,7 @@ type
   end;
 
   TPointArray = array of TPoint;
+  TDoublePointArray = array of TDoublepoint;
 
   TChartDistance = 0..MaxInt;
 
@@ -92,6 +106,15 @@ type
 
   TPointBoolArr = array [Boolean] of Integer;
   TDoublePointBoolArr = array [Boolean] of Double;
+
+  TNearestPointTarget = (
+    nptPoint,   // Look for the nearest point at (x, y)
+    nptXList,   // Check additional x values in XList
+    nptYList,   // Check additional y values in YList
+    nptCustom   // Depends on series type (e.g., TBarSeries --> click inside bar.)
+  );
+
+  TNearestPointTargets = set of TNearestPointTarget;
 
   { TIntervalList }
 
@@ -218,7 +241,7 @@ type
   end;
 
   // An ordered set of integers represented as a comma-separated string
-  // for publushing as a single property.
+  // for publishing as a single property.
   TPublishedIntegerSet = object
   strict private
     FAllSet: Boolean;
@@ -288,7 +311,7 @@ const
     '%2:s %0:.9g', // smsLabelValue
     '%2:s', // smsLegend: not sure what it means, left for Delphi compatibility
     '%1:.2f%% of %3:g', // smsPercentTotal
-    '%1:.2f%% of %3:g', // smsLabelPercentTotal
+    '%2:s %1:.2f%% of %3:g', // smsLabelPercentTotal
     '%4:.9g' // smsXValue
   );
   ZeroDoublePoint: TDoublePoint = (X: 0; Y: 0);
@@ -298,6 +321,7 @@ const
     (coords: (Infinity, Infinity, NegInfinity, NegInfinity));
   CASE_OF_TWO: array [Boolean, Boolean] of TCaseOfTwo =
     ((cotNone, cotSecond), (cotFirst, cotBoth));
+  ORIENTATION_UNITS_PER_DEG = 10;
 
 function BoundsSize(ALeft, ATop: Integer; ASize: TSize): TRect; inline;
 
@@ -312,6 +336,7 @@ procedure Exchange(var A, B: String); overload; inline;
 function FormatIfNotEmpty(AFormat, AStr: String): String; inline;
 
 function IfThen(ACond: Boolean; ATrue, AFalse: TObject): TObject; overload;
+function ImgRoundChecked(A: Double): Integer; inline;
 function InterpolateRGB(AColor1, AColor2: Integer; ACoeff: Double): Integer;
 function IntToColorHex(AColor: Integer): String; inline;
 function IsEquivalent(const A1, A2: Double): Boolean; inline;
@@ -331,11 +356,14 @@ function Split(
   AString: String; ADest: TStrings = nil; ADelimiter: Char = '|'): TStrings;
 
 // Accept both locale-specific and default decimal separators.
-function StrToFloatDefSep(const AStr: String): Double;
+function StrToFloatDefSep(const AStr: String; ADefault: Double = 0.0): Double;
+// .. or date/time values
+function StrToFloatOrDateTimeDef(const AStr: String): Double;
 
 // Call this to silence 'parameter is unused' hint
 procedure Unused(const A1);
 procedure Unused(const A1, A2);
+procedure Unused(const A1, A2, A3);
 
 procedure UpdateMinMax(AValue: Double; var AMin, AMax: Double); overload;
 procedure UpdateMinMax(AValue: Integer; var AMin, AMax: Integer); overload;
@@ -353,9 +381,6 @@ implementation
 
 uses
   StrUtils, TypInfo, TAChartStrConsts;
-
-const
-  ORIENTATION_UNITS_PER_DEG = 10;
 
 function BoundsSize(ALeft, ATop: Integer; ASize: TSize): TRect; inline;
 begin
@@ -423,6 +448,11 @@ begin
     Result := ATrue
   else
     Result := AFalse;
+end;
+
+function ImgRoundChecked(A: Double): Integer;
+begin
+  Result := Round(EnsureRange(A, -MAX_COORD, MAX_COORD));
 end;
 
 function InterpolateRGB(AColor1, AColor2: Integer; ACoeff: Double): Integer;
@@ -506,11 +536,21 @@ begin
   Result.DelimitedText := AString;
 end;
 
-function StrToFloatDefSep(const AStr: String): Double;
+function StrToFloatDefSep(const AStr: String; ADefault: Double = 0.0): Double;
 begin
   if
     not TryStrToFloat(AStr, Result, DefSeparatorSettings) and
     not TryStrToFloat(AStr, Result)
+  then
+    Result := ADefault;
+end;
+
+function StrToFloatOrDateTimeDef(const AStr: String): Double;
+begin
+  if
+    not TryStrToFloat(AStr, Result, DefSeparatorSettings) and
+    not TryStrToFloat(AStr, Result) and
+    not TryStrToDateTime(AStr, Result)
   then
     Result := 0.0;
 end;
@@ -521,6 +561,10 @@ begin
 end;
 
 procedure Unused(const A1, A2);
+begin
+end;
+
+procedure Unused(const A1, A2, A3);
 begin
 end;
 {$POP}
@@ -686,8 +730,6 @@ begin
 end;
 
 constructor TIntervalList.Create;
-const
-  DEFAULT_EPSILON = 1e-6;
 begin
   FEpsilon := DEFAULT_EPSILON;
 end;
@@ -947,14 +989,31 @@ end;
 procedure TPublishedIntegerSet.SetAsString(AValue: String);
 var
   sl: TStringList;
-  i, p: Integer;
+  i, p, pc, ps, pp: Integer;
   s: String;
 begin
   AllSet := AValue = PUB_INT_SET_ALL;
   if AllSet then exit;
   sl := TStringList.Create;
   try
-    sl.CommaText := AValue;
+    pc := pos(',', AValue);
+    ps := pos(';', AValue);
+    pp := pos('|', AValue);
+    if (pc = 0) and (ps = 0) and (pp = 0) then
+      if TryStrToInt(AValue, i) then begin
+        SetLength(FData, 1);
+        FData[0] := i;
+        exit;
+      end;
+    if pc > 0 then
+      sl.CommaText := AValue
+    else if ps > 0 then begin
+      sl.Delimiter := ';';
+      sl.DelimitedText := AValue;
+    end else if pp > 0 then begin
+      sl.Delimiter := '|';
+      sl.DelimitedText := AValue;
+    end;
     SetLength(FData, sl.Count);
     i := 0;
     for s in sl do

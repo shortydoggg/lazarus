@@ -1,4 +1,3 @@
-{ $Id: testglobals.pas 35421 2012-02-17 14:54:20Z mattias $}
 { Copyright (C) 2007 Vincent Snijders
 
   This source is free software; you can redistribute it and/or modify it under
@@ -13,8 +12,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 }
 unit testglobals;
 
@@ -31,8 +30,8 @@ var
   PrimaryConfigPath: string;
   BugsTestSuite: TTestSuite;
   LazUtilsTestSuite: TTestSuite;
-  CodetoolsTestSuite: TTestSuite;
   LCLTestSuite: TTestSuite;
+  IDEIntfTestSuite: TTestSuite;
   SemiAutoTestSuite: TTestSuite;
 
 // reads the output from a process and puts it in a memory stream
@@ -40,8 +39,8 @@ function ReadOutput(AProcess:TProcess): TStringList;
 
 procedure AddToBugsTestSuite(ATest: TTest);
 procedure AddToLazUtilsTestSuite(ATestClass: TClass);
-procedure AddToCodetoolsTestSuite(ATestClass: TClass);
 procedure AddToLCLTestSuite(ATestClass: TClass);
+procedure AddToIDEIntfTestSuite(ATestClass: TClass);
 procedure AddToSemiAutoTestSuite(ATestClass: TClass);
 
 implementation
@@ -105,14 +104,14 @@ begin
   LazUtilsTestSuite.AddTestSuiteFromClass(ATestClass);
 end;
 
-procedure AddToCodetoolsTestSuite(ATestClass: TClass);
-begin
-  CodetoolsTestSuite.AddTestSuiteFromClass(ATestClass);
-end;
-
 procedure AddToLCLTestSuite(ATestClass: TClass);
 begin
   LCLTestSuite.AddTestSuiteFromClass(ATestClass);
+end;
+
+procedure AddToIDEIntfTestSuite(ATestClass: TClass);
+begin
+  IDEIntfTestSuite.AddTestSuiteFromClass(ATestClass);
 end;
 
 procedure AddToSemiAutoTestSuite(ATestClass: TClass);
@@ -126,10 +125,10 @@ initialization
   GetTestRegistry.AddTest(BugsTestSuite);
   LazUtilsTestSuite := TTestSuite.Create('LazUtils tests');
   GetTestRegistry.AddTest(LazUtilsTestSuite);
-  CodetoolsTestSuite := TTestSuite.Create('Codetools tests');
-  GetTestRegistry.AddTest(CodetoolsTestSuite);
   LCLTestSuite := TTestSuite.Create('LCL tests');
   GetTestRegistry.AddTest(LCLTestSuite);
+  IDEIntfTestSuite := TTestSuite.Create('IDEIntf tests');
+  GetTestRegistry.AddTest(IDEIntfTestSuite);
   SemiAutoTestSuite := TTestSuite.Create('Semi Automatic tests');
   GetTestRegistry.AddTest(SemiAutoTestSuite);
 

@@ -12,8 +12,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 }
 unit H2PasConvert;
@@ -23,14 +23,19 @@ unit H2PasConvert;
 interface
 
 uses
-  Classes, SysUtils, AVL_Tree, LCLProc, Forms, Controls, Dialogs, LResources, XMLPropStorage,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  LCLProc, LResources, Forms, Controls, Dialogs, XMLPropStorage,
+  // LazUtils
   LazConfigStorage, FileUtil, LazFileUtils, LazFileCache, LazUTF8Classes,
   // CodeTools
   CodeAtom, CodeTree, KeywordFuncLists, NonPascalCodeTools, BasicCodeTools,
   FileProcs, CodeCache, SourceChanger, CodeToolManager,
   // IDEIntf
   TextTools, IDEExternToolIntf, IDEDialogs, LazIDEIntf, SrcEditorIntf,
-  IDEMsgIntf, IDETextConverter, h2passtrconsts;
+  IDEMsgIntf, IDETextConverter,
+  // H2Pas
+  H2PasStrConsts;
   
 type
 
@@ -2064,10 +2069,10 @@ begin
       Tool.Title:='h2pas';
       Tool.H2PasFile:=AFile;
       Tool.TargetFilename:=TextConverter.Filename;
-      Tool.Filename:=GetH2PasFilename;
+      Tool.Executable:=GetH2PasFilename;
       Tool.CmdLineParams:=AFile.GetH2PasParameters(Tool.TargetFilename);
       Tool.WorkingDirectory:=Project.BaseDir;
-      DebugLn(['TH2PasConverter.ConvertFile Tool.Filename="',Tool.Filename,'" Tool.CmdLineParams="',Tool.CmdLineParams,'"']);
+      DebugLn(['TH2PasConverter.ConvertFile Tool.Executable="',Tool.Executable,'" Tool.CmdLineParams="',Tool.CmdLineParams,'"']);
       Tool.Scanners.Add(SubToolH2Pas);
       if not RunExternalTool(Tool) then
         exit(mrAbort);

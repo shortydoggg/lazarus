@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,8 +30,8 @@ unit CustomNonFormDesigner;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Graphics, GraphType, Forms, Controls,
-  IDEProcs, FormEditingIntf;
+  Classes, SysUtils,
+  FormEditingIntf, LazUtilities;
   
 type
 
@@ -75,7 +75,7 @@ var
 begin
   Form1 := TNonFormProxyDesignerForm(Data1) as INonFormDesigner;
   Form2 := TNonFormProxyDesignerForm(Data2) as INonFormDesigner;
-  Result := PtrInt(Form1.LookupRoot) - PtrInt(Form2.LookupRoot);
+  Result := ComparePointers(Pointer(Form1.LookupRoot), Pointer(Form2.LookupRoot));
 end;
 
 function CompareLookupRootAndNonFormDesignerForm(Key, Data: Pointer): integer;
@@ -85,7 +85,7 @@ var
 begin
   LookupRoot := TComponent(Key);
   Form := TNonFormProxyDesignerForm(Data) as INonFormDesigner;
-  Result := PtrInt(LookupRoot) - PtrInt(Form.LookupRoot);
+  Result := ComparePointers(Pointer(LookupRoot), Pointer(Form.LookupRoot));
 end;
 
 { TCustomNonFormDesignerForm }

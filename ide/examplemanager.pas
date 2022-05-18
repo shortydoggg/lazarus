@@ -7,7 +7,8 @@ interface
 uses
   Classes, SysUtils, lazutf8classes, ListFilterEdit, Forms, Controls, Dialogs,
   StdCtrls, ExtCtrls, ButtonPanel, Buttons, EditBtn, LCLProc, FileUtil, LazFileUtils,
-  IDEWindowIntf, LazIDEIntf, MainIntf, EnvironmentOpts, LazarusIDEStrConsts;
+  IDEWindowIntf, LazIDEIntf, IDEImagesIntf, MainIntf, EnvironmentOpts,
+  LazarusIDEStrConsts;
 
 type
 
@@ -161,10 +162,10 @@ begin
   SelectAllButton.Caption:=lisMenuSelectAll;
   SelectNoneButton.Caption:=lisSAMSelectNone;
 
-  OpenSelectedButton.LoadGlyphFromResourceName(HInstance, 'laz_open');
-  BuildAllSelectedButton.LoadGlyphFromResourceName(HInstance, 'menu_build_all');
-  SelectAllButton.LoadGlyphFromResourceName(HInstance, 'menu_select_all');
-  SelectNoneButton.LoadGlyphFromResourceName(HInstance, 'ce_default');
+  IDEImages.AssignImage(OpenSelectedButton, 'laz_open');
+  IDEImages.AssignImage(BuildAllSelectedButton, 'menu_build_all');
+  IDEImages.AssignImage(SelectAllButton, 'menu_select_all');
+  IDEImages.AssignImage(SelectNoneButton, 'ce_default');
 
   edRootDirectory.Text:=EnvironmentOptions.GetParsedLazarusDirectory;
   FillProjectsPending;

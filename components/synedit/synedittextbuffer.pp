@@ -27,7 +27,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synedittextbuffer.pp 48478 2015-03-24 17:50:59Z juha $
+$Id: synedittextbuffer.pp 58181 2018-06-08 10:19:06Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -205,6 +205,11 @@ type
     function  LogicPosIsCombining(const AChar: PChar): Boolean; inline;
 
     function GetDisplayView: TLazSynDisplayView; override;
+
+    procedure AddGenericHandler(AReason: TSynEditNotifyReason;
+                AHandler: TMethod); override;
+    procedure RemoveGenericHandler(AReason: TSynEditNotifyReason;
+                AHandler: TMethod); override;
   public
     constructor Create;
     destructor Destroy; override;
@@ -219,10 +224,6 @@ type
     function  GetPChar(ALineIndex: Integer; out ALen: Integer): PChar; override; // experimental
     procedure MarkModified(AFirst, ALast: Integer);
     procedure MarkSaved;
-    procedure AddGenericHandler(AReason: TSynEditNotifyReason;
-                AHandler: TMethod); override;
-    procedure RemoveGenericHandler(AReason: TSynEditNotifyReason;
-                AHandler: TMethod); override;
     procedure SendNotification(AReason: TSynEditNotifyReason;
                 ASender: TSynEditStrings; aIndex, aCount: Integer); override;
     procedure SendNotification(AReason: TSynEditNotifyReason;
@@ -1092,7 +1093,7 @@ begin
   // UTF8 handing of chars
   Result := ALogicalPos;
   l := length(ALine);
-  if ACount > 0 then begin;
+  if ACount > 0 then begin
     while (Result < l) and (ACount > 0) do begin
       inc(Result);
       if (ALine[Result] in [#0..#127, #192..#255]) and
@@ -1280,13 +1281,13 @@ begin
     exit;
   IncIsInEditAction;
   s := Strings[LogY - 1];
-  if LogX - 1 > Length(s) then
-    exit;
-  Result := copy(s, LogX, ByteLen);
-  Strings[LogY - 1] := copy(s,1, LogX - 1) + copy(s, LogX +  ByteLen, length(s));
-  if Result <> '' then
-    CurUndoList.AddChange(TSynEditUndoTxtDelete.Create(LogX, LogY, Result));
-  MarkModified(LogY, LogY);
+  if LogX - 1 <= Length(s) then begin
+    Result := copy(s, LogX, ByteLen);
+    Strings[LogY - 1] := copy(s,1, LogX - 1) + copy(s, LogX +  ByteLen, length(s));
+    if Result <> '' then
+      CurUndoList.AddChange(TSynEditUndoTxtDelete.Create(LogX, LogY, Result));
+    MarkModified(LogY, LogY);
+  end;
   SendNotification(senrEditAction, self, LogY, 0, LogX, -ByteLen, '');
   DecIsInEditAction;
 end;

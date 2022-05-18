@@ -27,8 +27,12 @@ interface
 {$endif}
 
 uses
-  Types, Classes, SysUtils, Math, LCLStrConsts, LCLType, LCLProc, LMessages,
-  FPImage, GraphType, GraphMath, IntfGraphics, Themes, LazUTF8;
+  Types, Classes, SysUtils, Math, FPImage,
+  // LazUtils
+  LazUTF8, IntegerList,
+  // LCL
+  LCLType, LCLProc, LMessages, LCLPlatformDef,
+  GraphType, GraphMath, IntfGraphics, Themes;
 
 type
   PEventHandler = type Pointer;
@@ -48,22 +52,6 @@ type
 
   TLCLWndMethod = procedure(var TheMessage: TLMessage) of Object;
 
-  TLCLPlatform = (
-    lpGtk,
-    lpGtk2,
-    lpGtk3,
-    lpWin32,
-    lpWinCE,
-    lpCarbon,
-    lpQT,
-    lpfpGUI,
-    lpNoGUI,
-    lpCocoa,
-    lpCustomDrawn
-    );
-    
-  TLCLPlatforms = set of TLCLPlatform;
-
   TLCLCapability = (
     lcAsyncProcess,             // Support for async process
     lcCanDrawOutsideOnPaint,    // Support for drawing outside OnPaint event of an control
@@ -79,7 +67,10 @@ type
     lcSendsUTF8KeyPress,        // If the interface does not yet send UTF8KeyPress directly, then it will be emulated in TWinControl.CNChar
     lcAllowChildControlsInNativeControls, // Utilized by LCL-CustomDrawn so that it can inject child controls in native ones
     lcEmulatedMDI, // used for emulating MDI on widgetsets which does not provide native MDI handling
-    lcAccessibilitySupport      // Indicates that accessibility is implemented, mostly for TCustomControl descendents as native widgests should have in-built accessibility
+    lcAccessibilitySupport,     // Indicates that accessibility is implemented, mostly for TCustomControl descendents as native widgests should have in-built accessibility
+    lcRadialGradientBrush,      // Indicates that the function CreateBrushWithRadialGradient is supported, i.e. we can create a brush with a radial gradient pattern
+    lcTransparentWindow,        // ability to pass mouse messages through a window (on win32 LM_NCHITTEST with HTTRANSPARENT result)
+    lcTextHint                  // native TextHint support
   );
 
   { TDialogButton }
@@ -169,7 +160,7 @@ type
     // create and destroy
     function CreateTimer(Interval: integer; TimerProc: TWSTimerProc): THandle; virtual; abstract;
     function DestroyTimer(TimerHandle: THandle): boolean; virtual; abstract;
-    property AppHandle: THandle read GetAppHandle write SetAppHandle;
+    property AppHandle: THandle read GetAppHandle write SetAppHandle; platform;
 
     {$DEFINE IF_BASE_MEMBER}
     {$I winapih.inc}
@@ -180,21 +171,10 @@ type
   end;
   TWidgetSetClass = class of TWidgetSet;
 
+  function GetDefaultLCLWidgetType: TLCLPlatform;
+  function GetLCLWidgetTypeName: string;
+
 const
-  LCLPlatformDirNames: array[TLCLPlatform] of string = (
-      'gtk',
-      'gtk2',
-      'gtk3',
-      'win32',
-      'wince',
-      'carbon',
-      'qt',
-      'fpgui',
-      'nogui',
-      'cocoa',
-      'customdrawn'
-    );
-    
   { Constants for the routine TWidgetSet.GetLCLCapability }
   LCL_CAPABILITY_NO = 0;
   LCL_CAPABILITY_YES = 1;
@@ -231,6 +211,25 @@ var
   WidgetSet: TWidgetSet = nil;
 
 implementation
+
+{function GetDefaultLCLWidgetType: TLCLPlatform;
+begin
+  Assert(Assigned(WidgetSet), 'GetDefaultLCLWidgetType: WidgetSet is not assigned.');
+  if WidgetSet.LCLPlatform<>lpNoGUI then
+    Result:=WidgetSet.LCLPlatform
+end; }
+function GetDefaultLCLWidgetType: TLCLPlatform;
+begin
+  if (WidgetSet<>nil) and (WidgetSet.LCLPlatform<>lpNoGUI) then
+    Result:=WidgetSet.LCLPlatform
+  else
+    Result:=BuildLCLWidgetType;
+end;
+
+function GetLCLWidgetTypeName: string;
+begin
+  Result:=LCLPlatformDirNames[GetDefaultLCLWidgetType];
+end;
 
 { TDialogButtons }
 

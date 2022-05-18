@@ -14,8 +14,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 }
 unit WikiSearchMain;
@@ -25,11 +25,19 @@ unit WikiSearchMain;
 interface
 
 uses
-  Classes, SysUtils, math, FileUtil, LazLogger, LazUTF8, LazFileUtils, laz2_DOM,
-  Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls, ComCtrls, LCLIntf,
-  Menus, IpHtml, Ipfilebroker, IpMsg, CodeToolManager, CodeCache, SynEdit,
-  SynHighlighterHTML, SynEditHighlighter, WikiHelpManager, WikiSearchOptions,
-  WikiParser, WikiFormat;
+  Classes, SysUtils, math,
+  // LCL
+  Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls, ComCtrls, LCLIntf, Menus,
+  // LazUtils
+  LazLogger, LazUTF8, LazFileUtils, laz2_DOM,
+  // CodeTools
+  CodeToolManager, CodeCache,
+  // SynEdit
+  SynEdit, SynHighlighterHTML, SynEditHighlighter,
+  // TurboPower_IPro
+  IpHtml, Ipfilebroker,
+  // Wiki
+  WikiHelpManager, WikiSearchOptions, WikiParser, WikiFormat;
 
 type
 

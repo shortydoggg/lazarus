@@ -14,8 +14,13 @@ unit SrcEditorIntf;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, FileUtil, Laz2_XMLCfg, LCLType, Forms, Controls,
-  Graphics, ProjectIntf, IDECommands;
+  Classes, SysUtils,
+  // LCL
+  LCLType, Forms, Controls, Graphics,
+  // LazUtils
+  FileUtil, Laz2_XMLCfg, LazStringUtils,
+  // IdeIntf
+  ProjectIntf, IDECommands;
   
 type
   TSourceMarklingType = (
@@ -84,6 +89,7 @@ type
     function GetFileName: string; virtual; abstract;
     function GetLines: TStrings; virtual; abstract;
     function GetLineText: string; virtual; abstract;
+    function GetLinesInWindow: Integer; virtual; abstract;
     function GetModified: Boolean; virtual; abstract;
     function GetPageCaption: string; virtual; abstract;
     function GetPageName: string; virtual; abstract;
@@ -120,6 +126,8 @@ type
                         out Action: TSrcEditReplaceAction); virtual; abstract;
     procedure CopyToClipboard; virtual; abstract;
     procedure CutToClipboard; virtual; abstract;
+    function GetBookMark(BookMark: Integer; out X, Y: Integer): Boolean; virtual; abstract;
+    procedure SetBookMark(BookMark: Integer; X, Y: Integer); virtual; abstract;
 
     // screen and text position mapping
     function LineCount: Integer; virtual; abstract;
@@ -179,6 +187,7 @@ type
     property SelStart: Integer read GetSelStart write SetSelStart;
     property SourceText: string read GetSourceText write SetSourceText;// the whole file
     property TopLine: Integer read GetTopLine write SetTopLine;// first visible line
+    property LinesInWindow: Integer read GetLinesInWindow;
     property Modified: Boolean read GetModified write SetModified;
   end;
 
@@ -261,6 +270,11 @@ type
     var AText: String; var AMode: TSemSelectionMode; ALogStartPos: TPoint;
     var AnAction: TSemCopyPasteAction) of object;
 
+  TSemBeautyFlag = (
+    sembfNotBreakDots
+    );
+  TSemBeautyFlags = set of TSemBeautyFlag;
+
   { TSourceEditorManagerInterface }
 
   TSourceEditorManagerInterface = class(TComponent)
@@ -310,17 +324,23 @@ type
     // Messages
     procedure ClearErrorLines; virtual; abstract;
     // General source functions
-    function Beautify(const Src: string): string; virtual; abstract;
+    function Beautify(const Src: string; const Flags: TSemBeautyFlags = []): string; virtual; abstract;
   protected
     // Completion Plugins
-    function GetActiveCompletionPlugin: TSourceEditorCompletionPlugin; virtual; abstract;
-    function GetCompletionBoxPosition: integer; virtual; abstract;
-    function GetCompletionPlugins(Index: integer): TSourceEditorCompletionPlugin; virtual; abstract;
+    function  GetActiveCompletionPlugin: TSourceEditorCompletionPlugin; virtual; abstract;
+    function  GetCompletionBoxPosition: integer; virtual; abstract;
+    function  GetCompletionPlugins(Index: integer): TSourceEditorCompletionPlugin; virtual; abstract;
+    function  GetDefaultSynCompletionForm: TCustomForm; virtual; abstract;
+    function  GetSynCompletionLinesInWindow: integer; virtual; abstract;
+    procedure SetSynCompletionLinesInWindow(LineCnt: integer); virtual; abstract;
   public
     // Completion Plugins
     function CompletionPluginCount: integer; virtual; abstract;
     property CompletionPlugins[Index: integer]: TSourceEditorCompletionPlugin
                  read GetCompletionPlugins;
+    property DefaultSynCompletionForm: TCustomForm read GetDefaultSynCompletionForm;
+    property SynCompletionLinesInWindow: integer read GetSynCompletionLinesInWindow
+                                                write SetSynCompletionLinesInWindow;
     procedure DeactivateCompletionForm; virtual; abstract;
     property ActiveCompletionPlugin: TSourceEditorCompletionPlugin read GetActiveCompletionPlugin;
     property CompletionBoxPosition: integer read GetCompletionBoxPosition;
@@ -578,6 +598,8 @@ type
     var TheText: string;// if TheFileName='' then use TheText
     SearchFor, ReplaceText: string; Flags: TSrcEditSearchOptions;
     var Prompt: boolean; Progress: TIDESearchInTextProgress = nil): TModalResult;
+
+  TBookmarkNumRange = 0..9;
 
 var
   IDESearchInText: TIDESearchInTextFunction = nil;// set by the IDE

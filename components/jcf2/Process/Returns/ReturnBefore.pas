@@ -141,7 +141,7 @@ begin
 end;
 
 
-function NeedsBlankLine(const pt, ptNext: TSourceToken): boolean;
+function NeedsBlankLine(const pt: TSourceToken): boolean;
 var
   lcNext: TSourceToken;
 begin
@@ -267,7 +267,7 @@ begin
   begin
     lcPrev := pt.PriorSolidToken;
     // return before else unless it's end..else and the style forbids it
-    if (FormatSettings.Returns.EndElseStyle = eAlways) or
+    if (FormattingSettings.Returns.EndElseStyle = eAlways) or
       ((lcPrev <> nil) and (lcPrev.TokenType <> ttEnd)) then
       Result := True;
   end;
@@ -410,7 +410,7 @@ begin
   FormatFlags := FormatFlags + [eAddReturn];
 
   // the number of returns is one greater than the number of blank lines
-  fiReturnsBeforeProcedure := FormatSettings.Returns.LinesBeforeProcedure + 1;
+  fiReturnsBeforeProcedure := FormattingSettings.Returns.LinesBeforeProcedure + 1;
 end;
 
 function TReturnBefore.EnabledVisitSourceToken(const pcToken: TObject): Boolean;
@@ -428,7 +428,7 @@ begin
 
   liReturnsNeeded := 0;
 
-  if NeedsBlankLine(lcSourceToken, lcNext) then
+  if NeedsBlankLine(lcSourceToken) then
     liReturnsNeeded := 2
   else if NeedsReturn(lcSourceToken, lcNext) then
     liReturnsNeeded := 1;
@@ -485,7 +485,7 @@ end;
 
 function TReturnBefore.IsIncludedInSettings: boolean;
 begin
-  Result := FormatSettings.Returns.AddGoodReturns;
+  Result := FormattingSettings.Returns.AddGoodReturns;
 end;
 
 end.

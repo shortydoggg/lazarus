@@ -6,7 +6,12 @@ unit LazSynTextArea;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, LCLType, LCLIntf, LCLProc,
+  Classes, SysUtils,
+  // LCL
+  Graphics, Controls, LCLType, LCLIntf, LCLProc,
+  // LazUtils
+  LazMethodList,
+  // SynEdit
   SynEditTypes, SynEditMiscProcs, SynEditMiscClasses, LazSynEditText,
   SynEditMarkup, SynEditHighlighter, SynTextDrawer;
 
@@ -690,7 +695,7 @@ begin
 
     LogicIdx := FCurViewScannerPos.Logical - 1;
     LogicEnd := LogicIdx + FCurViewToken.TokenLength;
-    assert(GetCharWidthData(LogicIdx)<>0, 'GetNextHighlighterTokenFromView: Token starts with char');
+    //assert(GetCharWidthData(LogicIdx)<>0, 'GetNextHighlighterTokenFromView: Token starts with char');
 
     case FCurViewinRTL of
       False: // Left To Right
@@ -1206,10 +1211,14 @@ function TLazSynTextArea.PixelsToRowColumn(Pixels: TPoint;
   aFlags: TSynCoordinateMappingFlags): TPoint;
 begin
   // Inludes LeftChar, but not Topline
-  if not (scmForceLeftSidePos in aFlags) then
-    Pixels.X := Pixels.X +  (CharWidth div 2);  // nearest side of char
-  Result.X := (Pixels.X - FTextBounds.Left) div CharWidth
-              + LeftChar;
+  if (Pixels.X >= FTextBounds.Left) and (Pixels.X < FTextBounds.Right) then begin
+    if not (scmForceLeftSidePos in aFlags) then
+      Pixels.X := Pixels.X +  (CharWidth div 2);  // nearest side of char
+    Result.X := (Pixels.X - FTextBounds.Left) div CharWidth
+                + LeftChar;
+  end
+  else
+    Result.X := 0;
   Result.Y := (Pixels.Y - FTextBounds.Top) div LineHeight;
 
   if (not(scmIncludePartVisible in aFlags)) and (Result.Y >= LinesInWindow) then begin
@@ -1699,7 +1708,7 @@ var
       LineBufferRtlLogPos := -1;
 
       FTokenBreaker.SetHighlighterTokensLine(TV + CurLine, CurTextIndex);
-      CharWidths := FTheLinesView.GetPhysicalCharWidths(CurTextIndex);
+      CharWidths := FTokenBreaker.CharWidths;
       fMarkupManager.PrepareMarkupForRow(CurTextIndex+1);
 
       DividerInfo := DisplayView.GetDrawDividerInfo;  // May call HL.SetRange
@@ -1726,6 +1735,7 @@ var
 { end local procedures }
 
 begin
+  fMarkupManager.BeginMarkup;
   FTokenBreaker.Prepare(DisplayView, FTheLinesView, FMarkupManager, FirstCol, LastCol);
   FTokenBreaker.ForegroundColor := ForegroundColor;
   FTokenBreaker.BackgroundColor := BackgroundColor;

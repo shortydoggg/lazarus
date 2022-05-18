@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -38,11 +38,17 @@ unit SourceMarks;
 interface
 
 uses
-  Classes, SysUtils, AVL_Tree, Graphics, Controls, LCLProc,
-  MenuIntf,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  Graphics, Controls,
+  // LazUtils
+  LazMethodList, LazTracer, LazUtilities,
+  // SynEdit
   SynEdit, SynEditMarks, SynEditMarkupGutterMark,
-  SrcEditorIntf, IDEExternToolIntf,
-  etSrcEditMarks;
+  // IdeIntf
+  MenuIntf, SrcEditorIntf, IDEExternToolIntf, IDEImagesIntf,
+  // IDE
+  etSrcEditMarks, ImgList;
   
 type
   TAdditionalHilightAttribute =
@@ -52,18 +58,21 @@ type
      ahaHighlightAll,      ahaBracketMatch,       ahaMouseLink,
      ahaLineNumber,        ahaLineHighlight,      ahaModifiedLine,
      ahaCodeFoldingTree,   ahaHighlightWord,      ahaFoldedCode,
+     ahaFoldedCodeLine,    ahaHiddenCodeLine,
      ahaWordGroup,         ahaTemplateEditCur,    ahaTemplateEditSync,
      ahaTemplateEditOther, ahaSyncroEditCur,      ahaSyncroEditSync,
      ahaSyncroEditOther,   ahaSyncroEditArea,     ahaGutterSeparator,
      ahaGutter,            ahaRightMargin,        ahaSpecialVisibleChars,
-     ahaTopInfoHint,
+     ahaTopInfoHint,       ahaCaretColor,
      ahaIfDefBlockInactive, ahaIfDefBlockActive, ahaIfDefBlockTmpActive,
-     ahaIfDefNodeInactive, ahaIfDefNodeActive, ahaIfDefNodeTmpActive
+     ahaIfDefNodeInactive, ahaIfDefNodeActive, ahaIfDefNodeTmpActive,
+     ahaIdentComplWindow, ahaIdentComplWindowBorder, ahaIdentComplWindowSelection, ahaIdentComplWindowHighlight,
+     ahaOutlineLevel1Color, ahaOutlineLevel2Color, ahaOutlineLevel3Color, ahaOutlineLevel4Color, ahaOutlineLevel5Color, ahaOutlineLevel6Color, ahaOutlineLevel7Color, ahaOutlineLevel8Color, ahaOutlineLevel9Color, ahaOutlineLevel10Color
      );
 
   TAhaGroupName = (
     agnDefault, agnLanguage, agnText, agnLine, agnGutter, agnTemplateMode, agnSyncronMode,
-    agnIfDef
+    agnIfDef, agnIdentComplWindow, agnOutlineColors
   );
 
   TSourceEditorBase = class;
@@ -189,8 +198,9 @@ type
     FCurrentLineImg: Integer;
     FCurrentLineDisabledBreakPointImg: Integer;
     FExtToolsMarks: TETMarks;
+    fPendingBreakPointImg: Integer;
     FSourceLineImg: Integer;
-    FImgList: TImageList;
+    FImgList: TLCLGlyphs;
     fInactiveBreakPointImg: Integer;
     fInvalidBreakPointImg: Integer;
     fInvalidDisabledBreakPointImg: Integer;
@@ -225,7 +235,7 @@ type
     procedure GetMarksForLine(ASrcEdit: TSourceEditorBase; ALine: integer;
                               out Marks: PSourceMark; out MarkCount: integer);
   public
-    property ImgList: TImageList read FImgList write FImgList;
+    property ImgList: TLCLGlyphs read FImgList;
     property Items[Index: integer]: TSourceMark read GetItems; default;
     property OnAction: TMarksActionEvent read FOnAction write FOnAction;
     property ExtToolsMarks: TETMarks read FExtToolsMarks;
@@ -235,6 +245,7 @@ type
     property InactiveBreakPointImg: Integer read fInactiveBreakPointImg;
     property InvalidBreakPointImg: Integer read fInvalidBreakPointImg;
     property InvalidDisabledBreakPointImg: Integer read fInvalidDisabledBreakPointImg;
+    property PendingBreakPointImg: Integer read fPendingBreakPointImg;
     property MultiBreakPointImg: Integer read fMultiBreakPointImg;
     property UnknownBreakPointImg: Integer read fUnknownBreakPointImg;
     property UnknownDisabledBreakPointImg: Integer read fUnknownDisabledBreakPointImg;
@@ -243,9 +254,9 @@ type
     property CurrentLineDisabledBreakPointImg: Integer read FCurrentLineDisabledBreakPointImg;
     property SourceLineImg: Integer read FSourceLineImg;
   end;
-  
+
 var
-  SourceEditorMarks: TSourceMarks;
+  SourceEditorMarks: TSourceMarks = nil;
   
 implementation
 
@@ -426,7 +437,7 @@ end;
 
 function TSourceMark.Compare(OtherMark: TSourceMark): integer;
 begin
-  Result:=PtrInt(SourceEditorID)-PtrInt(OtherMark.SourceEditorID);
+  Result:=ComparePointers(Pointer(SourceEditorID), Pointer(OtherMark.SourceEditorID));
   if Result<>0 then exit;
   Result:=Line-OtherMark.Line;
   if Result<>0 then exit;
@@ -540,12 +551,13 @@ var
   ImgIDHint: Integer;
 begin
   // create default mark icons
-  ImgList:=TImageList.Create(Self);
-  ImgList.Width:=11;
-  ImgList.Height:=11;
+  FImgList:=TLCLGlyphs.Create(Self);
+  FImgList.Width := 11;
+  FImgList.Height := 11;
+  FImgList.RegisterResolutions([11, 16, 22, 33], [100, 150, 200, 300]);
 
   // synedit expects the first 10 icons for the bookmarks
-  for i := 0 to 9 do
+  for i in TBookmarkNumRange do
     AddImage('bookmark'+IntToStr(i));
 
   // load active breakpoint image
@@ -556,6 +568,8 @@ begin
   fInvalidBreakPointImg:=AddImage('InvalidBreakPoint');
   // load invalid disabled breakpoint image
   fInvalidDisabledBreakPointImg := AddImage('InvalidDisabledBreakPoint');
+  // load pending active breakpoint image
+  fPendingBreakPointImg := AddImage('PendingBreakPoint');
   // load unknown breakpoint image
   fUnknownBreakPointImg:=AddImage('UnknownBreakPoint');
   // load unknown disabled breakpoint image
@@ -571,12 +585,15 @@ begin
   // load source line
   FSourceLineImg:=AddImage('debugger_source_line');
 
+  FImgList.RegisterResolutions([11, 16, 22, 33], [69, 100, 150, 200]);
+
+  ImgIDFatal:=AddImage('state_fatal');
+  ImgIDError:=AddImage('state_error');
+  ImgIDWarning:=AddImage('state_warning');
+  ImgIDNote:=AddImage('state_note');
+  ImgIDHint:=AddImage('state_hint');
+
   ExtToolsMarks.ImageList:=ImgList;
-  ImgIDFatal:=AddImage('state11x11_fatal');
-  ImgIDError:=AddImage('state11x11_error');
-  ImgIDWarning:=AddImage('state11x11_warning');
-  ImgIDNote:=AddImage('state11x11_note');
-  ImgIDHint:=AddImage('state11x11_hint');
   ExtToolsMarks.MarkStyles[mluNone].ImageIndex:=-1;
   ExtToolsMarks.MarkStyles[mluProgress].ImageIndex:=-1;
   ExtToolsMarks.MarkStyles[mluDebug].ImageIndex:=-1;
@@ -621,6 +638,8 @@ end;
 
 destructor TSourceMarks.Destroy;
 begin
+  if SourceEditorMarks=Self then
+    SourceEditorMarks:=nil;
   Clear;
   FreeAndNil(FExtToolsMarks);
   FreeThenNil(FItems);
@@ -803,11 +822,8 @@ end;
 
 function TSourceMarks.AddImage(const ResName: string): integer;
 begin
-  Result := ImgList.AddResourceName(HInstance, Resname);
+  Result := FImgList.GetImageIndex(Resname);
 end;
-
-initialization
-  SourceEditorMarks:=nil;
 
 end.
 

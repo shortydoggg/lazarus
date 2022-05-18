@@ -27,7 +27,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: synhighlighterlfm.pas 49091 2015-05-18 20:43:25Z martin $
+$Id: synhighlighterlfm.pas 52180 2016-04-12 23:01:29Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -83,7 +83,7 @@ type
     fLine: PChar;
     fLineNumber: Integer;
     fProcTable: array[#0..#255] of TProcTableProc;
-    Run: LongInt;
+    Run: integer;
     fTokenPos: Integer;
     FTokenID: TtkTokenKind;
     fCommentAttri: TSynHighlighterAttributes;
@@ -262,6 +262,10 @@ function TSynLFMSyn.GetFoldConfigInstance(Index: Integer): TSynCustomFoldConfig;
 begin
   Result := inherited GetFoldConfigInstance(Index);
   Result.Enabled := True;
+  if TLfmCodeFoldBlockType(Index) in [cfbtLfmObject, cfbtLfmList, cfbtLfmItem] then begin
+    Result.SupportedModes := Result.SupportedModes + [fmMarkup];
+    Result.Modes := Result.Modes + [fmMarkup];
+  end;
 end;
 
 constructor TSynLFMSyn.Create(AOwner: TComponent);
@@ -359,10 +363,10 @@ begin
      (fLine[Run + 2] in ['d', 'D']) and
      not (fLine[Run + 3] in ['_', '0'..'9', 'a'..'z', 'A'..'Z'])
   then begin
-    if (TopLfmCodeFoldBlockType in [cfbtLfmObject, cfbtLfmItem]) then
-      EndLfmCodeFoldBlock;
     fTokenID := tkKey;
     Inc(Run, 3);
+    if (TopLfmCodeFoldBlockType in [cfbtLfmObject, cfbtLfmItem]) then
+      EndLfmCodeFoldBlock;
   end else
     AltProc;
 end;
@@ -408,9 +412,9 @@ begin
      not (fLine[Run + 6] in ['_', '0'..'9', 'a'..'z', 'A'..'Z'])
   then
   begin
-    StartLfmCodeFoldBlock(cfbtLfmObject);
     fTokenID := tkKey;
     Inc(Run, 6);
+    StartLfmCodeFoldBlock(cfbtLfmObject);
   end
   else
     AltProc;
@@ -429,9 +433,9 @@ begin
      not (fLine[Run + 9] in ['_', '0'..'9', 'a'..'z', 'A'..'Z']))
   then
   begin
-    StartLfmCodeFoldBlock(cfbtLfmObject);
     fTokenID := tkKey;
     Inc(Run, 9);
+    StartLfmCodeFoldBlock(cfbtLfmObject);
   end
   else if ((fLine[Run + 1] in ['n', 'N']) and
            (fLine[Run + 2] in ['l', 'L']) and
@@ -441,9 +445,9 @@ begin
            not (fLine[Run + 6] in ['_', '0'..'9', 'a'..'z', 'A'..'Z']))
   then
   begin
-    StartLfmCodeFoldBlock(cfbtLfmObject);
     fTokenID := tkKey;
     Inc(Run, 6);
+    StartLfmCodeFoldBlock(cfbtLfmObject);
   end
   else if ((fLine[Run + 1] in ['t', 'T']) and
            (fLine[Run + 2] in ['e', 'E']) and
@@ -451,9 +455,9 @@ begin
            not (fLine[Run + 4] in ['_', '0'..'9', 'a'..'z', 'A'..'Z']))
   then
   begin
-    StartLfmCodeFoldBlock(cfbtLfmItem);
     fTokenID := tkIdentifier;
     Inc(Run, 4);
+    StartLfmCodeFoldBlock(cfbtLfmItem);
   end
   else
     AltProc;
@@ -481,13 +485,16 @@ end;
 
 procedure TSynLFMSyn.SymbolProc;
 begin
-  if fLine[Run] = '<' then
-    StartLfmCodeFoldBlock(cfbtLfmList);
-  if (fLine[Run] = '>') and (TopLfmCodeFoldBlockType = cfbtLfmList) then
-    EndLfmCodeFoldBlock;
 
   inc(Run);
   fTokenID := tkSymbol;
+  if fLine[Run-1] = '<' then
+  begin
+    StartLfmCodeFoldBlock(cfbtLfmList)
+  end
+  else
+  if (fLine[Run-1] = '>') and (TopLfmCodeFoldBlockType = cfbtLfmList) then
+    EndLfmCodeFoldBlock;
 end;
 
 procedure TSynLFMSyn.UnknownProc;

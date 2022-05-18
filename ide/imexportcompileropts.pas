@@ -19,7 +19,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -32,9 +32,15 @@ unit ImExportCompilerOpts;
 interface
 
 uses
-  SysUtils, Forms, Controls, Dialogs, StdCtrls, Buttons, ExtCtrls, ButtonPanel,
-  IDEProcs, FileUtil, LazFileUtils, Laz2_XMLCfg, LCLType, LazarusIDEStrConsts,
-  IDEOptionsIntf, InputHistory, Project, CompilerOptions;
+  SysUtils,
+  // LCL
+  LCLType, Forms, Controls, Dialogs, StdCtrls, Buttons, ExtCtrls, ButtonPanel,
+  // LazUtils
+  FileUtil, LazFileUtils, Laz2_XMLCfg,
+  // IdeIntf
+  IDEOptEditorIntf, IDEImagesIntf,
+  // IDE
+  IDEProcs, LazarusIDEStrConsts, InputHistory, Project, CompilerOptions;
 
 type
   { TImExportCompOptsDlg }
@@ -287,7 +293,7 @@ begin
     OKButton.Caption:=lisIECOLoadFromFile;
     OKButton.LoadGlyphFromStock(idButtonOpen);
     if OKButton.Glyph.Empty then
-      OKButton.LoadGlyphFromResourceName(HInstance, 'laz_open');
+      IDEImages.AssignImage(OKButton, 'laz_open');
     OKButton.Enabled:=False;
     OKButton.OnClick:=@OpenButtonCLICK;
   end;
@@ -308,7 +314,7 @@ begin
     OKButton.Caption:=lisIECOSaveToFile;
     OKButton.LoadGlyphFromStock(idButtonSave);
     if OKButton.Glyph.Empty then
-      OKButton.LoadGlyphFromResourceName(HInstance, 'laz_save');
+      IDEImages.AssignImage(OKButton, 'laz_save');
     OKButton.Enabled:=False;
     OKButton.OnClick:=@SaveButtonCLICK;
   end;

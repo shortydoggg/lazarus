@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -50,11 +50,14 @@ uses
   {$IFDEF MEM_CHECK}
   MemCheck,
   {$ENDIF}
-  Classes, SysUtils, TypInfo, CodeToolsStrConsts, FileProcs, CodeTree, CodeAtom,
+  Classes, SysUtils, TypInfo, Laz_AVL_Tree,
+  // Codetools
+  CodeToolsStrConsts, FileProcs, CodeTree, CodeAtom,
   FindDeclarationTool, IdentCompletionTool, PascalReaderTool, PascalParserTool,
   ExprEval, KeywordFuncLists, BasicCodeTools, LinkScanner,
-  CodeCache, AVL_Tree, LFMTrees, SourceChanger,
-  CustomCodeTool, CodeToolsStructs, LazFileUtils, LazFileCache;
+  CodeCache, LFMTrees, SourceChanger, CustomCodeTool, CodeToolsStructs,
+  // LazUtils
+  LazFileUtils, LazFileCache, AvgLvlTree;
 
 type
   TStandardCodeTool = class;
@@ -85,6 +88,12 @@ type
       ReadOnlyOneBlock: boolean): boolean;
     function ReadForwardTilAnyBracketClose: boolean;
     function ReadBackwardTilAnyBracketClose: boolean;
+    function FindApplicationStatement(const APropertyUpCase: string;
+          out StartPos, ConstStartPos, EndPos: integer): boolean;
+    function SetApplicationStatement(const APropertyName, NewCode: string;
+          SourceChangeCache: TSourceChangeCache): boolean;
+    function RemoveApplicationStatement(const APropertyUpCase: string;
+          SourceChangeCache: TSourceChangeCache): boolean;
   public
     // explore the code
     function Explore(WithStatements: boolean; Range: TLinkScannerRange): boolean;
@@ -135,9 +144,10 @@ type
     function FindUsedUnitFiles(var MainUsesSection: TStrings): boolean;
     function FindUsedUnitFiles(var MainUsesSection,
                                ImplementationUsesSection: TStrings): boolean;
-    function FindDelphiProjectUnits(var FoundInUnits, MissingInUnits,
+    function FindDelphiProjectUnits(out FoundInUnits, MissingInUnits,
                                     NormalUnits: TStrings;
-                                    UseContainsSection: boolean = false): boolean;
+                                    UseContainsSection: boolean = false;
+                                    IgnoreNormalUnits: boolean = false): boolean;
     function UsesSectionToFilenames(UsesNode: TCodeTreeNode): TStrings;
     function UsesSectionToUnitnames(UsesNode: TCodeTreeNode): TStrings;
     function FindMissingUnits(var MissingUnits: TStrings; FixCase: boolean;
@@ -194,6 +204,16 @@ type
     function SetApplicationTitleStatement(const NewTitle: string;
           SourceChangeCache: TSourceChangeCache): boolean;
     function RemoveApplicationTitleStatement(
+          SourceChangeCache: TSourceChangeCache): boolean;
+
+    // Application.Scaled:=<boolean const> statements
+    function FindApplicationScaledStatement(out StartPos, BooleanConstStartPos,
+          EndPos: integer): boolean;
+    function GetApplicationScaledStatement(BooleanConstStartPos, EndPos: integer;
+          var AScaled: boolean): boolean;
+    function SetApplicationScaledStatement(const NewScaled: boolean;
+          SourceChangeCache: TSourceChangeCache): boolean;
+    function RemoveApplicationScaledStatement(
           SourceChangeCache: TSourceChangeCache): boolean;
 
     // forms
@@ -274,12 +294,11 @@ type
     function FindIncludeDirective(const CursorPos: TCodeXYPosition;
           out NewPos: TCodeXYPosition; out NewTopLine: integer;
           const Filename: string = ''): boolean;
-    function AddIncludeDirective(const Filename: string;
-          SourceChangeCache: TSourceChangeCache; const NewSrc: string = ''
-          ): boolean; deprecated;
     function AddIncludeDirectiveForInit(const Filename: string;
           SourceChangeCache: TSourceChangeCache; const NewSrc: string = ''
           ): boolean;
+    function AddUnitWarnDirective(WarnID, Comment: string; TurnOn: boolean;
+          SourceChangeCache: TSourceChangeCache): boolean;
     function FixIncludeFilenames(Code: TCodeBuffer;
           SourceChangeCache: TSourceChangeCache;
           out FoundIncludeFiles: TStrings;
@@ -589,7 +608,7 @@ var
       end else if CurPos.Flag=cafSemicolon then begin
         break;
       end else
-        RaiseExceptionFmt(ctsStrExpectedButAtomFound,[';',GetAtom]);
+        RaiseExceptionFmt(20170421201056,ctsStrExpectedButAtomFound,[';',GetAtom]);
     until false;
     Result:=true;
   end;
@@ -939,7 +958,7 @@ function TStandardCodeTool.AddUnitToSpecificUsesSection(UsesSection: TUsesSectio
   const NewUnitName, NewUnitInFile: string; SourceChangeCache: TSourceChangeCache;
   AsLast: boolean; CheckSpecialUnits: boolean): boolean;
 var
-  UsesNode, OtherUsesNode, SectionNode: TCodeTreeNode;
+  UsesNode, OtherUsesNode, SectionNode, Node: TCodeTreeNode;
   NewUsesTerm: string;
   InsertPos: integer;
   Junk: TAtomPosition;
@@ -959,7 +978,8 @@ begin
     BuildTree(lsrImplementationUsesSectionEnd)
   else if UsesSection=usImplementation then begin
     MoveCursorToNodeStart(Tree.Root);
-    RaiseException('can not add a unit to the implementation, because only a unit has one');
+    RaiseException(20170421201102,
+      ctsCanNotAddAUnitToTheImplementationBecauseOnlyAUnitH);
   end;
   SourceChangeCache.MainScanner:=Scanner;
   Beauty:=SourceChangeCache.BeautifyCodeOptions;
@@ -1024,8 +1044,11 @@ begin
       if InsertPos<1 then begin
         // not a unit (i.e. program)
         // => insert after title and directives
-        if SectionNode.Next<>nil then begin
-          InsertPos:=FindLineEndOrCodeInFrontOfPosition(SectionNode.Next.StartPos,
+        Node:=SectionNode.Next;
+        if (Node<>nil) and (Node.Desc=ctnSrcName) then
+          Node:=Node.NextSkipChilds;
+        if Node<>nil then begin
+          InsertPos:=FindLineEndOrCodeInFrontOfPosition(Node.StartPos,
             true);
         end else begin
           // program empty => add at end
@@ -1160,8 +1183,13 @@ end;
 
 function TStandardCodeTool.RemoveUnitFromAllUsesSections(
   const AnUnitName: string; SourceChangeCache: TSourceChangeCache): boolean;
-var
-  SectionNode: TCodeTreeNode;
+
+  function RemoveFromSection(UsesNode: TCodeTreeNode): boolean;
+  begin
+    Result:=(UsesNode=nil)
+      or (RemoveUnitFromUsesSection(UsesNode,AnUnitName,SourceChangeCache));
+  end;
+
 begin
   Result:=false;
   if (AnUnitName='') or (SourceChangeCache=nil) then exit;
@@ -1169,18 +1197,8 @@ begin
 
   SourceChangeCache.BeginUpdate;
   try
-    SectionNode:=Tree.Root;
-    while (SectionNode<>nil) do begin
-      if (SectionNode.FirstChild<>nil)
-      and (SectionNode.FirstChild.Desc=ctnUsesSection) then begin
-        if not RemoveUnitFromUsesSection(SectionNode.FirstChild,AnUnitName,
-           SourceChangeCache)
-        then begin
-          exit;
-        end;
-      end;
-      SectionNode:=SectionNode.NextBrother;
-    end;
+    if not RemoveFromSection(FindMainUsesNode) then exit;
+    if not RemoveFromSection(FindImplementationUsesNode) then exit;
   finally
     Result:=SourceChangeCache.EndUpdate;
   end;
@@ -1188,24 +1206,18 @@ end;
 
 function TStandardCodeTool.FixUsedUnitCase(
   SourceChangeCache: TSourceChangeCache): boolean;
-var
-  SectionNode: TCodeTreeNode;
+
+  function FixUsesSection(UsesNode: TCodeTreeNode): boolean;
+  begin
+    Result:=(UsesNode=nil) or FixUsedUnitCaseInUsesSection(UsesNode,SourceChangeCache);
+  end;
+
 begin
   //debugln('TStandardCodeTool.FixUsedUnitCase ',MainFilename);
   Result:=false;
   BuildTree(lsrImplementationUsesSectionEnd);
-  SectionNode:=Tree.Root;
-  while (SectionNode<>nil) do begin
-    if (SectionNode.FirstChild<>nil)
-    and (SectionNode.FirstChild.Desc=ctnUsesSection) then begin
-      if not FixUsedUnitCaseInUsesSection(
-        SectionNode.FirstChild,SourceChangeCache)
-      then begin
-        exit;
-      end;
-    end;
-    SectionNode:=SectionNode.NextBrother;
-  end;
+  if not FixUsesSection(FindMainUsesNode) then exit;
+  if not FixUsesSection(FindImplementationUsesNode) then exit;
   Result:=true;
 end;
 
@@ -1324,7 +1336,7 @@ function TStandardCodeTool.FindUsedUnitNames(var List: TStringToStringTree
       end else if CurPos.Flag=cafSemicolon then begin
         break;
       end else
-        RaiseExceptionFmt(ctsStrExpectedButAtomFound,[';',GetAtom]);
+        RaiseExceptionFmt(20170421201120,ctsStrExpectedButAtomFound,[';',GetAtom]);
     until false;
     Result:=true;
   end;
@@ -1394,8 +1406,9 @@ end;
   If no codebuffer was found/created then the filename will be the unit name
   plus the 'in' extension.
 ------------------------------------------------------------------------------}
-function TStandardCodeTool.FindDelphiProjectUnits(var FoundInUnits,
-  MissingInUnits, NormalUnits: TStrings; UseContainsSection: boolean): boolean;
+function TStandardCodeTool.FindDelphiProjectUnits(out FoundInUnits,
+  MissingInUnits, NormalUnits: TStrings; UseContainsSection: boolean;
+  IgnoreNormalUnits: boolean): boolean;
 var
   AnUnitName, AnUnitInFilename: string;
   NewCode: TCodeBuffer;
@@ -1412,7 +1425,10 @@ begin
   if UsesNode=nil then exit;
   FoundInUnits:=TStringList.Create;
   MissingInUnits:=TStringList.Create;
-  NormalUnits:=TStringList.Create;
+  if IgnoreNormalUnits then
+    NormalUnits:=nil
+  else
+    NormalUnits:=TStringList.Create;
   Node:=UsesNode.FirstChild;
   while Node<>nil do begin
     // read next unit name
@@ -1430,8 +1446,10 @@ begin
       end;
     end else if AnUnitName<>'' then begin
       // the units without 'in' are 'Forms' or units added by the user
-      NewCode:=FindUnitSource(AnUnitName,AnUnitInFilename,false,Node.StartPos);
-      NormalUnits.AddObject(AnUnitName,NewCode);
+      if not IgnoreNormalUnits then begin
+        NewCode:=FindUnitSource(AnUnitName,AnUnitInFilename,false,Node.StartPos);
+        NormalUnits.AddObject(AnUnitName,NewCode);
+      end;
     end;
     Node:=Node.NextBrother;
   end;
@@ -1527,7 +1545,7 @@ const
       NewInFilename:=OldInFilename;
       //debugln(['CheckUsesSection NewUnitName="',NewUnitName,'" NewInFilename="',NewInFilename,'"']);
       AFilename:=DirectoryCache.FindUnitSourceInCompletePath(
-                        NewUnitName,NewInFilename,true,FPCSrcSearchRequiresPPU);
+         NewUnitName,NewInFilename,true,FPCSrcSearchRequiresPPU,AddedNameSpace);
       s:=NewUnitName;
       if NewInFilename<>'' then
         s:=s+' in '''+NewInFilename+'''';
@@ -1558,7 +1576,7 @@ begin
   if FixCase then
     SourceChangeCache.MainScanner:=Scanner;
   try
-    if not CheckUsesSection(FindMainUsesNode(true)) then exit;
+    if not CheckUsesSection(FindMainUsesNode) then exit;
     if SearchImplementation
     and not CheckUsesSection(FindImplementationUsesNode) then exit;
   except
@@ -1780,6 +1798,21 @@ var
       end;
     end;
 
+    function FindProceduresInHelper(Node: TCodeTreeNode): boolean;
+    begin
+      Result := False;
+      Node := Node.FirstChild;
+      while (Node<>nil) and (Node.Desc <> ctnEndPoint) do
+      begin
+        if (Node.Desc = ctnProcedure) and (Node.FirstChild<>nil) then
+        begin
+          if IsIdentifierUsed(Node.FirstChild.StartPos) then
+            Exit(True);
+        end;
+        Node:=Node.Next;
+      end;
+    end;
+
   var
     Node: TCodeTreeNode;
   begin
@@ -1787,6 +1820,8 @@ var
     Node:=IntfNode.FirstChild;
     while Node<>nil do begin
       case Node.Desc of
+      ctnTypeHelper, ctnRecordHelper, ctnClassHelper:
+        if FindProceduresInHelper(Node) then exit;
       ctnEnumIdentifier:
         if IsIdentifierUsed(Node.StartPos) then exit;
       ctnVarDefinition,ctnConstDefinition,ctnTypeDefinition,ctnGenericName:
@@ -2970,42 +3005,37 @@ begin
   Result:= Result and SourceChangeCache.Apply;
 end;
 
-function TStandardCodeTool.FindApplicationTitleStatement(out StartPos,
-  StringConstStartPos, EndPos: integer): boolean;
+function TStandardCodeTool.SetApplicationScaledStatement(
+  const NewScaled: boolean; SourceChangeCache: TSourceChangeCache): boolean;
+begin
+  Result := SetApplicationStatement('Scaled', BoolToStr(NewScaled, True), SourceChangeCache);
+end;
+
+function TStandardCodeTool.SetApplicationStatement(const APropertyName,
+  NewCode: string; SourceChangeCache: TSourceChangeCache): boolean;
 var
-  MainBeginNode: TCodeTreeNode;
-  Position: Integer;
+  StartPos, ConstStartPos, EndPos: integer;
+  NewStatement: String;
+  Beauty: TBeautifyCodeOptions;
 begin
   Result:=false;
-  StartPos:=-1;
-  StringConstStartPos:=-1;
-  EndPos:=-1;
-  BuildTree(lsrEnd);
-  MainBeginNode:=FindMainBeginEndNode;
-  if MainBeginNode=nil then exit;
-  Position:=MainBeginNode.StartPos;
-  if Position<1 then exit;
-  MoveCursorToCleanPos(Position);
-  repeat
-    ReadNextAtom;
-    if UpAtomIs('APPLICATION') then begin
-      StartPos:=CurPos.StartPos;
-      if ReadNextAtomIsChar('.') and ReadNextUpAtomIs('TITLE')
-      and ReadNextUpAtomIs(':=') then begin
-        // read till semicolon or end
-        repeat
-          ReadNextAtom;
-          if StringConstStartPos<1 then
-            StringConstStartPos:=CurPos.StartPos;
-          EndPos:=CurPos.EndPos;
-          if CurPos.Flag in [cafEnd,cafSemicolon] then begin
-            Result:=true;
-            exit;
-          end;
-        until CurPos.StartPos>SrcLen;
-      end;
-    end;
-  until (CurPos.StartPos>SrcLen);
+  Beauty:=SourceChangeCache.BeautifyCodeOptions;
+  // search old Application.APropertyName:=XYZ statement
+  FindApplicationStatement(UpperCase(APropertyName),StartPos,ConstStartPos,EndPos);
+  // create statement. FindApplicationStatement always returns an insert point.
+  NewStatement:='Application.'+APropertyName+':='+NewCode+';';
+  NewStatement:=Beauty.BeautifyStatement(NewStatement,Beauty.Indent);
+  SourceChangeCache.MainScanner:=Scanner;
+  if not SourceChangeCache.Replace(gtNewLine,gtNewLine,StartPos,EndPos,NewStatement) then
+    exit;
+  if not SourceChangeCache.Apply then exit;
+  Result:=true;
+end;
+
+function TStandardCodeTool.FindApplicationTitleStatement(out StartPos,
+  StringConstStartPos, EndPos: integer): boolean;
+begin
+  Result := FindApplicationStatement('TITLE', StartPos, StringConstStartPos, EndPos);
 end;
 
 function TStandardCodeTool.GetApplicationTitleStatement(StringConstStartPos,
@@ -3026,68 +3056,14 @@ end;
 
 function TStandardCodeTool.SetApplicationTitleStatement(const NewTitle: string;
   SourceChangeCache: TSourceChangeCache): boolean;
-var
-  StartPos, StringConstStartPos, EndPos: integer;
-  OldExists: Boolean;
-  NewStatement: String;
-  Indent: Integer;
-  MainBeginNode: TCodeTreeNode;
-  Beauty: TBeautifyCodeOptions;
 begin
-  Result:=false;
-  // search old Application.Title:= statement
-  Beauty:=SourceChangeCache.BeautifyCodeOptions;
-  OldExists:=FindApplicationTitleStatement(StartPos,StringConstStartPos,EndPos);
-  if StringConstStartPos=0 then ;
-  if OldExists then begin
-    // replace old statement
-    Indent:=0;
-    Indent:=Beauty.GetLineIndent(Src,StartPos)
-  end else begin
-    // insert as first line in program begin..end block
-    MainBeginNode:=FindMainBeginEndNode;
-    if MainBeginNode=nil then exit;
-    MoveCursorToNodeStart(MainBeginNode);
-    ReadNextAtom;
-    StartPos:=CurPos.EndPos;
-    EndPos:=StartPos;
-    Indent:=Beauty.GetLineIndent(Src,StartPos)+Beauty.Indent;
-  end;
-  // create statement
-  NewStatement:='Application.Title:='+StringToPascalConst(NewTitle)+';';
-  NewStatement:=Beauty.BeautifyStatement(NewStatement,Indent);
-  SourceChangeCache.MainScanner:=Scanner;
-  if not SourceChangeCache.Replace(gtNewLine,gtNewLine,StartPos,EndPos,
-                                   NewStatement)
-  then
-    exit;
-  if not SourceChangeCache.Apply then exit;
-  Result:=true;
+  Result := SetApplicationStatement('Title', StringToPascalConst(NewTitle), SourceChangeCache);
 end;
 
 function TStandardCodeTool.RemoveApplicationTitleStatement(
   SourceChangeCache: TSourceChangeCache): boolean;
-var
-  StartPos, StringConstStartPos, EndPos: integer;
-  OldExists: Boolean;
-  FromPos: Integer;
-  ToPos: Integer;
 begin
-  Result:=false;
-  // search old Application.Title:= statement
-  OldExists:=FindApplicationTitleStatement(StartPos,StringConstStartPos,EndPos);
-  if not OldExists then begin
-    Result:=true;
-    exit;
-  end;
-  if StringConstStartPos=0 then ;
-  // -> delete whole line
-  FromPos:=FindLineEndOrCodeInFrontOfPosition(StartPos);
-  ToPos:=FindLineEndOrCodeAfterPosition(EndPos);
-  SourceChangeCache.MainScanner:=Scanner;
-  if not SourceChangeCache.Replace(gtNone,gtNone,FromPos,ToPos,'') then exit;
-  if not SourceChangeCache.Apply then exit;
-  Result:=true;
+  Result := RemoveApplicationStatement('TITLE', SourceChangeCache);
 end;
 
 function TStandardCodeTool.RenameForm(const OldFormName,
@@ -3310,7 +3286,7 @@ var
   CurEndPos: LongInt;
 begin
   if StartPos>=EndPos then
-    RaiseException('TStandardCodeTool CommentCode');
+    RaiseException(20170421201123,'TStandardCodeTool CommentCode');
 
   Result:=false;
   // comment with curly brackets {}
@@ -3743,6 +3719,76 @@ begin
       Operand:=copy(Operand,1,length(Operand)-1);
   end;
   Result:=true;
+end;
+
+function TStandardCodeTool.FindApplicationScaledStatement(out StartPos,
+  BooleanConstStartPos, EndPos: integer): boolean;
+begin
+  Result := FindApplicationStatement('SCALED', StartPos, BooleanConstStartPos, EndPos);
+end;
+
+function TStandardCodeTool.FindApplicationStatement(const APropertyUpCase: string;
+  out StartPos, ConstStartPos, EndPos: integer): boolean;
+// Find statement "Application.APropertyUpCase:=XYZ;" and return True if found.
+//  Also return its positions (Start, const "XYZ" and End) in out parameters.
+// If not found, out parameters get a good position to insert such a statement.
+var
+  MainBeginNode: TCodeTreeNode;
+  AppPos, FirstAppPos: Integer;
+begin
+  Result:=false;
+  StartPos:=-1;
+  ConstStartPos:=-1;
+  EndPos:=-1;
+  FirstAppPos:=-1;
+  BuildTree(lsrEnd);
+  MainBeginNode:=FindMainBeginEndNode;
+  if (MainBeginNode=nil) or (MainBeginNode.StartPos<1) then exit;
+  MoveCursorToCleanPos(MainBeginNode.StartPos);
+  repeat
+    ReadNextAtom;
+    if UpAtomIs('APPLICATION') then
+    begin
+      AppPos:=CurPos.StartPos;
+      if FirstAppPos=-1 then
+        FirstAppPos:=AppPos;
+      ReadNextAtom;
+      if AtomIsChar('.') then
+      begin                    // Application.APropertyUpCase:=XYZ;
+        if ReadNextUpAtomIs(APropertyUpCase) and ReadNextUpAtomIs(':=') then
+        begin
+          StartPos:=AppPos;
+          repeat               // read till semicolon or end
+            ReadNextAtom;
+            if ConstStartPos<1 then
+              ConstStartPos:=CurPos.StartPos;
+            EndPos:=CurPos.EndPos;
+            if CurPos.Flag in [cafEnd,cafSemicolon] then
+              exit(true);
+          until CurPos.StartPos>SrcLen;
+        end;
+      end
+      else                     // Application:=TMyApplication.Create(nil);
+      if UpAtomIs(':=') and ReadNextUpAtomIs('TMYAPPLICATION')
+      and ReadNextAtomIsChar('.') and ReadNextUpAtomIs('CREATE') then
+        repeat                 // read till semicolon or end
+          ReadNextAtom;
+          StartPos:=CurPos.EndPos; // Insert point behind the TMyApplication.Create line.
+          if CurPos.Flag in [cafEnd,cafSemicolon] then
+            break;
+        until CurPos.StartPos>SrcLen;
+    end;  // UpAtomIs('APPLICATION')
+  until (CurPos.StartPos>SrcLen);
+  // The statement was not found. Return a good place for insertion.
+  if StartPos=-1 then
+    if FirstAppPos <> -1 then
+      StartPos:=FirstAppPos // Before first Application statement if there is one
+    else begin
+      MoveCursorToNodeStart(MainBeginNode);
+      ReadNextAtom;
+      StartPos:=CurPos.EndPos; // or after the main Begin.
+    end;
+  EndPos:=StartPos;     // Both StartPos and EndPos return the same insert point.
 end;
 
 function TStandardCodeTool.GatherResourceStringSections(
@@ -4255,6 +4301,27 @@ begin
   end;
 end;
 
+function TStandardCodeTool.GetApplicationScaledStatement(BooleanConstStartPos,
+  EndPos: integer; var AScaled: boolean): boolean;
+begin
+  Result:=false;
+  AScaled:=false;
+  if (BooleanConstStartPos<1) or (BooleanConstStartPos>SrcLen) then exit;
+  MoveCursorToCleanPos(BooleanConstStartPos);
+  ReadNextAtom;
+  if (EndPos>0) and (CurPos.EndPos>EndPos) then exit;
+  if UpAtomIs('TRUE') then
+  begin
+    AScaled := True;
+    Result := True;
+  end;
+  if UpAtomIs('FALSE') then
+  begin
+    AScaled := False;
+    Result := True;
+  end;
+end;
+
 function TStandardCodeTool.GatherResourceStringIdents(
   const SectionPos: TCodeXYPosition; var IdentTree: TAVLTree): boolean;
 var
@@ -4434,13 +4501,13 @@ var ClassNode, SectionNode: TCodeTreeNode;
 begin
   Result:=nil;
   if (AClassName='') or (length(AClassName)>255) then
-    RaiseException(Format(ctsinvalidClassName, [AClassName]));
+    RaiseExceptionFmt(20170421201129,ctsinvalidClassName, [AClassName]);
   if AVarName='' then exit;
   BuildTree(lsrImplementationStart);
   ClassNode:=FindClassNodeInInterface(AClassName,true,false,false);
   if ClassNode=nil then begin
     if ExceptionOnClassNotFound then
-      RaiseException(Format(ctsclassNotFound, [AClassName]))
+      RaiseExceptionFmt(20170421201136,ctsclassNotFound, [AClassName])
     else
       exit;
   end;
@@ -4469,13 +4536,13 @@ var ClassNode, SectionNode: TCodeTreeNode;
 begin
   Result:=false;
   if (AClassName='') or (length(AClassName)>255) then
-    RaiseException(Format(ctsinvalidClassName2, [AClassName]));
+    RaiseExceptionFmt(20170421201143,ctsinvalidClassName2, [AClassName]);
   if (VarName='') or (length(VarName)>255) then
-    RaiseException(Format(ctsinvalidVariableName, [VarName]));
+    RaiseExceptionFmt(20170421201152,ctsinvalidVariableName, [VarName]);
   if (VarType='') or (length(VarType)>255) then
-    RaiseException(Format(ctsinvalidVariableType, [VarType]));
+    RaiseExceptionFmt(20170421201158,ctsinvalidVariableType, [VarType]);
   if (SourceChangeCache=nil) then
-    RaiseException('missing SourceChangeCache');
+    RaiseException(20170421201203,'missing SourceChangeCache');
   if FindPublishedVariable(AClassName,VarName,true)<>nil then
   begin
     Result:=true;
@@ -4483,7 +4550,7 @@ begin
   end;
   ClassNode:=FindClassNodeInInterface(AClassName,true,false,true);
   if ClassNode=nil then
-    RaiseException(Format(ctsclassNotFound, [AClassName]));
+    RaiseExceptionFmt(20170421201208,ctsclassNotFound, [AClassName]);
   SectionNode:=ClassNode.FirstChild;
   if (SectionNode.NextBrother<>nil)
   and (SectionNode.NextBrother.Desc=ctnClassPublished) then
@@ -4571,7 +4638,7 @@ begin
       if not SourceChangeCache.Replace(gtNone,gtNone,
         CurPos.StartPos,CurPos.EndPos,VarType)
       then begin
-        RaiseException('Unable to replace type');
+        RaiseException(20170421201215,'Unable to replace type');
       end;
     end;
     // rename variable in source
@@ -4659,7 +4726,7 @@ begin
   Result:=false;
   TreeOfCodeTreeNodeExtension:=nil;
   if (TheClassName='') or (length(TheClassName)>255) then
-    RaiseException(Format(ctsInvalidClassName, [TheClassName]));
+    RaiseExceptionFmt(20170421201221,ctsInvalidClassName, [TheClassName]);
   {$IFDEF VerboseDanglingComponentEvents}
   DebugLn(['TStandardCodeTool.GatherPublishedClassElements BEFORE buildtree']);
   {$ENDIF}
@@ -4922,14 +4989,16 @@ begin
       MoveCursorToCleanPos(Node.StartPos);
       ReadNextAtom;
       AtomIsIdentifierE;
-      if not ReadNextAtomIsChar(',') then RaiseCharExpectedButAtomFound(',');
+      if not ReadNextAtomIsChar(',') then
+        RaiseCharExpectedButAtomFound(20170421201227,',');
       DeleteEndPos:=CurPos.EndPos;
     end else if PrevSibling<>nil then begin
       // var i, X: integer;     ->  var i[, X]: integer;
       MoveCursorToCleanPos(PrevSibling.StartPos);
       ReadNextAtom;
       AtomIsIdentifierE;
-      if not ReadNextAtomIsChar(',') then RaiseCharExpectedButAtomFound(',');
+      if not ReadNextAtomIsChar(',') then
+        RaiseCharExpectedButAtomFound(20170421201233,',');
       DeleteStartPos:=CurPos.StartPos;
     end else begin
       // delete whole declaration
@@ -5017,7 +5086,7 @@ begin
   Node:=FindDeepestNodeAtPos(CleanPos,true);
   if not (Node.Desc in AllPascalStatements) then begin
     MoveCursorToCleanPos(CleanPos);
-    RaiseException('invalid position for insertion of statements');
+    RaiseException(20170421201247,ctsInvalidPositionForInsertionOfStatements);
   end;
   if Node.Desc=ctnBeginBlock then
     Node:=BuildSubTreeAndFindDeepestNodeAtPos(Node,CleanPos,true);
@@ -5026,7 +5095,7 @@ begin
   if (SameArea.StartPos>SrcLen) or (not IsSpaceChar[Src[SameArea.StartPos]])
   then begin
     MoveCursorToCleanPos(CleanPos);
-    RaiseException('invalid position for insertion of statements');
+    RaiseException(20170421201255,ctsInvalidPositionForInsertionOfStatements);
   end;
 
   SourceChangeCache.MainScanner:=Scanner;
@@ -5105,7 +5174,7 @@ begin
     if CurPos.StartPos>=SrcLen then begin
       ReadPriorAtom;
       if CurPos.StartPos<1 then begin
-        CurPos.StartPos:=1;
+        MoveCursorToCleanPos(1);
         exit(true);
       end;
     end;
@@ -5121,7 +5190,7 @@ begin
         //debugln(['TStandardCodeTool.FindBlockStart atom ',CleanPosToStr(CurPos.StartPos),' ',GetAtom]);
         if (CurPos.StartPos<0) then begin
           // start of source found -> this is always a block start
-          CurPos.StartPos:=1;
+          MoveCursorToCleanPos(1);
           exit(true);
         end
         else if Src[CurPos.StartPos] in [')',']','}'] then begin
@@ -5153,13 +5222,13 @@ begin
         while (Node<>nil) and (Node.StartPos=CleanCursorPos) do
           Node:=Node.Parent;
         if Node<>nil then
-          CurPos.StartPos:=Node.StartPos
+          MoveCursorToCleanPos(Node.StartPos)
         else
-          CurPos.StartPos:=1;
+          MoveCursorToCleanPos(1);
         exit(true);
       end;
       if CleanCursorPos>=Node.StartPos then begin
-        CurPos.StartPos:=Node.StartPos;
+        MoveCursorToCleanPos(Node.StartPos);
         exit(true);
       end;
     end;
@@ -5241,7 +5310,7 @@ begin
     ReadPriorAtom;
     if (CurPos.StartPos<0) then begin
       // start of source found -> this is always a block start
-      CurPos.StartPos:=1;
+      MoveCursorToCleanPos(1);
       BlockStartFound:=true;
       break;
     end
@@ -5629,7 +5698,7 @@ var
             {$ENDIF}
             exit;
           end;
-          AtomInFrontOfCursor:=LastAtoms.GetValueAt(0);
+          AtomInFrontOfCursor:=LastAtoms.GetPriorAtom;
           {$IFDEF VerboseCompleteBlock}
           DebugLn(['ReadStatements reached cursor: ',CleanPosToStr(CurPos.StartPos),' CursorBlockOuterIndent=',CursorBlockOuterIndent,' CursorBlockInnerIndent=',CursorBlockInnerIndent,' LastAtom=',GetAtom(AtomInFrontOfCursor),' CurAtom=',GetAtom]);
           {$ENDIF}
@@ -6175,6 +6244,7 @@ var
 
 var
   Stack: TBlockStack;
+  CommentStart, CommentEnd: integer;
 begin
   Result:=false;
   NewPos:=CursorPos;
@@ -6182,6 +6252,12 @@ begin
   BuildTreeAndGetCleanPos(trTillCursor,lsrEnd,CursorPos,CleanCursorPos,
                           [btSetIgnoreErrorPos]);
   StartNode:=FindDeepestNodeAtPos(CleanCursorPos,true);
+  if CleanPosIsInComment(CleanCursorPos,StartNode.StartPos,CommentStart,CommentEnd) then begin
+    {$IFDEF VerboseCompleteBlock}
+    debugln(['TStandardCodeTool.CompleteBlock cursor (',CursorPos.Y,',',CursorPos.X,') cleanpos=[',CleanPosToStr(CleanCursorPos),'] in comment Start=[',CleanPosToStr(CommentStart),'] End=[',CleanPosToStr(CommentEnd),']']);
+    {$ENDIF}
+    exit;
+  end;
 
   InternalCursorAtEmptyLine:=ebNone;
   SourceChangeCache.MainScanner:=Scanner;
@@ -6239,8 +6315,8 @@ begin
     if Result then begin
       NewPos.Code:=TCodeBuffer(EndCode);
       NewPos.Code.AbsoluteToLineCol(EndCursorPos,NewPos.Y,NewPos.X);
-      if JumpCentered then begin
-        NewTopLine:=NewPos.Y-(VisibleEditorLines shr 1);
+      if JumpSingleLinePos>0 then begin
+        NewTopLine:=NewPos.Y-(VisibleEditorLines*JumpSingleLinePos div 100);
         if NewTopLine<1 then NewTopLine:=1;
       end else
         NewTopLine:=NewPos.Y;
@@ -6431,12 +6507,6 @@ begin
   Result:=CleanPosToCaretAndTopLine(CleanCursorPos,NewPos,NewTopLine);
 end;
 
-function TStandardCodeTool.AddIncludeDirective(const Filename: string;
-  SourceChangeCache: TSourceChangeCache; const NewSrc: string): boolean;
-begin
-  Result:=AddIncludeDirectiveForInit(Filename,SourceChangeCache,NewSrc);
-end;
-
 function TStandardCodeTool.AddIncludeDirectiveForInit(const Filename: string;
   SourceChangeCache: TSourceChangeCache; const NewSrc: string): boolean;
 var
@@ -6479,6 +6549,95 @@ begin
   if not SourceChangeCache.Apply then exit;
 
   Result:=true;
+end;
+
+function TStandardCodeTool.AddUnitWarnDirective(WarnID, Comment: string;
+  TurnOn: boolean; SourceChangeCache: TSourceChangeCache): boolean;
+const
+  DirectiveFlagValue: array[boolean] of string = ('off','on');
+var
+  ACleanPos, DirEndPos, InsertStartPos, MaxPos: Integer;
+  Node: TCodeTreeNode;
+  p, IDStartPos, IDEndPos, ParamPos: PChar;
+  NewCode: String;
+begin
+  Result:=false;
+  if WarnID='' then
+    raise Exception.Create('TStandardCodeTool.AddUnitWarnDirective missing WarnID');
+  InsertStartPos:=0;
+  BuildTree(lsrMainUsesSectionStart);
+  SourceChangeCache.MainScanner:=Scanner;
+
+  // fix comment
+  if Comment<>'' then begin
+    for ACleanPos:=1 to length(Comment) do
+      if Comment[ACleanPos] in [#0..#8,#11,#12,#14..#31,'{','}'] then
+        Comment[ACleanPos]:='?';
+    if not (Comment[1] in [' ',#9,#10,#13]) then Comment:=' '+Comment;
+  end;
+
+  // insert in front of first node after source name
+  Node:=Tree.Root;
+  MaxPos:=Node.StartPos;
+  if Node.Desc in AllSourceTypes then
+    Node:=Node.Next;
+  if (Node<>nil) and (Node.Desc=ctnSrcName) then begin
+    MaxPos:=Node.EndPos;
+    Node:=Node.NextSkipChilds;
+  end;
+  if Node<>nil then
+    MaxPos:=Node.StartPos;
+  MaxPos:=FindLineEndOrCodeAfterPosition(MaxPos,true,true);
+
+  // find existing directive for replacement
+  ACleanPos:=1;
+  repeat
+    ACleanPos:=FindNextCompilerDirective(Src,ACleanPos,Scanner.NestedComments);
+    if (ACleanPos<1) or (ACleanPos>MaxPos) then
+      break;
+    DirEndPos:=FindCommentEnd(Src,ACleanPos,Scanner.NestedComments)+1;
+    p:=@Src[ACleanPos+2];
+    if CompareIdentifiers(p,'warn')=0 then begin
+      IDStartPos:=p+4;
+      while IDStartPos^ in [' ',#9,#10,#13] do
+        inc(IDStartPos);
+      IDEndPos:=IDStartPos;
+      while IDEndPos^ in ['0'..'9','A'..'Z','a'..'z','_'] do
+        inc(IDEndPos);
+      if CompareText(PChar(Pointer(WarnID)),length(WarnID),
+                     IDStartPos,IDEndPos-IDStartPos,false)=0
+      then begin
+        // warn directive found
+        p:=IDEndPos;
+        while p^ in [' ',#9,#10,#13] do
+          inc(p);
+        ParamPos:=p;
+        while p^ in ['+','-','a'..'z','A'..'Z'] do
+          inc(p);
+        if not SourceChangeCache.Replace(gtSpace,gtNone,
+          ParamPos-PChar(Src)+1,p-PChar(Src)+1,DirectiveFlagValue[TurnOn])
+        then
+          exit;
+        Result:=SourceChangeCache.Apply;
+        exit;
+      end;
+    end else if (CompareIdentifiers(p,'i')=0) or (CompareIdentifiers(p,'include')=0)
+    then begin
+      // insert before include file
+      if MaxPos>ACleanPos then MaxPos:=ACleanPos;
+      break;
+    end;
+    ACleanPos:=DirEndPos;
+  until ACleanPos>MaxPos;
+
+  // there was no such directive yet -> find nice insert pos
+  InsertStartPos:=FindLineEndOrCodeInFrontOfPosition(MaxPos,true,true);
+  NewCode:='{$WARN '+WarnID+' '+DirectiveFlagValue[TurnOn]+Comment+'}';
+  if not SourceChangeCache.Replace(gtNewLine,gtNewLine,
+    InsertStartPos,InsertStartPos,NewCode)
+  then
+    exit;
+  Result:=SourceChangeCache.Apply;
 end;
 
 function TStandardCodeTool.FixIncludeFilenames(Code: TCodeBuffer;
@@ -6610,7 +6769,8 @@ var
     end;
     AFilename:=SearchIncludeFilename(StartPos,AFilename);
     if OldFilename<>AFilename then begin
-      DebugLn('TStandardCodeTool.FixIncludeFilenames.FixFilename replacing in '+Code.Filename+' include directive "',OldFilename,'" with "',AFilename,'"');
+      DebugLn('TStandardCodeTool.FixIncludeFilenames.FixFilename replacing in '
+             +Code.Filename+' include directive "',OldFilename,'" with "',AFilename,'"');
       SourceChangeCache.ReplaceEx(gtNone,gtNone,0,0,Code,StartPos,EndPos,AFilename);
     end;
   end;
@@ -6669,7 +6829,7 @@ begin
         if AtomIsChar('.') then begin
           // source end found
           if BlockType in [bkwBegin,bkwNone] then begin
-            CurPos.StartPos:=SrcLen+1;
+            MoveCursorToCleanPos(SrcLen+1);
             exit;
           end else begin
             MoveCursorToCleanPos(BlockStart);
@@ -6704,7 +6864,7 @@ begin
               // or 'of object'
             end else begin
               BlockType:=CurBlockWord;
-              BlockStart:=LastAtoms.GetValueAt(0).StartPos;
+              BlockStart:=LastAtoms.GetPriorAtom.StartPos;
               // read ancestor list  class(...)
               if CurPos.Flag=cafRoundBracketOpen then begin
                 repeat
@@ -6825,6 +6985,34 @@ begin
   end;
 end;
 
+function TStandardCodeTool.RemoveApplicationScaledStatement(
+  SourceChangeCache: TSourceChangeCache): boolean;
+begin
+  Result := RemoveApplicationStatement('SCALED', SourceChangeCache);
+end;
+
+function TStandardCodeTool.RemoveApplicationStatement(const APropertyUpCase: string;
+  SourceChangeCache: TSourceChangeCache): boolean;
+var
+  StartPos, ConstStartPos, EndPos: integer;
+  OldExists: Boolean;
+  FromPos: Integer;
+  ToPos: Integer;
+begin
+  Result:=false;
+  // search old Application.XYZ:= statement
+  OldExists:=FindApplicationStatement(APropertyUpCase,StartPos,ConstStartPos,EndPos);
+  if not OldExists then
+    exit(true);
+  // -> delete whole line
+  FromPos:=FindLineEndOrCodeInFrontOfPosition(StartPos);
+  ToPos:=FindLineEndOrCodeAfterPosition(EndPos);
+  SourceChangeCache.MainScanner:=Scanner;
+  if not SourceChangeCache.Replace(gtNone,gtNone,FromPos,ToPos,'') then exit;
+  if not SourceChangeCache.Apply then exit;
+  Result:=true;
+end;
+
 function TStandardCodeTool.ReadForwardTilAnyBracketClose: boolean;
 // this function reads any bracket
 // (the ReadTilBracketClose function reads only brackets in code, not comments)
@@ -6834,12 +7022,12 @@ begin
   OpenBracket:=Src[CurPos.StartPos];
   if OpenBracket='{' then begin
     // read til end of comment
-    CurPos.StartPos:=FindCommentEnd(Src,CurPos.StartPos,Scanner.NestedComments);
+    MoveCursorToCleanPos(FindCommentEnd(Src,CurPos.StartPos,Scanner.NestedComments));
     Result:=CurPos.StartPos<=SrcLen;
   end else if OpenBracket='(' then begin
     if (CurPos.StartPos<SrcLen) and (Src[CurPos.StartPos+1]='*') then begin
       // read til end of comment
-      CurPos.StartPos:=FindCommentEnd(Src,CurPos.StartPos,Scanner.NestedComments);
+      MoveCursorToCleanPos(FindCommentEnd(Src,CurPos.StartPos,Scanner.NestedComments));
       Result:=CurPos.StartPos<=SrcLen;
     end else begin
       // round bracket operator

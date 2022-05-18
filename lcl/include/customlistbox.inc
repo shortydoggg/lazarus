@@ -128,6 +128,13 @@ begin
   UnlockSelectionChange;
 end;
 
+procedure TCustomListbox.DestroyWnd;
+begin
+  inherited;
+  if FCanvas <> nil then
+    TControlCanvas(FCanvas).FreeHandle;
+end;
+
 {------------------------------------------------------------------------------
  procedure TCustomListBox.FinalizeWnd
 ------------------------------------------------------------------------------}
@@ -266,7 +273,10 @@ begin
   begin
     FCanvas.Handle := DC;
     if Assigned(Font) then
+    begin
       FCanvas.Font := Font;
+      FCanvas.Font.PixelsPerInch := Font.PixelsPerInch;
+    end;
     if Assigned(Brush) then
       FCanvas.Brush := Brush;
     if (ItemID <> UINT(-1)) and (odSelected in ItemState) then
@@ -279,7 +289,7 @@ begin
       FCanvas.Font.Color := clWindowText;
     end;
     DrawItem(ItemID, Area, ItemState);
-    if odFocused in ItemState then
+    if (odFocused in ItemState) and (lboDrawFocusRect in FOptions) then
       DrawFocusRect(DC, Area);
     FCanvas.Handle := 0;
   end;
@@ -293,8 +303,10 @@ begin
   begin
     if Self.ItemHeight <> 0 then
       AHeight := Self.ItemHeight
-    else
-      AHeight := ItemHeight;
+    else begin
+      Canvas.Font := Font;
+      AHeight := Canvas.TextHeight('Hg');
+    end;
     MeasureItem(Integer(ItemId), AHeight);
     if AHeight > 0 then
       ItemHeight := AHeight;
@@ -335,7 +347,6 @@ class procedure TCustomListBox.WSRegisterClass;
 begin
   inherited WSRegisterClass;
   RegisterCustomListBox;
-  RegisterPropertyToSkip(TCustomListBox, 'DoubleBuffered', 'VCL compatibility property', '');
 end;
 
 {------------------------------------------------------------------------------}
@@ -460,11 +471,25 @@ procedure TCustomListBox.DrawItem(Index: Integer; ARect: TRect;
 begin
   if Assigned(FOnDrawItem) then
     FOnDrawItem(Self, Index, ARect, State)
-  else if not (odPainted in State) then
+  else
   begin
-    FCanvas.FillRect(ARect);
+    if not(odBackgroundPainted in State) then
+      FCanvas.FillRect(ARect);
     if (Index>=0) and (Index < Items.Count) then
       InternalDrawItem(Self, FCanvas, ARect, Items[Index]);
+  end;
+end;
+
+procedure TCustomListBox.DoAutoAdjustLayout(
+  const AMode: TLayoutAdjustmentPolicy; const AXProportion, AYProportion: Double
+  );
+begin
+  inherited;
+
+  if AMode in [lapAutoAdjustWithoutHorizontalScrolling, lapAutoAdjustForDPI] then
+  begin
+    if FItemHeight > 0 then
+      ItemHeight := Round(ItemHeight * AYProportion);
   end;
 end;
 
@@ -484,6 +509,12 @@ end;
 procedure TCustomListBox.SendItemIndex;
 begin
   TWSCustomListBoxClass(WidgetSetClass).SetItemIndex(Self, FItemIndex);
+end;
+
+procedure TCustomListBox.WMGetDlgCode(var Message: TLMNoParams);
+begin
+  inherited;
+  Message.Result := Message.Result or DLGC_WANTARROWS;
 end;
 
 {------------------------------------------------------------------------------
@@ -534,6 +565,7 @@ begin
   FItemIndex:=-1;
   FExtendedSelect := true;
   //FScrollWidth := 0;
+  FOptions := DefOptions;
   FCanvas := TControlCanvas.Create;
   TControlCanvas(FCanvas).Control := Self;
   ParentColor := false;
@@ -626,6 +658,7 @@ end;
 procedure TCustomListBox.Click;
 begin
   inherited Click;
+  Changed;
 end;
 
 {------------------------------------------------------------------------------
@@ -653,6 +686,24 @@ begin
     if (i>=0) and (i<Count) then
       Selected[i] := true;
   end;
+end;
+
+procedure TCustomListBox.DeleteSelected;
+var
+  i: Integer;
+begin
+  if MultiSelect then
+  begin
+    i := Items.Count;
+    while i > 0 do
+    begin
+      dec(i);
+      if Selected[i] then
+        FItems.Delete(i);
+    end;
+  end else
+    if ItemIndex>=0 then
+      Items.Delete(ItemIndex);
 end;
 
 {------------------------------------------------------------------------------

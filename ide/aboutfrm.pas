@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -25,9 +25,16 @@ unit AboutFrm;
 interface
 
 uses
-  Classes, SysUtils, FPCAdds, Forms, Controls, Graphics, StdCtrls, Buttons,
-  ExtCtrls, ComCtrls, Menus, LCLIntf, LazConf, LazarusIDEStrConsts,
-  EnvironmentOpts, Clipbrd, LazFileUtils, lazutf8classes, DefineTemplates;
+  Classes, SysUtils,
+  // LCL
+  Forms, Controls, Graphics, StdCtrls, Buttons, ExtCtrls, ComCtrls, Menus,
+  LCLIntf, LazConf, InterfaceBase, LCLPlatformDef, Clipbrd, LCLVersion,
+  // LazUtils
+  FPCAdds, LazFileUtils, lazutf8classes,
+  // Codetools
+  DefineTemplates,
+  // IDE
+  LazarusIDEStrConsts, EnvironmentOpts;
 
 type
 
@@ -107,7 +114,8 @@ function ShowAboutForm: TModalResult;
 var
   LazarusRevisionStr: string;
   
-function GetLazarusVersionString : string;
+function GetLazarusVersionString: string;
+function GetLazarusRevision: string;
 
 implementation
 
@@ -125,6 +133,11 @@ end;
 function GetLazarusVersionString: string;
 begin
   Result:=LazarusVersionStr;
+end;
+
+function GetLazarusRevision: string;
+begin
+  Result:=LazarusRevisionStr;
 end;
 
 { TAboutForm }
@@ -432,6 +445,9 @@ begin
   FBuffer.Free;
   inherited Destroy;
 end;
+
+initialization
+  lcl_revision_func := @GetLazarusRevision;
 
 end.
 

@@ -33,7 +33,7 @@ type
     function FormatLineNumber(Line: integer; IsDot: boolean): string;
   protected
     procedure Init; override;
-    function  PreferedWidth: Integer; override;
+    function  PreferedWidthAtCurrentPPI: Integer; override;
     procedure LineCountChanged(Sender: TSynEditStrings; AIndex, ACount: Integer);
     procedure BufferChanged(Sender: TObject);
     procedure FontChanged(Sender: TObject);
@@ -76,8 +76,8 @@ procedure TSynGutterLineNumber.Init;
 begin
   inherited Init;
   FTextDrawer := Gutter.TextDrawer;
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrLineCount, TMethod(@LineCountChanged));
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddChangeHandler(senrLineCount, @LineCountChanged);
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
   FTextDrawer.RegisterOnFontChangeHandler(@FontChanged);
   LineCountchanged(nil, 0, 0);
 end;
@@ -93,7 +93,7 @@ procedure TSynGutterLineNumber.Assign(Source : TPersistent);
 var
   Src: TSynGutterLineNumber;
 begin
-  if Assigned(Source) and (Source is TSynGutterLineNumber) then
+  if Source is TSynGutterLineNumber then
   begin
     Src := TSynGutterLineNumber(Source);
     FLeadingZeros := Src.FLeadingZeros;
@@ -172,7 +172,7 @@ begin
   end;
 end;
 
-function TSynGutterLineNumber.PreferedWidth: Integer;
+function TSynGutterLineNumber.PreferedWidthAtCurrentPPI: Integer;
 begin
   Result := FAutoSizeDigitCount * FTextDrawer.CharWidth + 1;
 end;
@@ -196,8 +196,8 @@ end;
 procedure TSynGutterLineNumber.BufferChanged(Sender: TObject);
 begin
   TSynEditStringList(Sender).RemoveHanlders(self);
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrLineCount, TMethod(@LineCountChanged));
-  TSynEditStringList(TextBuffer).AddGenericHandler(senrTextBufferChanged, TMethod(@BufferChanged));
+  TSynEditStringList(TextBuffer).AddChangeHandler(senrLineCount, @LineCountChanged);
+  TSynEditStringList(TextBuffer).AddNotifyHandler(senrTextBufferChanged, @BufferChanged);
   LineCountChanged(nil, 0, 0);
 end;
 

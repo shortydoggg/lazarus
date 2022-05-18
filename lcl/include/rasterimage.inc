@@ -488,7 +488,6 @@ begin
   begin
     List.Clear;
     List.Add(PredefinedClipboardMimeTypes[pcfBitmap]);
-    List.Add(PredefinedClipboardMimeTypes[pcfDelphiBitmap]);
     List.Add(PredefinedClipboardMimeTypes[pcfPixmap]);
   end else
     inherited GetSupportedSourceMimeTypes(List);
@@ -568,7 +567,6 @@ begin
   {$IFDEF VerboseLCLTodos}{$note Make oo}{$ENDIF}
   if (ClassType=TBitmap) or (ClassType=TPixmap) or (ClassType=TCustomIcon) then begin
     if (AnsiCompareText(AMimeType,PredefinedClipboardMimeTypes[pcfBitmap])=0)
-    or (AnsiCompareText(AMimeType,PredefinedClipboardMimeTypes[pcfDelphiBitmap])=0)
     or (AnsiCompareText(AMimeType,PredefinedClipboardMimeTypes[pcfPixmap])=0) then
     begin
       LoadFromStream(AStream);
@@ -588,6 +586,22 @@ begin
     if AImage.Description.Format = ricfNone then Exit; // empty image
 
     img := GetRawImagePtr;
+
+    // Make sure, we do not free AImage.Data or Mask
+    if img^.Data = AImage.Data then begin
+      img^.Data := nil;
+      img^.DataSize := 0;
+    end;
+    if img^.Mask = AImage.Mask then begin
+      img^.Mask := nil;
+      img^.MaskSize := 0;
+    end;
+    if img^.Palette = AImage.Palette then begin
+      img^.Palette := nil;
+      img^.PaletteSize := 0;
+    end;
+    img^.FreeData;
+
     img^.Description := AImage.Description;
     if ADataOwner
     then begin

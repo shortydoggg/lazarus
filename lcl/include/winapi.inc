@@ -94,6 +94,11 @@ begin
   Result := WidgetSet.CreateBrushIndirect(LogBrush);
 end;
 
+function CreateBrushWithRadialGradient(const LogBrush: TLogRadialGradient): HBRUSH;
+begin
+  Result := WidgetSet.CreateBrushWithRadialGradient(LogBrush);
+end;
+
 function CreateCaret(Handle : HWND; Bitmap : hBitmap; width, Height : Integer) : Boolean;
 begin
   Result := WidgetSet.CreateCaret(Handle, Bitmap, width, Height);
@@ -426,6 +431,11 @@ end;
 function GetMonitorInfo(hMonitor: HMONITOR; lpmi: PMonitorInfo): Boolean;
 begin
   Result := Widgetset.GetMonitorInfo(hMonitor, lpmi);
+end;
+
+function GetDpiForMonitor(hmonitor: HMONITOR; dpiType: TMonitorDpiType; out dpiX: UINT; out dpiY: UINT): HRESULT;
+begin
+  Result := Widgetset.GetDpiForMonitor(hmonitor, dpiType, dpiX, dpiY);
 end;
 
 function GetObject(GDIObject: HGDIOBJ; BufSize: Integer; Buf: Pointer): Integer;
@@ -1525,6 +1535,21 @@ function PointtoSmallPoint(const P : TPoint) : TSmallPoint; inline;
 begin
   Result.X := P.X;
   Result.Y := P.Y;
+end;
+
+{------------------------------------------------------------------------------
+  Function: PointToSmallPointNoChecks
+  Params:
+  Returns:
+
+ ------------------------------------------------------------------------------}
+function PointToSmallPointNoChecks(const P : TPoint) : TSmallPoint; inline;
+begin
+  {$PUSH}
+  {$R-}{$Q-} // no range, no overflow checks
+  Result.X := P.X;
+  Result.Y := P.Y;
+  {$POP}
 end;
 
 {------------------------------------------------------------------------------

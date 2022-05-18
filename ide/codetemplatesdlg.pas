@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
  
@@ -31,17 +31,20 @@ unit CodeTemplatesDlg;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, Controls, Dialogs,
-  ClipBrd, StdCtrls, ExtCtrls, Menus, FileUtil, LazFileUtils, lazutf8classes,
+  Classes, SysUtils, RegExpr,
+  // LCL
+  LCLProc, Forms, Controls, Dialogs, ClipBrd, StdCtrls, ExtCtrls, Menus,
   ButtonPanel, EditBtn,
+  // LazUtils
+  FileUtil, LazFileUtils, LazUTF8Classes, LazLoggerBase, LazStringUtils,
   // synedit
-  SynEdit, SynHighlighterPas, SynEditAutoComplete, SynRegExpr,
+  SynEdit, SynHighlighterPas, SynEditAutoComplete,
   // codetools
   CodeToolManager, CodeCache, KeywordFuncLists, BasicCodeTools, PascalParserTool,
   // IDEIntf
   SrcEditorIntf, MenuIntf, IDEWindowIntf, LazIDEIntf, IDEHelpIntf, IDEDialogs,
   // IDE
-  IDEProcs, LazarusIDEStrConsts, EditorOptions, CodeMacroSelect, CodeMacroPrompt;
+  LazarusIDEStrConsts, EditorOptions, CodeMacroSelect, CodeMacroPrompt;
 
 type
   TAutoCompleteOption = (
@@ -166,6 +169,10 @@ function CodeMacroDateTime(const Parameter: string; {%H-}InteractiveValue: TPers
                         {%H-}SrcEdit: TSourceEditorInterface;
                         var Value, {%H-}ErrorMsg: string): boolean;
 function CodeMacroAddMissingEnd(const {%H-}Parameter: string;
+                        {%H-}InteractiveValue: TPersistent;
+                        SrcEdit: TSourceEditorInterface;
+                        var Value, {%H-}ErrorMsg: string): boolean;
+function CodeMacroAddSemicolon(const {%H-}Parameter: string;
                         {%H-}InteractiveValue: TPersistent;
                         SrcEdit: TSourceEditorInterface;
                         var Value, {%H-}ErrorMsg: string): boolean;
@@ -481,6 +488,29 @@ begin
   end;
 end;
 
+function CodeMacroAddSemicolon(const Parameter: string;
+  InteractiveValue: TPersistent; SrcEdit: TSourceEditorInterface; var Value,
+  ErrorMsg: string): boolean;
+var
+  XY: TPoint;
+  Code: TCodeBuffer;
+  p, AtomStart: integer;
+  Src, Token: String;
+begin
+  Result:=true;
+  Value:='';
+  XY:=SrcEdit.CursorTextXY;
+  if XY.y<1 then exit;
+  Code:=SrcEdit.CodeToolsBuffer as TCodeBuffer;
+  Code.LineColToPosition(XY.y,XY.x,p);
+  Src:=Code.Source;
+  ReadRawNextPascalAtom(Src,p,AtomStart,true,true);
+  Token:=lowercase(copy(Src,AtomStart,p-AtomStart));
+  if (Token='else') or (Token='do') or (Token=';') or (Token=')') or (Token=']') then
+    exit;
+  Value:=';';
+end;
+
 function CodeMacroOfAll(const Parameter: string; InteractiveValue: TPersistent;
   SrcEdit: TSourceEditorInterface; var Value, ErrorMsg: string): boolean;
 // completes
@@ -488,13 +518,35 @@ function CodeMacroOfAll(const Parameter: string; InteractiveValue: TPersistent;
 //  <list of enums>
 //  end;
 var
-  List: TStrings;
+  List, Params: TStrings;
   Code: TCodeBuffer;
   CaretXY: TPoint;
   p: integer;
   i: Integer;
-  Indent : String;
+  Indent, Param: String;
+  WithoutExtraIndent: Boolean;
 begin
+  WithoutExtraIndent := False;
+  Params:=SplitString(Parameter,',');
+  if Params<>nil then
+  begin
+    try
+      for i:=0 to Params.Count-1 do
+      begin
+        Param:=Params[i];
+        if SysUtils.CompareText(Param,'WithoutExtraIndent')=0 then
+          WithoutExtraIndent := True
+        else begin
+          Result:=false;
+          ErrorMsg:='Unknown Option: "'+Param+'"';
+          exit;
+        end;
+      end;
+    finally
+      Params.Free;
+    end;
+  end;
+
   List:=TStringList.Create;
   try
     CaretXY:=SrcEdit.CursorTextXY;
@@ -522,6 +574,15 @@ begin
     end;
 
     Indent := StringOfChar(' ',CodeToolBoss.IndentSize);
+
+    if not WithoutExtraIndent then
+    begin
+      if eoTabsToSpaces in EditorOptions.EditorOpts.SynEditOptions then
+        Indent := Indent+StringOfChar(' ',EditorOptions.EditorOpts.TabWidth)
+      else
+        Indent := Indent+#9;
+    end;
+
     Value:='';
     for i:=0 to List.Count-1 do
       Value:=Value+ Indent + List[i]+': ;'+LineEnding;
@@ -724,32 +785,8 @@ begin
                     lisPasteFromClipboard,
                     @CodeMacroPaste,nil);
   RegisterCodeMacro('ProcedureHead', lisInsertProcedureHead,
-     'Insert header of current procedure'#13
-    +#13
-    +'Optional Parameters (comma separated):'#13
-    +'WithStart,          // proc keyword e.g. ''function'', ''class procedure'''#13
-    +'WithoutClassKeyword,// without ''class'' proc keyword'#13
-    +'AddClassName,       // extract/add ClassName.'#13
-    +'WithoutClassName,   // skip classname'#13
-    +'WithoutName,        // skip function name'#13
-    +'WithoutParamList,   // skip param list'#13
-    +'WithVarModifiers,   // extract ''var'', ''out'', ''const'''#13
-    +'WithParameterNames, // extract parameter names'#13
-    +'WithoutParamTypes,  // skip colon, param types and default values'#13
-    +'WithDefaultValues,  // extract default values'#13
-    +'WithResultType,     // extract colon + result type'#13
-    +'WithOfObject,       // extract ''of object'''#13
-    +'WithCallingSpecs,   // extract cdecl; inline;'#13
-    +'WithProcModifiers,  // extract forward; alias; external;'#13
-    +'WithComments,       // extract comments and spaces'#13
-    +'InUpperCase,        // turn to uppercase'#13
-    +'CommentsToSpace,    // replace comments with a single space'#13
-    +'                      //  (default is to skip unnecessary space,'#13
-    +'                      //    e.g ''Do   ;'' normally becomes ''Do;'''#13
-    +'                      //    with this option you get ''Do ;'')'#13
-    +'WithoutBrackets,    // skip start- and end-bracket of parameter list'#13
-    +'WithoutSemicolon,   // skip semicolon at end'#13,
-    @CodeMacroProcedureHead,nil);
+                    lisInsertHeaderOfCurrentProcedure,
+                    @CodeMacroProcedureHead,nil);
   RegisterCodeMacro('ProcedureName', lisInsertProcedureName,
                     lisInsertNameOfCurrentProcedure,
                     @CodeMacroProcedureName,nil);
@@ -765,23 +802,17 @@ begin
   RegisterCodeMacro('AddMissingEnd', lisInsertEndIfNeeded,
                      lisCheckIfTheNextTokenInSourceIsAnEndAndIfNotReturnsL,
                     @CodeMacroAddMissingEnd,nil);
+  RegisterCodeMacro('AddSemicolon', lisInsertSemicolonIfNeeded,
+                     lisCheckTheNextTokenInSourceAndAddASemicolonIfNeeded,
+                    @CodeMacroAddSemicolon,nil);
   RegisterCodeMacro('OfAll', lisListOfAllCaseValues,
                     lisReturnsListOfAllValuesOfCaseVariableInFrontOfVaria,
                     @CodeMacroOfAll,nil);
   RegisterCodeMacro('WordAtCursor', lisGetWordAtCurrentCursorPosition,
-                    lisGetWordAtCurrentCursorPosition,
+                    lisGetWordAtCurrentCursorPosition2,
                     @CodeMacroWordAtCursor,nil);
   RegisterCodeMacro('PrevWord', lisPrecedingWord,
-                    'Returns parameter-indexed word from the current line preceding cursor position.'+LineEnding+LineEnding+
-                    'Words in a line are numbered 1,2,3,... from left to right, but the last word'+LineEnding+
-                    'which is always a macro command to be expanded has number 0, thus $PrevWord(0)'+LineEnding+
-                    'is always the current macro'+LineEnding+LineEnding+
-                    'Example line:'+LineEnding+
-                    'i 0 count-1 forb|'+LineEnding+
-                    'Here $PrevWord(0)=forb, $PrevWord(1)=1, $PrevWord(2)=0, $PrevWord(2)=count-1'+LineEnding+LineEnding+
-                    'In the end of your template use $PrevWord(-1) which expands to an empty string, but performs an '+
-                    'importaint operation of wiping off all of the $PrevWords found. In addition here is a regexp that is used'+
-                    'to detect words for this macro: [\w\-+*\(\)\[\].^@]+',
+                    lisReturnParameterIndexedWord,
                     @CodeMacroPrevWord,nil);
   RegisterCodeMacroEx('Param', lisTemplateEditParamCell,
                     Format(lisTemplateEditParamCellHelp, [LineEnding]),
@@ -825,7 +856,8 @@ begin
   AutoOnOptionsCheckGroup.Items.Add(lisAutomaticallyIgnoreForSelection);
   AutoOnOptionsCheckGroup.Items.Add(lisAutomaticallyRemoveCharacter);
 
-  FilenameEdit.Text:=EditorOpts.CodeTemplateFileName;
+  FilenameEdit.Text:=EditorOpts.CodeTemplateFileNameRaw;
+  FilenameEdit.InitialDir:=ExtractFilePath(EditorOpts.CodeTemplateFileNameExpand);
   FilenameEdit.DialogTitle:=dlgChsCodeTempl;
   FilenameEdit.Filter:=dlgFilterDciFile + '|*.dci|' + dlgFilterAll  + '|' + GetAllFilesMask;
 
@@ -843,7 +875,7 @@ begin
 
   // init SynAutoComplete
   with SynAutoComplete do begin
-    s:=EditorOpts.CodeTemplateFileName;
+    s:=EditorOpts.CodeTemplateFileNameExpand;
     if FileExistsUTF8(s) then
       try
          LoadStringsFromFileUTF8(AutoCompleteList,s);
@@ -879,7 +911,7 @@ var
 begin
   SaveCurCodeTemplate;
 
-  EditorOpts.CodeTemplateFileName:=FilenameEdit.Text;
+  EditorOpts.CodeTemplateFileNameRaw:=FilenameEdit.Text;
   //EditorOpts.CodeTemplateIndentToTokenStart:=
   //  (CodeTemplateIndentTypeRadioGroup.ItemIndex=0);
 
@@ -889,11 +921,11 @@ begin
     Res:=mrOk;
     repeat
       try
-        SaveStringsToFileUTF8(SynAutoComplete.AutoCompleteList,EditorOpts.CodeTemplateFileName);
+        SaveStringsToFileUTF8(SynAutoComplete.AutoCompleteList,EditorOpts.CodeTemplateFileNameExpand);
       except
         res:=IDEMessageDialog(lisCCOErrorCaption, 'Unable to write code '
           +'templates to file '''
-          +EditorOpts.CodeTemplateFileName+'''! ',mtError
+          +EditorOpts.CodeTemplateFileNameExpand+'''! ',mtError
           ,[mbAbort, mbIgnore, mbRetry]);
         if res=mrAbort then exit;
       end;

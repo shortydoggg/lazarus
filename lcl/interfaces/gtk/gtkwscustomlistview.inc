@@ -1,5 +1,5 @@
 {%MainUnit gtkwscomctrls.pp}
-{ $Id: gtkwscustomlistview.inc 41387 2013-05-24 18:30:06Z juha $
+{ $Id: gtkwscustomlistview.inc 57164 2018-01-27 18:12:35Z ondrej $
 
  *****************************************************************************
   This file is part of the Lazarus Component Library (LCL)
@@ -1275,7 +1275,7 @@ begin
 end;
 
 class procedure TGtkWSCustomListView.SetImageList(const ALV: TCustomListView;
-  const AList: TListViewImageList; const AValue: TCustomImageList);
+  const AList: TListViewImageList; const AValue: TCustomImageListResolution);
 var
   WidgetInfo: PWidgetInfo;
   CListWidget: PGtkCList;

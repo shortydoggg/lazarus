@@ -27,7 +27,7 @@ replace them with the notice and other provisions required by the GPL.
 If you do not delete the provisions above, a recipient may use your version
 of this file under either the MPL or the GPL.
 
-$Id: syneditsearch.pp 47604 2015-02-06 18:25:31Z juha $
+$Id: syneditsearch.pp 58527 2018-07-15 01:07:18Z martin $
 
 You may retrieve the latest version of this file at the SynEdit home page,
 located at http://SynEdit.SourceForge.net
@@ -42,8 +42,13 @@ unit SynEditSearch;
 interface
 
 uses
-  Classes, SysUtils,
-  LCLIntf, LCLType, LCLProc, LazUTF8, SynRegExpr, SynEditMiscProcs, SynEditTypes;
+  Classes, SysUtils, RegExpr,
+  // LCL
+  LCLIntf, LCLType,
+  // LazUtils
+  LazUTF8, LazTracer,
+  // SynEdit
+  SynEditMiscProcs, SynEditTypes;
 
 procedure MakeCompTable;
 
@@ -957,7 +962,10 @@ begin
       else
         inc(y);
 
-      LineStr:=Lines[y];
+      if y >= Lines.Count then // in case Lines is NOT a synedit textbuffer
+        LineStr := ''
+      else
+        LineStr:=Lines[y];
       if ASupportUnicodeCase and (not fSensitive) then LineStr := UTF8LowerCase(LineStr);
       LineLen:=length(LineStr);
       Line:=PChar(LineStr);

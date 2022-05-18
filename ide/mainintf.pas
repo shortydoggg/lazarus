@@ -43,7 +43,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -56,23 +56,22 @@ interface
 {$I ide.inc}
 
 uses
-{$IFDEF IDE_MEM_CHECK}
+  {$IFDEF IDE_MEM_CHECK}
   MemCheck,
-{$ENDIF}
-  Classes, SysUtils, typinfo, AVL_Tree,
-  LCLType, LCLIntf, Buttons, Menus, Controls, Graphics, ExtCtrls, Dialogs, Forms,
-  SynEditKeyCmds,
+  {$ENDIF}
+  Classes, typinfo,
+  // LCL
+  LCLType, Buttons, Controls, Graphics, Dialogs, Forms, LCLProc,
   // Codetools
-  CodeToolManager, CodeCache,
+  CodeCache,
   // LazUtils
-  FileUtil, LazFileUtils,
+  LazMethodList,
   // IDEIntf
   PropEdits, ObjectInspector, MenuIntf, SrcEditorIntf, ProjectIntf,
-  CompOptsIntf, LazIDEIntf, IDEDialogs, IDEWindowIntf,
+  CompOptsIntf, LazIDEIntf, IDEWindowIntf,
   // IDE
-  LazConf, LazarusIDEStrConsts, ProjectDefs, Project, PublishModule, BuildLazDialog,
-  TransferMacros, ProgressDlg, EnvironmentOpts, EditorOptions, CompilerOptions,
-  KeyMapping, IDEProcs, IDEDefs, IDEOptionDefs, PackageDefs;
+  LazConf, LazarusIDEStrConsts, Project, BuildLazDialog,
+  ProgressDlg, EnvironmentOpts, IDEDefs, PackageDefs;
 
 type
   // The IDE is at anytime in a specific state:
@@ -155,13 +154,6 @@ type
     function DoExampleManager: TModalResult; virtual; abstract;
     function DoBuildLazarus(Flags: TBuildLazarusFlags): TModalResult; virtual; abstract;
     function DoSaveForBuild(AReason: TCompileReason): TModalResult; virtual; abstract;
-    function DoPublishModule(Options: TPublishModuleOptions;
-                             const SrcDirectory, DestDirectory: string
-                             ): TModalResult; virtual; abstract;
-
-    function ExtendProjectUnitSearchPath(AProject: TProject; NewUnitPaths: string): boolean;
-    function ExtendProjectIncSearchPath(AProject: TProject; NewIncPaths: string): boolean;
-
     function DoFixupComponentReferences(RootComponent: TComponent;
                         OpenFlags: TOpenFlags): TModalResult; virtual; abstract;
 
@@ -182,12 +174,25 @@ type
                         ActiveUnitInfo: TUnitInfo;
                         NewSource: TCodeBuffer; NewX, NewY, NewTopLine: integer;
                         AddJumpPoint: boolean;
-                        MarkLine: Boolean = False): TModalResult;
+                        MarkLine: Boolean = False): TModalResult; overload;
     function DoJumpToCodePosition(
                         ActiveSrcEdit: TSourceEditorInterface;
                         ActiveUnitInfo: TUnitInfo;
                         NewSource: TCodeBuffer; NewX, NewY, NewTopLine: integer;
-                        Flags: TJumpToCodePosFlags = [jfFocusEditor]): TModalResult; virtual; abstract;
+                        Flags: TJumpToCodePosFlags = [jfFocusEditor]): TModalResult; overload;
+    function DoJumpToCodePosition(
+                        ActiveSrcEdit: TSourceEditorInterface;
+                        ActiveUnitInfo: TUnitInfo;
+                        NewSource: TCodeBuffer; NewX, NewY, NewTopLine,
+                        BlockTopLine, BlockBottomLine: integer;
+                        AddJumpPoint: boolean;
+                        MarkLine: Boolean = False): TModalResult; overload;
+    function DoJumpToCodePosition(
+                        ActiveSrcEdit: TSourceEditorInterface;
+                        ActiveUnitInfo: TUnitInfo;
+                        NewSource: TCodeBuffer; NewX, NewY, NewTopLine,
+                        BlockTopLine, BlockBottomLine: integer;
+                        Flags: TJumpToCodePosFlags = [jfFocusEditor]): TModalResult; virtual; abstract; overload;
 
     procedure FindInFilesPerDialog(AProject: TProject); virtual; abstract;
     procedure FindInFiles(AProject: TProject; const FindText: string); virtual; abstract;
@@ -198,6 +203,10 @@ type
 
     function ShowProgress(const SomeText: string;
                           Step, MaxStep: integer): boolean; override;
+
+    function CallSaveEditorFileHandler(Sender: TObject;
+      aFile: TLazProjectFile; SaveStep: TSaveEditorFileStep;
+      TargetFilename: string = ''): TModalResult;
   end;
 
 var
@@ -352,52 +361,6 @@ begin
   UpdateCaption;
 end;
 
-function TMainIDEInterface.ExtendProjectUnitSearchPath(AProject: TProject;
-  NewUnitPaths: string): boolean;
-var
-  CurUnitPaths: String;
-  r: TModalResult;
-begin
-  CurUnitPaths:=AProject.CompilerOptions.ParsedOpts.GetParsedValue(pcosUnitPath);
-  NewUnitPaths:=RemoveSearchPaths(NewUnitPaths,CurUnitPaths);
-  if NewUnitPaths<>'' then begin
-    NewUnitPaths:=CreateRelativeSearchPath(NewUnitPaths,AProject.ProjectDirectory);
-    r:=IDEMessageDialog(lisExtendUnitPath,
-      Format(lisExtendUnitSearchPathOfProjectWith, [#13, NewUnitPaths]),
-      mtConfirmation, [mbYes, mbNo, mbCancel]);
-    case r of
-    mrYes: AProject.CompilerOptions.OtherUnitFiles:=
-      MergeSearchPaths(AProject.CompilerOptions.OtherUnitFiles,NewUnitPaths);
-    mrNo: ;
-    else exit(false);
-    end;
-  end;
-  Result:=true;
-end;
-
-function TMainIDEInterface.ExtendProjectIncSearchPath(AProject: TProject;
-  NewIncPaths: string): boolean;
-var
-  CurIncPaths: String;
-  r: TModalResult;
-begin
-  CurIncPaths:=AProject.CompilerOptions.ParsedOpts.GetParsedValue(pcosIncludePath);
-  NewIncPaths:=RemoveSearchPaths(NewIncPaths,CurIncPaths);
-  if NewIncPaths<>'' then begin
-    NewIncPaths:=CreateRelativeSearchPath(NewIncPaths,AProject.ProjectDirectory);
-    r:=IDEMessageDialog(lisExtendIncludePath,
-      Format(lisExtendIncludeFilesSearchPathOfProjectWith, [#13, NewIncPaths]),
-      mtConfirmation, [mbYes, mbNo, mbCancel]);
-    case r of
-    mrYes: AProject.CompilerOptions.IncludePath:=
-      MergeSearchPaths(AProject.CompilerOptions.IncludePath,NewIncPaths);
-    mrNo: ;
-    else exit(false);
-    end;
-  end;
-  Result:=true;
-end;
-
 function TMainIDEInterface.DoJumpToSourcePosition(const Filename: string; NewX, NewY,
   NewTopLine: integer; AddJumpPoint: boolean; MarkLine: Boolean): TModalResult;
 var
@@ -409,17 +372,37 @@ begin
   Result := DoJumpToSourcePosition(Filename, NewX, NewY, NewTopLine, Flags);
 end;
 
-function TMainIDEInterface.DoJumpToCodePosition(ActiveSrcEdit: TSourceEditorInterface;
-  ActiveUnitInfo: TUnitInfo; NewSource: TCodeBuffer; NewX, NewY, NewTopLine: integer;
-  AddJumpPoint: boolean; MarkLine: Boolean): TModalResult;
+function TMainIDEInterface.DoJumpToCodePosition(
+  ActiveSrcEdit: TSourceEditorInterface; ActiveUnitInfo: TUnitInfo;
+  NewSource: TCodeBuffer; NewX, NewY, NewTopLine, BlockTopLine,
+  BlockBottomLine: integer; AddJumpPoint: boolean; MarkLine: Boolean
+  ): TModalResult;
 var
   Flags: TJumpToCodePosFlags;
 begin
   Flags := [jfFocusEditor];
   if AddJumpPoint then Include(Flags, jfAddJumpPoint);
   if MarkLine then Include(Flags, jfMarkLine);
-  Result := DoJumpToCodePosition(ActiveSrcEdit, ActiveUnitInfo, NewSource, NewX, NewY, NewTopLine,
+  Result := DoJumpToCodePosition(ActiveSrcEdit, ActiveUnitInfo, NewSource, NewX, NewY, NewTopLine, BlockTopLine, BlockBottomLine,
     Flags);
+end;
+
+function TMainIDEInterface.DoJumpToCodePosition(
+  ActiveSrcEdit: TSourceEditorInterface; ActiveUnitInfo: TUnitInfo;
+  NewSource: TCodeBuffer; NewX, NewY, NewTopLine: integer;
+  AddJumpPoint: boolean; MarkLine: Boolean): TModalResult;
+begin
+  Result := DoJumpToCodePosition(ActiveSrcEdit, ActiveUnitInfo, NewSource,
+    NewX, NewY, NewTopLine, NewY, NewY, AddJumpPoint, MarkLine);
+end;
+
+function TMainIDEInterface.DoJumpToCodePosition(
+  ActiveSrcEdit: TSourceEditorInterface; ActiveUnitInfo: TUnitInfo;
+  NewSource: TCodeBuffer; NewX, NewY, NewTopLine: integer;
+  Flags: TJumpToCodePosFlags): TModalResult;
+begin
+  Result := DoJumpToCodePosition(ActiveSrcEdit, ActiveUnitInfo, NewSource,
+    NewX, NewY, NewTopLine, NewY, NewY, Flags);
 end;
 
 class function TMainIDEInterface.GetPrimaryConfigPath: String;
@@ -441,6 +424,24 @@ function TMainIDEInterface.ShowProgress(const SomeText: string; Step,
   MaxStep: integer): boolean;
 begin
   Result:=ProgressDlg.ShowProgress(SomeText,Step,MaxStep);
+end;
+
+function TMainIDEInterface.CallSaveEditorFileHandler(Sender: TObject;
+  aFile: TLazProjectFile; SaveStep: TSaveEditorFileStep; TargetFilename: string
+  ): TModalResult;
+var
+  Handler: TMethodList;
+  i: Integer;
+begin
+  Result:=mrOk;
+  if TargetFilename='' then
+    TargetFilename:=aFile.Filename;
+  Handler:=FLazarusIDEHandlers[lihtSaveEditorFile];
+  i := Handler.Count;
+  while Handler.NextDownIndex(i) do begin
+    Result:=TSaveEditorFileEvent(Handler[i])(Sender,aFile,SaveStep,TargetFilename);
+    if Result<>mrOk then exit;
+  end;
 end;
 
 { TFileDescPascalUnitWithForm }
@@ -547,7 +548,7 @@ procedure TFileDescInheritedComponent.SetInheritedUnit(const AValue: TUnitInfo);
 begin
   if FInheritedUnit=AValue then exit;
   FInheritedUnit:=AValue;
-  InheritedUnits:=FInheritedUnit.SrcUnitName;
+  InheritedUnits:=FInheritedUnit.Unit_Name;
 end;
 
 constructor TFileDescInheritedComponent.Create;
@@ -594,9 +595,9 @@ begin
      'type'+LE
     +'  T'+ResourceName+' = class('+ResourceClass.ClassName+')'+LE
     +'  private'+LE
-    +'    { private declarations }'+LE
+    +LE
     +'  public'+LE
-    +'    { public declarations }'+LE
+    +LE
     +'  end;'+LE
     +LE;
 

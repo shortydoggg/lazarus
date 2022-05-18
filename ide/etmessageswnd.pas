@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -99,10 +99,12 @@ begin
   Name := NonModalIDEWindowNames[nmiwMessagesViewName];
   IDEMessagesWindow:=Self;
   Caption:=lisMenuViewMessages;
+  {$IFNDEF LCLGtk2}
   try
-    IDEMessagesWindow.Icon.LoadFromResourceName(HInstance, 'WIN_MESSAGES');
+    Icon.LoadFromResourceName(HInstance, 'WIN_MESSAGES');
   except
   end;
+  {$ENDIF}
   MessagesFrame1.MessagesCtrl.OnOpenMessage:=@OnOpenMessage;
   MessagesFrame1.MessagesCtrl.OnOptionsChanged:=@OnMsgCtrlOptsChanged;
 
@@ -122,8 +124,7 @@ begin
     FormStyle:=fsNormal;
 end;
 
-function TMessagesView.OnOpenMessage(Sender: TObject; Msg: TMessageLine
-  ): boolean;
+function TMessagesView.OnOpenMessage(Sender: TObject; Msg: TMessageLine): boolean;
 begin
   Result:=false;
   // ask quickfixes

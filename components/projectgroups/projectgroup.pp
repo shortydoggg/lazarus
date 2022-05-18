@@ -1,5 +1,6 @@
 {
   ToDo:
+    - menu item  View -> Project Groups
     - update files when project/package/file changes in IDE
     - update dependencies when changed in IDE
     - update when files changed on disk
@@ -32,11 +33,18 @@ unit ProjectGroup;
 interface
 
 uses
-  Classes, SysUtils, contnrs, Laz2_XMLCfg, Controls, Forms, Dialogs, LCLProc,
-  LazFileUtils, LazFileCache, LazConfigStorage, FileUtil, PackageIntf,
-  ProjectIntf, MenuIntf, LazIDEIntf, IDEDialogs, CompOptsIntf, BaseIDEIntf,
-  IDECommands, IDEExternToolIntf, MacroIntf, IDEMsgIntf, ProjectGroupIntf,
-  ProjectGroupStrConst, FileProcs, CodeToolManager, CodeCache;
+  Classes, SysUtils, contnrs,
+  // LazUtils
+  LazFileUtils, FileUtil, LazFileCache, LazConfigStorage, Laz2_XMLCfg, LazTracer,
+  // LCL
+  Controls, Forms, Dialogs,
+  // CodeTools
+  FileProcs, CodeToolManager, CodeCache,
+  // IdeIntf
+  PackageIntf, ProjectIntf, MenuIntf, LazIDEIntf, IDEDialogs, CompOptsIntf,
+  BaseIDEIntf, IDECommands, IDEExternToolIntf, MacroIntf, IDEMsgIntf,
+  // ProjectGroups
+  ProjectGroupIntf, ProjectGroupStrConst;
 
 const
   PGOptionsFileName = 'projectgroupsoptions.xml';
@@ -209,35 +217,44 @@ var
 
   IDEProjectGroupManager: TIDEProjectGroupManager;
 
-  ProjectGroupMenuRoot: TIDEMenuSection = nil;
+  ProjectGroupEditorMenuRoot: TIDEMenuSection = nil;
     PGEditMenuSectionFiles, // e.g. sort files, clean up files
     PGEditMenuSectionAddRemove, // e.g. add unit, add dependency
     PGEditMenuSectionCompile, // e.g. build clean, create Makefile
     PGEditMenuSectionUse, // Target up/down
     PGEditMenuSectionMisc: TIDEMenuSection; // e.g. options
+  PGOpenRecentSubMenu: TIDEMenuSection;
 
+const
+  ProjectGroupCmdCategoryName = 'ProjectGroups';
 var
-  cmdOpenProjectGroup,
-  cmdSaveProjectGroup,
-  cmdSaveProjectGroupAs,
-  cmdCreateProjectGroup,
+  PGCmdCategory: TIDECommandCategory;
 
-  cmdTargetAdd,
-  cmdTargetRemove,
-  cmdTargetEarlier,
-  cmdTargetActivate,
-  cmdTargetLater,
-  cmdTargetCompile,
-  cmdTargetCompileClean,
-  cmdTargetCompileFromHere,
-  cmdTargetInstall,
-  cmdTargetOpen,
-  cmdTargetRun,
-  cmdTargetProperties,
-  cmdTargetUninstall,
-  cmdTargetCopyFilename: TIDEMenuCommand;
+  // IDE main bar menu items
+  CmdOpenProjectGroup: TIDECommand;
+  MnuCmdOpenProjectGroup: TIDEMenuCommand;
+  CmdSaveProjectGroup: TIDECommand;
+  MnuCmdSaveProjectGroup: TIDEMenuCommand;
+  CmdSaveProjectGroupAs: TIDECommand;
+  MnuCmdSaveProjectGroupAs: TIDEMenuCommand;
+  CmdNewProjectGroup: TIDECommand;
+  MnuCmdNewProjectGroup: TIDEMenuCommand;
 
-  OpenRecentProjectGroupSubMenu: TIDEMenuSection;
+  // editor menu items
+  MnuCmdTargetAdd,
+  MnuCmdTargetRemove,
+  MnuCmdTargetEarlier,
+  MnuCmdTargetActivate,
+  MnuCmdTargetLater,
+  MnuCmdTargetCompile,
+  MnuCmdTargetCompileClean,
+  MnuCmdTargetCompileFromHere,
+  MnuCmdTargetInstall,
+  MnuCmdTargetOpen,
+  MnuCmdTargetRun,
+  MnuCmdTargetProperties,
+  MnuCmdTargetUninstall,
+  MnuCmdTargetCopyFilename: TIDEMenuCommand;
 
 function LoadXML(aFilename: string; Quiet: boolean): TXMLConfig;
 function CreateXML(aFilename: string; Quiet: boolean): TXMLConfig;
@@ -254,23 +271,24 @@ begin
   if (aFilename='') or (not FilenameIsAbsolute(aFilename)) then begin
     debugln(['Error: (lazarus) [TIDECompileTarget.LoadXML] invalid filename "',aFilename,'"']);
     if not Quiet then
-      IDEMessageDialog('Invalid File','Invalid xml file name "'+aFilename+'"',mtError,[mbOk]);
+      IDEMessageDialog(lisInvalidFile, Format(lisInvalidXmlFileName, [aFilename]), mtError, [mbOk]);
     exit;
   end;
   Code:=CodeToolBoss.LoadFile(aFilename,true,false);
   if Code=nil then begin
     debugln(['Error: (lazarus) [TIDECompileTarget.LoadXML] unable to load file "',aFilename,'"']);
     if not Quiet then
-      IDEMessageDialog('Read error','Unable to load file "'+aFilename+'"',mtError,[mbOk]);
+      IDEMessageDialog(lisReadError, Format(lisUnableToLoadFile, [aFilename]), mtError, [mbOk]);
     exit;
   end;
   try
     Result:=TXMLConfig.CreateWithSource(aFilename,Code.Source);
+    Result.Modified:=false;
   except
     on E: Exception do begin
       debugln(['Error: (lazarus) [TIDECompileTarget.LoadXML] xml syntax error in "',aFilename,'": '+E.Message]);
       if not Quiet then
-        IDEMessageDialog('Read error','XML syntax error in file "'+aFilename+'": '+E.Message,mtError,[mbOk]);
+        IDEMessageDialog(lisReadError, Format(lisXMLSyntaxErrorInFile, [aFilename, E.Message]), mtError, [mbOk]);
     end;
   end;
 end;
@@ -289,7 +307,7 @@ begin
     on E: Exception do begin
       debugln(['Error: (lazarus) [TIDECompileTarget.CreateXML] unable to create file "',aFilename,'": '+E.Message]);
       if not Quiet then
-        IDEMessageDialog('Write error','Unable to create file "'+aFilename+'": '+E.Message,mtError,[mbOk]);
+        IDEMessageDialog(lisWriteError, Format(lisUnableToCreateFile, [aFilename, E.Message]), mtError, [mbOk]);
     end;
   end;
 end;
@@ -469,17 +487,17 @@ begin
   i:=0;
   while i<Options.RecentProjectGroups.Count do begin
     aFilename:=Options.RecentProjectGroups[i];
-    if i<OpenRecentProjectGroupSubMenu.Count then begin
-      Item:=OpenRecentProjectGroupSubMenu[i];
+    if i<PGOpenRecentSubMenu.Count then begin
+      Item:=PGOpenRecentSubMenu[i];
       Item.Caption:=aFilename;
     end
     else begin
-      Item:=RegisterIDEMenuCommand(OpenRecentProjectGroupSubMenu,'OpenRecentProjectGroup'+IntToStr(i),aFilename,@DoOpenRecentClick);
+      Item:=RegisterIDEMenuCommand(PGOpenRecentSubMenu,'OpenRecentProjectGroup'+IntToStr(i),aFilename,@DoOpenRecentClick);
     end;
     inc(i);
   end;
-  while i<OpenRecentProjectGroupSubMenu.Count do
-    OpenRecentProjectGroupSubMenu[i].Free;
+  while i<PGOpenRecentSubMenu.Count do
+    PGOpenRecentSubMenu[i].Free;
 end;
 
 procedure TIDEProjectGroupManager.DoNewClick(Sender: TObject);
@@ -491,7 +509,7 @@ begin
     Exit;
   FreeAndNil(FProjectGroup);
   FProjectGroup:=TIDEProjectGroup.Create(nil);
-  cmdSaveProjectGroupAs.Enabled:=true;
+  MnuCmdSaveProjectGroupAs.Enabled:=true;
 
   // add current project
   AProject:=LazarusIDE.ActiveProject;
@@ -515,7 +533,7 @@ begin
     try
       InitIDEFileDialog(F);
       F.Options:=[ofFileMustExist,ofEnableSizing];
-      F.Filter:='Lazarus project group (*.lpg)|*.lpg|All files|'+AllFilesMask;
+      F.Filter:=lisLazarusProjectGroupsLpg+'|*.lpg|'+lisAllFiles+'|'+AllFilesMask;
       if F.Execute then
         LoadProjectGroup(FileName,[pgloLoadRecursively]);
       StoreIDEFileDialog(F);
@@ -551,7 +569,7 @@ begin
       FileName:=FProjectGroup.FileName;
       InitIDEFileDialog(F);
       F.Options:=[ofOverwritePrompt,ofPathMustExist,ofEnableSizing];
-      F.Filter:=lisLazarusProjectGroup+'|*.lpg|'+lisAllFiles+'|'+AllFilesMask;
+      F.Filter:=lisLazarusProjectGroupsLpg+'|*.lpg|'+lisAllFiles+'|'+AllFilesMask;
       F.DefaultExt:='.lpg';
       Result:=F.Execute;
       if Result then begin
@@ -591,7 +609,7 @@ begin
   FProjectGroup.LoadFromFile(AOptions);
   if not (pgloSkipDialog in AOptions) then
     ShowProjectGroupEditor;
-  cmdSaveProjectGroupAs.Enabled:=true;
+  MnuCmdSaveProjectGroupAs.Enabled:=true;
 end;
 
 procedure TIDEProjectGroupManager.SaveProjectGroup;
@@ -682,6 +700,7 @@ destructor TIDEProjectGroup.Destroy;
 begin
   FreeAndNil(FTargets);
   FreeAndNil(FRemovedTargets);
+  FreeAndNil(FCompileTarget);
   inherited Destroy;
 end;
 
@@ -710,8 +729,7 @@ begin
   if not FilenameIsAbsolute(AFileName) then
     RaiseGDBException(AFileName);
   if CompareFilenames(AFileName,FileName)=0 then
-    raise Exception.Create('Invalid cycle. A project group cannot have itself as target.');
-  if not FileExistsCached(AFileName) then exit;
+    raise Exception.Create(lisInvalidCycleAProjectGroupCannotHaveItselfAsTarget);
   Result:=TIDECompileTarget.Create(CompileTarget);
   Result.FileName:=AFileName;
   FTargets.Add(Result);
@@ -818,10 +836,10 @@ begin
         Target:=Nil;
         APath:=Format(ARoot+'/Targets/Target%d/',[i]);
         TargetFileName:=XMLConfig.GetValue(APath+'FileName','');
-        TargetFileName:=TrimFilename(SetDirSeparators(TargetFileName));
+        TargetFileName:=TrimFilename(GetForcedPathDelims(TargetFileName));
         if not FilenameIsAbsolute(TargetFileName) then
           TargetFileName:=TrimFilename(BaseDir+TargetFileName);
-        If (TargetFileName<>'') and FileExistsCached(TargetFileName) then begin
+        if (TargetFileName<>'') and FileExistsCached(TargetFileName) then begin
           Target:=TIDECompileTarget(AddTarget(TargetFileName));
           if pgloLoadRecursively in Options then
             Target.LoadTarget(true);
@@ -852,6 +870,7 @@ begin
              begin
                Target:=TIDECompileTarget(AddTarget(TargetFileName));
                Target.Removed:=True;
+               Include(Options,pgloRemoveInvalid);
              end;
           else
             exit;
@@ -865,7 +884,7 @@ begin
     Result:=true;
   except
     on E: Exception do begin
-      IDEMessageDialog('Read Error','Error reading project group file "'+Filename+'"'#13+E.Message,
+      IDEMessageDialog(lisReadError, Format(lisErrorReadingProjectGroupFile, [Filename, #13, E.Message]),
         mtError,[mbOk]);
     end;
   end;
@@ -896,6 +915,7 @@ begin
         if aTarget.Removed then continue;
         APath:=Format(ARoot+'/Targets/Target%d/',[ACount]);
         RelativeFileName:=ExtractRelativepath(TargetPath,aTarget.FileName);
+        StringReplace(RelativeFileName,'\','/',[rfReplaceAll]); // normalize, so that files look the same x-platform, for less svn changes
         XMLConfig.SetDeleteValue(APath+'FileName',RelativeFileName,'');
         aTarget.SaveGroupSettings(XMLConfig,APath);
         Inc(ACount);
@@ -907,7 +927,7 @@ begin
     end;
   except
     on E: Exception do begin
-      IDEMessageDialog('Write Error','Unable to write project group file "'+Filename+'"'#13+E.Message,
+      IDEMessageDialog(lisWriteError, Format(lisUnableToWriteProjectGroupFile, [Filename, #13, E.Message]),
         mtError,[mbOk]);
       Result:=false;
     end;
@@ -1009,25 +1029,24 @@ begin
   case TargetType of
   ttProject:
     begin
-      ToolTitle:='Compile Project '+ExtractFileNameOnly(Filename);
+      ToolTitle := Format(lisCompileProject, [ExtractFileNameOnly(Filename)]);
       if aBuildMode<>'' then
-        ToolTitle+=', build mode "'+aBuildMode+'"';
-      ToolKind:='Other Project';
+        ToolTitle += Format(lisBuildMode, [aBuildMode]);
+      ToolKind := lisOtherProject;
     end;
   ttPackage:
     begin
-      ToolTitle:='Compile Package '+ExtractFileNameOnly(Filename);
-      ToolKind:='Package';
+      ToolTitle := Format(lisCompilePackage, [ExtractFileNameOnly(Filename)]);
+      ToolKind := lisPackage;
     end;
   else exit;
   end;
 
-  CompileHint:='Project Group: '+Parent.Filename+LineEnding;
+  CompileHint := Format(lisProjectGroup2, [Parent.Filename + LineEnding]);
 
   LazBuildFilename:=GetLazBuildFilename;
   if LazBuildFilename='' then begin
-    IDEMessageDialog('lazbuild not found', 'The lazbuild'+ExeExt+' was not '
-      +'found.'
+    IDEMessageDialog(lisLazbuildNotFound, Format(lisTheLazbuildWasNotFound, [ExeExt])
       , mtError, [mbOk]);
     exit(arFailed);
   end;
@@ -1071,7 +1090,7 @@ function TIDECompileTarget.CheckIDEIsReadyForBuild: boolean;
 begin
   // check toolstatus
   if LazarusIDE.ToolStatus<>itNone then begin
-    IDEMessageDialog('Be patient!', 'There is still another build in progress.',
+    IDEMessageDialog(lisBePatient, lisThereIsStillAnotherBuildInProgress,
       mtInformation, [mbOk]);
     exit(false);
   end;
@@ -1324,7 +1343,7 @@ end;
 function TIDECompileTarget.ProjectAction(AAction: TPGTargetAction;
   StartBuildMode: string): TPGActionResult;
 var
-  F: TProjectBuildFlags;
+  R: TCompileReason;
   i: Integer;
   aMode: TPGBuildMode;
   aProject: TLazProject;
@@ -1361,9 +1380,9 @@ begin
          // save project
          if LazarusIDE.DoSaveProject([])<>mrOk then exit;
 
-         F:=[];
+         R:= crCompile;
          if (AAction=taCompileClean) then
-           Include(F,pbfCleanCompile);
+           R:= crBuild;
          if BuildModeCount>1 then begin
            i:=0;
            if StartBuildMode<>'' then begin
@@ -1379,11 +1398,11 @@ begin
              aProject.ActiveBuildModeID:=aMode.Identifier;
              if aProject.ActiveBuildModeID<>aMode.Identifier
              then begin
-               IDEMessageDialog('Build mode not found','Build mode "'+aMode.Identifier+'" not found.',mtError,[mbOk]);
+               IDEMessageDialog(lisBuildModeNotFound, Format(lisBuildModeNotFound2, [aMode.Identifier]), mtError, [mbOk]);
                exit;
              end;
              // compile project in active buildmode
-             if LazarusIDE.DoBuildProject(crCompile,F)<>mrOk then
+             if LazarusIDE.DoBuildProject(R,[])<>mrOk then
                exit;
              if (StartBuildMode<>'') and (AAction<>taCompileFromHere) then
                exit(arOK);
@@ -1391,7 +1410,7 @@ begin
            end;
          end else begin
            // compile default buildmode
-           if LazarusIDE.DoBuildProject(crCompile,F)<>mrOk then
+           if LazarusIDE.DoBuildProject(R,[])<>mrOk then
              exit;
          end;
          Result:=arOK;

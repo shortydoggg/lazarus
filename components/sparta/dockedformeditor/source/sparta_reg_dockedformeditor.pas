@@ -17,10 +17,13 @@ unit sparta_reg_DockedFormEditor;
 interface
 
 uses
-  Classes, SysUtils, SrcEditorIntf, LazIDEIntf, ComCtrls, Controls, Forms, IDEImagesIntf,
-  Buttons, ExtCtrls, Graphics, IDEWindowIntf, sparta_MainIDE,
-  PropEdits, PropEditUtils, FormEditingIntf, ComponentEditors, EditBtn, TypInfo,
-  LCLIntf, LCLType, sparta_FakeForm, sparta_FakeNonControl, sparta_FakeFrame;
+  SysUtils,
+  // LCL
+  LazIDEIntf, ComCtrls, Controls, Forms, Buttons, ExtCtrls, Graphics, EditBtn,
+  // IdeIntf
+  SrcEditorIntf, IDEWindowIntf, PropEdits, ComponentEditors,
+  // Sparta
+  sparta_MainIDE;
 
 procedure Register;
 
@@ -28,15 +31,14 @@ implementation
 
 procedure Register;
 begin
-  FormEditingHook.StandardDesignerBaseClasses[DesignerBaseClassId_TForm] := TFakeForm;
-  FormEditingHook.NonFormProxyDesignerForm[NonControlProxyDesignerFormId] := TFakeNonControl;
-  FormEditingHook.NonFormProxyDesignerForm[FrameProxyDesignerFormId] := TFakeFrame;
+  //FormEditingHook.StandardDesignerBaseClasses[DesignerBaseClassId_TForm] := TFakeForm;
+  //FormEditingHook.StandardDesignerBaseClasses[DesignerBaseClassId_TFrame] := THookFrame;
+
+  //FormEditingHook.NonFormProxyDesignerForm[NonControlProxyDesignerFormId] := TFakeNonControl;
+  //FormEditingHook.NonFormProxyDesignerForm[FrameProxyDesignerFormId] := TFakeFrame;
 
   Screen.AddHandlerFormAdded(TSpartaMainIDE.Screen_FormAdded);
   Screen.AddHandlerRemoveForm(TSpartaMainIDE.Screen_FormDel);
-{$IFDEF USE_POPUP_PARENT_DESIGNER}
-  TCustomForm(LazarusIDE.GetMainBar).AddHandlerOnBeforeDestruction(spartaIDE.OnBeforeClose);
-{$ENDIF}
   SourceEditorManagerIntf.RegisterChangeEvent(semWindowCreate, TSpartaMainIDE.WindowCreate);
   SourceEditorManagerIntf.RegisterChangeEvent(semWindowDestroy, TSpartaMainIDE.WindowDestroy);
   SourceEditorManagerIntf.RegisterChangeEvent(semWindowShow, TSpartaMainIDE.WindowShow);
@@ -49,7 +51,11 @@ begin
   LazarusIDE.AddHandlerOnShowSourceOfActiveDesignerForm(TSpartaMainIDE.OnShowSrcEditor);
 
   GlobalDesignHook.AddHandlerShowMethod(TSpartaMainIDE.OnShowMethod);
+  GlobalDesignHook.AddHandlerModified(TSpartaMainIDE.OnModifiedSender);
+  GlobalDesignHook.AddHandlerPersistentAdded(TSpartaMainIDE.OnModifiedPersistentAdded);
+  GlobalDesignHook.AddHandlerPersistentDeleted(TSpartaMainIDE.OnModified);
   GlobalDesignHook.AddHandlerRefreshPropertyValues(TSpartaMainIDE.OnDesignRefreshPropertyValues);
+  GlobalDesignHook.AddHandlerDesignerMouseDown(TSpartaMainIDE.OnDesignMouseDown);
 
   IDETabMaster := TDTXTabMaster.Create;
   IDEComponentsMaster := TDTXComponentsMaster.Create;

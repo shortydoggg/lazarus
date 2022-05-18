@@ -14,8 +14,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 ToDo:
   links without brackets: http://...  see bidimode
@@ -34,7 +34,7 @@ unit WikiParser;
 interface
 
 uses
-  Classes, SysUtils, laz2_XMLRead, laz2_DOM, LazLogger, LazUTF8,
+  Classes, SysUtils, laz2_XMLRead, laz2_DOM, LazLoggerBase, LazUTF8,
   BasicCodeTools, KeywordFuncLists;
 
 const
@@ -1645,8 +1645,8 @@ begin
         end;
       end;
     end else begin
-      CharLen:=UTF8CharacterLength(PageP);
-      UpCharLen:=UTF8CharacterLength(PageUpP);
+      CharLen:=UTF8CodepointSize(PageP);
+      UpCharLen:=UTF8CodepointSize(PageUpP);
       if (CharLen>1) or (PageP^ in ['a'..'z','A'..'Z']) then begin
         if (CharLen=UpCharLen) and CompareMem(PageP,PageUpP,CharLen) then
           CaseFlags:=CaseFlags+'u'

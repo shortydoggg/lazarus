@@ -1,4 +1,4 @@
-{ $Id: fpdpeimage.pas 45284 2014-06-01 16:27:35Z joost $ }
+{ $Id: fpdpeimage.pas 54031 2017-01-29 21:04:32Z joost $ }
 {
  ---------------------------------------------------------------------------
  fpdpeimage.pas  -  FP standalone debugger - PE Image
@@ -10,7 +10,7 @@
  ---------------------------------------------------------------------------
 
  @created(Mon Apr 10th WET 2006)
- @lastmod($Date: 2014-06-01 18:27:35 +0200 (So, 01 Jun 2014) $)
+ @lastmod($Date: 2017-01-29 22:04:32 +0100 (So, 29 Jan 2017) $)
  @author(Marc Weustink <marc@@dommelstein.nl>)
 
  ***************************************************************************
@@ -28,7 +28,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }

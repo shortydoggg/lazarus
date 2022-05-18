@@ -291,6 +291,10 @@ msgstr "Předzpracovač"
 msgid "Previous value"
 msgstr "Předchozí hodnota"
 
+#: syneditstrconst.syns_attrprocedureheadername
+msgid "Procedure header name"
+msgstr ""
+
 #: syneditstrconst.syns_attrprocessinginstr
 msgid "Processing Instruction"
 msgstr "Instrukce zpracování"
@@ -482,6 +486,14 @@ msgstr "Podtržené,ano, ne"
 #: syneditstrconst.syns_emcnone
 msgid "No Action"
 msgstr "Žádná akce"
+
+#: syneditstrconst.syns_emcoverviewguttergotomark
+msgid "Jump to Mark (Overview Gutter)"
+msgstr ""
+
+#: syneditstrconst.syns_emcoverviewgutterscrollto
+msgid "Scroll (Overview Gutter)"
+msgstr ""
 
 #: syneditstrconst.syns_emcpasteselection
 msgid "Quick Paste Selection"

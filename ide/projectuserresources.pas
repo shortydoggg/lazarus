@@ -23,7 +23,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -35,11 +35,18 @@ unit ProjectUserResources;
 interface
 
 uses
-  Classes, SysUtils, Laz2_XMLCfg, LCLProc, FileProcs, LazFileUtils, LazUTF8,
+  // RTL + LCL
+  Classes, SysUtils,
+  resource, bitmapresource, groupresource, groupiconresource, groupcursorresource,
+  // LCL
+  LCLProc,
+  // LazUtils
+  FileProcs, LazFileUtils, LazUTF8, Laz2_XMLCfg,
+  // IdeIntf
   ProjectResourcesIntf, IDEMsgIntf, MacroIntf, IDEExternToolIntf,
-  LazarusIDEStrConsts, resource, bitmapresource, groupresource,
-  groupiconresource, groupcursorresource;
-   
+  // IDE
+  LazarusIDEStrConsts;
+
 type
   TUserResourceType = (
     rtIcon,    // maps to RT_GROUP_ICON
@@ -57,10 +64,10 @@ type
     FileName: String;
     ResType: TUserResourceType;
     ResName: String;
-    procedure ReadFromProjectFile(AConfig: TXMLConfig; Path: String);
-    procedure WriteToProjectFile(AConfig: TXMLConfig; Path: String);
-    function CreateResource(ProjectDirectory: String): TAbstractResource;
-    function GetRealFileName(ProjectDirectory: String): String;
+    procedure ReadFromProjectFile(AConfig: TXMLConfig; const Path: String);
+    procedure WriteToProjectFile(AConfig: TXMLConfig; const Path: String);
+    function CreateResource(const ProjectDirectory: String): TAbstractResource;
+    function GetRealFileName(const ProjectDirectory: String): String;
   end;
 
   { TResourceList }
@@ -72,7 +79,7 @@ type
     procedure Notify(Ptr: Pointer; Action: TListNotification); override;
   public
     function AddItem: PResourceItem;
-    procedure AddResource(FileName: String; ResType: TUserResourceType; ResName: String);
+    procedure AddResource(const FileName: String; ResType: TUserResourceType; const ResName: String);
     property Items[AIndex: Integer]: PResourceItem read GetItem; default;
   end;
 
@@ -87,8 +94,8 @@ type
 
     function UpdateResources(AResources: TAbstractProjectResources;
                              const MainFilename: string): Boolean; override;
-    procedure WriteToProjectFile(AConfig: {TXMLConfig}TObject; Path: String); override;
-    procedure ReadFromProjectFile(AConfig: {TXMLConfig}TObject; Path: String); override;
+    procedure WriteToProjectFile(AConfig: {TXMLConfig}TObject; const Path: String); override;
+    procedure ReadFromProjectFile(AConfig: {TXMLConfig}TObject; const Path: String); override;
     property List: TResourceList read FList;
   end;
 
@@ -101,11 +108,11 @@ const
  { rtRCData } 'RCDATA'
   );
 
-  function StrToResourceType(AStr: String): TUserResourceType;
+  function StrToResourceType(const AStr: String): TUserResourceType;
 
 implementation
 
-function StrToResourceType(AStr: String): TUserResourceType;
+function StrToResourceType(const AStr: String): TUserResourceType;
 begin
   case AStr of
     'ICON': Result := rtIcon;
@@ -119,21 +126,23 @@ end;
 
 { TResourceItem }
 
-procedure TResourceItem.ReadFromProjectFile(AConfig: TXMLConfig; Path: String);
+procedure TResourceItem.ReadFromProjectFile(AConfig: TXMLConfig;
+  const Path: String);
 begin
   FileName := AConfig.GetValue(Path + 'FileName', '');
   ResType := StrToResourceType(AConfig.GetValue(Path + 'Type', ''));
   ResName := AConfig.GetValue(Path + 'ResourceName', '');
 end;
 
-procedure TResourceItem.WriteToProjectFile(AConfig: TXMLConfig; Path: String);
+procedure TResourceItem.WriteToProjectFile(AConfig: TXMLConfig;
+  const Path: String);
 begin
   AConfig.SetValue(Path + 'FileName', FileName);
   AConfig.SetValue(Path + 'Type', ResourceTypeToStr[ResType]);
   AConfig.SetValue(Path + 'ResourceName', ResName);
 end;
 
-function TResourceItem.CreateResource(ProjectDirectory: String): TAbstractResource;
+function TResourceItem.CreateResource(const ProjectDirectory: String): TAbstractResource;
 var
   Stream: TFileStream;
   TypeDesc, NameDesc: TResourceDesc;
@@ -188,7 +197,7 @@ begin
     AddIDEMessage(mluError,Format(lisFileNotFound2, [Filename]));
 end;
 
-function TResourceItem.GetRealFileName(ProjectDirectory: String): String;
+function TResourceItem.GetRealFileName(const ProjectDirectory: String): String;
 begin
   Result := FileName;
   if not IDEMacros.SubstituteMacros(Result) then
@@ -220,8 +229,8 @@ begin
   Add(Result);
 end;
 
-procedure TResourceList.AddResource(FileName: String; ResType: TUserResourceType;
-  ResName: String);
+procedure TResourceList.AddResource(const FileName: String;
+  ResType: TUserResourceType; const ResName: String);
 var
   Data: PResourceItem;
 begin
@@ -247,7 +256,8 @@ begin
   end;
 end;
 
-procedure TProjectUserResources.WriteToProjectFile(AConfig: TObject; Path: String);
+procedure TProjectUserResources.WriteToProjectFile(AConfig: TObject;
+  const Path: String);
 var
   I: Integer;
 begin
@@ -256,7 +266,8 @@ begin
     List[I]^.WriteToProjectFile(TXMLConfig(AConfig), Path + 'General/Resources/Resource_' + IntToStr(I) + '/')
 end;
 
-procedure TProjectUserResources.ReadFromProjectFile(AConfig: TObject; Path: String);
+procedure TProjectUserResources.ReadFromProjectFile(AConfig: TObject;
+  const Path: String);
 var
   I, Count: Integer;
 begin

@@ -13,7 +13,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -27,11 +27,15 @@ unit Compiler_BuildMacro_Options;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, StdCtrls, Buttons, ExtCtrls, Dialogs,
-  ComCtrls,
+  Classes, SysUtils,
+  // LCL
+  Controls, Forms, StdCtrls, Buttons, ExtCtrls, Dialogs, ComCtrls,
+  // CodeTools
   KeywordFuncLists, CodeToolsCfgScript,
-  IDEImagesIntf, IDEOptionsIntf, MacroIntf, CompOptsIntf,
-  CompilerOptions, IDEDialogs, LazarusIDEStrConsts, PackageDefs;
+  // IdeIntf
+  IDEOptionsIntf, IDEOptEditorIntf, CompOptsIntf, MacroIntf, IDEImagesIntf, IDEDialogs,
+  // IDE
+  CompilerOptions, LazarusIDEStrConsts, PackageDefs;
 
 type
   TCBMNodeType = (
@@ -140,7 +144,7 @@ begin
       ok:=false;
       try
         // check syntax
-        if (S='') or (not IsValidIdent(S)) then begin
+        if not IsValidIdent(S) then begin
           IDEMessageDialog(lisCCOErrorCaption,
             Format(lisInvalidMacroTheMacroMustBeAPascalIdentifie, [S]),
             mtError,[mbCancel]);
@@ -153,9 +157,10 @@ begin
         then  begin
           BetterName:=GetMacroNamePrefix(cbmpMedium)+S;
           DlgResult:=IDEQuestionDialog(lisCCOWarningCaption,
-            Format(lisTheMacroDoesNotBeginWith, [S, Prefix]),
-            mtWarning, [mrCancel, mrYes, Format(lisRenameTo, [BetterName]),
-              mrIgnore]);
+              Format(lisTheMacroDoesNotBeginWith, [S, Prefix]),
+              mtWarning, [mrCancel,
+                          mrYes, Format(lisRenameTo, [BetterName]),
+                          mrIgnore]);
           if DlgResult=mrIgnore then begin
           end else if DlgResult=mrYes then
             S:=BetterName
@@ -481,17 +486,17 @@ begin
 
   MacrosGroupBox.Caption:=lisIDEMacros;
   BuildMacrosTreeView.Images := IDEImages.Images_24;
-  fVarImgID:=IDEImages.LoadImage(24,'da_define');
-  fValueImgID:=IDEImages.LoadImage(24,'da_define');
-  fDefValueImgID:=IDEImages.LoadImage(24,'da_define');
+  fVarImgID:=IDEImages.LoadImage('da_define', 24);
+  fValueImgID:=IDEImages.LoadImage('da_define', 24);
+  fDefValueImgID:=IDEImages.LoadImage('da_define', 24);
 
   BuildMacroDefaultLabel.Caption:=
     lisHintADefaultValueCanBeDefinedInTheConditionals;
   BuildMacroDescriptionLabel.Caption:=lisCodeToolsDefsDescription;
 
-  BMAddMacroSpeedButton.LoadGlyphFromResourceName(HInstance, 'laz_add');
-  BMAddMacroValueSpeedButton.LoadGlyphFromResourceName(HInstance, 'laz_add');
-  BMDeleteMacroSpeedButton.LoadGlyphFromResourceName(HInstance, 'laz_delete');
+  IDEImages.AssignImage(BMAddMacroSpeedButton, 'laz_add');
+  IDEImages.AssignImage(BMAddMacroValueSpeedButton, 'laz_add');
+  IDEImages.AssignImage(BMDeleteMacroSpeedButton, 'laz_delete');
 end;
 
 destructor TCompOptBuildMacrosFrame.Destroy;

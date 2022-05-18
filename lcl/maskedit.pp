@@ -220,7 +220,7 @@ const
     procedure DeleteChars(NextChar : Boolean);
   protected
     function ApplyMaskToText(Value: TCaption): TCaption;
-    function CanShowTextHint: Boolean; override;
+    function CanShowEmulatedTextHint: Boolean; override;
     function DisableMask(const NewText: String): Boolean;
     function RestoreMask(const NewText: String): Boolean;
     procedure RealSetText(const AValue: TCaption); override;
@@ -334,8 +334,6 @@ const
     property EditMask;
     property Text;
     property TextHint;
-    property TextHintFontColor;
-    property TextHintFontStyle;
     property SpaceChar;
   end;
 
@@ -374,9 +372,9 @@ var
   Res: AnsiString; //intermediate needed for PChar -> String -> ShortString assignement
 begin
   Result := '';
-  p := UTF8CharStart(PChar(S), Length(S), Index - 1); //zero-based call
+  p := UTF8CodepointStart(PChar(S), Length(S), Index - 1); //zero-based call
   //determine the length in bytes of this UTF-8 character
-  PLen := UTF8CharacterLength(p);
+  PLen := UTF8CodepointSize(p);
   Res := p;
   //Set correct length for Result (otherwise it returns all chars up to the end of the original string)
   SetLength(Res,PLen);
@@ -1523,12 +1521,12 @@ begin
   Result := S;
 end;
 
-function TCustomMaskEdit.CanShowTextHint: Boolean;
+function TCustomMaskEdit.CanShowEmulatedTextHint: Boolean;
 begin
   if IsMasked then
     Result := False
   else
-    Result := inherited CanShowTextHint;
+    Result := inherited CanShowEmulatedTextHint;
 end;
 
 
@@ -2143,5 +2141,8 @@ begin
 end;
 
 
+initialization
+  RegisterPropertyToSkip(TCustomMaskEdit, 'TextHintFontColor','Used in a previous version of Lazarus','');
+  RegisterPropertyToSkip(TCustomMaskEdit, 'TextHintFontStyle','Used in a previous version of Lazarus','');
 
 end.

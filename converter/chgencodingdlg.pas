@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,17 +30,16 @@ unit ChgEncodingDlg;
 interface
 
 uses
-  // RTL + FCL + LCL
-  Classes, SysUtils, AVL_Tree,
+  // RTL + FCL
+  Classes, SysUtils, RegExpr, Laz_AVL_Tree,
+  // LCL
   LCLProc, Forms, Controls, ExtCtrls, StdCtrls, ComCtrls, Buttons,
   // CodeTools
-  CodeCache, CodeToolsStructs, CodeToolManager, FileProcs,
+  CodeCache, CodeToolManager, FileProcs,
   // LazUtils
-  LConvEncoding, LazFileUtils, LazFileCache,
+  LConvEncoding, LazFileUtils, LazFileCache, LazStringUtils, AvgLvlTree,
   // IDEIntf
-  IDEWindowIntf, SrcEditorIntf, IDEHelpIntf,
-  // SynEdit
-  SynRegExpr,
+  IDEWindowIntf, SrcEditorIntf, IDEHelpIntf, IDEImagesIntf,
   // IDE
   IDEProcs, PackageDefs, PackageSystem, Project, LazarusIDEStrConsts;
 
@@ -53,6 +52,7 @@ type
     HelpButton: TBitBtn;
     BtnPanel: TPanel;
     CloseButton: TBitBtn;
+    LabelNoPreview: TLabel;
     RegExprErrorLabel: TLabel;
     NewEncodingComboBox: TComboBox;
     FileFilterCombobox: TComboBox;
@@ -116,9 +116,9 @@ begin
   CloseButton.Caption:=lisClose;
   ApplyButton.Caption:=lisConvert;
   HelpButton.Caption:=lisHelp;
-  CloseButton.LoadGlyphFromResourceName(hInstance, 'btn_close');
-  ApplyButton.LoadGlyphFromResourceName(hInstance, 'btn_ok');
-  HelpButton.LoadGlyphFromResourceName(hInstance, 'btn_help');
+  IDEImages.AssignImage(CloseButton, 'btn_close');
+  IDEImages.AssignImage(ApplyButton, 'btn_ok');
+  IDEImages.AssignImage(HelpButton, 'btn_help');
 
   PreviewGroupBox.Caption:=dlgWRDPreview;
   PreviewListView.Column[0].Caption:=dlgEnvFiles;
@@ -179,46 +179,56 @@ var
   SrcEdit: TSourceEditorInterface;
   Encoding, OldEncoding, NewEncoding: String;
   Node: TAVLTreeNode;
-  Item: PStringToStringTreeItem;
+  Item: PStringToStringItem;
   Filename: String;
   HasChanged: boolean;
-  li: TListItem;
+  li, Cur: TListItem;
+  OldCount, i: Integer;
 begin
   HasChanged:=False;
   NewEncoding:=NormalizeEncoding(NewEncodingComboBox.Text);
   PreviewListView.BeginUpdate;
-  PreviewListView.Items.Clear;
+  OldCount := PreviewListView.Items.Count;
   Node:=FFiles.Tree.FindLowest;
   while Node<>nil do begin
-    Item:=PStringToStringTreeItem(Node.Data);
+    Item:=PStringToStringItem(Node.Data);
     Filename:=Item^.Name;
     Encoding:=Item^.Value;
-    DebugLn(['TChgEncodingDialog.ApplyButtonClick Filename=',Filename,' Encoding=',Encoding]);
-    Buf:=CodeToolBoss.LoadFile(Filename,true,false);
-    if (Buf<>nil) and (not Buf.ReadOnly) then begin
-      OldEncoding:=Buf.DiskEncoding;
-      SrcEdit:=SourceEditorManagerIntf.SourceEditorIntfWithFilename(Filename);
-      HasChanged:=true;
-      if SrcEdit<>nil then begin
-        DebugLn(['TChgEncodingDialog.ApplyButtonClick changing in source editor: ',Filename]);
-        Buf.DiskEncoding:=NewEncoding;
-        SrcEdit.Modified:=true;
-      end else begin
-        DebugLn(['TChgEncodingDialog.ApplyButtonClick changing on disk: ',Filename]);
-//        Buf:=CodeToolBoss.LoadFile(Filename,true,false);
-        Buf.DiskEncoding:=NewEncoding;
-        HasChanged:=Buf.Save;
-        if not HasChanged then
-          Buf.DiskEncoding:=OldEncoding;
+
+    Cur := PreviewListView.Items.FindCaption(0, Filename, False, True, False);
+    if Assigned(Cur) and Cur.Checked then
+    begin
+      DebugLn(['TChgEncodingDialog.ApplyButtonClick Filename=',Filename,' Encoding=',Encoding]);
+      Buf:=CodeToolBoss.LoadFile(Filename,true,false);
+      if (Buf<>nil) and (not Buf.ReadOnly) then begin
+        OldEncoding:=Buf.DiskEncoding;
+        SrcEdit:=SourceEditorManagerIntf.SourceEditorIntfWithFilename(Filename);
+        HasChanged:=true;
+        if SrcEdit<>nil then begin
+          DebugLn(['TChgEncodingDialog.ApplyButtonClick changing in source editor: ',Filename]);
+          Buf.DiskEncoding:=NewEncoding;
+          SrcEdit.Modified:=true;
+        end else begin
+          DebugLn(['TChgEncodingDialog.ApplyButtonClick changing on disk: ',Filename]);
+  //        Buf:=CodeToolBoss.LoadFile(Filename,true,false);
+          Buf.DiskEncoding:=NewEncoding;
+          HasChanged:=Buf.Save;
+          if not HasChanged then
+            Buf.DiskEncoding:=OldEncoding;
+        end;
       end;
-    end;
-    if not HasChanged then begin
-      li:=PreviewListView.Items.Add;
-      li.Caption:=Filename;
-      li.SubItems.Add(Encoding);
+      if not HasChanged then begin
+        li:=PreviewListView.Items.Add;
+        li.Caption:=Filename;
+        li.SubItems.Add(Encoding);
+        li.Checked := True;
+      end;
+
     end;
     Node:=FFiles.Tree.FindSuccessor(Node);
   end;
+  // Now delete all old nodes in PreviewListView
+  for i := OldCount - 1 downto 0 do PreviewListView.Items.Delete(i);
   PreviewListView.EndUpdate;
   PreviewGroupBox.Caption:=Format(lisEncodingNumberOfFilesFailed, [PreviewListView.Items.Count]);
 end;
@@ -346,32 +356,36 @@ end;
 procedure TChgEncodingDialog.UpdatePreview;
 var
   Node: TAVLTreeNode;
-  Item: PStringToStringTreeItem;
+  Item: PStringToStringItem;
   Filename: String;
   Encoding: String;
   li: TListItem;
   HasFiles: Boolean;
+  IsDone: Boolean;
 begin
   Screen.Cursor:=crHourGlass;
   try
     HasFiles:=GetFiles;
     PreviewListView.Items.Clear;
-    if HasFiles and (FFiles.Tree.Count=0) then begin
-      li:=PreviewListView.Items.Add;
-      li.Caption:=lisFilesHaveRightEncoding;
-      ApplyButton.Enabled:=False;
-      exit;
-    end;
+
+    IsDone:=HasFiles and (FFiles.Tree.Count=0);
+    PreviewGroupBox.Visible:=not IsDone;
+    LabelNoPreview.Visible:=IsDone;
+    LabelNoPreview.Caption:=lisFilesHaveRightEncoding;
+    ApplyButton.Enabled:=not IsDone;
+    if IsDone then exit;
+
     PreviewListView.BeginUpdate;
     Node:=FFiles.Tree.FindLowest;
     while Node<>nil do begin
-      Item:=PStringToStringTreeItem(Node.Data);
+      Item:=PStringToStringItem(Node.Data);
       Filename:=Item^.Name;
       Encoding:=Item^.Value;
       DebugLn(['TChgEncodingDialog.UpdatePreview Filename=',Filename,' Encoding=',Encoding]);
       li:=PreviewListView.Items.Add;
       li.Caption:=Filename;
       li.SubItems.Add(Encoding);
+      li.Checked := True;
       Node:=FFiles.Tree.FindSuccessor(Node);
     end;
     PreviewListView.EndUpdate;

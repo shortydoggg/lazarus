@@ -15,8 +15,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 ToDo:
   - get more than 500 changes
@@ -30,7 +30,7 @@ uses
   cthreads,
   {$ENDIF}
   Classes, SysUtils, LazFileUtils, laz2_XMLRead, laz2_DOM, laz2_XMLWrite,
-  LazLogger, LazUTF8, CodeToolsStructs, CustApp, AVL_Tree, strutils,
+  LazLogger, LazUTF8, CodeToolsStructs, CustApp, Laz_AVL_Tree, avglvltree, strutils,
   {$IF FPC_FULLVERSION<20701}
   myfphttpclient,
   {$ELSE}
@@ -605,7 +605,7 @@ var
   Files: TFilenameToStringTree;
   FileInfo: TSearchRec;
   Filename: string;
-  Item: PStringToStringTreeItem;
+  Item: PStringToStringItem;
 begin
   Files:=TFilenameToStringTree.Create(false);
   try

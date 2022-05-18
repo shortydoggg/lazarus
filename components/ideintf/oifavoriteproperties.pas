@@ -14,7 +14,11 @@ uses
   // FCL
   SysUtils, Classes,
   // LCL
-  LCLProc, InterfaceBase, LazConfigStorage, PropEdits;
+  LCLProc, LCLPlatformDef,
+  // LazUtils
+  LazConfigStorage,
+  // IdeIntf
+  PropEdits;
 
 type
   TWidgetSetRestrictionsArray = array [TLCLPlatform] of Integer;
@@ -288,11 +292,11 @@ begin
   for i:=0 to NewCount-1 do begin
     p:=Path+'Item'+IntToStr(i)+'/';
     NewPropertyName:=ConfigStore.GetValue(p+'PropertyName','');
-    if (NewPropertyName='') or (not IsValidIdent(NewPropertyName)) then
+    if not IsValidIdent(NewPropertyName) then
       continue;
     NewInclude:=ConfigStore.GetValue(p+'Include',true);
     NewBaseClassname:=ConfigStore.GetValue(p+'BaseClass','');
-    if (NewBaseClassname='') or (not IsValidIdent(NewBaseClassname))  then
+    if not IsValidIdent(NewBaseClassname) then
       continue;
     NewBaseClass:=GetClass(NewBaseClassname);
     NewItem:=TOIFavoriteProperty.Create(NewBaseClass,NewPropertyName,

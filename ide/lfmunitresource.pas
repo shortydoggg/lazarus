@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -30,11 +30,15 @@ unit lfmUnitResource;
 interface
 
 uses
-  Classes, SysUtils,
-  // packages
-  LResources, Forms, CodeCache, CodeToolManager,
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  Forms,
+  // LazUtils
+  LazFileCache, LazFileUtils,
+  // Codetools
+  CodeCache, CodeToolManager,
   // IDEIntf
-  UnitResources, SrcEditorIntf, LazFileCache, LazFileUtils, AvgLvlTree,
+  UnitResources, SrcEditorIntf,
   // IDE
   CheckLFMDlg;
 
@@ -62,7 +66,7 @@ type
   end;
 
 var
-  LFMUnitResCache: TAvgLvlTree;
+  LFMUnitResCache: TAvlTree;
 
 function CompareLFMUnitResCacheItems(Cache1, Cache2: Pointer): integer;
 var
@@ -85,7 +89,7 @@ end;
 function GetLFMUnitResCache(UnitFilename: string; AutoCreate: boolean
   ): TLFMUnitResCacheItem;
 var
-  Node: TAvgLvlTreeNode;
+  Node: TAvlTreeNode;
 begin
   Node:=LFMUnitResCache.FindKey(Pointer(UnitFilename),@CompareFilenameWithLFMUnitResCacheItem);
   if Node<>nil then begin
@@ -152,7 +156,7 @@ end;
 initialization
   RegisterUnitResourcefileFormat(TLFMUnitResourcefileFormat);
   LFMUnitResourceFileFormat:=TLFMUnitResourcefileFormat;
-  LFMUnitResCache:=TAvgLvlTree.Create(@CompareLFMUnitResCacheItems);
+  LFMUnitResCache:=TAvlTree.Create(@CompareLFMUnitResCacheItems);
 finalization
   LFMUnitResCache.FreeAndClear;
   FreeAndNil(LFMUnitResCache);

@@ -17,8 +17,8 @@ interface
 
 uses
   Classes, TypInfo, SysUtils, LCLProc, Forms, Controls, LCLType, GraphType,
-  LazFileUtils, Graphics, Buttons, Menus, ExtCtrls, Dialogs,
-  LCLIntf, PropEdits, PropEditUtils, ImgList, Math,
+  LazFileUtils, Graphics, Buttons, Menus, ExtCtrls, Dialogs, Grids,
+  LCLIntf, PropEdits, PropEditUtils, ImgList, EditBtn, Math,
   GraphicPropEdit; // defines TGraphicPropertyEditorForm
 
 type
@@ -140,6 +140,14 @@ type
       ACanvas:TCanvas; var AHeight: Integer); override;
     procedure ListDrawValue(const CurValue: ansistring; Index:integer;
       ACanvas: TCanvas;  const ARect: TRect; AState: TPropEditDrawState); override;
+  end;
+
+{ TGridImageIndexPropertyEditor
+  ImageIndex property editor specialized for a grid's title and sort images. }
+
+  TGridImageIndexPropertyEditor = class(TImageIndexPropertyEditor)
+  protected
+    function GetImageList: TCustomImageList; override;
   end;
 
 //==============================================================================
@@ -303,8 +311,6 @@ end;
 function TColorPropertyEditor.GetAttributes: TPropertyAttributes;
 begin
   Result := [paMultiSelect,paDialog,paValueList,paCustomDrawn,paRevertable];
-  if GetDefaultOrdValue <> NoDefaultValue then
-    Result := Result + [paHasDefaultValue];
 end;
 
 function TColorPropertyEditor.OrdValueToVisualValue(OrdValue: longint): string;
@@ -376,26 +382,6 @@ begin
     vOldPenColor := Pen.Color;
     vOldBrushColor := Brush.Color;
 
-    // frame things
-    if pedsInEdit in AState then
-    begin
-      if pedsSelected in AState then
-        Brush.Color := clWindow
-      else
-        Brush.Color := ACanvas.Brush.Color;
-    end
-    else
-    begin
-      if pedsSelected in AState then
-        Brush.Color := clHighlightText
-      else
-       Brush.Color := clWindow;
-    end;
-    Pen.Color := Brush.Color;
-    Pen.Style := psSolid;
-    FillRect(ARect);
-    Rectangle(ARect.Left, ARect.Top, vRight, vBottom);
-
     // set things up and do the work
     noFill := CurValue = 'clNone';
     if noFill then
@@ -445,6 +431,7 @@ procedure TFontNamePropertyEditor.GetValues(Proc: TGetStrProc);
 var
   I: Integer;
 begin
+  Proc('default');
   for I := 0 to Screen.Fonts.Count -1 do
     Proc(Screen.Fonts[I]);
 end;
@@ -453,7 +440,7 @@ end;
 
 function TFontCharsetPropertyEditor.GetAttributes: TPropertyAttributes;
 begin
-  Result:=[paMultiSelect,paSortList,paValueList,paRevertable,paHasDefaultValue];
+  Result:=[paMultiSelect,paSortList,paValueList,paRevertable];
 end;
 
 function TFontCharsetPropertyEditor.OrdValueToVisualValue(OrdValue: longint
@@ -562,7 +549,7 @@ end;
 
 function TBrushStylePropertyEditor.GetAttributes: TPropertyAttributes;
 begin
-  Result:=(inherited GetAttributes)-[paHasDefaultValue]+[paCustomDrawn];
+  Result:=(inherited GetAttributes)+[paCustomDrawn];
 end;
 
 procedure TBrushStylePropertyEditor.ListMeasureWidth(const CurValue: ansistring;
@@ -632,7 +619,7 @@ end;
 
 function TPenStylePropertyEditor.GetAttributes: TPropertyAttributes;
 begin
-  Result:=(inherited GetAttributes)-[paHasDefaultValue]+[paCustomDrawn];
+  Result:=(inherited GetAttributes)+[paCustomDrawn];
 end;
 
 procedure TPenStylePropertyEditor.ListMeasureWidth(const CurValue: ansistring;
@@ -667,6 +654,10 @@ end;
 
 { TImageIndexPropertyEditor }
 
+type
+  TOwnedCollectionHelper = class(TOwnedCollection)
+  end;
+
 function TImageIndexPropertyEditor.GetImageList: TCustomImageList;
 var
   Persistent: TPersistent;
@@ -676,8 +667,25 @@ var
 begin
   Result := nil;
   Persistent := GetComponent(0);
-  if not (Persistent is TComponent) then
+
+  if (Persistent is TCollectionItem) and
+    (TCollectionItem(Persistent).Collection <> nil) and
+    (TCollectionItem(Persistent).Collection is TOwnedCollection) and
+    (TOwnedCollectionHelper(TCollectionItem(Persistent).Collection).Owner <> nil) and
+    (TOwnedCollectionHelper(TCollectionItem(Persistent).Collection).Owner is TComponent) then
+  begin
+    Component := TComponent(TOwnedCollectionHelper(TCollectionItem(Persistent).Collection).Owner);
+    PropInfo := TypInfo.GetPropInfo(Component, 'Images');
+    if PropInfo = nil then
+      Exit;
+    Obj := GetObjectProp(Component, PropInfo);
+    if Obj is TCustomImageList then
+      Exit(TCustomImageList(Obj));
     Exit;
+  end
+  else
+    if not (Persistent is TComponent) then
+      Exit;
 
   if Component is TMenuItem then
   begin
@@ -693,7 +701,12 @@ begin
   end
   else
   begin
-    Component := Component.GetParentComponent;
+    if not (
+         (Component is TCustomSpeedButton)
+      or (Component is TCustomBitBtn)
+      or (Component is TCustomEditButton))
+    then
+      Component := Component.GetParentComponent;
     if Component = nil then
       Exit;
     PropInfo := TypInfo.GetPropInfo(Component, 'Images');
@@ -708,20 +721,22 @@ end;
 function TImageIndexPropertyEditor.GetAttributes: TPropertyAttributes;
 begin
   Result := [paValueList, paCustomDrawn, paRevertable];
-  if GetDefaultOrdValue <> NoDefaultValue then
-    Result := Result + [paHasDefaultValue];
 end;
 
 procedure TImageIndexPropertyEditor.GetValues(Proc: TGetStrProc);
 var
   Images: TCustomImageList;
-  I: Integer;
+  I, DefValue: Integer;
 begin
-  Proc(IntToStr(GetDefaultOrdValue));
+  Proc(IntToStr(-1));
+  DefValue := GetDefaultOrdValue;
+  if (DefValue <> NoDefaultValue) and (DefValue <> -1) then
+    Proc(IntToStr(DefValue));
   Images := GetImageList;
   if Assigned(Images) then
     for I := 0 to Images.Count - 1 do
-      Proc(IntToStr(I));
+      if (I <> DefValue) then
+        Proc(IntToStr(I));
 end;
 
 procedure TImageIndexPropertyEditor.ListMeasureHeight(const AValue: ansistring;
@@ -742,7 +757,8 @@ var
   R: TRect;
   OldColor: TColor;
 begin
-  Dec(Index);
+  if GetDefaultOrdValue <> NoDefaultValue then
+    Dec(Index);
   Images := GetImageList;
   R := ARect;
   if Assigned(Images) then
@@ -764,13 +780,40 @@ begin
   inherited ListDrawValue(CurValue, Index, ACanvas, R, AState);
 end;
 
+{ TGridImageIndexPropertyEditor }
+
+type
+  TCustomGridOpener = class(TCustomGrid);
+
+function TGridImageIndexPropertyEditor.GetImagelist: TCustomImagelist;
+var
+  p: TPersistent;
+begin
+  Result := nil;
+  p := GetComponent(0);
+  if (p is TGridColumnTitle) then begin
+    p := TGridColumnTitle(p).Column;
+    if not (p is TGridColumn) then exit;
+    p := TGridColumn(p).Collection;
+    if not (p is TGridColumns) then exit;
+    p := TGridColumns(p).Grid;
+  end;
+  if p is TCustomGrid then
+    Result := TCustomGridOpener(p).TitleImageList
+end;
+
 initialization
   RegisterPropertyEditor(TypeInfo(TGraphicsColor), nil, '', TColorPropertyEditor);
   RegisterPropertyEditor(TypeInfo(TPenStyle), nil, '', TPenStylePropertyEditor);
   RegisterPropertyEditor(TypeInfo(TBrushStyle), nil, '', TBrushStylePropertyEditor);
   RegisterPropertyEditor(TypeInfo(AnsiString), TFont, 'Name', TFontNamePropertyEditor);
   RegisterPropertyEditor(TypeInfo(TFontCharset), nil, 'CharSet', TFontCharsetPropertyEditor);
-  RegisterPropertyEditor(TypeInfo(TImageIndex), TComponent, 'ImageIndex', TImageIndexPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TPersistent, 'ImageIndex', TImageIndexPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TPersistent, 'OverlayImageIndex', TImageIndexPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TPersistent, 'SelectedImageIndex', TImageIndexPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TGridColumnTitle, 'ImageIndex', TGridImageIndexPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TCustomGrid, 'ImageIndexSortAsc', TGridImageIndexPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TImageIndex), TCustomGrid, 'ImageIndexSortDesc', TGridImageIndexPropertyEditor);
   RegisterPropertyEditor(ClassTypeInfo(TFont), nil,'',TFontPropertyEditor);
   RegisterPropertyEditor(ClassTypeInfo(TGraphic), nil,'',TGraphicPropertyEditor);
   RegisterPropertyEditor(ClassTypeInfo(TPicture), nil,'',TPicturePropertyEditor);

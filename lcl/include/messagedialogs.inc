@@ -33,6 +33,7 @@ function ModalDefaultButton(Buttons : TMsgDlgButtons) : TMsgDlgbtn;
 var
   b: TMsgDlgBtn;
 begin
+  Result := mbYes;               // Some default return value.
   If mbYes in Buttons then
     Result := mbYes
   else
@@ -178,8 +179,8 @@ begin
   Result:=MessageDlg(aCaption, aMsg, DlgType, Buttons, 0);
 end;
 
-function MessageDlgPos(const aMsg: String; DlgType: TMsgDlgType;
-  Buttons: TMsgDlgButtons; Helpctx : Longint; X,Y : Integer): TModalResult;
+function MessageDlgPos(const aMsg: string; DlgType: TMsgDlgType;
+  Buttons: TMsgDlgButtons; HelpCtx: Longint; X, Y: Integer): TModalResult;
 var
   DefaultIndex,
   CancelValue,
@@ -229,6 +230,55 @@ function PasswordBox(const ACaption, APrompt : String) : String;
 begin
   Result := '';
   InputQuery(ACaption, APrompt, True, Result);
+end;
+
+procedure DialogCopyToClipboard(Self, Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+var
+  S: string;
+  Dlg: TCustomForm;
+  Cnt, LastCnt: TControl;
+begin
+  if not ((Key in [VK_C, VK_INSERT]) and (Shift = [ssModifier])) then
+    Exit;
+
+  Dlg := Self as TCustomForm;
+
+  S := Format('[%s]', [Dlg.Caption]) + sLineBreak;
+  LastCnt := nil;
+
+  if Dlg is TCustomCopyToClipboardDialog then
+    S := S + sLineBreak + TCustomCopyToClipboardDialog(Dlg).GetMessageText + sLineBreak;
+
+  for Cnt in Dlg.GetEnumeratorControls do
+  begin
+    if (Cnt is TCustomLabel) then
+    begin
+      S := S + sLineBreak + Cnt.Caption + sLineBreak;
+      LastCnt := nil;
+    end else
+    begin
+      if (LastCnt=nil) or (LastCnt.Top > Cnt.Top) then
+        S := S + sLineBreak+sLineBreak
+      else
+        S := S + ' ';
+
+      S := S + Format('[%s]', [StripHotKey(Cnt.Caption)]);
+      LastCnt := Cnt;
+    end;
+  end;
+
+  Clipboard.AsText := TrimRight(S);
+end;
+
+procedure RegisterDialogForCopyToClipboard(const ADlg: TCustomForm);
+var
+  Mtd: TMethod;
+begin
+  ADlg.KeyPreview := True;
+  Mtd.Code := @DialogCopyToClipboard;
+  Mtd.Data := ADlg;
+  ADlg.AddHandlerOnKeyDown(TKeyEvent(Mtd));
 end;
 
 function SelectDirectory(const Caption, InitialDirectory: string;
@@ -334,7 +384,23 @@ var
   FLabels: array of TPanel;
   FButtons: TButtonPanel;
   FForm: TDummyForInput;
-  Len, i: integer;
+  Len, NSpacing, NEditWidth, i: integer;
+
+  function GetPromptCaption(const APrompt: string): string;
+  begin
+    Result:= APrompt;
+    if (Result<>'') and (Result[1]<' ') then
+      Delete(Result, 1, 1);
+  end;
+
+  function GetPasswordChar(const APrompt: string): Char;
+  begin
+    if (APrompt<>'') and (APrompt[1]<' ') then
+      Result := '*'
+    else
+      Result := #0;
+  end;
+
 begin
   Result:= false;
   if Length(APrompts)<1 then
@@ -348,12 +414,17 @@ begin
   SetLength(FEdits, Len);
 
   FForm:= TDummyForInput.CreateNew(nil);
-  FForm.Width:= 600;
-  FForm.Height:= 400;
+  FForm.Width:= FForm.Scale96ToForm(600);
+  FForm.Height:= FForm.Scale96ToForm(400);
   FForm.BorderStyle:= bsDialog;
   FForm.Position:= poScreenCenter;
   FForm.Caption:= ACaption;
   FForm.FOnCloseEvent:= ACloseEvent;
+
+  NSpacing:= FForm.Scale96ToForm(cInputQuerySpacingSize);
+  NEditWidth:= Max(
+    FForm.Scale96ToForm(cInputQueryEditSizePixels),
+    _InputQueryActiveMonitor.Width * cInputQueryEditSizePercents div 100);
 
   FButtons:= TButtonPanel.Create(FForm);
   FButtons.Parent:= FForm;
@@ -370,7 +441,7 @@ begin
     FPanels[i].BevelInner:= bvNone;
     FPanels[i].BevelOuter:= bvNone;
     FPanels[i].AutoSize:= true;
-    FPanels[i].BorderSpacing.Around:= cInputQuerySpacingSize;
+    FPanels[i].BorderSpacing.Around:= NSpacing;
 
     //fix order of panels
     if i>0 then
@@ -379,10 +450,10 @@ begin
     FEdits[i]:= TEdit.Create(FForm);
     FEdits[i].Parent:= FPanels[i];
     FEdits[i].Align:= alRight;
-    FEdits[i].Width:= Max(
-      cInputQueryEditSizePixels,
-      _InputQueryActiveMonitor.Width * cInputQueryEditSizePercents div 100);
+    FEdits[i].Width:= NEditWidth;
     FEdits[i].Text:= AValues[i];
+    if i<Length(APrompts) then
+      FEdits[i].PasswordChar:= GetPasswordChar(APrompts[i]);
 
     FLabels[i]:= TPanel.Create(FForm);
     FLabels[i].Parent:= FPanels[i];
@@ -390,13 +461,15 @@ begin
     FLabels[i].BevelInner:= bvNone;
     FLabels[i].BevelOuter:= bvNone;
     if i<Length(APrompts) then
-      FLabels[i].Caption:= APrompts[i];
-    FLabels[i].BorderSpacing.Right:= cInputQuerySpacingSize;
+      FLabels[i].Caption:= GetPromptCaption(APrompts[i]);
+    FLabels[i].BorderSpacing.Right:= NSpacing;
     FLabels[i].Width:= FLabels[i].Canvas.TextWidth(FLabels[i].Caption);
+
+    FEdits[i].Left:= FForm.Width; // place edits to right
   end;
 
   FButtons.Align:= alTop;
-  FButtons.Top:= FPanels[Len-1].Top+10;
+  FButtons.Top:= FPanels[Len-1].Top+10; // place buttons to bottom
 
   FForm.AutoSize:= true;
   FForm.ActiveControl:= FEdits[0];

@@ -1,5 +1,5 @@
 {%MainUnit win32int.pp}
-{ $Id: win32lclintf.inc 51996 2016-03-19 13:35:51Z maxim $ }
+{ $Id: win32lclintf.inc 58226 2018-06-11 10:09:25Z juha $ }
 {******************************************************************************
                  All GTK interface communication implementations.
                    Initial Revision  : Sun Nov 23 23:53:53 2003
@@ -103,22 +103,29 @@ begin
   Result := True;
 end;
 
+type
+  TFontIsMonoSpaceRec = record
+    Name: string;
+    Result: Boolean;
+  end;
+  PFontIsMonoSpaceRec = ^TFontIsMonoSpaceRec;
+
 function EnumFontsCallBack(
   var LogFont: TEnumLogFontEx;
   var Metric: TNewTextMetricEx;
   FontType: Longint;
   Data: LParam):LongInt; stdcall;
 var
-  L: TStringList;
-  S: String;
+  R: PFontIsMonoSpaceRec;
 begin
-  L := TStringList(PtrInt(Data));
-  S := LogFont.elfLogFont.lfFaceName;
-  if ((logfont.elfLogFont.lfPitchAndFamily and FIXED_PITCH) = FIXED_PITCH) then
+  R := PFontIsMonoSpaceRec(Data);
+  if ((logfont.elfLogFont.lfPitchAndFamily and FIXED_PITCH) = FIXED_PITCH)
+  and (CompareStr(R^.Name, LogFont.elfLogFont.lfFaceName) = 0) then
   begin
-    L.Add(S);
-  end;
-  result := 1;
+    R^.Result := True;
+    Result := 0 // we found it -> stop enumeration
+  end else
+    Result := 1;
 end;
 
 
@@ -126,9 +133,8 @@ function TWin32WidgetSet.FontIsMonoSpace(Font: HFont): boolean;
 var
   LF: LogFontA;
   Res: LongInt;
-  List: TStringList;
-  FontName: String;
   DC: HDC;
+  Rec: TFontIsMonoSpaceRec;
 begin
   Result := False;
   FillChar(LF{%H-}, SizeOf(LogFontA), #0);
@@ -139,16 +145,15 @@ begin
     Exit;
   LF.lfCharSet := DEFAULT_CHARSET;
   LF.lfPitchAndFamily := 0;
-  FontName := LF.lfFaceName;
+  Rec.Name := LF.lfFaceName;
+  Rec.Result := False;
   DC := GetDC(0);
-  List := TStringList.Create;
   try
-    EnumFontFamiliesEX(DC, @LF, @EnumFontsCallback, PtrInt(List), 0);
-    Result := (List.IndexOf(FontName) > -1);
+    EnumFontFamiliesEX(DC, @LF, @EnumFontsCallback, LPARAM(@Rec), 0);
   finally
     ReleaseDC(0, DC);
-    List.Free;
   end;
+  Result := Rec.Result;
 end;
 
 procedure TWin32WidgetSet.HandleProcessEvent(AData: PtrInt; AFlags: dword);
@@ -612,7 +617,7 @@ var
   SizeRect: TRect;
   Height, Width: Integer;
   FixedHeight, FixedWidth: boolean;
-  MinWidth, MinHeight, MaxWidth, MaxHeight: Integer;
+  //MinWidth, MinHeight, MaxWidth, MaxHeight: Integer;
 begin
   Result := True;
 
@@ -622,25 +627,15 @@ begin
 
     FixedHeight := false;
     FixedWidth := false;
-
-    MinWidth := 0;
-    MinHeight := 0;
-    MaxWidth := 0;
-    MaxHeight := 0;
+    //MinWidth := 0;
+    //MinHeight := 0;
+    //MaxWidth := 0;
+    //MaxHeight := 0;
 
     if SizeConstraints.Control is TCustomComboBox then
     begin
       // win32 combo (but not csSimple) has fixed height
       FixedHeight := TCustomComboBox(SizeConstraints.Control).Style <> csSimple;
-    end
-    // The ProgressBar needs a minimum Height of 10 when themed,
-    // as required by Windows, otherwise it's image is corrupted
-    else if ThemeServices.ThemesEnabled and (SizeConstraints.Control is TCustomProgressBar) then
-    begin
-      MinHeight := 10;
-
-      SizeConstraints.SetInterfaceConstraints(
-        MinWidth, MinHeight, MaxWidth, MaxHeight);
     end;
     
     if (FixedHeight or FixedWidth)

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -25,33 +25,24 @@
 unit registersqldb;
 
 {$mode objfpc}{$H+}
-{$IFNDEF win64}
-{$DEFINE HASMYSQL4CONNECTION}
-{$DEFINE HASORACLECONNECTION}
-{$DEFINE HASSQLITE3CONNECTION}
-{$ENDIF}
 
-{$IF FPC_FULLVERSION>=20602}
-{$DEFINE HASSQLITE3CONNECTION} // Include for win64, if fpc > 2.6.2
-{$ENDIF}
-
-{$IF FPC_FULLVERSION>= 20601}
-{$DEFINE HASPQCONNECTION}
-{$ELSE}
-{$IFNDEF win64}
-{$DEFINE HASPQCONNECTION}
-{$ENDIF}
-{$ENDIF}
-
-
-{$IF FPC_FULLVERSION>= 20601}
+{$DEFINE HASIBCONNECTION}
 {$DEFINE HASMYSQL55CONNECTION}
-{$IF DEFINED(BEOS) OR DEFINED(HAIKU) OR DEFINED(LINUX) OR DEFINED(FREEBSD) OR DEFINED (NETBSD) OR DEFINED(OPENBSD) OR DEFINED(WIN32) OR DEFINED(WIN64)}
-// MS SQL Server and Sybase ASE connectors were introduced in the FPC 2.7 development branch,
-//  and backported to 2.6.1. Operating systems should match FPC packages\fcl-db\fpmake.pp
-{$DEFINE HASMSSQLCONNECTION}
-{$DEFINE HASSYBASECONNECTION}
+{$DEFINE HASMYSQL4CONNECTION}
+{$DEFINE HASPQCONNECTION}
+{$DEFINE HASSQLITE3CONNECTION}
+
+{$IF (FPC_FULLVERSION>30302) or not defined(win64)}
+ {$DEFINE HASORACLECONNECTION}
 {$ENDIF}
+
+{$IF FPC_FULLVERSION >= 20601}
+  // MS SQL Server and Sybase ASE connectors were introduced in the FPC 2.7 development branch,
+  //  and backported to 2.6.1. Operating systems should match FPC packages\fcl-db\fpmake.pp	 
+  {$IF DEFINED(BEOS) OR DEFINED(HAIKU) OR DEFINED(LINUX) OR DEFINED(FREEBSD) OR DEFINED (NETBSD) OR DEFINED(OPENBSD) OR DEFINED(WIN32) OR DEFINED(WIN64)}	 
+    {$DEFINE HASMSSQLCONNECTION}	 
+    {$DEFINE HASSYBASECONNECTION}	 
+  {$ENDIF}
 {$ENDIF}
 
 {$IF FPC_FULLVERSION >= 20602} 
@@ -62,14 +53,12 @@ unit registersqldb;
  {$DEFINE HASLIBLOADER}
 {$ENDIF}
 
-{$IF FPC_FULLVERSION>= 20603}
-{$DEFINE HASMYSQL56CONNECTION}
+{$IF FPC_FULLVERSION >= 20603}
+  {$DEFINE HASMYSQL56CONNECTION}
 {$ENDIF}
-
-{ IFNDEF Solaris}
-// Reflects missing fcl-db support around FPC 2.6.1.
-{$DEFINE HASIBCONNECTION}
-{ ENDIF}
+{$IF FPC_FULLVERSION >= 20701}
+  {$DEFINE HASMYSQL57CONNECTION}
+{$ENDIF}
 
 interface
 
@@ -96,13 +85,16 @@ uses
   {$IFDEF HASMYSQL4CONNECTION}
     mysql40conn, mysql41conn,
   {$ENDIF}
-    mysql50conn,
+  mysql50conn,
   mysql51conn,
   {$IFDEF HASMYSQL55CONNECTION}
     mysql55conn,
   {$ENDIF}
   {$IFDEF HASMYSQL56CONNECTION}
     mysql56conn,
+  {$ENDIF}
+  {$IFDEF HASMYSQL57CONNECTION}
+    mysql57conn,
   {$ENDIF}
   {$IFDEF HASSQLITE3CONNECTION}
     sqlite3conn,
@@ -142,11 +134,25 @@ Type
     function GetAttributes: TPropertyAttributes; override;
   end;
 
+  { TSQLFirebirdFileNamePropertyEditor }
+
   TSQLFirebirdFileNamePropertyEditor=class(TFileNamePropertyEditor)
   public
     function GetFilter: String; override;
     function GetInitialDirectory: string; override;
   end;
+
+{$IFDEF HASSQLITE3CONNECTION}
+
+  { TSQLSQLite3FileNamePropertyEditor }
+
+  TSQLSQLite3FileNamePropertyEditor=class(TFileNamePropertyEditor)
+  public
+    function GetFilter: string; override;
+    function GetInitialDirectory: string; override;
+  end;
+
+{$ENDIF}
 
   { TSQLFileDescriptor }
 
@@ -238,6 +244,9 @@ begin
 {$IFDEF HASMYSQL56CONNECTION}
     ,TMySQL56Connection
 {$ENDIF}
+{$IFDEF HASMYSQL57CONNECTION}
+    ,TMySQL57Connection
+{$ENDIF}
 {$IFDEF HASSQLITE3CONNECTION}
     ,TSQLite3Connection
 {$ENDIF}
@@ -263,6 +272,7 @@ Resourcestring
   SSQLSource = 'Insert your SQL statements here';
 
   SFireBirdDatabases = 'Firebird databases';
+  SSQLite3Databases = 'SQLite3 databases';
   SInterbaseDatabases = 'Interbase databases';
   SSQLStringsPropertyEditorDlgTitle = 'Editing %s';
 
@@ -325,7 +335,7 @@ begin
 end;
 {$ENDIF}
 
-{ TDbfFileNamePropertyEditor }
+{ TSQLFirebirdFileNamePropertyEditor }
 
 function TSQLFirebirdFileNamePropertyEditor.GetFilter: String;
 begin
@@ -339,6 +349,24 @@ begin
   Result:= (GetComponent(0) as TSQLConnection).DatabaseName;
   Result:= ExtractFilePath(Result);
 end;
+
+{$IFDEF HASSQLITE3CONNECTION}
+
+{ TSQLSQLite3FileNamePropertyEditor }
+
+function TSQLSQLite3FileNamePropertyEditor.GetFilter: string;
+begin
+  Result := SSQLite3Databases+' (*.db;*.db3;*.sqlite;*.sqlite3)|*.db;*.db3;*.sqlite;*.sqlite3';
+  Result:= Result+ '|'+ inherited GetFilter;
+end;
+
+function TSQLSQLite3FileNamePropertyEditor.GetInitialDirectory: string;
+begin
+  Result:= (GetComponent(0) as TSQLConnection).DatabaseName;
+  Result:= ExtractFilePath(Result);
+end;
+
+{$ENDIF}
 
 { TSQLStringsPropertyEditor }
 
@@ -519,6 +547,10 @@ begin
   RegisterPropertyEditor(TypeInfo(AnsiString),
     TIBConnection, 'DatabaseName', TSQLFirebirdFileNamePropertyEditor);
 {$ENDIF}
+{$IFDEF HASSQLITE3CONNECTION}
+  RegisterPropertyEditor(TypeInfo(AnsiString),
+    TSQLite3Connection, 'DatabaseName', TSQLSQLite3FileNamePropertyEditor);
+{$ENDIF}
   RegisterPropertyEditor(TypeInfo(AnsiString),
     TSQLConnector, 'ConnectorType', TSQLDBConnectorTypePropertyEditor);
 {$IFDEF HASLIBLOADER}
@@ -527,6 +559,7 @@ begin
   RegisterPropertyEditor(TypeInfo(AnsiString),
     TSQLDBLibraryLoader, 'ConnectionType', TSQLDBConnectorTypePropertyEditor);
 {$endif}
+  RegisterPropertyEditor(TypeInfo(AnsiString), TSQLConnection, 'Password', TPasswordStringPropertyEditor);
   RegisterPropertyEditor(TStrings.ClassInfo, TSQLQuery,  'SQL'      , TSQLStringsPropertyEditor);
   RegisterPropertyEditor(TStrings.ClassInfo, TSQLQuery,  'InsertSQL', TSQLStringsPropertyEditor);
   RegisterPropertyEditor(TStrings.ClassInfo, TSQLQuery,  'UpdateSQL', TSQLStringsPropertyEditor);

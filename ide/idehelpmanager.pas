@@ -21,7 +21,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -32,24 +32,25 @@ unit IDEHelpManager;
 interface
 
 uses
-  // FCL+LCL
-  Classes, SysUtils, AVL_Tree, LCLProc, LCLIntf, LCLType, Forms, Controls,
-  Buttons, StdCtrls, Dialogs, ExtCtrls, FileProcs, Graphics, ButtonPanel,
-  LConvEncoding, lazutf8classes, LazFileUtils,
+  // RTL + FCL
+  Classes, SysUtils, Laz_AVL_Tree,
+  // LCL
+  LCLProc, LCLIntf, LCLType, FileProcs, Forms, Controls, ComCtrls, StdCtrls,
+  Dialogs, Graphics, Buttons, ButtonPanel,
+  // LazUtils
+  LConvEncoding, LazUTF8Classes, LazFileUtils, HTML2TextRender,
   // CodeTools
   BasicCodeTools, CodeToolManager, CodeCache, CustomCodeTool, CodeTree,
   PascalParserTool, FindDeclarationTool,
   // IDEIntf
-  PropEdits, ObjectInspector, ProjectIntf, TextTools,
+  PropEdits, ObjectInspector, TextTools,
   IDEDialogs, LazHelpIntf, LazHelpHTML, HelpFPDoc, MacroIntf, IDEWindowIntf,
-  IDEMsgIntf, PackageIntf, LazIDEIntf, HelpIntfs, ComCtrls, IDEHelpIntf,
+  IDEMsgIntf, PackageIntf, LazIDEIntf, HelpIntfs, IDEHelpIntf,
   IDEExternToolIntf, IDEImagesIntf,
   // IDE
-  LazarusIDEStrConsts, TransferMacros, DialogProcs, IDEOptionDefs,
-  ObjInspExt, EnvironmentOpts, AboutFrm, Project, MainBar,
-  IDEFPDocFileSearch, PackageDefs, PackageSystem,
-  HelpOptions, MainIntf, LazConf, HelpFPCMessages, CodeHelp,
-  IDEWindowHelp, CodeBrowser;
+  LazarusIDEStrConsts, DialogProcs, ObjInspExt, EnvironmentOpts, AboutFrm,
+  Project, MainBar, IDEFPDocFileSearch, PackageDefs, PackageSystem, HelpOptions,
+  MainIntf, LazConf, HelpFPCMessages, CodeHelp, IDEWindowHelp, CodeBrowser;
 
 type
 
@@ -116,8 +117,7 @@ type
     procedure ReleaseStream(const URL: string);
   end;
 
-  { TSimpleHTMLControl
-    At the moment it is a TLabel that simply strips all tags }
+  { TSimpleHTMLControl }
 
   TSimpleHTMLControl = class(TLabel,TIDEHTMLControlIntf)
   private
@@ -135,8 +135,7 @@ type
     property MaxLineCount: integer read FMaxLineCount write FMaxLineCount;
   end;
 
-  { TScrollableHTMLControl
-    At the moment it is a TMemo that simply strips all tags }
+  { TScrollableHTMLControl }
 
   TScrollableHTMLControl = class(TMemo,TIDEHTMLControlIntf)
   private
@@ -188,10 +187,9 @@ type
     FMainHelpDBPath: THelpBasePathObject;
     FRTLHelpDB: THelpDatabase;
     FRTLHelpDBPath: THelpBaseURLObject;
-    // Used by CreateHint
-    FHtmlHelpProvider: TAbstractIDEHTMLProvider;
-    FHintWindow: THintWindow;
-    function HtmlHelpProvider: TAbstractIDEHTMLProvider;
+    FLazUtilsHelpDB: THelpDatabase;
+    FLazUtilsHelpDBPath: THelpBaseURLObject;
+
     procedure RegisterIDEHelpDatabases;
     procedure RegisterDefaultIDEHelpViewers;
     procedure FindDefaultBrowser(var DefaultBrowser, Params: string);
@@ -213,9 +211,6 @@ type
     procedure ShowHelpForMessage; override;
     procedure ShowHelpForObjectInspector(Sender: TObject); override;
     procedure ShowHelpForIDEControl(Sender: TControl); override;
-    function CreateHint(aHintWindow: THintWindow; ScreenPos: TPoint;
-      const {%H-}BaseURL: string; var TheHint: string; out HintWinRect: TRect): boolean;
-      override; deprecated 'Use THintWindowManager class instead';
     function GetHintForSourcePosition(const ExpandedFilename: string;
       const CodePos: TPoint; out BaseURL, HTMLHint: string;
       Flags: TIDEHelpManagerCreateHintFlags = []): TShowHelpResult; override;
@@ -234,6 +229,8 @@ type
     property LCLHelpDBPath: THelpBaseURLObject read FLCLHelpDBPath;
     property RTLHelpDB: THelpDatabase read FRTLHelpDB;
     property RTLHelpDBPath: THelpBaseURLObject read FRTLHelpDBPath;
+    property LazUtilsHelpDB: THelpDatabase read FLazUtilsHelpDB;
+    property LazUtilsHelpDBPath: THelpBaseURLObject read FLazUtilsHelpDBPath;
   end;
 
   { TIDEHintWindowManager }
@@ -272,12 +269,17 @@ const
   lihcRTLUnits = 'RTLUnits';
   lihcFCLUnits = 'FCLUnits';
   lihcLCLUnits = 'LCLUnits';
+  lihcLazUtilsUnits = 'LazUtilsUnits';
+
   
   lihBaseUrl = 'http://lazarus-ccr.sourceforge.net/docs/';
 
   lihRTLURL = lihBaseUrl+'rtl/';
   lihFCLURL = lihBaseUrl+'fcl/';
   lihLCLURL = lihBaseUrl+'lcl/';
+
+  lihLazUtilsURL = 'lazutils.chm://';
+  // not important see: ../components/chmhelp/packages/idehelp/lazchmhelp.pas
 
 var
   HelpBoss: TBaseHelpManager = nil;
@@ -370,156 +372,6 @@ begin
   ErrMsg:='';
 end;
 
-function HTMLToCaption(const s: string; MaxLines: integer): string;
-var
-  p: Integer;
-  EndPos: Integer;
-  NewTag: String;
-  Line: Integer;
-  sp: LongInt;
-  InHeader: Boolean;
-  CurTagName: String;
-begin
-  Result:=s;
-  //debugln(['HTMLToCaption HTML="',Result,'"']);
-  Line:=1;
-  p:=1;
-  // remove UTF8 BOM
-  if copy(Result,1,3)=UTF8BOM then
-    Result:=copy(s,4,length(Result));
-  InHeader:=false; // it could be a snippet
-  while p<=length(Result) do begin
-    if Result[p]='<' then begin
-      // removes html tags
-      EndPos:=p+1;
-      if (EndPos<=length(Result)) and (Result[EndPos]='/') then inc(EndPos);
-      while (EndPos<=length(Result))
-      and (not (Result[EndPos] in [' ','>','"','/',#9,#10,#13])) do
-        inc(EndPos);
-      CurTagName:=UpperCase(copy(Result,p+1,EndPos-p-1));
-      while (EndPos<=length(Result)) do begin
-        if Result[EndPos]='"' then begin
-          // skip " tag
-          inc(EndPos);
-          while (EndPos<=length(Result)) and (Result[EndPos]<>'"') do
-            inc(EndPos);
-          if EndPos>length(Result) then break;
-        end;
-        if (Result[EndPos]='>') then begin
-          inc(EndPos);
-          break;
-        end;
-        inc(EndPos);
-      end;
-      //debugln(['HTMLToCaption CurTagName=',CurTagName,' Tag="',copy(Result,p,EndPos-p),'"']);
-
-      if CurTagName='HTML' then
-      begin
-        // it's a whole page
-        InHeader:=true;
-      end;
-      if CurTagName='BODY' then
-      begin
-        // start of body => ignore header
-        InHeader:=false;
-        Result:=copy(Result,EndPos,length(Result));
-        p:=1;
-        EndPos:=1;
-        Line:=1;
-      end;
-      if CurTagName='/BODY' then
-      begin
-        // end of body
-        Result:=copy(Result,1,p-1);
-        break;
-      end;
-
-      if (CurTagName='P') or (CurTagName='/P') then begin
-        // add a line break if there is not already one
-        sp:=p;
-        while (sp>1) and (Result[sp-1] in [' ',#9]) do dec(sp);
-        if (sp>1) and (not (Result[sp-1] in [#10,#13])) then
-          CurTagName:='BR';
-      end;
-      if (CurTagName='DIV') or (CurTagName='/DIV')
-      then begin
-        // add a line break if not in first line
-        if Line>1 then
-          CurTagName:='BR';
-      end;
-
-      if CurTagName='BR' then
-      begin
-        NewTag:=LineEnding;
-        if not InHeader then
-          inc(Line);
-        if Line>MaxLines then begin
-          Result:=copy(Result,1,p)+LineEnding+'...';
-          break;
-        end;
-      end
-      else
-        NewTag:='';
-      if NewTag='' then begin
-        //debugln(['HTMLToCaption deleting tag ',copy(Result,p,EndPos-p)]);
-        System.Delete(Result,p,EndPos-p);
-      end
-      else begin
-        Result:=copy(Result,1,p-1)+NewTag+copy(Result,EndPos,length(Result));
-        inc(p,length(NewTag));
-      end;
-    end else if Result[p] in [#9,#10,#13] then begin
-      // replace spaces and newline characters with a single space
-      EndPos:=p+1;
-      while (EndPos<=length(Result)) and (Result[EndPos] in [#9,#10,#13]) do
-        inc(EndPos);
-      if (p > 1) and not (Result[p-1] in [#9,#10,#13]) then
-      begin
-        Result:=copy(Result,1,p-1)+' '+copy(Result,EndPos,length(Result));
-        inc(p);
-      end
-      else
-        Result:=copy(Result,1,p-1)+copy(Result,EndPos,length(Result));
-    end else if Result[p]='&' then begin
-      // special chars: &lt; &gt; &amp; &nbsp;
-        if (p+2<Length(Result)) and (Result[p+1]='l') and (Result[p+2]='t') and (Result[p+3]=';') then begin
-          EndPos:=p+4;
-          Result:=copy(Result,1,p-1)+'<'+copy(Result,EndPos,length(Result));
-        end else
-        if (p+2<Length(Result)) and (Result[p+1]='g') and (Result[p+2]='t') and (Result[p+3]=';') then begin
-          EndPos:=p+4;
-          Result:=copy(Result,1,p-1)+'>'+copy(Result,EndPos,length(Result));
-        end else
-        if (p+4<Length(Result)) and (Result[p+1]='n') and (Result[p+2]='b') and (Result[p+3]='s') and (Result[p+4]='p') and (Result[p+5]=';') then begin
-          EndPos:=p+6;
-          Result:=copy(Result,1,p-1)+' '+copy(Result,EndPos,length(Result));
-        end else
-        if (p+3<Length(Result)) and (Result[p+1]='a') and (Result[p+2]='m') and (Result[p+3]='p') and (Result[p+4]=';') then begin
-          EndPos:=p+5;
-        Result:=copy(Result,1,p-1)+'&'+copy(Result,EndPos,length(Result));
-      end;
-      inc(p);
-    end else
-      inc(p);
-  end;
-  // trim space at end
-  p:=length(Result);
-  while (p>0) and (Result[p] in [' ',#9,#10,#13]) do dec(p);
-  SetLength(Result,p);
-
-  //DebugLn(['HTMLToCaption Caption="',dbgstr(Result),'"']);
-end;
-
-function HTMLToCaption(Stream: TStream; MaxLines: integer): string;
-var
-  s: string;
-begin
-  SetLength(s,Stream.Size);
-  if s<>'' then
-    Stream.Read(s[1],length(s));
-  Result:=HTMLToCaption(s,MaxLines);
-end;
-
 { TSimpleHTMLControl }
 
 procedure TSimpleHTMLControl.SetProvider(const AValue: TAbstractIDEHTMLProvider);
@@ -548,6 +400,7 @@ end;
 procedure TSimpleHTMLControl.SetURL(const AValue: string);
 var
   Stream: TStream;
+  Renderer: THTML2TextRenderer;
   NewURL: String;
 begin
   if Provider=nil then raise Exception.Create('TSimpleHTMLControl.SetURL missing Provider');
@@ -557,9 +410,11 @@ begin
   FURL:=NewURL;
   try
     Stream:=Provider.GetStream(FURL,true);
+    Renderer:=THTML2TextRenderer.Create(Stream);
     try
-      Caption:=HTMLToCaption(Stream, MaxLineCount);
+      Caption:=Renderer.Render(MaxLineCount);
     finally
+      Renderer.Free;
       Provider.ReleaseStream(FURL);
     end;
   except
@@ -570,10 +425,17 @@ begin
 end;
 
 procedure TSimpleHTMLControl.SetHTMLContent(Stream: TStream; const NewURL: string);
+var
+  Renderer: THTML2TextRenderer;
 begin
   FURL:=NewURL;
-  Caption:=HTMLToCaption(Stream,MaxLineCount);
-  //debugln(['TSimpleHTMLControl.SetHTMLContent ',Caption]);
+  Renderer:=THTML2TextRenderer.Create(Stream);
+  try
+    Caption:=Renderer.Render(MaxLineCount);
+  finally
+    Renderer.Free;
+  end;
+  //debugln(['TSimpleHTMLControl.SetHTMLContent: ',Caption]);
 end;
 
 procedure TSimpleHTMLControl.GetPreferredControlSize(out AWidth, AHeight: integer);
@@ -628,6 +490,7 @@ end;
 procedure TScrollableHTMLControl.SetURL(const AValue: string);
 var
   Stream: TStream;
+  Renderer: THTML2TextRenderer;
   NewURL: String;
 begin
   if Provider=nil then raise Exception.Create('TScrollableHTMLControl.SetURL missing Provider');
@@ -637,9 +500,11 @@ begin
   FURL:=NewURL;
   try
     Stream:=Provider.GetStream(FURL,true);
+    Renderer:=THTML2TextRenderer.Create(Stream);
     try
-      Caption:=HTMLToCaption(Stream, MaxInt);
+      Caption:=Renderer.Render;
     finally
+      Renderer.Free;
       Provider.ReleaseStream(FURL);
     end;
   except
@@ -650,10 +515,17 @@ begin
 end;
 
 procedure TScrollableHTMLControl.SetHTMLContent(Stream: TStream; const NewURL: string);
+var
+  Renderer: THTML2TextRenderer;
 begin
   FURL:=NewURL;
-  Caption:=HTMLToCaption(Stream,MaxInt);
-  //debugln(['TScrollableHTMLControl.SetHTMLContent ',Caption]);
+  Renderer:=THTML2TextRenderer.Create(Stream);
+  try
+    Caption:=Renderer.Render;
+  finally
+    Renderer.Free;
+  end;
+  //debugln(['TScrollableHTMLControl.SetHTMLContent: ',Caption]);
 end;
 
 procedure TScrollableHTMLControl.GetPreferredControlSize(out AWidth, AHeight: integer);
@@ -691,10 +563,9 @@ begin
     end else begin
       AFilename:=URLPath;
     end;
-    AFilename:=SetDirSeparators(AFilename);
+    AFilename:=GetForcedPathDelims(AFilename);
     LazarusIDE.DoOpenFileAndJumpToPos(AFilename,p,-1,-1,-1,[]);
-  end else if (URLScheme='openpackage') and (URLPath<>'')
-  and IsValidIdent(URLPath) then begin
+  end else if (URLScheme='openpackage') and IsValidIdent(URLPath) then begin
     PackageEditingInterface.DoOpenPackageWithName(URLPath,[],false);
   end else if (URLScheme='fpdoc') and (URLParams<>'') then begin
     OpenFPDoc(URLParams);
@@ -744,7 +615,7 @@ begin
     exit;
   end;
   PkgName:=copy(PkgName,2,length(PkgName));
-  if (PkgName='') or not IsValidIdent(PkgName) then begin
+  if not IsValidIdent(PkgName) then begin
     InvalidPathError('It does not start with a package name, for example #rtl.');
     exit;
   end;
@@ -760,7 +631,7 @@ begin
   end;
 
   AnUnitName:=ExtractSubPath;
-  if (AnUnitName='') or (not IsValidIdent(AnUnitName)) then begin
+  if not IsValidIdent(AnUnitName) then begin
     InvalidPathError('Unit name "'+AnUnitName+'" is invalid.');
     exit;
   end;
@@ -964,12 +835,13 @@ begin
           or (URLPath='lazdoc.css')
           then begin
             OpenFile(Result,
-              EnvironmentOptions.GetParsedLazarusDirectory+SetDirSeparators('/docs/'+URLPath),
+              EnvironmentOptions.GetParsedLazarusDirectory
+                +GetForcedPathDelims('/docs/'+URLPath),
               true);
           end;
         end;
       end else if URLType='file' then begin
-        OpenFile(Result,SetDirSeparators(URLPath),true);
+        OpenFile(Result,GetForcedPathDelims(URLPath),true);
       end;
       {Result:=TMemoryStream.Create;
       Stream.Stream:=Result;
@@ -1100,8 +972,8 @@ begin
   BtnPanel.OKButton.Caption:=lisMenuOk;
 
   NodesTreeView.Images:=IDEImages.Images_16;
-  FImgIndexDB:=IDEImages.LoadImage(16, 'item_package');
-  FImgIndexNode:=IDEImages.LoadImage(16, 'menu_help');
+  FImgIndexDB:=IDEImages.LoadImage('item_package');
+  FImgIndexNode:=IDEImages.LoadImage('btn_help');
 end;
 
 function THelpSelectorDialog.GetSelectedNodeQuery: THelpNodeQuery;
@@ -1153,7 +1025,7 @@ begin
   else if (BasePathObject=HelpBoss) or (BasePathObject=MainIDEInterface) then
     Result:=EnvironmentOptions.GetParsedLazarusDirectory
   else if BasePathObject is TProject then
-    Result:=TProject(BasePathObject).ProjectDirectory
+    Result:=TProject(BasePathObject).Directory
   else if BasePathObject is TLazPackage then
     Result:=TLazPackage(BasePathObject).Directory;
   if Result<>'' then begin
@@ -1315,6 +1187,30 @@ procedure TIDEHelpManager.RegisterIDEHelpDatabases;
     HTMLHelp.RegisterItem(DirItem);
   end;
 
+  procedure CreateLazUtilsHelpDB;
+  var
+    HTMLHelp: TFPDocHTMLHelpDatabase;
+    FPDocNode: THelpNode;
+    DirItem: THelpDBISourceDirectory;
+  begin
+    FLazUtilsHelpDB:=HelpDatabases.CreateHelpDatabase(lihcLazUtilsUnits,
+                                                 TFPDocHTMLHelpDatabase,true);
+    HTMLHelp:=FLazUtilsHelpDB as TFPDocHTMLHelpDatabase;
+    HTMLHelp.DefaultBaseURL:=lihLazUtilsURL;
+    FLazUtilsHelpDBPath:=THelpBaseURLObject.Create;
+    HTMLHelp.BasePathObject:=FLazUtilsHelpDBPath;
+
+    // FPDoc nodes for units in the LazUtils
+    FPDocNode:=THelpNode.CreateURL(HTMLHelp,
+                   'LazUtils - Lazarus Utilities Library Units',
+                   'file://index.html');
+    HTMLHelp.TOCNode:=THelpNode.Create(HTMLHelp,FPDocNode);// once as TOC
+    DirItem:=THelpDBISourceDirectory.Create(FPDocNode,
+                    '$(LazarusDir)/components/lazutils',
+                    '*.pp;*.pas',true);// and once as normal page
+    HTMLHelp.RegisterItem(DirItem);
+  end;
+
   procedure CreateFPCKeywordsHelpDB;
   begin
     {$IFDEF EnableSimpleFPCKeyWordHelpDB}
@@ -1330,6 +1226,7 @@ begin
   CreateLCLHelpDB;
   CreateFPCMessagesHelpDB;
   CreateFPCKeywordsHelpDB;
+  CreateLazUtilsHelpDB;
 end;
 
 procedure TIDEHelpManager.RegisterDefaultIDEHelpViewers;
@@ -1386,6 +1283,7 @@ begin
   FreeThenNil(FRTLHelpDBPath);
   FreeThenNil(FFCLHelpDBPath);
   FreeThenNil(FLCLHelpDBPath);
+  FreeThenNil(FLazUtilsHelpDBPath);
   HelpBoss:=nil;
   LazarusHelp:=nil;
   inherited Destroy;
@@ -1393,16 +1291,18 @@ end;
 
 procedure TIDEHelpManager.ConnectMainBarEvents;
 begin
-  with MainIDEBar do
-  begin
-    itmHelpAboutLazarus.OnClick := @mnuHelpAboutLazarusClicked;
-    itmHelpOnlineHelp.OnClick := @mnuHelpOnlineHelpClicked;
-    itmHelpReportingBug.OnClick := @mnuHelpReportBugClicked;
+  {$IFDEF Darwin}
+  // ToDo: Place the "About Lazarus" under MacOS Application menu. See issue #12294.
+  MainIDEBar.itmHelpAboutLazarus.OnClick := @mnuHelpAboutLazarusClicked;
+  {$ELSE}
+  MainIDEBar.itmHelpAboutLazarus.OnClick := @mnuHelpAboutLazarusClicked;
+  {$ENDIF}
+  MainIDEBar.itmHelpOnlineHelp.OnClick := @mnuHelpOnlineHelpClicked;
+  MainIDEBar.itmHelpReportingBug.OnClick := @mnuHelpReportBugClicked;
 
-    {$IFDEF EnableFPDocSearch}
-    itmSearchInFPDocFiles.OnClick:=@mnuSearchInFPDocFilesClick;
-    {$ENDIF}
-  end;
+  {$IFDEF EnableFPDocSearch}
+  MainIDEBar.itmSearchInFPDocFiles.OnClick:=@mnuSearchInFPDocFilesClick;
+  {$ENDIF}
 end;
 
 procedure TIDEHelpManager.LoadHelpOptions;
@@ -1697,60 +1597,6 @@ begin
   IDEWindowHelpNodes.InvokeHelp(Sender);
 end;
 
-function TIDEHelpManager.HtmlHelpProvider: TAbstractIDEHTMLProvider;
-var
-  HelpControl: TControl;
-begin
-  Assert(Assigned(FHintWindow), 'TIDEHelpManager.HtmlHelpProvider: FHintWindow is not assigned.');
-  if FHtmlHelpProvider = nil then
-  begin
-    HelpControl := CreateIDEHTMLControl(FHintWindow, FHtmlHelpProvider, [ihcWithClipboardMenu]);
-    HelpControl.Parent := FHintWindow;
-    HelpControl.Align := alClient;
-  end;
-  Result := FHtmlHelpProvider;
-end;
-
-function TIDEHelpManager.CreateHint(aHintWindow: THintWindow; ScreenPos: TPoint;
-  const BaseURL: string; var TheHint: string; out HintWinRect: TRect): boolean;
-var
-  ms: TMemoryStream;
-  NewWidth, NewHeight: integer;
-begin
-  if CompareText(copy(TheHint,1,6),'<HTML>')=0 then begin  // Text is HTML
-    ms:=TMemoryStream.Create;
-    try
-      if TheHint<>'' then
-        ms.Write(TheHint[1],length(TheHint));
-      ms.Position:=0;
-      HtmlHelpProvider.ControlIntf.SetHTMLContent(ms,'');
-      //FHtmlHelpProvider.BaseURL:=BaseURL; //Not needed
-    finally
-      ms.Free;
-    end;
-    FHtmlHelpProvider.ControlIntf.GetPreferredControlSize(NewWidth,NewHeight);
-
-    if NewWidth <= 0 then
-      NewWidth := 500
-    else
-      inc(NewWidth, 8); // border
-
-    if NewHeight <= 0 then
-      NewHeight := 200
-    else
-      inc(NewHeight, 8); // border
-
-    HintWinRect := Rect(0, 0, NewWidth, NewHeight);
-    TheHint:='';
-  end else begin
-    HintWinRect := aHintWindow.CalcHintRect(Screen.Width, TheHint, Nil);
-    aHintWindow.HintRect := HintWinRect;      // Adds borders.
-  end;
-  OffsetRect(HintWinRect, ScreenPos.X, ScreenPos.Y+30);
-
-  Result:=true;
-end;
-
 function TIDEHelpManager.GetHintForSourcePosition(const ExpandedFilename: string;
   const CodePos: TPoint; out BaseURL, HTMLHint: string;
   Flags: TIDEHelpManagerCreateHintFlags): TShowHelpResult;
@@ -1765,7 +1611,7 @@ begin
   Code:=CodeToolBoss.LoadFile(ExpandedFilename,true,false);
   if (Code=nil) or Code.LineColIsSpace(CodePos.Y,CodePos.X) then
     exit(shrHelpNotFound);
-  HintFlags:=[chhoDeclarationHeader];
+  HintFlags:=[chhoDeclarationHeader,chhoComments];
   if ihmchAddFocusHint in Flags then
     Include(HintFlags,chhoShowFocusHint);
   if CodeHelpBoss.GetHTMLHint(Code,CodePos.X,CodePos.Y,

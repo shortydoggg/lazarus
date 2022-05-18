@@ -7,7 +7,6 @@ License: The same modified LGPL as the Free Pascal RTL
          See the file COPYING.modifiedLGPL for more details
 
 AUTHORS: Felipe Monteiro de Carvalho
-         Pedro Sol Pegorini L de Lima
 }
 unit fpvectorial;
 
@@ -23,8 +22,11 @@ unit fpvectorial;
 {.$define FPVECTORIAL_DEBUG_DIMENSIONS}
 {.$define FPVECTORIAL_TOCANVAS_DEBUG}
 {.$define FPVECTORIAL_DEBUG_BLOCKS}
-{$define FPVECTORIAL_AUTOFIT_DEBUG}
+{.$define FPVECTORIAL_AUTOFIT_DEBUG}
+{.$define FPVECTORIAL_SUPPORT_LAZARUS_1_6}
+// visual debugs
 {.$define FPVECTORIAL_TOCANVAS_ELLIPSE_VISUALDEBUG}
+{.$define FPVECTORIAL_RENDERINFO_VISUALDEBUG}
 
 interface
 
@@ -35,9 +37,9 @@ uses
   // lazutils
   laz2_dom,
   // LCL
-  lazutf8
+  lazutf8, lazregions
   {$ifdef USE_LCL_CANVAS}
-  , Graphics, LCLIntf, LCLType, intfgraphics, graphtype
+  , Graphics, LCLIntf, LCLType, intfgraphics, graphtype, interfacebase
   {$endif}
   ;
 
@@ -113,6 +115,7 @@ type
   TPath = class;
   TvVectorialDocument = class;
   TvEmbeddedVectorialDoc = class;
+  TvRenderer = class;
 
   { Coordinates }
 
@@ -158,6 +161,7 @@ type
     Color: TFPColor;
     Style: TFPBrushStyle;
     Kind: TvBrushKind;
+    Image: TFPCustomImage;
     // Gradient filling support
     Gradient_start: T2DPoint; // Start/end point of gradient, in pixels by default,
     Gradient_end: T2DPoint;   // but if gfRel* in flags relative to entity boundary or user space
@@ -312,6 +316,8 @@ type
   { TPathSegment }
 
   TPathSegment = class
+  protected
+    FPath: TPath;
   public
     SegmentType: TSegmentType;
     // Fields for linking the list
@@ -324,10 +330,11 @@ type
     // edition methods
     procedure Move(ADeltaX, ADeltaY: Double); virtual;
     procedure Rotate(AAngle: Double; ABase: T3DPoint); virtual; // Angle in radians
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); virtual;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; virtual;
     // rendering
     procedure AddToPoints(ADestX, ADestY: Integer; AMulX, AMulY: Double; var Points: TPointsArray); virtual;
+    // helper methods
+    function UseTopLeftCoordinates: Boolean;
   end;
 
   {@@
@@ -429,7 +436,7 @@ type
     procedure BezierApproximate(var Points: T3dPointsArray);
     procedure PolyApproximate(var Points: T3dPointsArray);
     procedure CalculateCenter;
-    procedure CalculateEllipseBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double);
+    procedure CalculateEllipseBoundingBox(out ALeft, ATop, ARight, ABottom: Double);
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
     procedure AddToPoints(ADestX, ADestY: Integer; AMulX, AMulY: Double; var Points: TPointsArray); override;
     procedure Move(ADeltaX, ADeltaY: Double); override;
@@ -439,18 +446,36 @@ type
   TvFindEntityResult = (vfrNotFound, vfrFound, vfrSubpartFound);
 
   TvRenderInfo = record
-    // Input to the rendering
+    // Input to the rendering, provided by the Document or some other
+    // top-level entity and propagated down to all sub-entities
+    Page: TvPage;
+    Renderer: TvRenderer;
     BackgroundColor: TFPColor;
     AdjustPenColorToBackground: Boolean;
-    Selected: Boolean;
+    Selected: TvEntity;
+    Canvas: TFPCustomCanvas;
+    DestX: Integer;
+    DestY: Integer;
+    MulX: Double;
+    MulY: Double;
+
+    // Input to the rendering, other inputs
     ForceRenderBlock: Boolean; // Blocks are usually invisible, but when rendering an insert, their drawing can be forced
+
     // Fields which are output from the rendering process
     EntityCanvasMinXY, EntityCanvasMaxXY: TPoint; // The size utilized in the canvas to draw this entity, in pixels
+
+    // errors
+    SelfEntity: TvEntity;
+    Parent: TvEntity;
+    Errors: TStringArray; //was: TStrings; -- avoid mem leak when copying RenderInfo
   end;
 
   TvEntityFeatures = record
     DrawsUpwards: Boolean; // TvText, TvEmbeddedVectorialDoc, etc draws upwards, but in the future we might have entities drawing downwards
     DrawsUpwardHeightAdjustment: Integer; // in Canvas pixels
+    FirstLineHeight: Integer; // in Canvas pixels
+    TotalHeight: Integer; // in Canvas pixels
   end;
 
   { Now all elements }
@@ -468,20 +493,24 @@ type
     X, Y, Z: Double;
     constructor Create(APage: TvPage); virtual;
     procedure Clear; virtual;
+    procedure SetPage(APage: TvPage); virtual;
     // in CalculateBoundingBox always remember to treat correctly the case of ADest=nil!!!
     // This cased is utilized to guess the size of a document even before getting a canvas to draw at
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); virtual;
-    function CalculateSizeInCanvas(ADest: TFPCustomCanvas; out ALeft, ATop, AWidth, AHeight: Integer): Boolean;
-    procedure CalculateHeightInCanvas(ADest: TFPCustomCanvas; out AHeight: Integer);
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); virtual;
+    function CalculateSizeInCanvas(constref ARenderInfo: TvRenderInfo; APageHeight: Integer; AZoom: Double; out ALeft, ATop, AWidth, AHeight: Integer): Boolean;
+    procedure CalculateHeightInCanvas(constref ARenderInfo: TvRenderInfo; out AHeight: Integer);
     // helper functions for CalculateBoundingBox & TvRenderInfo
-    procedure ExpandBoundingBox(ADest: TFPCustomCanvas; var ALeft, ATop, ARight, ABottom: Double);
+    procedure ExpandBoundingBox(constref ARenderInfo: TvRenderInfo; var ALeft, ATop, ARight, ABottom: Double);
     class procedure CalcEntityCanvasMinMaxXY(var ARenderInfo: TvRenderInfo; APointX, APointY: Integer);
     class procedure CalcEntityCanvasMinMaxXY_With2Points(var ARenderInfo: TvRenderInfo; AX1, AY1, AX2, AY2: Integer);
     procedure MergeRenderInfo(var AFrom, ATo: TvRenderInfo);
-    class procedure InitializeRenderInfo(out ARenderInfo: TvRenderInfo);
-    function CentralizeY_InHeight(ADest: TFPCustomCanvas; AHeight: Double): Double;
-    function  GetHeight(ADest: TFPCustomCanvas): Double;
-    function  GetWidth(ADest: TFPCustomCanvas): Double;
+    class procedure InitializeRenderInfo(var ARenderInfo: TvRenderInfo; ASelf: TvEntity; ACreateObjs: Boolean = False);
+    class procedure FinalizeRenderInfo(var ARenderInfo: TvRenderInfo);
+    class procedure CopyAndInitDocumentRenderInfo(out ATo: TvRenderInfo; AFrom: TvRenderInfo; ACopyMinMax: Boolean = False; AAsChild: Boolean = True);
+    function RenderInfo_GenerateParentTree(constref ARenderInfo: TvRenderInfo): string;
+    function CentralizeY_InHeight(constref ARenderInfo: TvRenderInfo; AHeight: Double): Double;
+    function  GetHeight(constref ARenderInfo: TvRenderInfo): Double;
+    function  GetWidth(constref ARenderInfo: TvRenderInfo): Double;
     {@@ ASubpart is only valid if this routine returns vfrSubpartFound }
     function GetLineIntersectionPoints(ACoord: Double;
       ACoordIsX: Boolean): TDoubleDynArray; virtual; // get all points where the entity inner area crosses a line
@@ -489,15 +518,14 @@ type
     procedure Move(ADeltaX, ADeltaY: Double); virtual;
     procedure MoveSubpart(ADeltaX, ADeltaY: Double; ASubpart: Cardinal); virtual;
     function  GetSubpartCount: Integer; virtual;
-    procedure PositionSubparts(ADest: TFPCustomCanvas; ABaseX, ABaseY: Double); virtual;
+    procedure PositionSubparts(constref ARenderInfo: TvRenderInfo; ABaseX, ABaseY: Double); virtual;
     procedure Scale(ADeltaScaleX, ADeltaScaleY: Double); virtual;
     procedure Rotate(AAngle: Double; ABase: T3DPoint); virtual; // Angle in radians
     // ADoDraw = False means that no drawing will actually be done, only the size info will be filled in ARenderInfo
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); virtual;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); virtual;
     function AdjustColorToBackground(AColor: TFPColor; ARenderInfo: TvRenderInfo): TFPColor;
     function GetNormalizedPos(APage: TvVectorialPage; ANewMin, ANewMax: Double): T3DPoint;
-    function GetEntityFeatures(ADest: TFPCustomCanvas): TvEntityFeatures; virtual;
+    function GetEntityFeatures(constref ARenderInfo: TvRenderInfo): TvEntityFeatures; virtual;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; virtual;
     class function GenerateDebugStrForFPColor(AColor: TFPColor): string;
     class function GenerateDebugStrForString(AValue: string): string;
@@ -514,6 +542,7 @@ type
   public
     Name: string;
     constructor Create(APage: TvPage); override;
+    procedure SetPage(APage: TvPage); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -527,11 +556,10 @@ type
         elements might be able to override this setting. }
     Pen: TvPen;
     constructor Create(APage: TvPage); override;
-    procedure ApplyPenToCanvas(ADest: TFPCustomCanvas; ARenderInfo: TvRenderInfo); overload;
-    procedure ApplyPenToCanvas(ADest: TFPCustomCanvas; ARenderInfo: TvRenderInfo; APen: TvPen); overload;
+    procedure ApplyPenToCanvas(constref ARenderInfo: TvRenderInfo); overload;
+    procedure ApplyPenToCanvas(constref ARenderInfo: TvRenderInfo; APen: TvPen); overload;
     procedure AssignPen(APen: TvPen);
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
   end;
 
   { TvEntityWithPenAndBrush }
@@ -539,28 +567,32 @@ type
   TvClipMode = (vcmNonzeroWindingRule, vcmEvenOddRule);
 
   TvEntityWithPenAndBrush = class(TvEntityWithPen)
-  protected
+  public
     procedure CalcGradientVector(out AGradientStart, AGradientEnd: T2dPoint;
       const ARect: TRect; ADestX: Integer = 0; ADestY: Integer = 0;
       AMulX: Double = 1.0; AMulY: Double = 1.0);
-    procedure DrawPolygonBrushGradient(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-      const APoints: TPointsArray; ARect: TRect; AGradientStart, AGradientEnd: T2DPoint);
+    procedure DrawPolygon(var ARenderInfo: TvRenderInfo;
+      const APoints: TPointsArray; const APolyStarts: TIntegerDynArray; ARect: TRect);
+    procedure DrawPolygonBrushLinearGradient(var ARenderInfo: TvRenderInfo;
+      const APoints: TPointsArray;const APolyStarts: TIntegerDynArray;
+      ARect: TRect; AGradientStart, AGradientEnd: T2DPoint);
+    procedure DrawPolygonBrushRadialGradient(var ARenderInfo: TvRenderInfo;
+      const APoints: TPointsArray; ARect: TRect);
+    procedure DrawNativePolygonBrushRadialGradient(var ARenderInfo: TvRenderInfo;
+      const APoints: TPointsArray; ARect: TRect);
+    procedure DrawPolygonBorderOnly(var ARenderInfo: TvRenderInfo; const APoints: TPointsArray);
   public
     {@@ The global Brush for the entire entity. In the case of paths, individual
         elements might be able to override this setting. }
     Brush: TvBrush;
     WindingRule: TvClipMode;
     constructor Create(APage: TvPage); override;
-    procedure ApplyBrushToCanvas(ADest: TFPCustomCanvas); overload;
-    procedure ApplyBrushToCanvas(ADest: TFPCustomCanvas; ABrush: TvBrush); overload;
-    procedure AssignBrush(ABrush: TvBrush);
-    procedure DrawBrush(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-      ADestX: Integer = 0; ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0);
-    procedure DrawBrushGradient(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-      x1, y1, x2, y2: Integer;
-      ADestX: Integer = 0; ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0); virtual;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure ApplyBrushToCanvas(constref ARenderInfo: TvRenderInfo); overload;
+    procedure ApplyBrushToCanvas(constref ARenderInfo: TvRenderInfo; ABrush: PvBrush); overload;
+    procedure AssignBrush(ABrush: PvBrush);
+    procedure DrawBrush(var ARenderInfo: TvRenderInfo);
+    procedure DrawBrushGradient(var ARenderInfo: TvRenderInfo; x1, y1, x2, y2: Integer); virtual;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -571,13 +603,12 @@ type
     Font: TvFont;
     TextAnchor: TvTextAnchor;
     constructor Create(APage: TvPage); override;
-    procedure ApplyFontToCanvas(ADest: TFPCustomCanvas; ARenderInfo: TvRenderInfo; AMulX: Double = 1.0); overload;
-    procedure ApplyFontToCanvas(ADest: TFPCustomCanvas; ARenderInfo: TvRenderInfo; AFont: TvFont; AMulX: Double = 1.0); overload;
+    procedure ApplyFontToCanvas(ARenderInfo: TvRenderInfo); overload;
+    procedure ApplyFontToCanvas(ARenderInfo: TvRenderInfo; AFont: TvFont); overload;
     procedure AssignFont(AFont: TvFont);
     procedure Rotate(AAngle: Double; ABase: T3DPoint); override; // Angle in radians
     procedure Scale(ADeltaScaleX, ADeltaScaleY: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -589,8 +620,7 @@ type
     constructor Create(APage: TvPage); override;
     destructor Destroy; override;
     function GetCombinedStyle(AParent: TvEntityWithStyle): TvStyle;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
   end;
 
   TPath = class(TvEntityWithPenAndBrush)
@@ -599,7 +629,7 @@ type
     FCurMoveSubPartIndex: Integer;
     FCurMoveSubPartSegment: TPathSegment;
     //
-  protected
+  public
     FPolyPoints: TPointsArray;
     FPolyStarts: TIntegerDynArray;
   public
@@ -618,7 +648,7 @@ type
     procedure PrepareForWalking;
     function Next(): TPathSegment;
     function NextWalk(ADistance: Double; out AX, AY, ATangentAngle: Double): Boolean;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
     procedure AppendSegment(ASegment: TPathSegment);
     procedure AppendMoveToSegment(AX, AY: Double);
     procedure AppendLineToSegment(AX, AY: Double);
@@ -630,10 +660,8 @@ type
     function  MoveToSubpart(ASubpart: Cardinal): TPathSegment;
     function  GetSubpartCount: Integer; override;
     procedure Rotate(AAngle: Double; ABase: T3DPoint); override; // Angle in radians
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
-    procedure RenderInternalPolygon(ADest: TFPCustomCanvas; ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0);
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
+    procedure RenderInternalPolygon(constref ARenderInfo: TvRenderInfo);
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -649,6 +677,8 @@ type
   { TvText }
 
   TvText = class(TvEntityWithStyle)
+  private
+    function GetTextMetric_Descender_px(constref ARenderInfo: TvRenderInfo): Integer;
   public
     Value: TStringList;
     Render_NextText_X: Integer;
@@ -656,10 +686,9 @@ type
     constructor Create(APage: TvPage); override;
     destructor Destroy; override;
     function TryToSelect(APos: TPoint; var ASubpart: Cardinal; ASnapFlexibility: Integer = 5): TvFindEntityResult; override;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
-    function GetEntityFeatures(ADest: TFPCustomCanvas): TvEntityFeatures; override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
+    function GetEntityFeatures(constref ARenderInfo: TvRenderInfo): TvEntityFeatures; override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -673,8 +702,7 @@ type
     //destructor Destroy; override;
     //function TryToSelect(APos: TPoint; var ASubpart: Cardinal): TvFindEntityResult; override;
     //procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     //function GetEntityFeatures: TvEntityFeatures; override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
@@ -704,9 +732,8 @@ type
     function CreatePath: TPath; override;
   public
     Radius: Double;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     procedure Rotate(AAngle: Double; ABase: T3DPoint); override; // Angle in radians
   end;
 
@@ -720,8 +747,7 @@ type
     Radius: Double;
     {@@ The Angle is measured in degrees in relation to the positive X axis }
     StartAngle, EndAngle: Double;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
   end;
 
   {@@
@@ -740,13 +766,13 @@ type
     Angle: Double;
     function GetLineIntersectionPoints(ACoord: Double; ACoordIsX: Boolean): TDoubleDynArray; override;
     function TryToSelect(APos: TPoint; var ASubpart: Cardinal; ASnapFlexibility: Integer = 5): TvFindEntityResult; override;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     procedure Rotate(AAngle: Double; ABase: T3DPoint); override; // Angle in radians
   end;
 
   { TvRectangle }
+  { The point (X,Y) refers to the left/top corner of the rectangle! }
 
   TvRectangle = class(TvEntityWithPenBrushAndFont)
   protected
@@ -761,9 +787,8 @@ type
     // The Angle is measured in radians relative to the positive X axis.
     // Center of rotation is (X,Y).
     Angle: Double;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     procedure Rotate(AAngle: Double; ABase: T3DPoint); override; // Angle in radians
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
@@ -776,9 +801,8 @@ type
     Text: string;
     // All points of the polygon
     Points: array of T3DPoint;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
   end;
 
   {@@
@@ -795,8 +819,7 @@ type
   public
     // Mandatory fields
     BaseLeft, BaseRight, DimensionLeft, DimensionRight: T3DPoint;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -811,8 +834,7 @@ type
     // Mandatory fields
     IsDiameter: Boolean; // If false, it is a radius, if true, it is a diameter
     Center, DimensionLeft, DimensionRight: T3DPoint; // Diameter uses both, Radius uses only DImensionLeft
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -827,8 +849,7 @@ type
     // Mandatory fields
     ArcValue, ArcRadius: Double; // ArcValue is in degrees
     TextPos, BaseLeft, BaseRight, DimensionLeft, DimensionRight: T3DPoint;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     procedure CalculateExtraArcInfo;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
@@ -855,12 +876,12 @@ type
     Width, Height: Double;
     AltText: string;
     destructor Destroy; override;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
     procedure CreateRGB888Image(AWidth, AHeight: Cardinal);
     procedure CreateImageFromFile(AFilename: string);
+    procedure CreateImageFromStream(AStream: TStream; Handler:TFPCustomImageReader);
     procedure InitializeWithConvertionOf3DPointsToHeightMap(APage: TvVectorialPage; AWidth, AHeight: Integer);
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -896,9 +917,8 @@ type
     ExtraLineBase: T3DPoint;
     ArrowLength: Double;
     ArrowBaseLength: Double;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
   end;
 
   {@@
@@ -951,9 +971,8 @@ type
     function CalculateHeight(ADest: TFPCustomCanvas): Double; // in millimeters
     function CalculateWidth(ADest: TFPCustomCanvas): Double; // in millimeters
     function AsText: string;
-    procedure PositionSubparts(ADest: TFPCustomCanvas; ABaseX, ABaseY: Double);
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); virtual;
+    procedure PositionSubparts(constref ARenderInfo: TvRenderInfo; ABaseX, ABaseY: Double);
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); virtual;
     procedure GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer); virtual;
     class function GetPrecedenceFromKind(AKind: TvFormulaElementKind): Byte; // 0 is the smallest precedence
     class function IsLeftAssociativeFromKind(AKind: TvFormulaElementKind): Boolean;
@@ -986,10 +1005,9 @@ type
     //
     function CalculateHeight(ADest: TFPCustomCanvas): Double; virtual; // in millimeters
     function CalculateWidth(ADest: TFPCustomCanvas): Double; virtual; // in millimeters
-    procedure PositionSubparts(ADest: TFPCustomCanvas; ABaseX, ABaseY: Double); override;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure PositionSubparts(constref ARenderInfo: TvRenderInfo; ABaseX, ABaseY: Double); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -999,10 +1017,7 @@ type
   public
     function CalculateHeight(ADest: TFPCustomCanvas): Double; override; // in millimeters
     function CalculateWidth(ADest: TFPCustomCanvas): Double; override; // in millimeters
-    procedure PositionSubparts(ADest: TFPCustomCanvas; ABaseX, ABaseY: Double); override;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure PositionSubparts(constref ARenderInfo: TvRenderInfo; ABaseX, ABaseY: Double); override;
     //function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -1035,8 +1050,7 @@ type
     function  RemoveEntity(AEntity: TvEntity; AFreeAfterRemove: Boolean = True): Boolean;
     procedure Rotate(AAngle: Double; ABase: T3DPoint); override;
     procedure Clear; override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
     function FindEntityWithReference(AEntity: TvEntity): Integer;
     function FindEntityWithNameAndType(AName: string; AType: TvEntityClass {= TvEntity}; ARecursively: Boolean = False): TvEntity;
@@ -1051,8 +1065,7 @@ type
 
   TvBlock = class(TvEntityWithSubEntities)
   public
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
   end;
 
   {@@
@@ -1069,8 +1082,7 @@ type
     SetElements: TvSetStyleElements; // Defines which of Pen, Brush and Font will be applied to InsertEntity
     constructor Create(APage: TvPage); override;
     destructor Destroy; override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -1104,6 +1116,7 @@ type
     Width, Height: Double;
     AutoExpand: TvRichTextAutoExpand;
     ListStyle : TvListStyle; // For Bulleted or Numbered Lists...
+    YPos_NeedsAdjustment_DelFirstLineBodyHeight: Boolean; // SVG coordinates for text are cumbersome, we need this
     constructor Create(APage: TvPage); override;
     destructor Destroy; override;
     function AddText(AText: string): TvText;
@@ -1111,10 +1124,9 @@ type
     function AddField(AKind : TvFieldKind): TvField;
     function AddRasterImage: TvRasterImage;
     function AddEmbeddedVectorialDoc: TvEmbeddedVectorialDoc;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
     function TryToSelect(APos: TPoint; var ASubpart: Cardinal; ASnapFlexibility: Integer = 5): TvFindEntityResult; override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -1147,8 +1159,7 @@ type
       ALevel: Integer; AX, AY: Double; ADestX: Integer = 0; ADestY: Integer = 0;
       AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True);
     // overrides
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     //function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;}
   end;
 
@@ -1183,11 +1194,10 @@ type
     function AddRasterImage: TvRasterImage;
     // Functions for rendering and calculating sizes
     procedure GetEffectiveCellSpacing(out ATopSpacing, ALeftSpacing, ARightSpacing, ABottomSpacing: Double); virtual;
-    function CalculateCellHeight_ForWidth(ADest: TFPCustomCanvas; AWidth: Double): Double; virtual;
-    function CalculateMaxNeededWidth(ADest: TFPCustomCanvas): Double; virtual;
+    function CalculateCellHeight_ForWidth(constref ARenderInfo: TvRenderInfo; AWidth: Double): Double; virtual;
+    function CalculateMaxNeededWidth(constref ARenderInfo: TvRenderInfo): Double; virtual;
     function TryToSelect(APos: TPoint; var ASubpart: Cardinal; ASnapFlexibility: Integer = 5): TvFindEntityResult; override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -1253,8 +1263,7 @@ type
       AX, AY, AWidth, AHeight: double;
       ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
       ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0);
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
     class function GenerateDebugStrForBorders(ABorders: TvTableBorders): string;
   end;
@@ -1284,9 +1293,8 @@ type
     function GetCellColNr(ACell: TvTableCell): Integer;
     function CalculateMaxCellSpacing_Y(): Double;
     //
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
@@ -1317,8 +1325,8 @@ type
     Rows: TFPList;
     ColWidthsInMM: array of Double;   // calculated during Render
     TableWidth, TableHeight: Double;  // in mm; calculated during Render
-    procedure CalculateColWidths(ADest: TFPCustomCanvas);
-    procedure CalculateRowHeights(ADest: TFPCustomCanvas);
+    procedure CalculateColWidths(constref ARenderInfo: TvRenderInfo);
+    procedure CalculateRowHeights(constref ARenderInfo: TvRenderInfo);
   public
     ColWidths: array of Double;       // Can be left empty for simple tables
                                       // MUST be fully defined for merging cells
@@ -1337,26 +1345,37 @@ type
     function GetRowCount : Integer;
     function GetRow(AIndex: Integer) : TvTableRow;
     //
-    function AddColWidth(AValue : Double) : Integer;
     function GetColCount(): Integer;
     //
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
   end;
 
   { TvEmbeddedVectorialDoc }
 
   TvEmbeddedVectorialDoc = class(TvEntity)
+  private
+    FWidth, FHeight: Double;
   public
     Document: TvVectorialDocument;
-    Width, Height: Double;
     constructor create(APage : TvPage); override;
     destructor destroy; override;
-    procedure CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop, ARight, ABottom: Double); override;
-    procedure Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True); override;
+    procedure UpdateDocumentSize();
+    function GetWidth: Double;
+    function GetHeight: Double;
+    procedure SetWidth(AValue: Double);
+    procedure SetHeight(AValue: Double);
+    procedure CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out ALeft, ATop, ARight, ABottom: Double); override;
+    procedure Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True); override;
     function GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer): Pointer; override;
+  end;
+
+  TvVectorialReaderFlag = (vrfSVG_UseBottomLeftCoords, vrfWMF_UseBottomLeftCoords);
+  TvVectorialReaderFlags = set of TvVectorialReaderFlag;
+
+  TvVectorialReaderSettings = record
+    VecReaderFlags: TvVectorialReaderFlags;
+    HelperToolPath: string;
   end;
 
   { TvVectorialDocument }
@@ -1368,6 +1387,7 @@ type
     FStyles: TFPList;
     FListStyles: TFPList;
     FCurrentPageIndex: Integer;
+    FRenderer: TvRenderer;
     function CreateVectorialWriter(AFormat: TvVectorialFormat): TvCustomVectorialWriter;
     function CreateVectorialReader(AFormat: TvVectorialFormat): TvCustomVectorialReader;
   public
@@ -1386,6 +1406,8 @@ type
     StyleHeading1Centralized, StyleHeading2Centralized, StyleHeading3Centralized: TvStyle; // heading modifications
     StyleBulletList, StyleNumberList : TvListStyle;
     StyleTextSpanBold, StyleTextSpanItalic, StyleTextSpanUnderline: TvStyle;
+    // Reader properties
+    ReaderSettings: TvVectorialReaderSettings;
     { Base methods }
     constructor Create; virtual;
     destructor Destroy; override;
@@ -1414,7 +1436,7 @@ type
     function GetCurrentPageAsVectorial: TvVectorialPage;
     procedure SetCurrentPage(AIndex: Integer);
     procedure SetDefaultPageFormat(AFormat: TvPageFormat);
-    function AddPage(): TvVectorialPage;
+    function AddPage(AUseTopLeftCoords: Boolean = False): TvVectorialPage;
     function AddTextPageSequence(): TvTextPageSequence;
     { Style methods }
     function AddStyle(): TvStyle;
@@ -1428,6 +1450,10 @@ type
     function FindListStyleIndex(AListStyle: TvListStyle): Integer;
     { Data removing methods }
     procedure Clear; virtual;
+    { Drawer selection methods }
+    function GetRenderer: TvRenderer;
+    procedure SetRenderer(ARenderer: TvRenderer);
+    procedure ClearRenderer();
     { Debug methods }
     procedure GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer = nil);
     { Events }
@@ -1437,8 +1463,11 @@ type
   { TvPage }
 
   TvPage = class
+  private
+    procedure InitializeRenderInfo(out ARenderInfo: TvRenderInfo; ACanvas: TFPCustomCanvas; AEntity: TvEntity);
   protected
     FOwner: TvVectorialDocument;
+    FUseTopLeftCoordinates: Boolean;
   public
     // Document size for page-based documents
     Width, Height: Double; // in millimeters, may be 0 to use TvVectorialDocument defaults
@@ -1474,9 +1503,15 @@ type
     procedure Render(ADest: TFPCustomCanvas;
       ADestX: Integer = 0; ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0;
       ADoDraw: Boolean = true); virtual; abstract;
-    procedure AutoFit(ADest: TFPCustomCanvas; AWidth, AHeight: Integer; out ADeltaX, ADeltaY: Integer; out AZoom: Double); virtual; abstract;
+    procedure AutoFit(ADest: TFPCustomCanvas; AWidth, AHeight, ARenderHeight: Integer; out ADeltaX, ADeltaY: Integer; out AZoom: Double); virtual;
+    procedure GetNaturalRenderPos(var APageHeight: Integer; out AMulY: Double); virtual; abstract;
+    procedure SetNaturalRenderPos(AUseTopLeftCoords: Boolean); virtual;
+    function HasNaturalRenderPos: Boolean;
+    function GetTopLeftCoords_Adjustment(): Double;
     { Debug methods }
     procedure GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer); virtual; abstract;
+
+    property UseTopLeftCoordinates: Boolean read FUseTopLeftCoordinates write FUseTopLeftCoordinates;
   end;
 
   { TvVectorialPage }
@@ -1551,13 +1586,13 @@ type
     //
     function AddPoint(AX, AY, AZ: Double): TvPoint;
     { Drawing methods }
-    procedure PositionEntitySubparts(ADest: TFPCustomCanvas; ABaseX, ABaseY: Double);
+    procedure PositionEntitySubparts(constref ARenderInfo: TvRenderInfo; ABaseX, ABaseY: Double);
     procedure DrawBackground(ADest: TFPCustomCanvas); override;
     procedure RenderPageBorder(ADest: TFPCustomCanvas;
       ADestX: Integer = 0; ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0); override;
     procedure Render(ADest: TFPCustomCanvas; ADestX: Integer = 0; ADestY: Integer = 0;
       AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = true); override;
-    procedure AutoFit(ADest: TFPCustomCanvas; AWidth, AHeight: Integer; out ADeltaX, ADeltaY: Integer; out AZoom: Double); override;
+    procedure GetNaturalRenderPos(var APageHeight: Integer; out AMulY: Double); override;
     { Debug methods }
     procedure GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer); override;
     //
@@ -1601,7 +1636,7 @@ type
       ADestX: Integer = 0; ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0); override;
     procedure Render(ADest: TFPCustomCanvas; ADestX: Integer = 0; ADestY: Integer = 0;
       AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = true); override;
-    procedure AutoFit(ADest: TFPCustomCanvas; AWidth, AHeight: Integer; out ADeltaX, ADeltaY: Integer; out AZoom: Double); override;
+    procedure GetNaturalRenderPos(var APageHeight: Integer; out AMulY: Double); override;
     { Debug methods }
     procedure GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer); override;
   end;
@@ -1618,6 +1653,7 @@ type
     class function GetTextContentsFromNode(ANode: TDOMNode): DOMString;
     class function RemoveLineEndingsAndTrim(AStr: string): string;
   public
+    Settings: TvVectorialReaderSettings;
     { General reading methods }
     constructor Create; virtual;
     procedure ReadFromFile(AFileName: string; AData: TvVectorialDocument); virtual;
@@ -1653,6 +1689,15 @@ type
     Format: TvVectorialFormat;
   end;
 
+  TvRenderer = class
+  public
+    procedure BeginRender(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean); virtual; abstract;
+    procedure EndRender(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean); virtual; abstract;
+    // TPath
+    procedure TPath_Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean; APath: TPath); virtual; abstract;
+  end;
+  TvRendererClass = class of TvRenderer;
+
 var
   GvVectorialFormats: array of TvVectorialFormatData;
 
@@ -1669,6 +1714,7 @@ procedure RegisterVectorialWriter(
 function Make2DPoint(AX, AY: Double): T3DPoint;
 function Dimension(AValue : Double; AUnits : TvUnits) : TvDimension;
 function ConvertDimensionToMM(ADimension: TvDimension; ATotalSize: Double): Double;
+procedure RegisterDefaultRenderer(ARenderer: TvRendererClass);
 
 implementation
 
@@ -1678,6 +1724,14 @@ const
   Str_Error_Nil_Path = ' The program attempted to add a segment before creating a path';
   INVALID_RENDERINFO_CANVAS_XY = Low(Integer);
   Str_Line_Height_Tester = 'Áç';
+
+{$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
+var
+  AutoFitDebug: TStrings = nil;
+{$endif}
+
+var
+  gDefaultRenderer: TvRendererClass = nil;
 
 {@@
   Registers a new reader for a format
@@ -1697,8 +1751,8 @@ begin
   begin
     if GvVectorialFormats[i].Format = AFormat then
     begin
-      if GvVectorialFormats[i].ReaderRegistered then
-       raise Exception.Create('RegisterVectorialReader: Reader class for format ' {+ AFormat} + ' already registered.');
+      //if GvVectorialFormats[i].ReaderRegistered then
+       //raise Exception.Create('RegisterVectorialReader: Reader class for format ' {+ AFormat} + ' already registered.');
 
       GvVectorialFormats[i].ReaderRegistered := True;
       GvVectorialFormats[i].ReaderClass := AReaderClass;
@@ -1783,6 +1837,11 @@ begin
   dimPercent:    Result := ATotalSize * ADimension.Value;
   dimPoint:      Result := ADimension.Value; // ToDo
   end;
+end;
+
+procedure RegisterDefaultRenderer(ARenderer: TvRendererClass);
+begin
+  gDefaultRenderer := ARenderer;
 end;
 
 { TvStyle }
@@ -2206,9 +2265,14 @@ begin
   end;
 end;
 
-procedure TvTableCell.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-  ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True);
+procedure TvTableCell.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   lBorders: TvTableBorders;
   CellWidth, CellHeight, lCellSpacingX, lCellSpacingY, lTmp: Double;
   lColNr: Integer;
@@ -2234,7 +2298,7 @@ begin
   GetEffectiveCellSpacing(lCellSpacingX, lCellSpacingY, lTmp, lTmp);
   X := X + lCellSpacingX;
   Y := Y + lCellSpacingY;
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
   X := X - lCellSpacingX;
   Y := Y - lCellSpacingY;
 end;
@@ -2267,7 +2331,7 @@ end;
 { TvTable }
 
 // Returns the table width
-procedure TvTable.CalculateColWidths(ADest: TFPCustomCanvas);
+procedure TvTable.CalculateColWidths(constref ARenderInfo: TvRenderInfo);
 var
   CurRow: TvTableRow;
   CurCell: TvTableCell;
@@ -2277,7 +2341,7 @@ var
   OriginalColWidthsInMM: array of Double;
   CurRowTableWidth: Double;
 begin
-  SetLength(ColWidthsInMM, GetRowCount());
+  SetLength(ColWidthsInMM, GetColCount());
 
   // Process predefined widths
   for col := 0 to Length(ColWidthsInMM)-1 do
@@ -2315,7 +2379,7 @@ begin
         Continue;
       end;
 
-      lWidth := CurCell.CalculateMaxNeededWidth(ADest);
+      lWidth := CurCell.CalculateMaxNeededWidth(ARenderInfo);
       ColWidthsInMM[col] := Max(ColWidthsInMM[col], lWidth);
       CurRowTableWidth := CurRowTableWidth + ColWidthsInMM[col];
     end;
@@ -2324,6 +2388,7 @@ begin
   end;
 
   // If it goes over the page width, recalculate with equal sizes (in the future do better)
+  if FPage.Width <= 0 then Exit;
   if TableWidth <= FPage.Width then Exit;
   TableWidth := FPage.Width;
   for col := 0 to Length(ColWidthsInMM)-1 do
@@ -2332,7 +2397,7 @@ begin
   end;
 end;
 
-procedure TvTable.CalculateRowHeights(ADest: TFPCustomCanvas);
+procedure TvTable.CalculateRowHeights(constref ARenderInfo: TvRenderInfo);
 var
   col, row: Integer;
   CurRow: TvTableRow;
@@ -2349,7 +2414,7 @@ begin
     for col := 0 to CurRow.GetCellCount()-1 do
     begin
       CurCell := CurRow.GetCell(col);
-      lCellHeight := CurCell.CalculateCellHeight_ForWidth(ADest, ColWidthsInMM[col]);
+      lCellHeight := CurCell.CalculateCellHeight_ForWidth(ARenderInfo, ColWidthsInMM[col]);
       CurRow.Height := Max(CurRow.Height, lCellHeight);
     end;
 
@@ -2365,15 +2430,15 @@ end;
 constructor TvTable.create(APage: TvPage);
 begin
   inherited Create(APage);
-
   Rows := TFPList.Create;
 
-  Borders.Left.Width := 1;
-  Borders.Right.Width := 1;
-  Borders.Top.Width := 1;
-  Borders.Bottom.Width := 1;
-  Borders.InsideHoriz.Width := 1;
-  Borders.InsideVert.Width := 1;
+  // Use default cell border widths of 0.5 pts, like Word or Writer.
+  Borders.Left.Width := 0.5 * FPV_TEXT_POINT_TO_MM;
+  Borders.Right.Width := 0.5 * FPV_TEXT_POINT_TO_MM;
+  Borders.Top.Width := 0.5 * FPV_TEXT_POINT_TO_MM;
+  Borders.Bottom.Width := 0.5 * FPV_TEXT_POINT_TO_MM;
+  Borders.InsideHoriz.Width := 0.5 * FPV_TEXT_POINT_TO_MM;
+  Borders.InsideVert.Width := 0.5 * FPV_TEXT_POINT_TO_MM;
 end;
 
 destructor TvTable.destroy;
@@ -2409,12 +2474,6 @@ begin
   Result := TvTableRow(Rows[AIndex]);
 end;
 
-function TvTable.AddColWidth(AValue: Double): Integer;
-begin
-  SetLength(ColWidths, Length(ColWidths) + 1);
-  ColWidths[High(ColWidths)] := AValue;
-end;
-
 function TvTable.GetColCount(): Integer;
 var
   row, col, CurRowColCount: Integer;
@@ -2436,8 +2495,13 @@ begin
   end;
 end;
 
-procedure TvTable.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX: Integer; ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvTable.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -2459,13 +2523,13 @@ var
   CurRow: TvTableRow;
   lEntityRenderInfo: TvRenderInfo;
 begin
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
 
   // First calculate the column widths and heights
-  CalculateColWidths(ADest);
+  CalculateColWidths(ARenderInfo);
 
   // Now calculate the row heights
-  CalculateRowHeights(ADest);
+  CalculateRowHeights(ARenderInfo);
 
   // Draw the table border
   if ADoDraw then
@@ -2482,7 +2546,8 @@ begin
     // changes from pos relative inside table (calculated in CalculateRowHeights) to absolute pos
     CurRow.Y := Y + CurRow.Y;
 
-    CurRow.Render(ADest, lEntityRenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+    CopyAndInitDocumentRenderInfo(lEntityRenderInfo, ARenderInfo);
+    CurRow.Render(lEntityRenderInfo, ADoDraw);
     //MergeRenderInfo(lEntityRenderInfo, ARenderInfo); no need to merge, since TvTableCell.DrawBorder calculates the proper size
   end;
 end;
@@ -2515,6 +2580,8 @@ constructor TvEmbeddedVectorialDoc.create(APage: TvPage);
 begin
   inherited create(APage);
   Document := TvVectorialDocument.Create();
+  FWidth := -1;
+  FHeight := -1;
 end;
 
 destructor TvEmbeddedVectorialDoc.destroy;
@@ -2523,18 +2590,57 @@ begin
   inherited destroy;
 end;
 
-procedure TvEmbeddedVectorialDoc.CalculateBoundingBox(ADest: TFPCustomCanvas;
-  out ALeft, ATop, ARight, ABottom: Double);
+procedure TvEmbeddedVectorialDoc.UpdateDocumentSize;
 begin
-  ALeft := X;
-  ATop := Y;
-  ARight := X + Document.Width;
-  ABottom := Y + Document.Height;
+  if (Document.Width = 0) or (Document.Height = 0) then
+  begin
+    Document.GuessDocumentSize();
+  end;
 end;
 
-procedure TvEmbeddedVectorialDoc.Render(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer;
-  AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+function TvEmbeddedVectorialDoc.GetWidth: Double;
+begin
+  if FWidth >= 0 then
+    Result := FWidth
+  else
+    Result := Document.Width;
+end;
+
+function TvEmbeddedVectorialDoc.GetHeight: Double;
+begin
+  if FHeight >= 0 then
+    Result := FHeight
+  else
+    Result := Document.Height;
+end;
+
+procedure TvEmbeddedVectorialDoc.SetWidth(AValue: Double);
+begin
+  FWidth := AValue;
+end;
+
+procedure TvEmbeddedVectorialDoc.SetHeight(AValue: Double);
+begin
+  FHeight := AValue;
+end;
+
+procedure TvEmbeddedVectorialDoc.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
+  out ALeft, ATop, ARight, ABottom: Double);
+begin
+  UpdateDocumentSize();
+  ALeft := X;
+  ATop := Y;
+  ARight := X + GetWidth();
+  ABottom := Y + GetHeight();
+end;
+
+procedure TvEmbeddedVectorialDoc.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -2548,17 +2654,59 @@ procedure TvEmbeddedVectorialDoc.Render(ADest: TFPCustomCanvas;
 
 var
   lPage: TvPage;
+  lX_px, lY_px, lWidth_px, lHeight_px, lPageHeight, lDeltaX, lDeltaY: Integer;
+  lMulY, lZoom: Double;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
+
+  if Document.GetPageCount() = 0 then Exit;
 
   lPage := Document.GetPage(0);
-  if ADoDraw then
-    lPage.Render(ADest, CoordToCanvasX(X), CoordToCanvasY(Y), AMulX, AMulY);
+  lPageHeight := Round(lPage.Height);
+  lPage.GetNaturalRenderPos(lPageHeight, lMulY);
 
+  UpdateDocumentSize();
+  lX_px := CoordToCanvasX(X);
+  lY_px := CoordToCanvasY(Y);
+
+  // Ignore MulX/MulY here so that it doesn't affect AutoFit, this fixes an
+  // issue where embeded svg in html was getting out of proportion if the zoom
+  // was different than 1.0
+  // Calculate the standard zoom (zoom with mulx=1.0)
+  lWidth_px := Round(GetWidth());
+  lHeight_px := Round(GetHeight());
+  lPage.AutoFit(ADest, lWidth_px, lHeight_px, lHeight_px, lDeltaX, lDeltaY, lZoom);
+  lZoom := Abs(lZoom);
+  lX_px += lDeltaX;
+  lY_px += lDeltaY;
+  if AmulY * lMulY < 0 then
+  begin
+    lY_px := lY_px + lHeight_px;
+  end;
+  // recalculate lWidth_px/height considering now mulx/muly
+  lWidth_px := Abs(CoordToCanvasX(GetWidth()));
+  lHeight_px := Abs(CoordToCanvasY(GetHeight()));
+
+  if ADoDraw then
+  begin
+    lPage.Render(ADest, lX_px, lY_px, AMulX * lZoom, AMulY * lMulY * lZoom);
+    {ADest.Pen.FPColor := colRed;
+    ADest.Pen.Style := psSolid;
+    ADest.Rectangle(CoordToCanvasX(X), CoordToCanvasY(lY), CoordToCanvasX(X+Width), CoordToCanvasY(lY+Height));
+    ADest.Rectangle(lX_px, lY_px, lX_px+100, lY_px+100);}
+  end;
+
+  if (ARenderInfo.Errors <> nil) and (lPage.RenderInfo.Errors <> nil) then
+  begin
+    AddStringsToArray(ARenderInfo.Errors, lPage.RenderInfo.Errors);
+    // was: ARenderInfo.Errors.AddStrings(lPage.RenderInfo.Errors);
+  end;
   CalcEntityCanvasMinMaxXY(ARenderInfo, CoordToCanvasX(X), CoordToCanvasY(Y));
   CalcEntityCanvasMinMaxXY(ARenderInfo,
     CoordToCanvasX(X + Document.Width),
     CoordToCanvasY(Y + Document.Height));
+  CalcEntityCanvasMinMaxXY(ARenderInfo, lX_px, lY_px);
+  CalcEntityCanvasMinMaxXY(ARenderInfo, lX_px+lWidth_px, lY_px+lHeight_px);
 end;
 
 function TvEmbeddedVectorialDoc.GenerateDebugTree(
@@ -2632,7 +2780,7 @@ begin
   end;
 end;
 
-procedure TvTableRow.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvTableRow.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 begin
   ALeft := X;
@@ -2641,8 +2789,13 @@ begin
   ABottom := Y + Height;
 end;
 
-procedure TvTableRow.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-  ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True);
+procedure TvTableRow.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -2660,14 +2813,16 @@ var
   CurX_mm: Double = 0.0;
   lEntityRenderInfo: TvRenderInfo;
 begin
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
 
   for i := 0 to GetCellCount()-1 do
   begin
     CurCell := GetCell(i);
     CurCell.X := CurX_mm;
     CurCell.Y := Y;
-    CurCell.Render(ADest, lEntityRenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+    //ADest.Line(CoordToCanvasX(CurX_mm), CoordToCanvasY(Y), CoordToCanvasX(CurX_mm+1), CoordToCanvasY(Y+1));
+    CopyAndInitDocumentRenderInfo(lEntityRenderInfo, ARenderInfo);
+    CurCell.Render(lEntityRenderInfo, ADoDraw);
     if (Table <> nil) then
     begin
       if (Length(Table.ColWidthsInMM) > i) then
@@ -2764,6 +2919,7 @@ var
   xstart, ystart: Double;
   n: Integer;
   done: Boolean;
+  clockwise: Boolean;
 begin
   n := 0;
   SetLength(Points, BUFSIZE);
@@ -2775,21 +2931,25 @@ begin
   tstart := CalcEllipsePointAngle(xstart, ystart, RX, RY, CX, CY, XRotation);
   tend := CalcEllipsePointAngle(X, Y, RX, RY, CX, CY, XRotation);
 
-  // wp: Something's wrong here: I think "clockwise" is the other way round...
+  // Flip clockwise flag in case of top/left coordinates
+  clockwise := ClockwiseArcFlag xor UseTopLeftCoordinates;
 
-  if ClockwiseArcFlag then
-  begin              // tend must be larger than tstart
-    if tend < tstart then tend := TWO_PI + tend;
-  end else begin     // tend must be smaller than tstart
-    if tstart < tend then tstart := TWO_PI + tstart;
+  if clockwise then
+  begin
+    // clockwise --> angle decreases --> tstart must be > tend
     dt := -dt;
+    if tstart < tend then tstart := TWO_PI + tstart;
+  end else
+  begin
+    // counter-clockwise --> angle increases --> tstart must be < tend
+    if tend < tstart then tend := TWO_PI + tend;
   end;
 
   done := false;
   t := tstart;
   while not done do begin
-    if (ClockwiseArcFlag and (t > tend)) or
-       (not ClockwiseArcFlag and (t < tend)) then
+    if (clockwise and (t < tend)) or         // angle decreases
+       (not clockwise and (t > tend)) then   // angle increases
     begin
       t := tend;
       done := true;
@@ -2798,7 +2958,7 @@ begin
       SetLength(Points, Length(Points) + BUFSIZE);
     CalcEllipsePoint(t, RX, RY, CX, CY, XRotation, Points[n].x, Points[n].y);
     inc(n);
-    t := t + dt;      // Note: dt is <0 in counter-clockwise case
+    t := t + dt;      // Note: dt is < 0 in clockwise case
   end;
   SetLength(Points, n);
 end;
@@ -2814,7 +2974,7 @@ begin
   E2.X := E2.Y + ADeltaY;
 
   CX := CX + ADeltaX;
-  CX := CY + ADeltaY;
+  CY := CY + ADeltaY;
 end;
 
 
@@ -2932,8 +3092,7 @@ begin
   end;
 end;
 
-procedure T2DEllipticalArcSegment.CalculateEllipseBoundingBox(ADest: TFPCustomCanvas;
-  out ALeft, ATop, ARight, ABottom: Double);
+procedure T2DEllipticalArcSegment.CalculateEllipseBoundingBox(out ALeft, ATop, ARight, ABottom: Double);
 var
   t1, t2, t3: Double;
   x1, x2, x3: Double;
@@ -3091,15 +3250,15 @@ begin
   Width := Result;
 end;
 
-procedure TvVerticalFormulaStack.PositionSubparts(ADest: TFPCustomCanvas;
+procedure TvVerticalFormulaStack.PositionSubparts(constref ARenderInfo: TvRenderInfo;
   ABaseX, ABaseY: Double);
 var
   lElement: TvFormulaElement;
   lPosX: Double = 0;
   lPosY: Double = 0;
 begin
-  CalculateHeight(ADest);
-  CalculateWidth(ADest);
+  CalculateHeight(ARenderInfo.Canvas);
+  CalculateWidth(ARenderInfo.Canvas);
   Left := ABaseX;
   Top := ABaseY;
 
@@ -3111,23 +3270,10 @@ begin
     lElement.Top := Top - lPosY;
     lPosY := lPosY + lElement.Height + SpacingBetweenElementsY;
 
-    lElement.PositionSubparts(ADest, ABaseX, ABaseY);
+    lElement.PositionSubparts(ARenderInfo, ABaseX, ABaseY);
 
     lElement := GetNextElement();
   end;
-end;
-
-procedure TvVerticalFormulaStack.CalculateBoundingBox(ADest: TFPCustomCanvas;
-  out ALeft, ATop, ARight, ABottom: Double);
-begin
-  inherited CalculateBoundingBox(ADest, ALeft, ATop, ARight, ABottom);
-end;
-
-procedure TvVerticalFormulaStack.Render(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer; AMulX: Double;
-  AMulY: Double; ADoDraw: Boolean);
-begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
 end;
 
 { TPathSegment }
@@ -3177,15 +3323,6 @@ begin
 
 end;
 
-procedure TPathSegment.CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft,
-  ATop, ARight, ABottom: Double);
-begin
-  ALeft := 0;
-  ATop := 0;
-  ARight := 0;
-  ABottom := 0;
-end;
-
 function TPathSegment.GenerateDebugTree(ADestRoutine: TvDebugAddItemProc;
   APageItem: Pointer): Pointer;
 var
@@ -3200,6 +3337,11 @@ procedure TPathSegment.AddToPoints(ADestX, ADestY: Integer; AMulX, AMulY: Double
   var Points: TPointsArray);
 begin
   // Override by descendants
+end;
+
+function TPathSegment.UseTopLeftCoordinates: Boolean;
+begin
+  Result := (FPath <> nil) and FPath.FPage.UseTopLeftCoordinates;
 end;
 
 
@@ -3219,8 +3361,7 @@ function T2DSegment.GetPointAndTangentForDistance(ADistance: Double; out AX,
 var
   lStartPoint: T3DPoint;
 begin
-  Result:=inherited GetPointAndTangentForDistance(ADistance, AX, AY,
-    ATangentAngle);
+  Result:=inherited GetPointAndTangentForDistance(ADistance, AX, AY, ATangentAngle);
   if not GetStartPoint(lStartPoint) then Exit;
   Result := LineEquation_GetPointAndTangentForLength(lStartPoint, Make3DPoint(X, Y), ADistance, AX, AY, ATangentAngle);
 end;
@@ -3408,7 +3549,12 @@ begin
   Z := 0.0;
 end;
 
-procedure TvEntity.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvEntity.SetPage(APage: TvPage);
+begin
+
+end;
+
+procedure TvEntity.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 begin
   ALeft := X;
@@ -3418,14 +3564,22 @@ begin
 end;
 
 // returns false if the element is invisible
-function TvEntity.CalculateSizeInCanvas(ADest: TFPCustomCanvas;
+function TvEntity.CalculateSizeInCanvas(constref ARenderInfo: TvRenderInfo;
+  APageHeight: Integer; AZoom: Double;
   out ALeft, ATop, AWidth, AHeight: Integer): Boolean;
 var
   lRenderInfo: TvRenderInfo;
+  lMulY: Double;
 begin
   Result := True;
-  InitializeRenderInfo(lRenderInfo);
-  Render(ADest, lRenderInfo, 0, 0, 1, 1, False);
+  CopyAndInitDocumentRenderInfo(lRenderInfo, ARenderInfo);
+  ARenderInfo.Page.GetNaturalRenderPos(APageHeight, lMulY);
+  AZoom := Abs(AZoom);
+  lRenderInfo.DestX := 0;
+  lRenderInfo.DestY := APageHeight;
+  lRenderInfo.MulX := AZoom;
+  lRenderInfo.MulY := AZoom * lMulY;
+  Render(lRenderInfo, False);
   ALeft := lRenderInfo.EntityCanvasMinXY.X;
   ATop := lRenderInfo.EntityCanvasMinXY.Y;
   AWidth := lRenderInfo.EntityCanvasMaxXY.X - lRenderInfo.EntityCanvasMinXY.X;
@@ -3437,19 +3591,27 @@ begin
      Result := False;
 end;
 
-procedure TvEntity.CalculateHeightInCanvas(ADest: TFPCustomCanvas; out AHeight: Integer);
+procedure TvEntity.CalculateHeightInCanvas(constref ARenderInfo: TvRenderInfo; out AHeight: Integer);
 var
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   lRenderInfo: TvRenderInfo;
 begin
-  Render(ADest, lRenderInfo, 0, 0, 1, 1, False);
+  lRenderInfo.Canvas := ARenderInfo.Canvas;
+  lRenderInfo.DestX := 0;
+  lRenderInfo.DestY := 0;
+  lRenderInfo.MulX := AMulX;
+  lRenderInfo.MulY := AMulY;
+  Render(lRenderInfo, False);
   AHeight := lRenderInfo.EntityCanvasMaxXY.Y - lRenderInfo.EntityCanvasMinXY.Y;
 end;
 
-procedure TvEntity.ExpandBoundingBox(ADest: TFPCustomCanvas; var ALeft, ATop, ARight, ABottom: Double);
+procedure TvEntity.ExpandBoundingBox(constref ARenderInfo: TvRenderInfo; var ALeft, ATop, ARight, ABottom: Double);
 var
   lLeft, lTop, lRight, lBottom: Double;
 begin
-  CalculateBoundingBox(ADest, lLeft, lTop, lRight, lBottom);
+  CalculateBoundingBox(ARenderInfo, lLeft, lTop, lRight, lBottom);
   if lLeft < ALeft then ALeft := lLeft;
   if lTop < ATop then ATop := lTop;
   if lRight > ARight then ARight := lRight;
@@ -3486,37 +3648,105 @@ begin
   CalcEntityCanvasMinMaxXY(ATo, AFrom.EntityCanvasMaxXY.X, AFrom.EntityCanvasMaxXY.Y);
 end;
 
-class procedure TvEntity.InitializeRenderInfo(out ARenderInfo: TvRenderInfo);
+class procedure TvEntity.InitializeRenderInfo(var ARenderInfo: TvRenderInfo; ASelf: TvEntity; ACreateObjs: Boolean);
 begin
+  // Don't change these because otherwise we lose the value set by the page
+  // See CopyAndInitDocumentRenderInfo
+  // ARenderInfo.BackgroundColor := colBlack;
+  // ARenderInfo.AdjustPenColorToBackground := True;
+  // ARenderInfo.Selected := nil;
+  // ATo.Parent := AFrom.Self;
+
   ARenderInfo.EntityCanvasMinXY := Point(INVALID_RENDERINFO_CANVAS_XY, INVALID_RENDERINFO_CANVAS_XY);
   ARenderInfo.EntityCanvasMaxXY := Point(INVALID_RENDERINFO_CANVAS_XY, INVALID_RENDERINFO_CANVAS_XY);
-  //ARenderInfo.BackgroundColor := colBlack; Don't change this because otherwise we lose the value set by the page
-  //ARenderInfo.AdjustPenColorToBackground := True;    dto.
-  ARenderInfo.Selected := False;
   ARenderInfo.ForceRenderBlock := False;
+
+  ARenderInfo.SelfEntity := ASelf;
+  if ACreateObjs then
+    SetLength(ARenderInfo.Errors, 0);
+    //ARenderInfo.Errors := TStringList.Create;
+    // Avoid memory leak when RenderInfo is copied
 end;
 
-function TvEntity.CentralizeY_InHeight(ADest: TFPCustomCanvas; AHeight: Double): Double;
+class procedure TvEntity.FinalizeRenderInfo(var ARenderInfo: TvRenderInfo);
+begin
+  Finalize(ARenderInfo.Errors);
+{
+  if ARenderInfo.Errors <> nil then
+    ARenderInfo.Errors.Free;
+  ARenderInfo.Errors := nil;
+}
+end;
+
+class procedure TvEntity.CopyAndInitDocumentRenderInfo(out ATo: TvRenderInfo;
+  AFrom: TvRenderInfo; ACopyMinMax: Boolean = False; AAsChild: Boolean = True);
+begin
+  InitializeRenderInfo(ATo, nil);
+  ATo.DestX := AFrom.DestX;
+  ATo.DestY := AFrom.DestY;
+  ATo.MulX := AFrom.MulX;
+  ATo.MulY := AFrom.MulY;
+  ATo.Page := AFrom.Page;
+  ATo.Canvas := AFrom.Canvas;
+  ATo.Renderer := AFrom.Renderer;
+  ATo.AdjustPenColorToBackground := AFrom.AdjustPenColorToBackground;
+  ATo.BackgroundColor := AFrom.BackgroundColor;
+  ATo.Selected := AFrom.Selected;
+  if AAsChild then
+  begin
+    ATo.Parent := AFrom.SelfEntity;
+  end
+  else
+  begin
+    ATo.SelfEntity := AFrom.SelfEntity;
+    ATo.Parent := AFrom.Parent;
+  end;
+  ATo.Errors := AFrom.Errors;
+  if ACopyMinMax then
+  begin
+    ATo.EntityCanvasMinXY := AFrom.EntityCanvasMinXY;
+    ATo.EntityCanvasMaxXY := AFrom.EntityCanvasMaxXY;
+  end;
+end;
+
+function TvEntity.RenderInfo_GenerateParentTree(constref ARenderInfo: TvRenderInfo): string;
+var
+  lCurEntity: TvEntity;
+begin
+  lCurEntity := Self;
+  Result := '';
+  while lCurEntity <> nil do
+  begin
+    if Result <> '' then
+      Result := '->' + Result;
+    Result := lCurEntity.ClassName + Result;
+    if lCurEntity is TvNamedEntity then
+      Result := TvNamedEntity(lCurEntity).Name + ':' + Result;
+    lCurEntity := ARenderInfo.Parent;
+  end;
+end;
+
+function TvEntity.CentralizeY_InHeight(constref ARenderInfo: TvRenderInfo; AHeight: Double): Double;
 var
   lHeight: Double;
 begin
-  lHeight := GetHeight(ADest);
+  lHeight := GetHeight(ARenderInfo);
   Result := Y + Abs(AHeight - lHeight) / 2;
 end;
 
-function TvEntity.GetHeight(ADest: TFPCustomCanvas): Double;
+function TvEntity.GetHeight(constref ARenderInfo: TvRenderInfo): Double;
 var
   ALeft, ATop, ARight, ABottom: Double;
 begin
-  CalculateBoundingBox(ADest, ALeft, ATop, ARight, ABottom);
+  CalculateBoundingBox(ARenderInfo, ALeft, ATop, ARight, ABottom);
   Result := Abs(ATop - ABottom);
 end;
 
-function TvEntity.GetWidth(ADest: TFPCustomCanvas): Double;
+function TvEntity.GetWidth(constref ARenderInfo: TvRenderInfo): Double;
 var
   ALeft, ATop, ARight, ABottom: Double;
 begin
-  CalculateBoundingBox(ADest, ALeft, ATop, ARight, ABottom);
+  CalculateBoundingBox(ARenderInfo, ALeft, ATop, ARight, ABottom);
   Result := Abs(ALeft - ARight);
 end;
 
@@ -3547,8 +3777,7 @@ begin
   Result := 0;
 end;
 
-procedure TvEntity.PositionSubparts(ADest: TFPCustomCanvas; ABaseX,
-  ABaseY: Double);
+procedure TvEntity.PositionSubparts(constref ARenderInfo: TvRenderInfo; ABaseX, ABaseY: Double);
 begin
 
 end;
@@ -3563,10 +3792,9 @@ begin
 
 end;
 
-procedure TvEntity.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvEntity.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 begin
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
 end;
 
 function TvEntity.AdjustColorToBackground(AColor: TFPColor; ARenderInfo: TvRenderInfo): TFPColor;
@@ -3594,10 +3822,12 @@ begin
   Result.Z := (Z - APage.MinZ) * (ANewMax - ANewMin) / (APage.MaxZ - APage.MinZ) + ANewMin;
 end;
 
-function TvEntity.GetEntityFeatures(ADest: TFPCustomCanvas): TvEntityFeatures;
+function TvEntity.GetEntityFeatures(constref ARenderInfo: TvRenderInfo): TvEntityFeatures;
 begin
   Result.DrawsUpwards := False;
   Result.DrawsUpwardHeightAdjustment := 0;
+  Result.FirstLineHeight := 0;
+  Result.TotalHeight := 0;
 end;
 
 function TvEntity.GenerateDebugTree(ADestRoutine: TvDebugAddItemProc;
@@ -3636,6 +3866,11 @@ begin
   FPage := APage;
 end;
 
+procedure TvNamedEntity.SetPage(APage: TvPage);
+begin
+  FPage := APage;
+end;
+
 function TvNamedEntity.GenerateDebugTree(ADestRoutine: TvDebugAddItemProc;
   APageItem: Pointer): Pointer;
 var
@@ -3655,14 +3890,17 @@ begin
   Pen.Width := 1;
 end;
 
-procedure TvEntityWithPen.ApplyPenToCanvas(ADest: TFPCustomCanvas; ARenderInfo: TvRenderInfo);
+procedure TvEntityWithPen.ApplyPenToCanvas(constref ARenderInfo: TvRenderInfo);
 begin
-  ApplyPenToCanvas(ADest, ARenderInfo, Pen);
+  ApplyPenToCanvas(ARenderInfo, Pen);
 end;
 
-procedure TvEntityWithPen.ApplyPenToCanvas(ADest: TFPCustomCanvas;
-  ARenderInfo: TvRenderInfo; APen: TvPen);
+procedure TvEntityWithPen.ApplyPenToCanvas(constref ARenderInfo: TvRenderInfo; APen: TvPen);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
 begin
+  if ADest = nil then
+    exit;
   ADest.Pen.FPColor := AdjustColorToBackground(APen.Color, ARenderInfo);
   ADest.Pen.Width := Max(1, APen.Width);   // wp: why was here "1;//APen.Width;" ???
   ADest.Pen.Style := APen.Style;
@@ -3687,11 +3925,10 @@ begin
   Result := nil;
 end;
 
-procedure TvEntityWithPen.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvEntityWithPen.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
-  ApplyPenToCanvas(ADest, ARenderInfo);
+  inherited Render(ARenderInfo, ADoDraw);
+  ApplyPenToCanvas(ARenderInfo);
 end;
 
 { TvEntityWithPenAndBrush }
@@ -3703,22 +3940,23 @@ begin
   Brush.Color := colBlue;
 end;
 
-procedure TvEntityWithPenAndBrush.ApplyBrushToCanvas(ADest: TFPCustomCanvas);
+procedure TvEntityWithPenAndBrush.ApplyBrushToCanvas(constref ARenderInfo: TvRenderInfo);
 begin
-  ApplyBrushToCanvas(ADest, Brush);
+  ApplyBrushToCanvas(ARenderInfo, @Brush);
 end;
 
-procedure TvEntityWithPenAndBrush.ApplyBrushToCanvas(ADest: TFPCustomCanvas;
-  ABrush: TvBrush);
+procedure TvEntityWithPenAndBrush.ApplyBrushToCanvas(constref ARenderInfo: TvRenderInfo;
+  ABrush: PvBrush);
 begin
-  ADest.Brush.FPColor := ABrush.Color;
-  ADest.Brush.Style := ABrush.Style;
+  if ARenderInfo.Canvas = nil then
+    exit;
+  ARenderInfo.Canvas.Brush.FPColor := ABrush^.Color;
+  ARenderInfo.Canvas.Brush.Style := ABrush^.Style;
 end;
 
-procedure TvEntityWithPenAndBrush.AssignBrush(ABrush: TvBrush);
+procedure TvEntityWithPenAndBrush.AssignBrush(ABrush: PvBrush);
 begin
-  Brush.Style := ABrush.Style;
-  Brush.Color := ABrush.Color;
+  Brush := ABrush^;
 end;
 
 { Calculates the canvas coordinates of the gradient vector (i.e. x,y of start
@@ -3765,13 +4003,96 @@ begin
   end;
 end;
 
-{ Fills the entity with a gradient.
-  Assumes that the boundary is already in canvas units and is specified by
-  polygon APoints. }
-procedure TvEntityWithPenAndBrush.DrawPolygonBrushGradient(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; const APoints: TPointsArray; ARect: TRect;
-  AGradientStart, AGradientEnd: T2dPoint);
+{ Fills a polygon with the color of the current brush. The routine can handle
+  non-contiguous polygons (holes!) correctly using the ScanLine algorithm and
+  the even-odd rule
+  http://www.tutorialspoint.com/computer_graphics/polygon_filling_algorithm.htm
+
+  The array APoints must be in canvas units.
+
+  NOTES:
+  - The method only performs a solid fill, i.e. Brush.Style is ignored
+  - The method modifies the current pen. }
+procedure TvEntityWithPenAndBrush.DrawPolygon(var ARenderInfo: TvRenderInfo; const APoints: TPointsArray;
+  const APolyStarts: TIntegerDynArray; ARect: TRect);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  //
+  scanlineY, scanLineY1, scanLineY2: Integer;
+  lPoints, pts: T2DPointsArray;
+  j: Integer;
+begin
+  if ARect.Top < ARect.Bottom then
+  begin
+    scanLineY1 := ARect.Top;
+    scanLineY2 := ARect.Bottom;
+  end else
+  begin
+    scanLineY1 := ARect.Bottom;
+    scanLineY2 := ARect.Top;
+  end;
+
+  // Prepare points as needed by the GetLinePolygonIntersectionPoints procedure
+  SetLength(pts, Length(APoints));
+  for j := 0 to High(APoints) do
+    pts[j] := Point2D(APoints[j].X, APoints[j].Y);
+
+  // Prepare parameters and polygon points
+  ADest.Pen.Style := psSolid;
+  ADest.Pen.Width := 1;
+  ADest.Pen.FPColor := Brush.Color;
+
+  // Fill polygon by drawing horizontal line segments
+  scanlineY := scanlineY1;
+  while (scanlineY <= scanlineY2) do begin
+    // Find intersection points of horizontal scan line with polygon
+    // with polygon
+    lPoints := GetLinePolygonIntersectionPoints(scanlineY, pts, APolyStarts, false);
+    if Length(lPoints) < 2 then begin
+      inc(scanlineY);
+      Continue;
+    end;
+    // Draw lines between intersection points, skip every second pair
+    j := 0;
+    while j < High(lPoints) do
+    begin
+      ADest.Line(round(lPoints[j].X), round(lPoints[j].Y), round(lPoints[j+1].X), round(lPoints[j+1].Y));
+      inc(j, 2);
+    end;
+    // Proceed to next scan line
+    inc(scanlineY);
+  end;
+end;
+
+{ Paints the border around the shape. Ignores the brush.
+  APoints must be in canvas units. }
+procedure TvEntityWithPenAndBrush.DrawPolygonBorderOnly(
+  var ARenderInfo: TvRenderInfo; const APoints: TPointsArray);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  //
+  j: Integer;
+begin
+  if Pen.Style <> psClear then
+  begin
+    ApplyPenToCanvas(ARenderInfo);
+    ADest.MoveTo(APoints[0].X, APoints[0].Y);
+    for j:=1 to High(APoints) do
+      ADest.LineTo(APoints[j].X, APoints[j].Y);
+  end;
+end;
+
+{ Fills the entity with a linear gradient.
+  Assumes that the boundary is already in canvas units and is specified by
+  polygon APoints.
+  NOTE: The method modifies the current pen. }
+procedure TvEntityWithPenAndBrush.DrawPolygonBrushLinearGradient(
+  var ARenderInfo: TvRenderInfo;
+  const APoints: TPointsArray; const APolyStarts: TIntegerDynArray;
+  ARect: TRect; AGradientStart, AGradientEnd: T2DPoint);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  //
   lPoints, pts: T2DPointsArray;
   i, j: Integer;
   pf: Double;          // fraction of path travelled along gradient vector
@@ -3785,10 +4106,8 @@ var
   gvlen: Double;       // length of gradient vector
   gstart: Double;      // Gradient start point (1-dim)
   dir: Integer;
+  lStr: String;
 begin
-  if not (Brush.Kind in [bkVerticalGradient, bkHorizontalGradient, bkOtherLinearGradient]) then
-    Exit;
-
   // Direction of gradient vector. The gradient vector begins at the first
   // color position and ends at the last color position specified in the
   // brush's Gradient_colors.
@@ -3886,7 +4205,7 @@ begin
   begin
     // Find intersection points of gradient line (normal to gradient vector)
     // with polygon
-    lPoints := GetLinePolygonIntersectionPoints(coord, pts, coordIsX);
+    lPoints := GetLinePolygonIntersectionPoints(coord, pts, APolyStarts, coordIsX);
     if Length(lPoints) < 2 then begin
       coord := coord + dcoord;
       Continue;
@@ -3911,7 +4230,18 @@ begin
 
     // Determine color from fraction (pf) of path travelled along gradient vector
     pf := (coord - gstart) * dir / gvlen;
-    ADest.Pen.FPColor := GradientColor(Brush.Gradient_colors, pf);
+    if Length(Brush.Gradient_colors) > 0 then
+    begin
+      ADest.Pen.FPColor := GradientColor(Brush.Gradient_colors, pf);
+    end
+    else
+    begin
+      lStr := RenderInfo_GenerateParentTree(ARenderInfo);
+      if ARenderInfo.Errors <> nil then
+        AddStringToArray(ARenderInfo.Errors, Format('[%s] Empty Brush.Gradient_colors', [lStr]));
+        //was: ARenderInfo.Errors.Add(Format('[%s] Empty Brush.Gradient_colors', [lStr]));
+      ADest.Pen.FPColor := colBlack;
+    end;
 
     // Draw gradient lines between intersection points
     j := 0;
@@ -3926,10 +4256,152 @@ begin
   end;
 end;
 
-procedure TvEntityWithPenAndBrush.DrawBrushGradient(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; x1, y1, x2, y2: Integer;
-  ADestX, ADestY: Integer; AMulX, AMulY: Double);
+procedure TvEntityWithPenAndBrush.DrawPolygonBrushRadialGradient(
+  var ARenderInfo: TvRenderInfo;
+  const APoints: TPointsArray; ARect: TRect);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  //
+  i, j: Integer;
+  lx, ly: Integer;
+  lDist: Double;
+  lGradient_cx_px, lGradient_cy_px, lGradient_r_px, lGradient_fx_px, lGradient_fy_px: Double;
+  lWidth, lHeight, lBiggestHalfSide: Integer;
+  lBiggestSizeIsY: Boolean;
+  lColor: TFPColor;
+
+  function Gradient_value_to_px(AValue: Double; AUnit: TvCoordinateUnit; AIsY: Boolean): Integer;
+  var
+    lSideLen: Integer;
+  begin
+    Result := 0;
+    if AIsY then lSideLen := (ARect.Bottom-ARect.Top)
+    else lSideLen := (ARect.Right-ARect.Left);
+    case AUnit of
+    //vcuDocumentUnit: Result := ;
+    vcuPercentage:   Result := Round(lSideLen * AValue);
+    end;
+  end;
+
+  function Distance_To_RadialGradient_Color(ADist: Double): TFPColor;
+  var
+    k: Integer;
+  begin
+    Result := colTransparent;
+    for k := 0 to Length(Brush.Gradient_colors)-1 do
+    begin
+      if k = 0 then
+      begin
+        Result := Brush.Gradient_colors[k].Color;
+        Continue;
+      end;
+
+      if ADist < Brush.Gradient_colors[k].Position then
+      begin
+        Result := MixColors(
+          Brush.Gradient_colors[k-1].Color, Brush.Gradient_colors[k].Color,
+          ADist - Brush.Gradient_colors[k-1].Position,
+          Brush.Gradient_colors[k].Position - Brush.Gradient_colors[k-1].Position);
+        Exit;
+      end;
+    end;
+  end;
+
+begin
+  lWidth := (ARect.Right-ARect.Left);
+  lHeight := (ARect.Bottom-ARect.Top);
+  lBiggestSizeIsY := lHeight > lWidth;
+  if lBiggestSizeIsY then lBiggestHalfSide := Round(lHeight / 2)
+  else lBiggestHalfSide := Round(lWidth / 2);
+
+  // Calculate Gradient_X_px
+  lGradient_cx_px := Gradient_value_to_px(Brush.Gradient_cx, Brush.Gradient_cx_Unit, False);
+  lGradient_cy_px := Gradient_value_to_px(Brush.Gradient_cy, Brush.Gradient_cy_Unit, True);
+  lGradient_r_px := Gradient_value_to_px(Brush.Gradient_r, Brush.Gradient_r_Unit, lBiggestSizeIsY);
+  lGradient_fx_px := Gradient_value_to_px(Brush.Gradient_fx, Brush.Gradient_fx_Unit, False);
+  lGradient_fy_px := Gradient_value_to_px(Brush.Gradient_fy, Brush.Gradient_fy_Unit, True);
+
+  // pixel-by-pixel version
+  for i := 0 to lWidth-1 do
+  begin
+    for J := 0 to lHeight-1 do
+    begin
+      lx := ARect.Left + i;
+      ly := ARect.Top + j;
+      if not IsPointInPolygon(lx, ly, APoints) then Continue;
+
+      lDist := sqrt(sqr(i-lGradient_cx_px)+sqr(j-lGradient_cy_px));
+      lDist := lDist / lBiggestHalfSide;
+      lDist := Min(Max(0, lDist), 1);
+      lColor := Distance_To_RadialGradient_Color(lDist);
+      ADest.Colors[lx, ly] := AlphaBlendColor(ADest.Colors[lx, ly], lColor);
+    end;
+  end;
+end;
+
+procedure TvEntityWithPenAndBrush.DrawNativePolygonBrushRadialGradient(
+  var ARenderInfo: TvRenderInfo; const APoints: TPointsArray; ARect: TRect);
+{$ifndef FPVECTORIAL_SUPPORT_LAZARUS_1_6}
+{$ifdef USE_LCL_CANVAS}
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  //
+  lLogRadGrad: TLogRadialGradient;
+  lBrush, lOldBrush: HBRUSH;
+  i: Integer;
+
+  function Gradient_value_to_px(AValue: Double; AUnit: TvCoordinateUnit; AIsY: Boolean): Integer;
+  var
+    lSideLen: Integer;
+  begin
+    Result := 0;
+    if AIsY then lSideLen := (ARect.Bottom-ARect.Top)
+    else lSideLen := (ARect.Right-ARect.Left);
+    case AUnit of
+    vcuDocumentUnit: Result := Round(AValue);
+    vcuPercentage:   Result := Round(lSideLen * AValue);
+    end;
+  end;
+
+{$endif}
+{$endif}
+begin
+  {$ifndef FPVECTORIAL_SUPPORT_LAZARUS_1_6}
+  {$ifdef USE_LCL_CANVAS}
+  lLogRadGrad.radCenterX := Gradient_value_to_px(Brush.Gradient_cx, Brush.Gradient_cx_Unit, False);
+  lLogRadGrad.radCenterY := Gradient_value_to_px(Brush.Gradient_cy, Brush.Gradient_cy_Unit, False);
+  lLogRadGrad.radRadius := Gradient_value_to_px(Brush.Gradient_r, Brush.Gradient_r_Unit, True);
+  lLogRadGrad.radFocalX := Gradient_value_to_px(Brush.Gradient_fx, Brush.Gradient_fx_Unit, True);
+  lLogRadGrad.radFocalY := Gradient_value_to_px(Brush.Gradient_fy, Brush.Gradient_fy_Unit, False);
+
+  SetLength(lLogRadGrad.radStops, Length(Brush.Gradient_colors));
+  for i := 0 to Length(Brush.Gradient_colors)-1 do
+  begin
+    lLogRadGrad.radStops[i].radColorA := Brush.Gradient_colors[i].Color.alpha;
+    lLogRadGrad.radStops[i].radColorR := Brush.Gradient_colors[i].Color.red;
+    lLogRadGrad.radStops[i].radColorG := Brush.Gradient_colors[i].Color.green;
+    lLogRadGrad.radStops[i].radColorB := Brush.Gradient_colors[i].Color.blue;
+    lLogRadGrad.radStops[i].radPosition := Brush.Gradient_colors[i].Position;
+  end;
+
+  lBrush := LCLIntf.CreateBrushWithRadialGradient(lLogRadGrad);
+  lOldBrush := TCanvas(ADest).Brush.Handle;
+  TCanvas(ADest).Brush.Handle := lBrush;
+  TCanvas(ADest).Polygon(APoints);
+  TCanvas(ADest).Brush.Handle := lOldBrush;
+  {$endif}
+  {$endif}
+end;
+
+procedure TvEntityWithPenAndBrush.DrawBrushGradient(
+  var ARenderInfo: TvRenderInfo; x1, y1, x2, y2: Integer);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   tmpPath: TPath;
   polypoints: TPointsArray;
   polystarts: TIntegerDynArray;
@@ -3942,23 +4414,32 @@ begin
     exit;
   try
     ConvertPathToPolygons(tmpPath, ADestX, ADestY, AMulX, AMulY, polypoints, polystarts);
+
     // Boundary rect of shape filled with a gradient
     lRect := Rect(x1, y1, x2, y2);
     NormalizeRect(lRect);
-    // calculate gradient vector
-    CalcGradientVector(gv1, gv2, lRect, ADestX, ADestY, AMulX, AMulY);
-    // Draw the gradient
-    DrawPolygonBrushGradient(ADest, ARenderInfo, polypoints, lRect, gv1, gv2);
-    // to do: multiple polygons!
+
+    case Brush.Kind of
+      bkHorizontalGradient,
+      bkVerticalGradient,
+      bkOtherLinearGradient:
+        begin
+          // calculate gradient vector
+          CalcGradientVector(gv1, gv2, lRect, ADestX, ADestY, AMulX, AMulY);
+          // Draw the gradient
+          DrawPolygonBrushLinearGradient(ARenderInfo, polyPoints, polystarts, lRect, gv1, gv2);
+        end;
+      bkRadialGradient:
+       {$ifdef USE_LCL_CANVAS}
+        if Widgetset.GetLCLCapability(lcRadialGradientBrush) = LCL_CAPABILITY_YES then
+          DrawNativePolygonBrushRadialGradient(ARenderInfo, polypoints, Bounds(0, 0, 1, 1))
+        else
+       {$endif}
+          DrawPolygonBrushRadialGradient(ARenderInfo, polypoints, lRect);
+    end;
 
     // Paint outline
-    if ADest.Pen.Style <> psClear then
-    begin
-      ApplyPenToCanvas(ADest, ARenderInfo);
-      ADest.MoveTo(polypoints[0].X, polypoints[0].Y);
-      for j:=1 to High(polypoints) do
-        ADest.LineTo(polypoints[j].X, polypoints[j].Y);
-    end;
+    DrawPolygonBorderOnly(ARenderInfo, polyPoints);
 
   finally
     tmpPath.Free;
@@ -4043,9 +4524,14 @@ begin
   end;
 end;      *)
 
-procedure TvEntityWithPenAndBrush.DrawBrush(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX, ADestY: Integer; AMulX, AMulY: Double);
+procedure TvEntityWithPenAndBrush.DrawBrush(var ARenderInfo: TvRenderInfo);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   tmpPath: TPath;
   polypoints: TPointsArray;
   polystarts: TIntegerDynArray;
@@ -4061,11 +4547,10 @@ begin
   end;
 end;
 
-procedure TvEntityWithPenAndBrush.Render(ADest: TFPCustomCanvas;
-   var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvEntityWithPenAndBrush.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
-  ApplyBrushToCanvas(ADest);
+  inherited Render(ARenderInfo, ADoDraw);
+  ApplyBrushToCanvas(ARenderInfo);
 end;
 
 function TvEntityWithPenAndBrush.GenerateDebugTree(
@@ -4073,12 +4558,13 @@ function TvEntityWithPenAndBrush.GenerateDebugTree(
 var
   lStr: string;
 begin
-  lStr := Format('[%s] Name=%s X=%f Y=%f Pen.Color=%s Pen.Style=%s Brush.Color=%s Brush.Style=%s %s',
+  lStr := Format('[%s] Name=%s X=%f Y=%f Pen=[Color=%s Style=%s] Brush=[Color=%s Style=%s Kind=%s] %s',
     [Self.ClassName, Self.Name, X, Y,
     GenerateDebugStrForFPColor(Pen.Color),
     GetEnumName(TypeInfo(TFPPenStyle), integer(Pen.Style)),
     GenerateDebugStrForFPColor(Brush.Color),
     GetEnumName(TypeInfo(TFPBrushStyle), integer(Brush.Style)),
+    GetEnumName(TypeInfo(TvBrushKind), integer(Brush.Kind)),
     FExtraDebugStr]);
   Result := ADestRoutine(lStr, APageItem);
 end;
@@ -4093,20 +4579,27 @@ begin
   Font.Size := 10;
 end;
 
-procedure TvEntityWithPenBrushAndFont.ApplyFontToCanvas(ADest: TFPCustomCanvas;
-  ARenderInfo: TvRenderInfo; AMulX: Double = 1.0);
+procedure TvEntityWithPenBrushAndFont.ApplyFontToCanvas(ARenderInfo: TvRenderInfo);
 begin
-  ApplyFontToCanvas(ADest, ARenderInfo, Font, AMulX);
+  ApplyFontToCanvas(ARenderInfo, Font);
 end;
 
-procedure TvEntityWithPenBrushAndFont.ApplyFontToCanvas(ADest: TFPCustomCanvas;
-  ARenderInfo: TvRenderInfo; AFont: TvFont; AMulX: Double);
+procedure TvEntityWithPenBrushAndFont.ApplyFontToCanvas(
+  ARenderInfo: TvRenderInfo; AFont: TvFont);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   {$ifdef USE_LCL_CANVAS}
-  ALCLDest: TCanvas absolute ADest;
+  ALCLDest: TCanvas absolute ARenderInfo.Canvas;
   {$endif}
   lFPColor: TFPColor;
 begin
+  if ADest = nil then
+    exit;
   ADest.Font.Name := AFont.Name;
   if AFont.Size = 0 then AFont.Size := 10;
   ADest.Font.Size := Round(AmulX * AFont.Size);
@@ -4150,12 +4643,10 @@ begin
   Font.Size := Round(Font.Size * ADeltaScaleX);
 end;
 
-procedure TvEntityWithPenBrushAndFont.Render(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer; AMulX: Double;
-  AMulY: Double; ADoDraw: Boolean);
+procedure TvEntityWithPenBrushAndFont.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
-  ApplyFontToCanvas(ADest, ARenderInfo, AMulX);         // wp: why not AMulY ?
+  inherited Render(ARenderInfo, ADoDraw);
+  ApplyFontToCanvas(ARenderInfo);
 end;
 
 function TvEntityWithPenBrushAndFont.GenerateDebugTree(
@@ -4188,23 +4679,20 @@ begin
   inherited Destroy;
 end;
 
-function TvEntityWithStyle.GetCombinedStyle(AParent: TvEntityWithStyle
-  ): TvStyle;
+function TvEntityWithStyle.GetCombinedStyle(AParent: TvEntityWithStyle): TvStyle;
 begin
   if (AParent <> nil) and (Style = nil) then Result := AParent.Style
   else Result := Style;
 end;
 
-procedure TvEntityWithStyle.Render(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer;
-  AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvEntityWithStyle.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
   if (Style <> nil) then
   begin
-    ApplyPenToCanvas(ADest, ARenderInfo, Style.Pen);
-    ApplyBrushToCanvas(ADest, Style.Brush);
-    ApplyFontToCanvas(ADest, ARenderInfo, Style.Font, AMulX);
+    ApplyPenToCanvas(ARenderInfo, Style.Pen);
+    ApplyBrushToCanvas(ARenderInfo, @Style.Brush);
+    ApplyFontToCanvas(ARenderInfo, Style.Font);
   end;
 end;
 
@@ -4313,14 +4801,14 @@ begin
   Result := lCurPoint.GetPointAndTangentForDistance(CurWalkDistanceInCurSegment, AX, AY, ATangentAngle);
 end;
 
-procedure TPath.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TPath.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 var
   lSegment: TPathSegment;
   l2DSegment: T2DSegment;
   lFirstValue: Boolean = True;
 begin
-  inherited CalculateBoundingBox(ADest, ALeft, ATop, ARight, ABottom);
+  inherited CalculateBoundingBox(ARenderInfo, ALeft, ATop, ARight, ABottom);
 
   PrepareForSequentialReading();
   lSegment := Next();
@@ -4354,6 +4842,8 @@ procedure TPath.AppendSegment(ASegment: TPathSegment);
 var
   L: Integer;
 begin
+  ASegment.FPath := self;
+
   // Check if we are the first segment in the tmp path
   if PointsEnd = nil then
   begin
@@ -4588,115 +5078,10 @@ begin
   SetLength(Result, n);
 end;
 
-procedure TPath.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX, ADestY: Integer; AMulX, AMulY: Double; ADoDraw: Boolean);
-var
-  i: Integer;
-  j, n: Integer;
-  x1, y1, x2, y2: Integer;
-  pts: TPointsArray;
-  ACanvas: TCanvas absolute ADest;
-  coordX, coordY: Integer;
-  curSegment: TPathSegment;
-  cur2DSegment: T2DSegment absolute curSegment;
-  lRect: TRect;
-  gv1, gv2: T2DPoint;
+procedure TPath.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
-
-  ConvertPathToPolygons(self, ADestX, ADestY, AMulX, AMulY, FPolyPoints, FPolyStarts);
-  x1 := MaxInt;
-  y1 := maxInt;
-  x2 := -MaxInt;
-  y2 := -MaxInt;
-  for i := 0 to High(FPolyPoints) do
-  begin
-    x1 := min(x1, FPolyPoints[i].X);
-    y1 := min(y1, FPolyPoints[i].Y);
-    x2 := max(x2, FPolyPoints[i].X);
-    y2 := max(y2, FPolyPoints[i].Y);
-  end;
-  CalcEntityCanvasMinMaxXY_With2Points(ARenderInfo, x1, y1, x2, y2);
-
-  if ADoDraw then
-  begin
-    // (1) draw background only
-    ADest.Pen.Style := psClear;
-    if (Length(FPolyPoints) > 2) then
-      case Brush.Kind of
-        bkSimpleBrush:
-          if Brush.Style <> bsClear then
-          begin
-            {$IFDEF USE_LCL_CANVAS}
-            for i := 0 to High(FPolyStarts) do
-            begin
-              j := FPolyStarts[i];
-              if i = High(FPolyStarts) then
-                n := Length(FPolyPoints) - j
-              else
-                n := FPolyStarts[i+1] - FPolyStarts[i]; // + 1;
-              ACanvas.Polygon(@FPolyPoints[j], n, WindingRule = vcmNonZeroWindingRule);
-            end;
-            {$ELSE}
-            ADest.Polygon(FPolyPoints);
-            {$ENDIF}
-          end;
-        else  // gradients
-          // Boundary rect of shape filled with a gradient
-          lRect := Rect(x1, y1, x2, y2);
-          // calculate gradient vector
-          CalcGradientVector(gv1, gv2, lRect, ADestX, ADestY, AMulX, AMulY);
-          // Draw the gradient
-          DrawPolygonBrushGradient(ADest, ARenderInfo, FPolyPoints, lRect, gv1, gv2);
-          // to do: multiple polygons!
-      end;
-
-    // (2) draw border, take care of the segments with modified pen
-    ADest.Brush.Style := bsClear;               // We will paint no background
-    ApplyPenToCanvas(ADest, ARenderInfo, Pen);  // Restore pen
-
-    PrepareForSequentialReading;
-    for j := 0 to Len - 1 do
-    begin
-      curSegment := TPathSegment(Next);
-      case curSegment.SegmentType of
-        stMoveTo:
-          begin
-            inc(i);
-            coordX := CoordToCanvasX(cur2DSegment.X, ADestX, AMulX);
-            coordY := CoordToCanvasY(cur2DSegment.Y, ADestY, AMulY);
-            ADest.MoveTo(coordX, coordY);
-          end;
-        st2DLineWithPen, st2DLine, st3DLine:
-          begin
-            coordX := CoordToCanvasX(cur2DSegment.X, ADestX, AMulX);
-            coordY := CoordToCanvasY(cur2DSegment.Y, ADestY, AMulY);
-            if curSegment.SegmentType = st2DLineWithPen then
-            begin
-              ADest.Pen.FPColor := AdjustColorToBackground(T2DSegmentWithPen(Cur2DSegment).Pen.Color, ARenderInfo);
-              ADest.Pen.Width := T2DSegmentWithPen(cur2DSegment).Pen.Width;
-              ADest.Pen.Style := T2DSegmentWithPen(cur2DSegment).Pen.Style;
-              ADest.LineTo(coordX, coordY);
-              ApplyPenToCanvas(ADest, ARenderInfo, Pen);
-            end else
-              ADest.LineTo(coordX, coordY);
-          end;
-        st2DBezier, st3DBezier, st2DEllipticalArc:
-          begin
-            coordX := CoordToCanvasX(T2DSegment(curSegment.Previous).X, ADestX, AMulX);
-            coordY := CoordToCanvasY(T2DSegment(curSegment.Previous).Y, ADestY, AMulY);
-            SetLength(pts, 1);
-            pts[0] := Point(coordX, coordY);
-            curSegment.AddToPoints(ADestX, ADestY, AMulX, AMulY, pts);
-            if Length(pts) > 0 then
-            begin
-              ADest.PolyLine(pts);
-              ADest.MoveTo(pts[High(pts)].X, pts[High(pts)].Y);
-            end;
-          end;
-      end;
-    end;
-  end;
+  inherited Render(ARenderInfo, ADoDraw);
+  ARenderInfo.Renderer.TPath_Render(ARenderInfo, ADoDraw, Self);
 end;
 
 
@@ -5097,9 +5482,14 @@ begin
 end;
                              *)
 
-procedure TPath.RenderInternalPolygon(ADest: TFPCustomCanvas;
-  ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer; AMulX: Double;
-  AMulY: Double);
+procedure TPath.RenderInternalPolygon(constref ARenderInfo: TvRenderInfo);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -5190,12 +5580,14 @@ var
   lStr: string;
   lCurPathSeg: TPathSegment;
 begin
-  lStr := Format('[%s] Name=%s Pen.Color=%s Pen.Style=%s Brush.Color=%s Brush.Style=%s',
+  lStr := Format('[%s] Name=%s Pen.Color=%s Pen.Style=%s Brush.Color=%s Brush.Style=%s'
+    + ' Brush.Kind=%s',
     [Self.ClassName, Self.Name,
     GenerateDebugStrForFPColor(Pen.Color),
     GetEnumName(TypeInfo(TFPPenStyle), integer(Pen.Style)),
     GenerateDebugStrForFPColor(Brush.Color),
-    GetEnumName(TypeInfo(TFPBrushStyle), integer(Brush.Style))
+    GetEnumName(TypeInfo(TFPBrushStyle), integer(Brush.Style)),
+    GetEnumName(TypeInfo(TvBrushKind), integer(Brush.Kind))
     ]);
   Result := ADestRoutine(lStr, APageItem);
   // Add sub-entities
@@ -5209,6 +5601,29 @@ begin
 end;
 
 { TvText }
+
+function TvText.GetTextMetric_Descender_px(constref ARenderInfo: TvRenderInfo): Integer;
+var
+  {$ifdef USE_LCL_CANVAS}
+  ACanvas: TCanvas absolute ARenderInfo.Canvas;
+  tm: TLCLTextMetric;
+  {$else}
+  lFontSizePx: Integer;
+  lTextSize: TSize;
+  {$endif}
+begin
+  Result := 0;
+
+  {$IFDEF USE_LCL_CANVAS}
+  if ACanvas.GetTextMetrics(tm) then
+    Result := tm.Descender;
+  {$ELSE}
+  lFontSizePx := Font.Size;        // is without multiplier!
+  if lFontSizePx = 0 then lFontSizePx := 10;
+  lTextSize := ADest.TextExtent(Str_Line_Height_Tester);
+  Result := (lTextSize.CY - lFontSizePx) div 2;  // rough estimate only
+  {$ENDIF}
+end;
 
 constructor TvText.Create(APage: TvPage);
 begin
@@ -5234,8 +5649,8 @@ begin
   else Result := vfrNotFound;
 end;
 
-procedure TvText.CalculateBoundingBox(ADest: TFPCustomCanvas; out ALeft, ATop,
-  ARight, ABottom: Double);
+procedure TvText.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
+  out ALeft, ATop, ARight, ABottom: Double);
 var
   i: Integer;
   lSize: TSize;
@@ -5243,11 +5658,17 @@ var
   lRenderInfo: TvRenderInfo;
   lText: String;
   {$ifdef USE_LCL_CANVAS}
-  ACanvas: TCanvas absolute ADest;
+  ACanvas: TCanvas absolute ARenderInfo.Canvas;
   {$endif}
 begin
   //lText := Value.Text; // For debugging
-  inherited Render(ADest, lRenderInfo, 0, 0, 1, 1, False);
+  InitializeRenderInfo(lRenderInfo, Self);
+  lRenderInfo.Canvas := ARenderInfo.Canvas;
+  lRenderInfo.DestX := ARenderInfo.DestX;
+  lRenderInfo.DestY := ARenderInfo.DestY;
+  lRenderInfo.MulX := ARenderInfo.MulX;
+  lRenderInfo.MulY := ARenderInfo.MulY;
+  inherited Render(lRenderInfo, False);
 
   ALeft := X;
   ATop := Y;
@@ -5255,7 +5676,7 @@ begin
   lHeight := 0;
   ARight := ALeft;
   ABottom := ATop;
-  if (ADest = nil) or (not (ADest is TCanvas)) then Exit;
+  if (ARenderInfo.Canvas = nil) or (not (ARenderInfo.Canvas is TCanvas)) then Exit;
 
   for i := 0 to Value.Count-1 do
   begin
@@ -5272,31 +5693,35 @@ begin
   ABottom := Y;
 end;
 
-procedure TvText.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvText.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 const
   LINE_SPACING = 0.2;  // fraction of font height for line spacing
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   i: Integer;
   //
   pt, refPt: TPoint;
-  LowerDimY: Double;
+  LowerDimY, UpperDimY, CurDimY: Double;
   XAnchorAdjustment: Integer;
   lLongestLine, lLineWidth, lFontSizePx, lFontDescenderPx: Integer;
   lText: string;
   lDescender: Integer;
   phi: Double;
   {$ifdef USE_LCL_CANVAS}
-  ACanvas: TCanvas absolute ADest;
+  ACanvas: TCanvas absolute ARenderInfo.Canvas;
   lTextSize: TSize;
   lTextWidth: Integer;
-  tm: TLCLTextMetric;
   {$endif}
 begin
-  lText := Value.Text + Format(' F=%d', [ADest.Font.Size]); // for debugging
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  lText := Value.Text + Format(' F=%d', [ACanvas.Font.Size]); // for debugging
+  inherited Render(ARenderInfo, ADoDraw);
 
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
 
   // Don't draw anything if we have alpha=zero
   if Font.Color.Alpha = 0 then Exit;
@@ -5306,11 +5731,7 @@ begin
   lFontSizePx := Font.Size;        // is without multiplier!
   if lFontSizePx = 0 then lFontSizePx := 10;
   lTextSize := ADest.TextExtent(Str_Line_Height_Tester);
-  lDescender := (lTextSize.CY - lFontSizePx) div 2;  // rough estimate only
-  {$IFDEF USE_LCL_CANVAS}
-  if ACanvas.GetTextMetrics(tm) then
-    lDescender := tm.Descender;
-  {$ENDIF}
+  lDescender := GetTextMetric_Descender_px(ARenderInfo);
 
   // Angle of text rotation
   phi := sign(AMulY) * DegToRad(Font.Orientation);
@@ -5341,14 +5762,13 @@ begin
   end;
 
   // Begin first line at reference point and grow downwards.
-  lowerDimY := IfThen(AMulY < 0, refPt.Y - (lTextSize.CY - lDescender), refPt.Y);
-{
+  // ...
   // We need to keep the order of lines drawing correct regardless of
   // the drawing direction
-  if AMulY < 0 then
-    lowerDim.Y := refPt.Y + lFontSizePx * (1 + LINE_SPACING) * Value.Count * AMulY else
-    lowerDim.Y := refPt.Y;
- }
+  lowerDimY := refPt.Y - (lTextSize.CY - lDescender); // lowerDim.Y := refPt.Y + lFontSizePx * (1 + LINE_SPACING) * Value.Count * AMulY
+  upperDimY := refPt.Y;
+  curDimY := IfThen(AMulY < 0, lowerDimY, upperDimY);
+
   // TvText supports multiple lines
   for i := 0 to Value.Count - 1 do
   begin
@@ -5357,40 +5777,58 @@ begin
       Render_NextText_X := refPt.X + XAnchorAdjustment;
 
     // Start point of text, rotated around the reference point
-    pt := Point(round(Render_NextText_X), round(LowerDimY));  // before rotation
-    pt := Rotate2dPoint(pt, refPt, -Phi);                      // after rotation
+    pt := Point(round(Render_NextText_X), round(curDimY));  // before rotation
+    pt := Rotate2dPoint(pt, refPt, -Phi);                   // after rotation
 
     // Paint line
     if ADoDraw then
+    begin
       ADest.TextOut(pt.x, pt.y, lText);
+    end;
 
     // Calc text boundaries respecting text rotation.
     CalcEntityCanvasMinMaxXY(ARenderInfo, pt.x, pt.y);
     lTextSize := ACanvas.TextExtent(lText);
     lTextWidth := lTextSize.cx;
+    // Reserve vertical space for </br> and similar line ending constructs
+    if (lText = '') then
+      lTextSize.cy := ACanvas.TextHeight(STR_FPVECTORIAL_TEXT_HEIGHT_SAMPLE);
     // other end of the text
-    pt := Point(round(Render_NextText_X) + lTextWidth, round(LowerDimY) + lTextSize.cy );
+    pt := Point(round(Render_NextText_X) + lTextWidth, round(curDimY) + lTextSize.cy );
     pt := Rotate2dPoint(pt, refPt, -Phi);
     CalcEntityCanvasMinMaxXY(ARenderInfo, pt.x, pt.y);
 
     // Prepare next line
     Render_NextText_X := Render_NextText_X + lTextWidth;
-    LowerDimY := LowerdimY - (lFontSizePx * (1 + LINE_SPACING) * AMulY);
+    curDimY := IfThen(AMulY < 0,
+      curDimY - (lFontSizePx * (1 + LINE_SPACING) * AMulY),
+      curDimY + (lFontSizePx * (1 + LINE_SPACING) * AMulY));
+    // wp: isn't this the same as
+    // curDimY := curDimY + (lFontSizePx * (1 + LINE_SPACING) * abs(AMulY);
   end;
 end;
 
-function TvText.GetEntityFeatures(ADest: TFPCustomCanvas): TvEntityFeatures;
+function TvText.GetEntityFeatures(constref ARenderInfo: TvRenderInfo): TvEntityFeatures;
 var
   ActualText: String;
-  lHeight_px: Integer;
+  lHeight_px: Integer = 0;
 begin
+  // Calculate the total height
+  CalculateHeightInCanvas(ARenderInfo, lHeight_px);
+  Result.TotalHeight := lHeight_px;
+
   Result.DrawsUpwardHeightAdjustment := 0;
-  if Value.Count > 0 then
+  if (not FPage.UseTopLeftCoordinates) then
+    Result.DrawsUpwardHeightAdjustment := lHeight_px;
+
+  Result.FirstLineHeight := 0;
+  if (Value.Count > 0) then
   begin
     ActualText := Value.Text;
     Value.Text := Value.Strings[0];
-    CalculateHeightInCanvas(ADest, lHeight_px);
-    Result.DrawsUpwardHeightAdjustment := lHeight_px;
+    CalculateHeightInCanvas(ARenderInfo, lHeight_px);
+    Result.FirstLineHeight := lHeight_px - GetTextMetric_Descender_px(ARenderInfo);
+
     Value.Text := ActualText;
   end;
   Result.DrawsUpwards := True;
@@ -5423,19 +5861,23 @@ end;
 
 { TvCurvedText }
 
-procedure TvCurvedText.Render(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer;
-  AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvCurvedText.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   i, lCharLen: Integer;
   lText, lUTF8Char: string;
   lX, lY, lTangentAngle, lTextHeight: Double;
   pt: TPoint;
   //lLeft, lTop, lWidth, lHeight: Integer;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, False);
+  inherited Render(ARenderInfo, False);
 
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
        (*
   if not ADoDraw then
   begin
@@ -5497,7 +5939,7 @@ end;
 
 { TvCircle }
 
-procedure TvCircle.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvCircle.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 begin
   ALeft := X - Radius;
@@ -5514,12 +5956,17 @@ begin
   Result.AppendEllipticalArcWithCenter(Radius, Radius, 0, X + Radius, Y, X, Y, true);
 end;
 
-procedure TvCircle.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvCircle.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   x1, y1, x2, y2: Integer;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
 
   x1 := CoordToCanvasX(X - Radius, ADestX, AMulX);
   y1 := CoordToCanvasY(Y - Radius, ADestY, AMulY);
@@ -5531,10 +5978,10 @@ begin
   begin
     if Brush.Kind <> bkSimpleBrush then
       // Draw gradient and border
-      DrawBrushGradient(ADest, ARenderInfo, x1, y1, x2, y2, ADestX, ADestY, AMulX, AMulY)
+      DrawBrushGradient(ARenderInfo, x1, y1, x2, y2)
     else
       // Draw uniform fill and border
-      DrawBrush(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMuly);
+      DrawBrush(ARenderInfo);
   end;
 end;
 
@@ -5548,11 +5995,16 @@ begin
   Y := ctr.Y;
 end;
 
-
 { TvCircularArc }
 
-procedure TvCircularArc.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvCircularArc.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -5572,7 +6024,7 @@ var
   ALCLDest: TCanvas absolute ADest;
   {$endif}
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
   {$ifdef USE_LCL_CANVAS}
   // ToDo: Consider a X axis inversion
   // If the Y axis is inverted, then we need to mirror our angles as well
@@ -5637,7 +6089,6 @@ begin
   {$endif}
 end;
 
-
 { TvEllipse }
 
 function TvEllipse.CreatePath: TPath;
@@ -5686,7 +6137,7 @@ begin
   //Result := vfrFound;
 end;
 
-procedure TvEllipse.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvEllipse.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 var
   t, tmp: Double;
@@ -5731,15 +6182,20 @@ begin
   end;
 end;
 
-procedure TvEllipse.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX, ADestY: Integer; AMulX, AMulY: Double; ADoDraw: Boolean);
+procedure TvEllipse.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   x1, y1, x2, y2: Integer;
   fx1, fx2, fy1, fy2: Double;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
 
-  CalculateBoundingBox(ADest, fx1, fy1, fx2, fy2);
+  CalculateBoundingBox(ARenderInfo, fx1, fy1, fx2, fy2);
   x1 := CoordToCanvasX(fx1, ADestX, AMulX);
   x2 := CoordToCanvasX(fx2, ADestX, AMulX);
   y1 := CoordToCanvasY(fy1, ADestY, AMulY);
@@ -5750,10 +6206,10 @@ begin
   begin
     if Brush.Kind <> bkSimpleBrush then
       // Draw gradient and border
-      DrawBrushGradient(ADest, ARenderInfo, x1, y1, x2, y2, ADestX, ADestY, AMulX, AMulY)
+      DrawBrushGradient(ARenderInfo, x1, y1, x2, y2)
     else
       // Draw uniform fill and border
-      DrawBrush(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMuly);
+      DrawBrush(ARenderInfo);
 //      ADest.Ellipse(x1, y1, x2, y2);
   end;
 end;
@@ -5847,7 +6303,7 @@ end;
 
 { TvRectangle }
 
-procedure TvRectangle.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvRectangle.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 var
   pts: Array[0..3] of T3DPoint;
@@ -5878,7 +6334,7 @@ begin
     ALeft := X;
     ATop := Y;
     ARight := X + CX;
-    ABottom := Y - CY;
+    ABottom := IfThen(FPage.FUseTopLeftCoordinates, Y + CY, Y - CY);
   end;
 end;
 
@@ -5887,27 +6343,30 @@ var
   pts: T3dPointsArray;
   ctr: T3dPoint;
   j: Integer;
-  phi: Double;
+  phi, lYAdj: Double;
 begin
+  lYAdj := FPage.GetTopLeftCoords_Adjustment(); // top/left: +1, bottom/left: -1
+
   if (RX > 0) and (RY > 0) then
   begin
     SetLength(pts, 9);
-    pts[0] := Make3dPoint(X, Y-RY);
-    pts[1] := Make3dPoint(X+RX, Y);
-    pts[2] := Make3dPoint(X+CX-RX, Y);
-    pts[3] := Make3dPoint(X+CX, Y-RY);
-    pts[4] := Make3dPoint(X+CX, Y-CY+RY);
-    pts[5] := Make3dPoint(X+CX-RX, Y-CY);
-    pts[6] := Make3dPoint(X+RX, Y-CY);
-    pts[7] := Make3dPoint(X, Y-CY+RY);
-    pts[8] := Make3dPoint(X, Y-RY);
-  end else
+    pts[0] := Make3dPoint(X, Y+lYAdj*RY);           {    1              2    }
+    pts[1] := Make3dPoint(X+RX, Y);                 {  0,8                3  }
+    pts[2] := Make3dPoint(X+CX-RX, Y);              {                        }
+    pts[3] := Make3dPoint(X+CX, Y+lYAdj*RY);        {                        }
+    pts[4] := Make3dPoint(X+CX, Y+lYAdj*(CY-RY));   {  7                  4  }
+    pts[5] := Make3dPoint(X+CX-RX, Y+lYAdj*CY);     {    6              5    }
+    pts[6] := Make3dPoint(X+RX, Y+lYAdj*CY);
+    pts[7] := Make3dPoint(X, Y+lYAdj*(CY-RY));
+    pts[8] := Make3dPoint(X, Y+lYAdj*RY);
+  end
+  else
   begin
     SetLength(pts, 5);
     pts[0] := Make3dPoint(X, Y);
     pts[1] := Make3dPoint(X+CX, Y);
-    pts[2] := Make3dPoint(X+CX, Y-CY);
-    pts[3] := Make3dPoint(X, Y-CY);
+    pts[2] := Make3dPoint(X+CX, Y+lYAdj*CY);
+    pts[3] := Make3dPoint(X, Y+lYAdj*CY);
     pts[4] := Make3dPoint(X, Y);
   end;
   ctr := Make3DPoint(X, Y);  // Rotation center
@@ -5920,17 +6379,16 @@ begin
   begin
     Result.AppendMoveToSegment(pts[0].x, pts[0].y);
     Result.AppendEllipticalArcWithCenter(RX, RY, phi, pts[1].x, pts[1].y,
-      pts[1].x, pts[0].y, false);
-    // wp: strange - why must the clockwise flag be false here? It should be true!
+      pts[1].x, pts[0].y, true);
     Result.AppendLineToSegment(pts[2].x, pts[2].y);
     Result.AppendEllipticalArcWithCenter(RX, RY, phi, pts[3].x, pts[3].y,
-      pts[2].x, pts[3].y, false);
+      pts[2].x, pts[3].y, true);
     Result.AppendLineToSegment(pts[4].x, pts[4].y);
     Result.AppendEllipticalArcWithCenter(RX, RY, phi, pts[5].x, pts[5].y,
-      pts[5].x, pts[4].y, false);
+      pts[5].x, pts[4].y, true);
     Result.AppendLineToSegment(pts[6].x, pts[6].y);
     Result.AppendEllipticalArcWithCenter(RX, RY, phi, pts[7].x, pts[7].y,
-      pts[6].x, pts[7].y, false);
+      pts[6].x, pts[7].y, true);
     Result.AppendLineToSegment(pts[8].x, pts[8].y);
   end else
   begin
@@ -5942,15 +6400,19 @@ begin
   end;
 end;
 
-procedure TvRectangle.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX, ADestY: Integer; AMulX, AMulY: Double; ADoDraw: Boolean);
+procedure TvRectangle.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   x1, y1, x2, y2: Integer;
   fx1, fy1, fx2, fy2: Double;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
 
-  CalculateBoundingBox(ADest, fx1, fy1, fx2, fy2);
+  CalculateBoundingBox(ARenderInfo, fx1, fy1, fx2, fy2);
   x1 := CoordToCanvasX(fx1, ADestX, AMulX);
   x2 := CoordToCanvasX(fx2, ADestX, AMulX);
   y1 := CoordToCanvasY(fy1, ADestY, AMulY);
@@ -5961,10 +6423,10 @@ begin
   begin
     if Brush.Kind <> bkSimpleBrush then
       // Draw gradient and border
-      DrawBrushGradient(ADest, ARenderInfo, x1, y1, x2, y2, ADestX, ADestY, AMulX, AMulY)
+      DrawBrushGradient(ARenderInfo, x1, y1, x2, y2)
     else
       // Draw uniform fill and border
-      DrawBrush(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY);
+      DrawBrush(ARenderInfo);
   end;
 end;
                             (*
@@ -6035,12 +6497,12 @@ end;
 
 { TvPolygon }
 
-procedure TvPolygon.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvPolygon.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 var
   i: Integer;
 begin
-  inherited CalculateBoundingBox(ADest, ALeft, ATop, ARight, ABottom);
+  inherited CalculateBoundingBox(ARenderInfo, ALeft, ATop, ARight, ABottom);
   for i := 0 to Length(Points)-1 do
   begin
     ALeft := Min(ALeft, Points[i].X);
@@ -6050,41 +6512,86 @@ begin
   end;
 end;
 
-procedure TvPolygon.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX: Integer; ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
-
-  function CoordToCanvasX(ACoord: Double): Integer;
-  begin
-    Result := Round(ADestX + AmulX * ACoord);
-  end;
-
-  function CoordToCanvasY(ACoord: Double): Integer;
-  begin
-    Result := Round(ADestY + AmulY * ACoord);
-  end;
-
+procedure TvPolygon.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   lPoints: array of TPoint;
   i: Integer;
+  x1, x2, y1, y2: Integer;
+  polystarts: TIntegerDynArray;
+  lRect: TRect;
+  gv1, gv2: T2DPoint;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
 
+  x1 := MaxInt;
+  y1 := maxInt;
+  x2 := -MaxInt;
+  y2 := -MaxInt;
   SetLength(lPoints, Length(Points));
-  for i := 0 to Length(Points)-1 do
+  for i := 0 to High(Points) do
   begin
-    lPoints[i].X := CoordToCanvasX(Points[i].X);
-    lPoints[i].Y := CoordToCanvasY(Points[i].Y);
-    CalcEntityCanvasMinMaxXY(ARenderInfo, lPoints[i].X, lPoints[i].Y);
+    lPoints[i].X := CoordToCanvasX(Points[i].X, ADestX, AMulX);
+    lPoints[i].Y := CoordToCanvasY(Points[i].Y, ADestY, AMulY);
+    x1 := min(x1, lPoints[i].X);
+    y1 := min(y1, lPoints[i].Y);
+    x2 := max(x2, lPoints[i].X);
+    y2 := max(y2, lPoints[i].Y);
   end;
+  CalcEntityCanvasMinMaxXY_With2Points(ARenderInfo, x1, y1, x2, y2);
 
   if ADoDraw then
-    ADest.Polygon(lPoints);
+    if (Length(lPoints) > 2) then
+    begin
+      case Brush.Kind of
+        bkSimpleBrush:
+          ADest.Polygon(lPoints);  // fills the polygon and paints the border
+        bkHorizontalGradient,
+        bkVerticalGradient,
+        bkOtherLinearGradient:
+          begin
+            // Border will be drawn later (gradient painting needs its own pen)
+            ADest.Pen.Style := psClear;
+            // Boundary rect of shape to be filled by a gradient
+            lRect := Rect(x1, y1, x2, y2);
+            // Calculate gradient vector
+            CalcGradientVector(gv1, gv2, lRect, ADestX, ADestY, AMulX, AMulY);
+            // Indexes where polygon starts: no multiple polygones here
+            SetLength(polyStarts, 1);
+            polyStarts[0] := 0;
+            // Draw the gradient
+            DrawPolygonBrushLinearGradient(ARenderInfo, lPoints, polyStarts, lRect, gv1, gv2);
+            // Draw border
+            DrawPolygonBorderOnly(ARenderInfo, lPoints);
+          end;
+        bkRadialGradient:
+          begin
+            // Border will be drawn later (gradient painting needs its own pen)
+            ADest.Pen.Style := psClear;
+            // Draw the gradient
+            DrawPolygonBrushRadialGradient(ARenderInfo, lPoints, lRect);
+            // Draw border
+            DrawPolygonBorderOnly(ARenderInfo, lPoints);
+          end;
+      end;
+    end;
 end;
+
 
 { TvAlignedDimension }
 
-procedure TvAlignedDimension.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvAlignedDimension.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -6230,8 +6737,13 @@ end;
 
 { TvRadialDimension }
 
-procedure TvRadialDimension.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvRadialDimension.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -6343,9 +6855,13 @@ end;
 
 { TvArcDimension }
 
-procedure TvArcDimension.Render(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer; AMulX: Double;
-  AMulY: Double; ADoDraw: Boolean);
+procedure TvArcDimension.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -6472,7 +6988,7 @@ begin
   inherited Destroy;
 end;
 
-procedure TvRasterImage.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvRasterImage.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 begin
   ALeft := X;
@@ -6513,6 +7029,25 @@ begin
   AImage := TLazIntfImage.Create(0,0);
   AImage.SetRawImage(lRawImage);
   AImage.LoadFromFile(AFilename);
+
+  RasterImage := AImage;
+{$endif}
+end;
+
+procedure TvRasterImage.CreateImageFromStream(AStream: TStream; Handler:TFPCustomImageReader);
+{$ifdef USE_LCL_CANVAS}
+var
+  AImage: TLazIntfImage;
+  lRawImage: TRawImage;
+{$endif}
+begin
+{$ifdef USE_LCL_CANVAS}
+  lRawImage.Init;
+  lRawImage.Description.Init_BPP32_A8R8G8B8_BIO_TTB(0,0);
+  lRawImage.CreateData(false);
+  AImage := TLazIntfImage.Create(0,0);
+  AImage.SetRawImage(lRawImage);
+  AImage.LoadFromStream(AStream, Handler);
 
   RasterImage := AImage;
 {$endif}
@@ -6565,9 +7100,13 @@ begin
   end;
 end;
 
-procedure TvRasterImage.Render(ADest: TFPCustomCanvas;
-  var ARenderInfo: TvRenderInfo; ADestX: Integer; ADestY: Integer; AMulX: Double;
-  AMulY: Double; ADoDraw: Boolean);
+procedure TvRasterImage.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -6650,14 +7189,19 @@ end;
 
 { TvArrow }
 
-procedure TvArrow.CalculateBoundingBox(ADest: TFPCustomCanvas;
-  out ALeft, ATop, ARight, ABottom: Double);
+procedure TvArrow.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo; out
+  ALeft, ATop, ARight, ABottom: Double);
 begin
 
 end;
 
-procedure TvArrow.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvArrow.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -6675,8 +7219,8 @@ var
   lPoints: array[0..2] of TPoint;
   AlfaAngle: Double;
 begin
-  ApplyPenToCanvas(ADest, ARenderInfo);
-  ApplyBrushToCanvas(ADest);
+  ApplyPenToCanvas(ARenderInfo);
+  ApplyBrushToCanvas(ARenderInfo);
 
   lArrow.X := CoordToCanvasX(X);
   lArrow.Y := CoordToCanvasY(Y);
@@ -6833,9 +7377,11 @@ begin
   end;
 end;
 
-procedure TvFormulaElement.PositionSubparts(ADest: TFPCustomCanvas; ABaseX,
-  ABaseY: Double);
+procedure TvFormulaElement.PositionSubparts(constref ARenderInfo: TvRenderInfo;
+  ABaseX, ABaseY: Double);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  //
   lCentralizeFactor: Double = 0;
   lCentralizeFactorAdj: Double = 0;
 begin
@@ -6856,40 +7402,46 @@ begin
         lCentralizeFactorAdj := 0;
       end;
 
-      Self.Formula.PositionSubparts(ADest, Self.Left + lCentralizeFactor, Self.Top);
-      Self.AdjacentFormula.PositionSubparts(ADest, Self.Left + lCentralizeFactorAdj, Self.Top - Self.Formula.Height - 3);
+      Self.Formula.PositionSubparts(ARenderInfo, Self.Left + lCentralizeFactor, Self.Top);
+      Self.AdjacentFormula.PositionSubparts(ARenderInfo, Self.Left + lCentralizeFactorAdj, Self.Top - Self.Formula.Height - 3);
     end;
     fekRoot:
     begin
       // Give a factor for the root drawing
-      Self.Formula.PositionSubparts(ADest, Self.Left + 10, Self.Top);
+      Self.Formula.PositionSubparts(ARenderInfo, Self.Left + 10, Self.Top);
     end;
     fekPower:
     begin
-      Self.Formula.PositionSubparts(ADest, Self.Left, Self.Top);
-      Self.AdjacentFormula.PositionSubparts(ADest, Self.Left + Self.Formula.Width, Self.Top);
+      Self.Formula.PositionSubparts(ARenderInfo, Self.Left, Self.Top);
+      Self.AdjacentFormula.PositionSubparts(ARenderInfo, Self.Left + Self.Formula.Width, Self.Top);
     end;
     fekSubscript:
     begin
-      Self.Formula.PositionSubparts(ADest, Self.Left, Self.Top);
-      Self.AdjacentFormula.PositionSubparts(ADest, Self.Left + Self.Formula.Width, Self.Top - Self.Formula.Height / 2);
+      Self.Formula.PositionSubparts(ARenderInfo, Self.Left, Self.Top);
+      Self.AdjacentFormula.PositionSubparts(ARenderInfo, Self.Left + Self.Formula.Width, Self.Top - Self.Formula.Height / 2);
     end;
     fekSummation:
     begin
       // main/bottom formula
-      Self.Formula.PositionSubparts(ADest, Self.Left, Self.Top - 30);
+      Self.Formula.PositionSubparts(ARenderInfo, Self.Left, Self.Top - 30);
       // top formula
-      Self.AdjacentFormula.PositionSubparts(ADest, Self.Left, Self.Top);
+      Self.AdjacentFormula.PositionSubparts(ARenderInfo, Self.Left, Self.Top);
     end;
     fekFormula:
     begin
-      Self.Formula.PositionSubparts(ADest, Self.Left, Self.Top);
+      Self.Formula.PositionSubparts(ARenderInfo, Self.Left, Self.Top);
     end;
   end;
 end;
 
-procedure TvFormulaElement.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvFormulaElement.Render(var ARenderInfo: TvRenderInfo;
+  ADoDraw: Boolean);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -6930,8 +7482,8 @@ begin
       // Complex ones
       fekFraction:
       begin
-        Formula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
-        AdjacentFormula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        Formula.Render(ARenderInfo, ADoDraw);
+        AdjacentFormula.Render(ARenderInfo, ADoDraw);
 
         // Division line
         lPt[0].X := CoordToCanvasX(Formula.Left);
@@ -6942,7 +7494,7 @@ begin
       end;
       fekRoot:
       begin
-        Formula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        Formula.Render(ARenderInfo, ADoDraw);
 
         // Root drawing
         lPt[0].X := CoordToCanvasX(Left);
@@ -6961,22 +7513,22 @@ begin
       end;
       fekPower:
       begin
-        Formula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        Formula.Render(ARenderInfo, ADoDraw);
         // The superscripted power
         lOldFontSize := ADest.Font.Size;
         if lOldFontSize = 0 then ADest.Font.Size := 5
         else ADest.Font.Size := lOldFontSize div 2;
-        AdjacentFormula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        AdjacentFormula.Render(ARenderInfo, ADoDraw);
         ADest.Font.Size := lOldFontSize;
       end;
       fekSubscript:
       begin
-        Formula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        Formula.Render(ARenderInfo, ADoDraw);
         // The subscripted item
         lOldFontSize := ADest.Font.Size;
         if lOldFontSize = 0 then ADest.Font.Size := 5
         else ADest.Font.Size := lOldFontSize div 2;
-        AdjacentFormula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        AdjacentFormula.Render(ARenderInfo, ADoDraw);
         ADest.Font.Size := lOldFontSize;
       end;
       fekSummation:
@@ -6989,15 +7541,15 @@ begin
         ADest.Font.Size := lOldFontSize;
 
         // Draw the bottom/main formula
-        Formula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        Formula.Render(ARenderInfo, ADoDraw);
 
         // Draw the top formula
-        AdjacentFormula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        AdjacentFormula.Render(ARenderInfo, ADoDraw);
       end;
       fekFormula:
       begin
         // Draw the formula
-        Formula.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+        Formula.Render(ARenderInfo, ADoDraw);
       end;
     end;
 end;
@@ -7371,8 +7923,11 @@ begin
   Width := Result;
 end;
 
-procedure TvFormula.PositionSubparts(ADest: TFPCustomCanvas; ABaseX, ABaseY: Double);
+procedure TvFormula.PositionSubparts(constref ARenderInfo: TvRenderInfo;
+  ABaseX, ABaseY: Double);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  //
   lElement: TvFormulaElement;
   lPosX: Double = 0;
   lMaxHeight: Double = 0;
@@ -7392,7 +7947,7 @@ begin
     lElement.Top := Top;
     lMaxHeight := Max(lMaxHeight, lElement.Height);
 
-    lElement.PositionSubparts(ADest, ABaseX, ABaseY);
+    lElement.PositionSubparts(ARenderInfo, ABaseX, ABaseY);
 
     lElement := GetNextElement();
   end;
@@ -7413,8 +7968,10 @@ begin
   end;
 end;
 
-procedure TvFormula.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvFormula.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
 begin
   ALeft := X;
   ATop := Y;
@@ -7425,22 +7982,21 @@ begin
   ABottom := Y + ABottom;
 end;
 
-procedure TvFormula.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvFormula.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
   lElement: TvFormulaElement;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
 
   // First position all elements
-  PositionSubparts(ADest, Left, Top);
+  PositionSubparts(ARenderInfo, Left, Top);
 
   // Now draw them all
   lElement := GetFirstElement();
   if lElement = nil then Exit;
   while lElement <> nil do
   begin
-    lElement.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+    lElement.Render(ARenderInfo, ADoDraw);
 
     lElement := GetNextElement();
   end;
@@ -7515,6 +8071,7 @@ end;
 function TvEntityWithSubEntities.AddEntity(AEntity: TvEntity): Integer;
 begin
   //AEntity.Parent := Self;
+  AEntity.SetPage(Self.FPage);
   Result := FElements.Add(AEntity);
 end;
 
@@ -7567,15 +8124,14 @@ begin
   FElements.Clear;
 end;
 
-procedure TvEntityWithSubEntities.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX: Integer; ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvEntityWithSubEntities.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
   lEntity: TvEntity;
   rinfo: TvRenderInfo;
   isFirst: Boolean;
 begin
   rinfo := ARenderInfo;
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
   isFirst := true;
   lEntity := GetFirstEntity();
   while lEntity <> nil do
@@ -7586,7 +8142,7 @@ begin
     {$ENDIF}
 
     // Render
-    lEntity.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMuly, ADoDraw);
+    lEntity.Render(ARenderInfo, ADoDraw);
 
     if isFirst then
     begin
@@ -7599,6 +8155,12 @@ begin
         ARenderInfo.EntityCanvasMaxXY.X,
         ARenderInfo.EntityCanvasMaxXY.Y
       );
+
+    {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
+    if AutoFitDebug <> nil then AutoFitDebug.Add(Format('=[%s] MinX=%d MinY=%d MaxX=%d MaxY=%d',
+      [lEntity.ClassName, ARenderInfo.EntityCanvasMinXY.X, ARenderInfo.EntityCanvasMinXY.Y,
+       ARenderInfo.EntityCanvasMaxXY.X, ARenderInfo.EntityCanvasMaxXY.Y]));
+    {$endif}
 
     lEntity := GetNextEntity();
   end;
@@ -7703,12 +8265,11 @@ begin
   inherited Destroy;
 end;
 
-procedure TvInsert.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvInsert.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
   OldForceRenderBlock: Boolean;
 begin
-  inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+  inherited Render(ARenderInfo, ADoDraw);
   if InsertEntity = nil then Exit;
   // If we are inserting a block, make sure it will render its contents
   OldForceRenderBlock := ARenderInfo.ForceRenderBlock;
@@ -7725,7 +8286,7 @@ begin
   Style.ApplyOverFromFont(@Font, SetElements);
   Style.ApplyIntoEntity(InsertEntity);
   // Render
-  InsertEntity.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMuly, ADoDraw);
+  InsertEntity.Render(ARenderInfo, ADoDraw);
   // Change them back
   InsertEntity.Move(-X, -Y);
   // And unrotate it back again
@@ -7747,8 +8308,7 @@ end;
 
 { TvBlock }
 
-procedure TvBlock.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer;
-  ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvBlock.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
   lEntity: TvEntity;
 begin
@@ -7767,7 +8327,7 @@ begin
     // Alter the position of the elements to consider the positioning of the BLOCK and of the INSERT
     lEntity.Move(X, Y);
     // Render
-    lEntity.Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMuly, ADoDraw);
+    lEntity.Render(ARenderInfo, ADoDraw);
     // Change them back
     lEntity.Move(-X, -Y);
 
@@ -7820,7 +8380,7 @@ begin
   AddEntity(Result);
 end;
 
-procedure TvParagraph.CalculateBoundingBox(ADest: TFPCustomCanvas;
+procedure TvParagraph.CalculateBoundingBox(constref ARenderInfo: TvRenderInfo;
   out ALeft, ATop, ARight, ABottom: Double);
 var
   lEntity: TvEntity;
@@ -7829,7 +8389,7 @@ var
   lLeft, lTop, lRight, lBottom: Double;
   lText: TvText absolute lEntity;
   {$ifdef USE_LCL_CANVAS}
-  ACanvas: TCanvas absolute ADest;
+  ACanvas: TCanvas absolute ARenderInfo.Canvas;
   {$endif}
 begin
   ALeft := X;
@@ -7842,7 +8402,7 @@ begin
   begin
     if Style <> nil then
       Style.ApplyIntoEntity(lEntity);
-    lEntity.CalculateBoundingBox(ADest, lLeft, lTop, lRight, lBottom);
+    lEntity.CalculateBoundingBox(ARenderInfo, lLeft, lTop, lRight, lBottom);
     lCurWidth := lCurWidth + (lRight - lLeft);
     lCurHeight := Max(lCurHeight, Abs(lTop - lBottom));
     lEntity := GetNextEntity();
@@ -7859,9 +8419,14 @@ begin
   Result:=inherited TryToSelect(APos, ASubpart, ASnapFlexibility);
 end;
 
-procedure TvParagraph.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX: Integer; ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvParagraph.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
+  //
   lCurWidth: Double = 0.0;
   lLeft, lTop, lRight, lBottom: Double;
   OldTextX: Double = 0.0;
@@ -7873,14 +8438,21 @@ var
   lResetOldStyle: Boolean = False;
   lEntityRenderInfo: TvRenderInfo;
   CurX, CurY, lHeight_px: Integer;
+  lFeatures: TvEntityFeatures;
 begin
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
+  InitializeRenderInfo(lEntityRenderInfo, Self);
 
   // Don't call inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
   lEntity := GetFirstEntity();
   while lEntity <> nil do
   begin
-    lHeight_px := lEntity.GetEntityFeatures(ADest).DrawsUpwardHeightAdjustment;
+    lFeatures := lEntity.GetEntityFeatures(ARenderInfo);
+    lHeight_px := 0;
+    if YPos_NeedsAdjustment_DelFirstLineBodyHeight then
+      lHeight_px := -1 * lFeatures.FirstLineHeight;
+    if (lFeatures.DrawsUpwardHeightAdjustment > 0) then
+      lHeight_px := lFeatures.DrawsUpwardHeightAdjustment - lFeatures.FirstLineHeight;
 
     if lEntity is TvText then
     begin
@@ -7904,9 +8476,10 @@ begin
       OldTextX := lText.X;
       OldTextY := lText.Y;
       CurX := CoordToCanvasX(lText.X + X + lCurWidth, ADestX, AMulX);
+      CurY := CoordToCanvasY(lText.Y + Y, ADestY, AMulY);
       lText.X := 0;
-      lText.Y := lText.Y + Y;
-      CurY := CoordToCanvasY(lText.Y, ADestY, AMulY);
+      lText.Y := 0;
+      CurY += lHeight_px;
       lText.Render_Use_NextText_X := not lFirstText;
       if lText.Render_Use_NextText_X then
         lText.Render_NextText_X := lPrevText.Render_NextText_X;
@@ -7915,8 +8488,11 @@ begin
       if Style <> nil then
         Style.ApplyIntoEntity(lText);
 
-      lText.Render(ADest, lEntityRenderInfo, CurX, ADestY, AMulX, AMulY, ADoDraw);
-      lText.CalculateBoundingBox(ADest, lLeft, lTop, lRight, lBottom);
+      CopyAndInitDocumentRenderInfo(lEntityRenderInfo, ARenderInfo);
+      lEntityRenderInfo.DestX := CurX;
+      lEntityRenderInfo.DestY := CurY;
+      lText.Render(lEntityRenderInfo, ADoDraw);
+      lText.CalculateBoundingBox(ARenderInfo, lLeft, lTop, lRight, lBottom);
       lCurWidth := lCurWidth + Abs(lRight - lLeft);
       lFirstText := False;
       lPrevText := lText;
@@ -7928,12 +8504,18 @@ begin
     end
     else
     begin
-      OldTextX := lText.X;
-      OldTextY := lText.Y;
-      lEntity.X := CoordToCanvasX(lEntity.X + X + lCurWidth, ADestX, AMulX);
+      OldTextX := lEntity.X;
+      OldTextY := lEntity.Y;
+      lEntity.X := lEntity.X + X + lCurWidth;
       lEntity.Y := lEntity.Y + Y;
 
-      lEntity.Render(ADest, lEntityRenderInfo, ADestX, ADestY + lHeight_px, AMulX, AMulY, ADoDraw);
+      CopyAndInitDocumentRenderInfo(lEntityRenderInfo, ARenderInfo);
+      lEntityRenderInfo.Canvas := ADest;
+      lEntityRenderInfo.DestX := ADestX;
+      lEntityRenderInfo.DestY := ADestY + lHeight_px;
+      lEntityRenderInfo.MulX := AMulX;
+      lEntityRenderInfo.MulY := AMulY;
+      lEntity.Render(lEntityRenderInfo, ADoDraw);
 
       lEntity.X := OldTextX;
       lEntity.Y := OldTextY;
@@ -8055,8 +8637,13 @@ begin
   end;
 end;
 
-procedure TvList.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo; ADestX: Integer = 0;
-      ADestY: Integer = 0; AMulX: Double = 1.0; AMulY: Double = 1.0; ADoDraw: Boolean = True);
+procedure TvList.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean = True);
+var
+  ADest: TFPCustomCanvas absolute ARenderInfo.Canvas;
+  ADestX: Integer absolute ARenderInfo.DestX;
+  ADestY: Integer absolute ARenderInfo.DestY;
+  AMulX: Double absolute ARenderInfo.MulX;
+  AMulY: Double absolute ARenderInfo.MulY;
 
   function CoordToCanvasX(ACoord: Double): Integer;
   begin
@@ -8076,7 +8663,7 @@ var
   CurX, CurY, lBulletSize, lItemHeight: Double;
   lHeight_px: Integer;
 begin
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
 
   // Don't call inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
 
@@ -8089,8 +8676,7 @@ begin
   begin
     // handle both directions of drawing
     lHeight_px := 0;
-    //if lEntity.GetEntityFeatures().DrawsUpwards then
-      lEntity.CalculateHeightInCanvas(ADest, lHeight_px);
+    lEntity.CalculateHeightInCanvas(ARenderInfo, lHeight_px);
 
     // draw the bullet (if necessary)
     if lEntity is TvParagraph then
@@ -8102,15 +8688,20 @@ begin
     // attempt to centralize the item
     lEntity.X := CurX;
     lEntity.Y := CurY;
-    lItemHeight := lEntity.GetHeight(ADest);
+    lItemHeight := lEntity.GetHeight(ARenderInfo);
     if lItemHeight < lBulletSize then
     begin
       lItemHeight := lBulletSize;
-      lEntity.Y := lEntity.CentralizeY_InHeight(ADest, lBulletSize);
+      lEntity.Y := lEntity.CentralizeY_InHeight(ARenderInfo, lBulletSize);
     end;
 
     // draw the item
-    lEntity.Render(ADest, lEntityRenderInfo, ADestX, ADestY+lHeight_px, AMulX, AMulY, ADoDraw);
+    lEntityRenderInfo.Canvas := ADest;
+    lEntityRenderInfo.DestX := ADestX;
+    lEntityRenderInfo.DestY := ADestY+lHeight_px;
+    lEntityRenderInfo.MulX := AMulX;
+    lEntityRenderInfo.MulY := AMulY;
+    lEntity.Render(lEntityRenderInfo, ADoDraw);
 
     // prepare next loop iteration
     MergeRenderInfo(lEntityRenderInfo, ARenderInfo);
@@ -8170,7 +8761,7 @@ begin
   ABottomSpacing := SpacingBottom;
 end;
 
-function TvRichText.CalculateCellHeight_ForWidth(ADest: TFPCustomCanvas; AWidth: Double): Double;
+function TvRichText.CalculateCellHeight_ForWidth(constref ARenderInfo: TvRenderInfo; AWidth: Double): Double;
 var
   lCurHeight: Double = 0.0;
   lLeft, lTop, lRight, lBottom, lSpacingTop, lSpacingBottom, lTmp: Double;
@@ -8183,7 +8774,7 @@ begin
   begin
     lEntity.X := X;
     lEntity.Y := Y + Result;
-    lEntity.CalculateBoundingBox(ADest, lLeft, lTop, lRight, lBottom);
+    lEntity.CalculateBoundingBox(ARenderInfo, lLeft, lTop, lRight, lBottom);
     Result := Result + (lBottom - lTop);
 
     lEntity := GetNextEntity();
@@ -8193,7 +8784,7 @@ begin
   Result := Result + lSpacingTop + lSpacingBottom;
 end;
 
-function TvRichText.CalculateMaxNeededWidth(ADest: TFPCustomCanvas): Double;
+function TvRichText.CalculateMaxNeededWidth(constref ARenderInfo: TvRenderInfo): Double;
 var
   lLeft, lTop, lRight, lBottom: Double;
   lEntity: TvEntity;
@@ -8209,7 +8800,7 @@ begin
     begin
       lEntity.X := X;
       lEntity.Y := Y + Result;
-      lEntity.CalculateBoundingBox(ADest, lLeft, lTop, lRight, lBottom);
+      lEntity.CalculateBoundingBox(ARenderInfo, lLeft, lTop, lRight, lBottom);
       Result := Max(Result, (lRight - lLeft));
 
       lEntity := GetNextEntity();
@@ -8224,8 +8815,7 @@ begin
   Result:=inherited TryToSelect(APos, ASubpart, ASnapFlexibility);
 end;
 
-procedure TvRichText.Render(ADest: TFPCustomCanvas; var ARenderInfo: TvRenderInfo;
-  ADestX: Integer; ADestY: Integer; AMulX: Double; AMulY: Double; ADoDraw: Boolean);
+procedure TvRichText.Render(var ARenderInfo: TvRenderInfo; ADoDraw: Boolean);
 var
   lCurHeight: Double = 0.0;
   lLeft, lTop, lRight, lBottom: Double;
@@ -8234,7 +8824,7 @@ var
   //lParagraph: TvParagraph absolute lEntity;
   lEntityRenderInfo: TvRenderInfo;
 begin
-  InitializeRenderInfo(ARenderInfo);
+  InitializeRenderInfo(ARenderInfo, Self);
 
   // Don't call inherited Render(ADest, ARenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
   lEntity := GetFirstEntity();
@@ -8242,9 +8832,15 @@ begin
   begin
     lEntity.X := X;
     lEntity.Y := Y + lCurHeight;
-    lHeight_px := lEntity.GetEntityFeatures(ADest).DrawsUpwardHeightAdjustment;
-    lEntity.Render(ADest, lEntityRenderInfo, ADestX, ADestY + lHeight_px, AMulX, AMulY, ADoDraw);
-    lEntity.CalculateBoundingBox(ADest, lLeft, lTop, lRight, lBottom);
+    lHeight_px := lEntity.GetEntityFeatures(ARenderInfo).DrawsUpwardHeightAdjustment;
+    CopyAndInitDocumentRenderInfo(lEntityRenderInfo, ARenderInfo);
+    lEntityRenderInfo.Canvas := ARenderInfo.Canvas;
+    lEntityRenderInfo.DestX := ARenderInfo.DestX;
+    lEntityRenderInfo.DestY := ARenderInfo.DestY + lHeight_px;
+    lEntityRenderInfo.Canvas := ARenderInfo.Canvas;
+    lEntityRenderInfo.Canvas := ARenderInfo.Canvas;
+    lEntity.Render(lEntityRenderInfo, ADoDraw);
+    lEntity.CalculateBoundingBox(ARenderInfo, lLeft, lTop, lRight, lBottom);
     lCurHeight := lCurHeight + (lBottom - lTop);
 
     lEntity := GetNextEntity();
@@ -8260,15 +8856,28 @@ end;
 
 { TvPage }
 
+procedure TvPage.InitializeRenderInfo(out ARenderInfo: TvRenderInfo;
+  ACanvas: TFPCustomCanvas; AEntity: TvEntity);
+begin
+  FillChar(ARenderInfo, SizeOf(TvRenderInfo), #0);
+  TvEntity.InitializeRenderInfo(ARenderInfo, AEntity, True);
+  ARenderInfo.Canvas := ACanvas;
+  ARenderInfo.Page := Self;
+  ARenderInfo.Renderer := FOwner.FRenderer;
+end;
+
 constructor TvPage.Create(AOwner: TvVectorialDocument);
 begin
   inherited Create;
   FOwner := AOwner;
   AdjustPenColorToBackground := true;
+  System.FillChar(RenderInfo, SizeOf(RenderInfo), #0);
+  TvEntity.InitializeRenderInfo(RenderInfo, nil, True);
 end;
 
 destructor TvPage.Destroy;
 begin
+  TvEntity.FinalizeRenderInfo(RenderInfo);
   inherited Destroy;
 end;
 
@@ -8297,6 +8906,7 @@ var
   lCurEntity: TvEntity;
   lLeft, lTop, lRight, lBottom: Double;
   lBmp: TBitmap;
+  lRenderInfo: TvRenderInfo;
 begin
   MinX := 0;
   MinY := 0;
@@ -8308,7 +8918,8 @@ begin
   for i := 0 to GetEntitiesCount() -1 do
   begin
     lCurEntity := GetEntity(i);
-    lCurEntity.CalculateBoundingBox(lBmp.Canvas, lLeft, lTop, lRight, lBottom);
+    lRenderInfo.Canvas := lBmp.Canvas;
+    lCurEntity.CalculateBoundingBox(lRenderInfo, lLeft, lTop, lRight, lBottom);
     MinX := Min(MinX, lLeft);
     MinY := Min(MinY, lTop);
     MaxX := Max(MaxX, lRight);
@@ -8318,6 +8929,130 @@ begin
   Width := MaxX - MinX;
   Height := MaxY - MinY;
 end;
+
+procedure TvPage.AutoFit(ADest: TFPCustomCanvas; AWidth, AHeight, ARenderHeight: Integer;
+  out ADeltaX, ADeltaY: Integer; out AZoom: Double);
+var
+  lCurEntity: TvEntity;
+  lLeft, lTop, lWidth, lHeight: Integer;
+  lMinX, lMinY, lMaxX, lMaxY, lNaturalHeightDiff: Integer;
+  lZoomFitX, lZoomFitY, lNaturalMulY: Double;
+
+  function CalculateAllEntitySizes(): Boolean;
+  var
+    i: Integer;
+    lRenderInfo: TvRenderInfo;
+  begin
+    Result := True;
+
+    lMinX := High(Integer);
+    lMinY := High(Integer);
+    lMaxX := Low(Integer);
+    lMaxY := Low(Integer);
+
+    if Self is TvVectorialPage then
+    begin
+      for i := 0 to GetEntitiesCount() - 1 do
+      begin
+        lCurEntity := TvEntity(GetEntity(i));
+        InitializeRenderInfo(lRenderInfo, ADest, lCurEntity);
+        if lCurEntity.CalculateSizeInCanvas(lRenderInfo, ARenderHeight, AZoom, lLeft, lTop, lWidth, lHeight) then
+        begin
+          lMinX := Min(lMinX, lLeft);
+          lMinY := Min(lMinY, lTop);
+          lMaxX := Max(lMaxX, lLeft + lWidth);
+          lMaxY := Max(lMaxY, lTop  + lHeight);
+        end;
+        {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
+        AutoFitDebug.Add(Format('[%s] MinX=%d MinY=%d MaxX=%d MaxY=%D', [lCurEntity.ClassName, lMinX, lMinY, lMaxX, lMaxY]));
+        {$endif}
+      end;
+
+      lMinX := Min(lMinX, lLeft);
+      lMinY := Min(lMinY, lTop);
+      lMaxX := Max(lMaxX, lLeft + lWidth);
+      lMaxY := Max(lMaxY, lTop  + lHeight);
+    end
+    else
+    begin
+      Render(ADest, 0, 0, AZoom, AZoom * lNaturalMulY, False);
+      lMinX := RenderInfo.EntityCanvasMinXY.X;
+      lMinY := RenderInfo.EntityCanvasMinXY.Y;
+      lMaxX := RenderInfo.EntityCanvasMaxXY.X;
+      lMaxY := RenderInfo.EntityCanvasMaxXY.Y;
+    end;
+
+    if (lMinX = High(Integer)) or (lMinY = High(Integer)) or
+       (lMaxX = Low(Integer)) or(lMaxY = Low(Integer)) then
+       Exit(False);
+
+    lWidth := lMaxX - lMinX;
+    lHeight := lMaxY - lMinY;
+    if (lWidth = 0) or (lHeight = 0) then Exit(False);
+  end;
+
+begin
+  {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
+  AutoFitDebug := TStringList.Create;
+  try
+  {$endif}
+  ADeltaX := 0;
+  ADeltaY := 0;
+  GetNaturalRenderPos(lNaturalHeightDiff, lNaturalMulY);
+
+  // First Calculate the zoom
+
+  AZoom := 1;
+  if not CalculateAllEntitySizes() then Exit;
+
+  lZoomFitX := AWidth / lWidth;
+  lZoomFitY := AHeight / lHeight;
+  AZoom := Min(lZoomFitX, lZoomFitY) * 0.9;
+
+  // Now DeltaX, DeltaY
+
+  if not CalculateAllEntitySizes() then Exit;
+  ADeltaX := Round(-1 * lMinX) + AWidth div 2 - lWidth div 2;
+  ADeltaY := Round(-1 * lMinY) + (AHeight div 2 - lHeight div 2);
+
+  {$ifdef FPVECTORIAL_RENDERINFO_VISUALDEBUG}
+  ADest.Brush.Style := bsClear;
+  ADest.Pen.FPColor := colRed;
+  ADest.Pen.Style := psSolid;
+  ADest.Rectangle(lMinX+ADeltaX, lMinY+ADeltaY, lMaxX+ADeltaX, lMaxY+ADeltaY);
+  {$endif}
+
+  {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
+  finally
+    {$ifdef Windows}
+    AutoFitDebug.SaveToFile('C:\Programas\autofit.txt');
+    {$else}
+    AutoFitDebug.SaveToFile('/Users/felipe/autofit.txt');
+    {$endif}
+    AutoFitDebug.Free;
+    AutoFitDebug := nil;
+  end;
+  {$endif}
+end;
+
+procedure TvPage.SetNaturalRenderPos(AUseTopLeftCoords: Boolean);
+begin
+  FUseTopLeftCoordinates := AUseTopLeftCoords;
+end;
+
+function TvPage.HasNaturalRenderPos: Boolean;
+begin
+  Result := FUseTopLeftCoordinates;
+end;
+
+function TvPage.GetTopLeftCoords_Adjustment: Double;
+begin
+  if UseTopLeftCoordinates then
+    Result := 1
+  else
+    Result := -1;
+end;
+
 
 { TvVectorialPage }
 
@@ -8353,7 +9088,6 @@ begin
   Owner := AOwner;
   Clear();
   BackgroundColor := colWhite;
-  System.FillChar(RenderInfo, SizeOf(RenderInfo), #0);
   RenderInfo.BackgroundColor := colWhite;
 end;
 
@@ -8505,6 +9239,7 @@ end;
 }
 function TvVectorialPage.AddEntity(AEntity: TvEntity): Integer;
 begin
+  AEntity.SetPage(Self);
   if FCurrentLayer = nil then
   begin
     Result := FEntities.Count;
@@ -8766,8 +9501,9 @@ end;
 }
 function  TvVectorialPage.EndPath(AOnlyCreate: Boolean = False): TPath;
 begin
-  if FTmPPath.Len = 0 then Exit;
-  Result := AddPathCopyMem(FTmPPath, AOnlyCreate);
+  if FTmpPath.Len = 0 then Exit;
+  Result := AddPathCopyMem(FTmpPath, AOnlyCreate);
+  Result.FPage := self;
   ClearTmpPath();
 end;
 
@@ -8950,13 +9686,13 @@ begin
   Result := lPoint;
 end;
 
-procedure TvVectorialPage.PositionEntitySubparts(ADest: TFPCustomCanvas; ABaseX,
-  ABaseY: Double);
+procedure TvVectorialPage.PositionEntitySubparts(constref
+  ARenderInfo: TvRenderInfo; ABaseX, ABaseY: Double);
 var
   i: Integer;
 begin
   for i := 0 to GetEntitiesCount()-1 do
-    GetEntity(i).PositionSubparts(ADest, ABaseX, ABaseY);
+    GetEntity(i).PositionSubparts(ARenderInfo, ABaseX, ABaseY);
 end;
 
 procedure TvVectorialPage.DrawBackground(ADest: TFPCustomCanvas);
@@ -9029,6 +9765,11 @@ begin
   WriteLn(':>DrawFPVectorialToCanvas');
   {$endif}
 
+  InitializeRenderInfo(RenderInfo, ADest, nil);
+  InitializeRenderInfo(rInfo, ADest, nil);
+  TvEntity.CopyAndInitDocumentRenderInfo(rInfo, RenderInfo, False, False);
+  if Assigned(FOwner.FRenderer) then FOwner.FRenderer.BeginRender(RenderInfo, ADoDraw);
+
   for i := 0 to GetEntitiesCount - 1 do
   begin
     {$ifdef FPVECTORIAL_TOCANVAS_DEBUG}
@@ -9039,8 +9780,12 @@ begin
 
     RenderInfo.BackgroundColor := BackgroundColor;
     RenderInfo.AdjustPenColorToBackground := AdjustPenColorToBackground;
+    RenderInfo.DestX := ADestX;
+    RenderInfo.DestY := ADestY;
+    RenderInfo.MulX := AMulX;
+    RenderInfo.MulY := AMulY;
 
-    CurEntity.Render(ADest, RenderInfo, ADestX, ADestY, AMulX, AMulY, ADoDraw);
+    CurEntity.Render(RenderInfo, ADoDraw);
 
     if i = 0 then
       rInfo := RenderInfo
@@ -9053,72 +9798,31 @@ begin
     end;
   end;
 
-  RenderInfo := rInfo;
+  if Assigned(FOwner.FRenderer) then FOwner.FRenderer.EndRender(RenderInfo, ADoDraw);
+  TvEntity.CopyAndInitDocumentRenderInfo(RenderInfo, rInfo, True, False);
 
+  {$ifdef FPVECTORIAL_RENDERINFO_VISUALDEBUG}
+  ADest.Brush.Style := bsClear;
+  ADest.Pen.FPColor := colRed;
+  ADest.Rectangle(rInfo.EntityCanvasMinXY.X, RenderInfo.EntityCanvasMinXY.Y,
+    rInfo.EntityCanvasMaxXY.X, rInfo.EntityCanvasMaxXY.Y);
+  {$endif}
   {$ifdef FPVECTORIAL_TOCANVAS_DEBUG}
   WriteLn(':<DrawFPVectorialToCanvas');
   {$endif}
 end;
 
-procedure TvVectorialPage.AutoFit(ADest: TFPCustomCanvas;
-  AWidth, AHeight: Integer; out ADeltaX, ADeltaY: Integer; out AZoom: Double);
-var
-  i: Integer;
-  lCurEntity: TvEntity;
-  lLeft, lTop, lWidth, lHeight: Integer;
-  lMinX, lMinY, lMaxX, lMaxY: Integer;
-  lZoomFitX, lZoomFitY: Double;
-  {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
-  lStrings: TStrings;
-  {$endif}
+procedure TvVectorialPage.GetNaturalRenderPos(var APageHeight: Integer; out AMulY: Double);
 begin
-  {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
-  lStrings := TStringList.Create;
-  try
-  {$endif}
-  ADeltaX := 0;
-  ADeltaY := 0;
-  AZoom := 1;
-  lMinX := High(Integer);
-  lMinY := High(Integer);
-  lMaxX := Low(Integer);
-  lMaxY := Low(Integer);
-
-  for i := 0 to FEntities.Count - 1 do
+  if FUseTopLeftCoordinates then
   begin
-    lCurEntity := TvEntity(FEntities.Items[i]);
-    if lCurEntity.CalculateSizeInCanvas(ADest, lLeft, lTop, lWidth, lHeight) then
-    begin
-      lMinX := Min(lMinX, lLeft);
-      lMinY := Min(lMinY, lTop);
-      lMaxX := Max(lMaxX, lLeft + lWidth);
-      lMaxY := Max(lMaxY, lTop  + lHeight);
-    end;
-    {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
-    lStrings.Add(Format('[%s] MinX=%d MinY=%d MaxX=%d MaxY=%D', [lCurEntity.ClassName, lMinX, lMinY, lMaxX, lMaxY]));
-    {$endif}
+    APageHeight := 0;
+    AMulY := 1.0;
+  end
+  else
+  begin
+    AMulY := -1.0;
   end;
-
-  if (lMinX = High(Integer)) or (lMinY = High(Integer)) or
-     (lMaxX = Low(Integer)) or(lMaxY = Low(Integer)) then
-     Exit;
-
-  lWidth := lMaxX - lMinX;
-  lHeight := lMaxY - lMinY;
-  if (lWidth = 0) or (lHeight = 0) then Exit;
-
-  lZoomFitX := AWidth / lWidth;
-  lZoomFitY := AHeight / lHeight;
-  AZoom := Min(lZoomFitX, lZoomFitY) * 0.9;
-  ADeltaX := Round(-1 * AZoom * lMinX);
-  ADeltaY := Round(-1 * AZoom * lMinY);
-  ADeltaY += Round(-1.05 * AZoom * lHeight);
-  {$ifdef FPVECTORIAL_AUTOFIT_DEBUG}
-  finally
-    lStrings.SaveToFile('H:\autofit.txt');
-    lStrings.Free;
-  end;
-  {$endif}
 end;
 
 procedure TvVectorialPage.GenerateDebugTree(ADestRoutine: TvDebugAddItemProc;
@@ -9140,6 +9844,7 @@ constructor TvTextPageSequence.Create(AOwner: TvVectorialDocument);
 begin
   inherited Create(AOwner);
 
+  FUseTopLeftCoordinates := True;
   Footer := TvRichText.Create(Self);
   Header := TvRichText.Create(Self);
   MainText := TvRichText.Create(Self);
@@ -9210,6 +9915,7 @@ end;
 
 function TvTextPageSequence.AddEntity(AEntity: TvEntity): Integer;
 begin
+  AEntity.SetPage(Self);
   Result := MainText.AddEntity(AEntity);
 end;
 
@@ -9263,11 +9969,14 @@ var
   CurY_px: Integer = 0;
   lHeight_px: Integer;
   lBoundsLeft, lBoundsTop, lBoundsRight, lBoundsBottom: Double;
+  lSumRenderInfo: TvRenderInfo;
 begin
   {$ifdef FPVECTORIAL_TOCANVAS_DEBUG}
   WriteLn(':>TvTextPageSequence.Render');
   {$endif}
   CurY_px := ADestY;
+  InitializeRenderInfo(RenderInfo, ADest, nil);
+  TvEntity.CopyAndInitDocumentRenderInfo(lSumRenderInfo, RenderInfo);
 
   for i := 0 to GetEntitiesCount - 1 do
   begin
@@ -9279,27 +9988,35 @@ begin
 
     CurEntity.X := 0;
     CurEntity.Y := 0;
-    lHeight_px := CurEntity.GetEntityFeatures(ADest).DrawsUpwardHeightAdjustment;
+    lHeight_px := CurEntity.GetEntityFeatures(lSumRenderInfo).TotalHeight;
     RenderInfo.BackgroundColor := BackgroundColor;
-    CurEntity.Render(ADest, RenderInfo, ADestX, CurY_px + lHeight_px, AMulX, AMulY, ADoDraw);
+    RenderInfo.DestX := ADestX;
+    RenderInfo.DestY := CurY_px + lHeight_px;
+    RenderInfo.MulX := AMulX;
+    RenderInfo.MulY := AMulY;
+    CurEntity.Render(RenderInfo, ADoDraw);
     // Store the old position in X/Y but don't use it, we use this to debug out the position
     CurEntity.X := ADestX;
     CurEntity.Y := CurY_px;
     lHeight_px := Abs(RenderInfo.EntityCanvasMaxXY.Y - RenderInfo.EntityCanvasMinXY.Y);
     CurY_px := CurY_px + lHeight_px;
+
+    TvEntity.CalcEntityCanvasMinMaxXY_With2Points(lSumRenderInfo,
+      RenderInfo.EntityCanvasMinXY.X, RenderInfo.EntityCanvasMinXY.Y,
+      RenderInfo.EntityCanvasMaxXY.X, RenderInfo.EntityCanvasMaxXY.Y);
   end;
+
+  TvEntity.CopyAndInitDocumentRenderInfo(RenderInfo, lSumRenderInfo, True);
 
   {$ifdef FPVECTORIAL_TOCANVAS_DEBUG}
   WriteLn(':<TvTextPageSequence.Render');
   {$endif}
 end;
 
-procedure TvTextPageSequence.AutoFit(ADest: TFPCustomCanvas;
-  AWidth, AHeight: Integer; out ADeltaX, ADeltaY: Integer; out AZoom: Double);
+procedure TvTextPageSequence.GetNaturalRenderPos(var APageHeight: Integer; out AMulY: Double);
 begin
-  ADeltaX := 0;
-  ADeltaY := 0;
-  AZoom := 1;
+  APageHeight := 0;
+  AMulY := 1.0;
 end;
 
 procedure TvTextPageSequence.GenerateDebugTree(
@@ -9334,6 +10051,8 @@ begin
   FCurrentPageIndex := -1;
   FStyles := TFPList.Create;
   FListStyles := TFPList.Create;
+  if gDefaultRenderer <> nil then
+    FRenderer := gDefaultRenderer.Create;
 end;
 
 {@@
@@ -9341,7 +10060,7 @@ end;
 }
 destructor TvVectorialDocument.Destroy;
 begin
-  Clear;
+  Clear();
 
   FPages.Free;
   FPages := nil;
@@ -9349,6 +10068,8 @@ begin
   FStyles := nil;
   FListStyles.Free;
   FListStyles := nil;
+
+  ClearRenderer();
 
   inherited Destroy;
 end;
@@ -9434,7 +10155,7 @@ procedure TvVectorialDocument.WriteToFile(AFileName: string);
 var
   lFormat: TvVectorialFormat;
 begin
-  lFormat := GetFormatFromExtension(ExtractFileExt(AFileName));
+  lFormat := GetFormatFromExtension(AFileName);
   WriteToFile(AFileName, lFormat);
 end;
 
@@ -9482,6 +10203,7 @@ begin
 
   AReader := CreateVectorialReader(AFormat);
   try
+    AReader.Settings := ReaderSettings;
     AReader.ReadFromFile(AFileName, Self);
   finally
     AReader.Free;
@@ -9513,6 +10235,7 @@ begin
 
   AReader := CreateVectorialReader(AFormat);
   try
+    AReader.Settings := ReaderSettings;
     AReader.ReadFromStream(AStream, Self);
   finally
     AReader.Free;
@@ -9528,6 +10251,7 @@ begin
 
   AReader := CreateVectorialReader(AFormat);
   try
+    AReader.Settings := ReaderSettings;
     AReader.ReadFromStrings(AStrings, Self);
   finally
     AReader.Free;
@@ -9586,6 +10310,7 @@ var
   lEntity: TvEntity;
   lLeft, lTop, lRight, lBottom: Double;
   CurPage: TvPage;
+  lRenderInfo: TvRenderInfo;
 begin
   lLeft := 0;
   lTop := 0;
@@ -9598,7 +10323,8 @@ begin
     for i := 0 to CurPage.GetEntitiesCount() - 1 do
     begin
       lEntity := CurPage.GetEntity(I);
-      lEntity.ExpandBoundingBox(nil, lLeft, lTop, lRight, lBottom);
+      TvEntity.InitializeRenderInfo(lRenderInfo, nil);
+      lEntity.ExpandBoundingBox(lRenderInfo, lLeft, lTop, lRight, lBottom);
     end;
   end;
 
@@ -9631,7 +10357,7 @@ var
   lPage: TvPage;
 begin
   lPage := GetPage(AIndex);
-  if (Assigned(lPage) and (lPage is TvVectorialPage)) then
+  if lPage is TvVectorialPage then
     Result := TvVectorialPage(lPage)
   else
     Result := nil;
@@ -9642,7 +10368,7 @@ var
   lPage: TvPage;
 begin
   lPage := GetPage(AIndex);
-  if (Assigned(lPage) and (lPage is TvTextPageSequence)) then
+  if lPage is TvTextPageSequence then
     Result := TvTextPageSequence(lPage)
   else
     Result := nil;
@@ -9691,11 +10417,12 @@ begin
   end;
 end;
 
-function TvVectorialDocument.AddPage: TvVectorialPage;
+function TvVectorialDocument.AddPage(AUseTopLeftCoords: Boolean = False): TvVectorialPage;
 begin
   Result := TvVectorialPage.Create(Self);
   Result.Width := Width;
   Result.Height := Height;
+  Result.SetNaturalRenderPos(AUseTopLeftCoords);
   FPages.Add(Result);
   if FCurrentPageIndex < 0 then FCurrentPageIndex := FPages.Count-1;
 end;
@@ -9987,17 +10714,44 @@ begin
   FCurrentPageIndex:=-1;
 end;
 
+function TvVectorialDocument.GetRenderer: TvRenderer;
+begin
+  Result := FRenderer;
+end;
+
+procedure TvVectorialDocument.SetRenderer(ARenderer: TvRenderer);
+begin
+  ClearRenderer();
+  FRenderer := ARenderer;
+end;
+
+procedure TvVectorialDocument.ClearRenderer;
+begin
+  if FRenderer <> nil then FreeAndNil(FRenderer);
+end;
+
 procedure TvVectorialDocument.GenerateDebugTree(ADestRoutine: TvDebugAddItemProc; APageItem: Pointer);
 var
-  i: integer;
+  i, lTmpInt: integer;
   p: TvPage;
   lPageItem: Pointer;
+  lDebugStr: string;
+  lTmpY: Double;
 begin
   for i:=0 to FPages.Count-1 do
   begin
     p := TvPage(FPages[i]);
-    lPageItem := ADestRoutine(Format('Page %d Width=%f Height=%f MinX=%f MaxX=%f MinY=%f MaxY=%f',
-      [i, p.Width, p.Height, p.MinX, p.MaxX, p.MinY, p.MaxY]), APageItem);
+
+    lDebugStr := 'Origin=';
+    p.GetNaturalRenderPos(lTmpInt, lTmpY);
+    if lTmpY > 0 then
+      lDebugStr += 'top-left'
+    else
+      lDebugStr += 'bottom-left';
+
+
+    lPageItem := ADestRoutine(Format('Page %d : %s %s Width=%f Height=%f MinX=%f MaxX=%f MinY=%f MaxY=%f',
+      [i, p.ClassName, lDebugStr, p.Width, p.Height, p.MinX, p.MaxX, p.MinY, p.MaxY]), APageItem);
     p.GenerateDebugTree(ADestRoutine, lPageItem);
   end;
 end;

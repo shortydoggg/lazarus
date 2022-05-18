@@ -20,7 +20,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 }
@@ -31,18 +31,21 @@ unit CheckLFMDlg;
 interface
 
 uses
-  // FCL+LCL
+  // FCL
   Classes, SysUtils, Math, TypInfo, contnrs,
-  LCLProc, LResources, Forms, Controls,
-  Graphics, Dialogs, Buttons, StdCtrls, ExtCtrls,
-  // components
-  SynHighlighterLFM, SynEdit, BasicCodeTools, CodeCache, CodeToolManager,
-  SynEditMiscClasses, LFMTrees,
+  // LCL
+  LCLProc, LResources, Forms, Controls, Dialogs, Buttons, StdCtrls, ExtCtrls,
+  // LazUtils
+  LazStringUtils,
+  // CodeTools
+  BasicCodeTools, CodeCache, CodeToolManager, LFMTrees,
+  // SynEdit
+  SynHighlighterLFM, SynEdit, SynEditMiscClasses,
+  // IDEIntf
+  IDEExternToolIntf, PackageIntf, IDEWindowIntf, PropEdits, PropEditUtils,
+  IDEMsgIntf, IDEImagesIntf, IDEDialogs, ComponentReg,
   // IDE
-  IDEExternToolIntf, PackageIntf, IDEWindowIntf, PropEdits, PropEditUtils, IDEMsgIntf,
-  IDEDialogs, ComponentReg,
-  CustomFormEditor, LazarusIDEStrConsts,
-  IDEProcs, IDEOptionDefs, EditorOptions, SourceMarks, JITForms;
+  CustomFormEditor, LazarusIDEStrConsts, EditorOptions, SourceMarks, JITForms;
 
 type
 
@@ -321,9 +324,10 @@ begin
 
     MsgResult:=IDEQuestionDialog(lisMissingEvents,
       Format(lisTheFollowingMethodsUsedByAreNotInTheSourceRemoveTh, [DbgSName(
-        RootComponent), LineEnding, PascalBuffer.Filename, LineEnding+LineEnding, s, LineEnding])
-       ,mtConfirmation,
-       [mrYes, lisRemoveThem, mrIgnore, lisKeepThemAndContinue, mrAbort]);
+        RootComponent), LineEnding, PascalBuffer.Filename, LineEnding+LineEnding, s, LineEnding]),
+      mtConfirmation, [mrYes, lisRemoveThem,
+                       mrIgnore, lisKeepThemAndContinue,
+                       mrAbort]);
      if MsgResult=mrYes then begin
        ClearDanglingEvents(ListOfPInstancePropInfo);
        ComponentModified:=true;
@@ -611,7 +615,7 @@ var
   i: Integer;
 begin
   if StartPos>EndPos then
-    RaiseException('TCheckLFMDialog.AddReplaceMent StartPos>EndPos');
+    RaiseGDBException('TCheckLFMDialog.AddReplaceMent StartPos>EndPos');
   // check for intersection
   for i:=0 to LFMChangeList.Count-1 do begin
     Entry:=TLFMChangeEntry(LFMChangeList[i]);
@@ -623,7 +627,7 @@ begin
         EndPos:=Max(EndPos,Entry.EndPos);
       end else begin
         // not allowed
-        RaiseException('TCheckLFMDialog.AddReplaceMent invalid Intersection');
+        RaiseGDBException('TCheckLFMDialog.AddReplaceMent invalid Intersection');
       end;
     end;
   end;
@@ -747,7 +751,7 @@ begin
   ErrorsGroupBox.Caption:=lisErrors;
   LFMGroupBox.Caption:=lisLFMFile;
   RemoveAllButton.Caption:=lisRemoveAllInvalidProperties;
-  RemoveAllButton.LoadGlyphFromResourceName(HInstance, 'laz_delete');
+  IDEImages.AssignImage(RemoveAllButton, 'laz_delete');
   CancelButton.Caption:=lisCancel;
   EditorOpts.GetHighlighterSettings(SynLFMSyn1);
   EditorOpts.GetSynEditSettings(LFMSynEdit);

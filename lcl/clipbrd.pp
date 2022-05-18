@@ -117,13 +117,15 @@ interface
 {$endif}
 
 uses
-  Classes, SysUtils, LCLproc, FPCAdds, LCLType, LResources, LCLIntf, GraphType,
-  Graphics;
+  Classes, SysUtils, fasthtmlparser,
+  // LCL
+  LCLType, LCLIntf, LResources, Graphics,
+  // LazUtils
+  FPCAdds, LazUTF8, LazTracer;
 
 { for delphi compatibility:
 
-  In Delphi there are 4 predefined constants, but the LCL has only dynamic
-  values.
+  In Delphi there are 4 predefined constants, but the LCL has only dynamic values.
   
   CF_TEXT = 1;
   CF_BITMAP = 2;
@@ -137,6 +139,7 @@ function CF_Picture: TClipboardFormat;
 function CF_MetaFilePict: TClipboardFormat;
 function CF_Object: TClipboardFormat;
 function CF_Component: TClipboardFormat;
+function CF_HTML: TClipboardformat;
 
 type
   TClipboardData = record
@@ -194,6 +197,7 @@ type
     function FindPictureFormatID: TClipboardFormat;
     function FindFormatID(const FormatName: string): TClipboardFormat;
     //function GetAsHandle(Format: integer): THandle;
+    function GetAsHtml(ExtractFragmentOnly: Boolean): String;
     function GetComponent(Owner, Parent: TComponent): TComponent;
     procedure GetComponent(var RootComponent: TComponent;
                           OnFindComponentClass: TFindComponentClassEvent;
@@ -213,6 +217,8 @@ type
     function HasPictureFormat: boolean;
     procedure Open;
     //procedure SetAsHandle(Format: integer; Value: THandle);
+    procedure SetAsHtml(Html: String);
+    procedure SetAsHtml(Html: String; const PlainText: String);
     function SetComponent(Component: TComponent): Boolean;
     function SetComponentAsText(Component: TComponent): Boolean;
     function SetFormat(FormatID: TClipboardFormat; Stream: TStream): Boolean;
@@ -243,7 +249,6 @@ implementation
 
 var
   FClipboards: array[TClipboardType] of TClipboard;
-
 
 {$I clipbrd.inc}
 
@@ -293,32 +298,32 @@ end;
 
 function CF_Text: TClipboardFormat;
 begin
-  Result:=PredefinedClipboardFormat(pcfDelphiText);
+  Result:=PredefinedClipboardFormat(pcfText);
 end;
 
 function CF_Bitmap: TClipboardFormat;
 begin
-  Result:=PredefinedClipboardFormat(pcfDelphiBitmap);
+  Result:=PredefinedClipboardFormat(pcfBitmap);
 end;
 
 function CF_Picture: TClipboardFormat;
 begin
-  Result:=PredefinedClipboardFormat(pcfDelphiPicture);
+  Result:=PredefinedClipboardFormat(pcfPicture);
 end;
 
 function CF_MetaFilePict: TClipboardFormat;
 begin
-  Result:=PredefinedClipboardFormat(pcfDelphiMetaFilePict);
+  Result:=PredefinedClipboardFormat(pcfMetaFilePict);
 end;
 
 function CF_Object: TClipboardFormat;
 begin
-  Result:=PredefinedClipboardFormat(pcfDelphiObject);
+  Result:=PredefinedClipboardFormat(pcfObject);
 end;
 
 function CF_Component: TClipboardFormat;
 begin
-  Result:=PredefinedClipboardFormat(pcfDelphiComponent);
+  Result:=PredefinedClipboardFormat(pcfComponent);
 end;
 
 procedure FreeAllClipboards;

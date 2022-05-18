@@ -1,31 +1,4 @@
-{ Unit implementing anchor docking storage tree.
-
-  Copyright (C) 2010 Mattias Gaertner mattias@freepascal.org
-
-  This library is free software; you can redistribute it and/or modify it
-  under the terms of the GNU Library General Public License as published by
-  the Free Software Foundation; either version 2 of the License, or (at your
-  option) any later version with the following modification:
-
-  As a special exception, the copyright holders of this library give you
-  permission to link this library with independent modules to produce an
-  executable, regardless of the license terms of these independent modules,and
-  to copy and distribute the resulting executable under terms of your choice,
-  provided that you also meet, for each linked independent module, the terms
-  and conditions of the license of that module. An independent module is a
-  module which is not derived from or based on this library. If you modify
-  this library, you may extend this exception to your version of the library,
-  but you are not obligated to do so. If you do not wish to do so, delete this
-  exception statement from your version.
-
-  This program is distributed in the hope that it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE. See the GNU Library General Public License
-  for more details.
-
-  You should have received a copy of the GNU Library General Public License
-  along with this library; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+{ For license see anchordocking.pas
 }
 Unit AnchorDockStorage;
 
@@ -34,8 +7,12 @@ Unit AnchorDockStorage;
 interface
 
 uses
-  Math, Classes, SysUtils, LCLProc, ExtCtrls, ComCtrls, Forms, Controls,
-  AvgLvlTree, LazConfigStorage, Laz2_XMLCfg,
+  Classes, SysUtils, Math,
+  // LCL
+  LCLProc, ExtCtrls, ComCtrls, Forms, Controls,
+  // LazUtils
+  AvgLvlTree, LazConfigStorage, Laz2_XMLCfg, LazLoggerBase, LazTracer,
+  // AnchorDocking
   AnchorDockStr;
 
 const
@@ -60,6 +37,11 @@ type
     adlhpRight,
     adlhpBottom
     );
+
+  TADLControlLocation = (
+    adlclWrongly,
+    adlclCorrect
+    );
   TADLHeaderPositions = set of TADLHeaderPosition;
 
   EAnchorDockLayoutError = class(Exception);
@@ -77,10 +59,12 @@ type
     FName: string;
     FNodes: TFPList; // list of TAnchorDockLayoutTreeNode
     FNodeType: TADLTreeNodeType;
+    FPageIndex: integer;
     FParent: TAnchorDockLayoutTreeNode;
     FWorkAreaRect: TRect;
     FTabPosition: TTabPosition;
     FWindowState: TWindowState;
+    FControlLocation: TADLControlLocation;
     function GetAnchors(Site: TAnchorKind): string;
     function GetBottom: integer;
     function GetHeight: integer;
@@ -100,6 +84,7 @@ type
     procedure SetMonitor(const AValue: integer);
     procedure SetName(const AValue: string);
     procedure SetNodeType(const AValue: TADLTreeNodeType);
+    procedure SetPageIndex(AValue: integer);
     procedure SetParent(const AValue: TAnchorDockLayoutTreeNode);
     procedure SetRight(const AValue: integer);
     procedure SetWorkAreaRect(const AValue: TRect);
@@ -113,7 +98,7 @@ type
     procedure Clear;
     function IsEqual(Node: TAnchorDockLayoutTreeNode): boolean;
     procedure Assign(Node: TAnchorDockLayoutTreeNode); overload;
-    procedure Assign(AControl: TControl); overload;
+    procedure Assign(AControl: TControl; OverrideBoundsRect: Boolean=false); overload;
     procedure LoadFromConfig(Config: TConfigStorage); overload;
     procedure LoadFromConfig(Path: string; Config: TRttiXMLConfig); overload;
     procedure SaveToConfig(Config: TConfigStorage); overload;
@@ -152,10 +137,12 @@ type
     property Monitor: integer read FMonitor write SetMonitor;
     property HeaderPosition: TADLHeaderPosition read FHeaderPosition write SetHeaderPosition;
     property TabPosition: TTabPosition read FTabPosition write SetTabPosition;
+    property PageIndex: integer read FPageIndex write SetPageIndex;
     function Count: integer;
     function IsSplitter: boolean;
     function IsRootWindow: boolean;
     property Nodes[Index: integer]: TAnchorDockLayoutTreeNode read GetNodes; default;
+    property ControlLocation: TADLControlLocation read FControlLocation write FControlLocation;
   end;
 
   TAnchorDockLayoutTree = class;
@@ -969,6 +956,13 @@ begin
   IncreaseChangeStamp;
 end;
 
+procedure TAnchorDockLayoutTreeNode.SetPageIndex(AValue: integer);
+begin
+  if FPageIndex = AValue then Exit;
+  FPageIndex := AValue;
+  IncreaseChangeStamp;
+end;
+
 procedure TAnchorDockLayoutTreeNode.SetParent(
   const AValue: TAnchorDockLayoutTreeNode);
 begin
@@ -1028,6 +1022,7 @@ end;
 constructor TAnchorDockLayoutTreeNode.Create;
 begin
   FNodes:=TFPList.Create;
+  FControlLocation:=adlclwrongly;//control located wrongly by default
 end;
 
 destructor TAnchorDockLayoutTreeNode.Destroy;
@@ -1051,6 +1046,7 @@ begin
   Align:=alNone;
   HeaderPosition:=adlhpAuto;
   TabPosition:=tpTop;
+  PageIndex:=0;
   BoundSplitterPos:=0;
   WorkAreaRect:=Rect(0,0,0,0);
   for a:=low(TAnchorKind) to high(TAnchorKind) do
@@ -1072,6 +1068,7 @@ begin
   or (WindowState<>Node.WindowState)
   or (HeaderPosition<>Node.HeaderPosition)
   or (TabPosition<>Node.TabPosition)
+  or (PageIndex<>Node.PageIndex)
   or (BoundSplitterPos<>Node.BoundSplitterPos)
   or (not CompareRect(@FWorkAreaRect,@Node.FWorkAreaRect))
   then
@@ -1096,6 +1093,7 @@ begin
   WindowState:=Node.WindowState;
   HeaderPosition:=Node.HeaderPosition;
   TabPosition:=Node.TabPosition;
+  PageIndex:=Node.PageIndex;
   BoundSplitterPos:=Node.BoundSplitterPos;
   WorkAreaRect:=Node.WorkAreaRect;
   Monitor:=Node.Monitor;
@@ -1113,24 +1111,30 @@ begin
   end;
 end;
 
-procedure TAnchorDockLayoutTreeNode.Assign(AControl: TControl);
+procedure TAnchorDockLayoutTreeNode.Assign(AControl: TControl; OverrideBoundsRect: Boolean=false);
 var
   AnchorControl: TControl;
   a: TAnchorKind;
 begin
   Name:=AControl.Name;
-  BoundsRect:=AControl.BoundsRect;
+  if OverrideBoundsRect then
+    BoundsRect:=GetParentForm(AControl).BoundsRect
+  else
+    BoundsRect:=AControl.BoundsRect;
   Align:=AControl.Align;
   if (AControl.Parent=nil) and (AControl is TCustomForm) then begin
     WindowState:=TCustomForm(AControl).WindowState;
     Monitor:=TCustomForm(AControl).Monitor.MonitorNum;
     WorkAreaRect:=TCustomForm(AControl).Monitor.WorkareaRect;
   end else
-    WindowState:=wsNormal;
-  if AControl is TCustomTabControl then
-    TabPosition:=TCustomTabControl(AControl).TabPosition
-  else
+    WindowState:=GetParentForm(AControl).WindowState;
+  if AControl is TCustomTabControl then begin
+    TabPosition:=TCustomTabControl(AControl).TabPosition;
+    PageIndex:=TCustomTabControl(AControl).PageIndex;
+  end else begin
     TabPosition:=tpTop;
+    PageIndex:=0;
+  end;
   for a:=low(TAnchorKind) to high(TAnchorKind) do begin
     AnchorControl:=AControl.AnchorSide[a].Control;
     if (AnchorControl=nil) or (AnchorControl=AControl.Parent) then
@@ -1163,6 +1167,7 @@ begin
   WindowState:=NameToADLWindowState(Config.GetValue('WindowState',ADLWindowStateNames[wsNormal]));
   HeaderPosition:=NameToADLHeaderPosition(Config.GetValue('Header/Position',ADLHeaderPositionNames[adlhpAuto]));
   TabPosition:=NameToADLTabPosition(Config.GetValue('Header/TabPosition',ADLTabPostionNames[tpTop]));
+  PageIndex:=Config.GetValue('Header/PageIndex',0);
   Monitor:=Config.GetValue('Monitor',0);
   NewCount:=Config.GetValue('ChildCount',0);
   for i:=1 to NewCount do begin
@@ -1197,6 +1202,7 @@ begin
   WindowState:=NameToADLWindowState(Config.GetValue(Path+'WindowState',ADLWindowStateNames[wsNormal]));
   HeaderPosition:=NameToADLHeaderPosition(Config.GetValue(Path+'Header/Position',ADLHeaderPositionNames[adlhpAuto]));
   TabPosition:=NameToADLTabPosition(Config.GetValue(Path+'Header/TabPosition',ADLTabPostionNames[tpTop]));
+  PageIndex:=Config.GetValue(Path+'Header/PageIndex',0);
   Monitor:=Config.GetValue(Path+'Monitor',0);
   NewCount:=Config.GetValue(Path+'ChildCount',0);
   for i:=1 to NewCount do
@@ -1231,6 +1237,7 @@ begin
                                           ADLHeaderPositionNames[adlhpAuto]);
   Config.SetDeleteValue('Header/TabPosition',ADLTabPostionNames[TabPosition],
                                              ADLTabPostionNames[tpTop]);
+  Config.SetDeleteValue('Header/PageIndex',PageIndex,0);
   Config.SetDeleteValue('Monitor',Monitor,0);
   Config.SetDeleteValue('ChildCount',Count,0);
   for i:=1 to Count do begin
@@ -1264,6 +1271,7 @@ begin
                                                ADLHeaderPositionNames[adlhpAuto]);
   Config.SetDeleteValue(Path+'Header/TabPosition',ADLTabPostionNames[TabPosition],
                                                   ADLTabPostionNames[tpTop]);
+  Config.SetDeleteValue(Path+'Header/PageIndex',PageIndex,0);
   Config.SetDeleteValue(Path+'Monitor',Monitor,0);
   Config.SetDeleteValue(Path+'ChildCount',Count,0);
   for i:=1 to Count do
@@ -1957,8 +1965,7 @@ begin
   Layout.LoadFromConfig(Config);
   for i:=FControlNames.Count-1 downto 0 do begin
     AName:=FControlNames[i];
-    if (AName<>'') and IsValidIdent(AName)
-    and (Layout.Root<>nil) then begin
+    if IsValidIdent(AName) and (Layout.Root<>nil) then begin
       Node:=Layout.Root.FindChildNode(AName,true);
       if (Node<>nil) and (Node.NodeType in [adltnControl,adltnCustomSite]) then
         continue;
@@ -1979,8 +1986,7 @@ begin
   Layout.LoadFromConfig(Path, Config);
   for i:=FControlNames.Count-1 downto 0 do begin
     AName:=FControlNames[i];
-    if (AName<>'') and IsValidIdent(AName)
-    and (Layout.Root<>nil) then begin
+    if IsValidIdent(AName) and (Layout.Root<>nil) then begin
       Node:=Layout.Root.FindChildNode(AName,true);
       if (Node<>nil) and (Node.NodeType in [adltnControl,adltnCustomSite]) then
         continue;

@@ -89,6 +89,7 @@ var
   msg: TLMNotify;
   NM: TNMListView;
   path: PGtkTreePath;
+  pstr: PChar;
   column: PGtkTreeViewColumn;
   cell: PGtkCellRenderer;
 begin
@@ -118,7 +119,9 @@ begin
   FillChar(NM{%H-}, SizeOf(NM), 0);
   NM.hdr.hwndfrom := {%H-}PtrUInt(WidgetInfo^.CoreWidget);
   NM.hdr.code := LVN_ITEMCHANGED;
-  NM.iItem := StrToInt(gtk_tree_path_to_string(path));
+  pstr:=gtk_tree_path_to_string(path);
+  NM.iItem := StrToInt(pstr);
+  g_free(pstr);
 
   NM.iSubItem := 0;
   NM.uNewState := LVIS_FOCUSED;
@@ -131,6 +134,7 @@ procedure Gtk2_ItemDeleted({%H-}model: PGtkTreeModel; path: PGtkTreePath; Widget
 var
   msg: TLMNotify;
   NM: TNMListView;
+  pstr:PChar;
 begin
   //DebugLn('Gtk2_ItemDeleted');
   msg.Msg := CN_NOTIFY;
@@ -138,7 +142,9 @@ begin
   FillChar(NM{%H-}, SizeOf(NM), 0);
   NM.hdr.hwndfrom := {%H-}PtrUInt(WidgetInfo^.CoreWidget);
   NM.hdr.code := LVN_DELETEITEM;
-  NM.iItem := StrToInt(gtk_tree_path_to_string(path));
+  pstr := gtk_tree_path_to_string(path);
+  NM.iItem := StrToInt(pstr);
+  g_free(pstr);
   msg.NMHdr := @NM.hdr;
   DeliverMessage(WidgetInfo^.LCLObject, msg);
 end;
@@ -344,6 +350,7 @@ var
   i: Integer;
   List: PGList;
   Path: PGtkTreePath;
+  pstr: PChar;
 begin
   Widgets := PTVWidgets(WidgetInfo^.UserData);
 
@@ -355,7 +362,9 @@ begin
       if (List <> nil) then
       begin
         Path := PGtkTreePath(g_list_first(List)^.data);
-        Widgets^.ItemCache.Add(gtk_tree_path_to_string(Path));
+        pstr := gtk_tree_path_to_string(path);
+        Widgets^.ItemCache.Add(pstr);
+        g_free(pstr);
         g_list_free(List);
       end else
         exit;
@@ -805,7 +814,11 @@ begin
     Exit;
   GtkColumn := gtk_tree_view_get_column(PGtkTreeView(Widgets^.MainView), AIndex);
   if GtkColumn <> nil then
+  begin
     Result := gtk_tree_view_column_get_width(GtkColumn);
+    if Result = 0 then
+      Result := gtk_tree_view_column_get_fixed_width(GtkColumn);
+  end;
 end;
 
 class procedure TGtk2WSCustomListView.ColumnInsert(const ALV: TCustomListView;
@@ -1039,7 +1052,10 @@ begin
     Exit;
   GtkColumn := gtk_tree_view_get_column(PGtkTreeView(Widgets^.MainView), AIndex);
   if GtkColumn <> nil then
+  begin
+    GtkColumn^.width := 0;
     gtk_tree_view_column_set_fixed_width(GtkColumn, AWidth + Ord(AWidth<1));
+  end;
 end;
 
 class procedure TGtk2WSCustomListView.ColumnSetVisible(const ALV: TCustomListView;
@@ -1063,6 +1079,36 @@ begin
       g_object_set_data(G_OBJECT(GtkColumn), PChar('Visible'), gpointer(ptrint(0)));
     if TLVHack(ALV).ViewStyle = vsReport then begin
       gtk_tree_view_column_set_visible(GtkColumn, AVisible);
+    end;
+  end;
+end;
+
+class procedure TGtk2WSCustomListView.ColumnSetSortIndicator(
+  const ALV: TCustomListView; const AIndex: Integer;
+  const AColumn: TListColumn; const ASortIndicator: TSortIndicator);
+const
+  GtkOrder : array [ TSortIndicator] of TGtkSortType = (0, GTK_SORT_ASCENDING, GTK_SORT_DESCENDING);
+var
+  Widgets: PTVWidgets;
+  GtkColumn: PGtkTreeViewColumn;
+begin
+  if not WSCheckHandleAllocated(ALV, 'ColumnSetCaption')
+  then Exit;
+
+  GetCommonTreeViewWidgets({%H-}PGtkWidget(ALV.Handle), Widgets);
+
+  if not GTK_IS_TREE_VIEW(Widgets^.MainView) then
+    Exit;
+
+  GtkColumn := gtk_tree_view_get_column(PGtkTreeView(Widgets^.MainView), AIndex);
+  if GtkColumn <> nil then
+  begin
+    if ASortIndicator = siNone then
+      gtk_tree_view_column_set_sort_indicator(GtkColumn, false)
+    else
+    begin
+      gtk_tree_view_column_set_sort_indicator(GtkColumn, true);
+      gtk_tree_view_column_set_sort_order(GtkColumn, GtkOrder[ASortIndicator]);
     end;
   end;
 end;
@@ -1146,10 +1192,10 @@ begin
             ItemRect := IconRect
           else
           begin
-            ItemRect.x += IconRect.width + IconRect.x + 2;
+            ItemRect.x += AWidth + 2;
             ItemRect.y += 2; // offset
-            ItemRect.Width -= IconRect.Width + 2;
-            ItemRect.height -= 2; // offset
+            ItemRect.Width -= AWidth + 2;
+            ItemRect.Height -= 2; // offset
           end;
         end;
 
@@ -1287,6 +1333,7 @@ class function TGtk2WSCustomListView.ItemGetState(const ALV: TCustomListView;
 var
   Widgets: PTVWidgets;
   Path: PGtkTreePath;
+  pstr: PChar;
   Column: PGtkTreeViewColumn;
   Cell: PGtkCellRenderer;
 begin
@@ -1322,7 +1369,14 @@ begin
           gtk_icon_view_get_cursor(PGtkIconView(MainView), Path, Cell{%H-})
         else
           Path := nil;
-        AIsSet := (Path <> nil) and (StrToInt(gtk_tree_path_to_string(path)) = AIndex);
+        if (Path<>nil) then
+        begin
+          pstr := gtk_tree_path_to_string(path);
+          AIsSet:=(StrToInt(pstr) = AIndex);
+          g_free(pstr);
+        end else
+          AIsSet:=false;
+
         gtk_tree_path_free(Path);
         Result := True;
       end;
@@ -1394,8 +1448,9 @@ var
   ItemRect: TGdkRectangle;
   BitImage: TBitmap;
   pixbuf: PGDKPixBuf;
-  i: Integer;
-  ImgList: TImageList;
+  i, ImgListWidth: Integer;
+  ImgList: TCustomImageList;
+  ImgListRes: TCustomImageListResolution;
 
 begin
   if not WSCheckHandleAllocated(ALV, 'ItemSetImage')
@@ -1416,50 +1471,50 @@ begin
     gtk_tree_path_free(Path);
     if ItemRect.height <> 0 then // item is visible
     begin
-      ImgList := TImageList.Create(nil);
-      try
-        if (TListView(ALV).ViewStyle in [vsSmallIcon, vsReport, vsList]) and
-          (TListView(ALV).SmallImages <> nil) then
-          ImgList.Assign(TListView(ALV).SmallImages)
-        else
-        if (TListView(ALV).ViewStyle = vsIcon) and
-          (TListView(ALV).LargeImages <> nil) then
-            ImgList.Assign(TListView(ALV).LargeImages);
+      if (TListView(ALV).ViewStyle in [vsSmallIcon, vsReport, vsList]) then
+      begin
+        ImgList := TListView(ALV).SmallImages;
+        ImgListWidth := TListView(ALV).SmallImagesWidth;
+      end
+      else
+      if (TListView(ALV).ViewStyle = vsIcon) then
+      begin
+        ImgList := TListView(ALV).LargeImages;
+        ImgListWidth := TListView(ALV).LargeImagesWidth;
+      end;
 
-        if (ImgList.Count > 0) and (AImageIndex >= 0) then
+      if Assigned(ImgList) and (ImgList.Count > 0) and (AImageIndex >= 0) then
+      begin
+        ImgListRes := ImgList.ResolutionForPPI[ImgListWidth, ALV.Font.PixelsPerInch, ALV.GetCanvasScaleFactor].Resolution;
+        if (ImgList.Count <> Widgets^.Images.Count) then
         begin
-          if (ImgList.Count <> Widgets^.Images.Count) then
-          begin
-            if (TListView(ALV).ViewStyle in [vsSmallIcon, vsReport, vsList]) then
-              SetImageList(ALV, lvilSmall, TListView(ALV).SmallImages)
-            else
-              SetImageList(ALV, lvilLarge, TListView(ALV).LargeImages);
-            exit;
-          end;
+          if (TListView(ALV).ViewStyle in [vsSmallIcon, vsReport, vsList]) then
+            SetImageList(ALV, lvilSmall, ImgListRes)
+          else
+            SetImageList(ALV, lvilLarge, ImgListRes);
+          exit;
+        end;
 
-          if (Widgets^.Images <> nil) then
-          begin
-            for i := 0 to Widgets^.Images.Count-1 do
-              if i = AImageIndex then
-                gdk_pixbuf_unref(PGdkPixBuf(Widgets^.Images.Items[i]));
+        if (Widgets^.Images <> nil) then
+        begin
+          for i := 0 to Widgets^.Images.Count-1 do
+            if i = AImageIndex then
+              gdk_pixbuf_unref(PGdkPixBuf(Widgets^.Images.Items[i]));
 
-            pixbuf := nil;
-            BitImage := TBitmap.Create;
-            try
-              ImgList.GetBitmap(AImageIndex, BitImage);
-              Gtk2_PixBufFromBitmap(BitImage,pixbuf);
-              Widgets^.Images.Items[AImageIndex] := pixbuf;
-              if GTK_IS_TREE_VIEW(MainView) then
-                gtk_tree_view_column_queue_resize(gtk_tree_view_get_column(PGtkTreeView(MainView), ASubIndex));
-            finally
-              BitImage.Free;
-            end;
+          pixbuf := nil;
+          BitImage := TBitmap.Create;
+          try
+            ImgListRes.GetBitmap(AImageIndex, BitImage);
+            Gtk2_PixBufFromBitmap(BitImage,pixbuf);
+            Widgets^.Images.Items[AImageIndex] := pixbuf;
+            if GTK_IS_TREE_VIEW(MainView) then
+              gtk_tree_view_column_queue_resize(gtk_tree_view_get_column(PGtkTreeView(MainView), ASubIndex));
+          finally
+            BitImage.Free;
           end;
         end;
-        gtk_widget_queue_draw(MainView);
-      finally
-        ImgList.Free;
       end;
+      gtk_widget_queue_draw(MainView);
     end;
   end;
 end;
@@ -1737,6 +1792,8 @@ begin
     WidgetInfo^.CoreWidget := PGtkWidget(MainView);
     g_object_set_data(Pointer(MainView), 'widgetinfo', WidgetInfo);
     gtk_widget_show_all(PGtkWidget(MainView));
+    if not AWinControl.HandleObjectShouldBeVisible and not (csDesigning in AWinControl.ComponentState) then
+      gtk_widget_hide(PGtkWidget(ScrollWidget));
     SetListCallbacks(PGtkWidget(ScrollWidget), Widgets, Widgets^.WidgetInfo);
   end;
 end;
@@ -2144,7 +2201,7 @@ begin
 end;
 
 class procedure TGtk2WSCustomListView.SetImageList(const ALV: TCustomListView;
-  const AList: TListViewImageList; const AValue: TCustomImageList);
+  const AList: TListViewImageList; const AValue: TCustomImageListResolution);
 var
   Widgets: PTVWidgets;
   BitImage: TBitmap;

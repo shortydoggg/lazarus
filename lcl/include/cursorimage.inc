@@ -12,7 +12,7 @@
  *****************************************************************************
 }
 const
-  CursorSignature: array [0..3] of char = #0#0#2#0;
+  CursorSignature: array [0..3] of Byte = (0, 0, 2, 0);
 
 function TestStreamIsCursor(const AStream: TStream): boolean;
 var
@@ -92,8 +92,8 @@ begin
         // hot spots are stored in the local header of cursor
         CursorStream.Read(LocalHeader, SizeOf(LocalHeader));
 
-        IconEntry.bWidth := DirEntry^.wWidth;
-        IconEntry.bHeight := DirEntry^.wHeight div 2; // in cursor resource the height is doubled
+        IconEntry.bWidth := Byte(DirEntry^.wWidth);
+        IconEntry.bHeight := Byte(DirEntry^.wHeight) div 2; // in cursor resource the height is doubled
         IconEntry.bColorCount := 0;
         IconEntry.bReserved := 0;
         IconEntry.wXHotSpot := LocalHeader.xHotSpot;

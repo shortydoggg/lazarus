@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -85,9 +85,9 @@ type
     procedure WriteDebugListing;
     function AllwaysTrue: boolean;
     function AllwaysFalse: boolean;
-    function Count: integer;
+    property Count: integer read FCount;
     function GetItem(Index: integer): TBaseKeyWordFunctionListItem;
-    function IndexOf(const AKeyWord: shortstring): integer;
+    function IndexOf(const AKeyWord: shortstring; UseSort: boolean): integer;
     function CalcMemSize: PtrUInt;
     property HasOnlyIdentifiers: boolean read FHasOnlyIdentifiers;
     property Name: string read FName write FName;
@@ -155,6 +155,7 @@ var
   WordIsCustomOperator,
   WordIsPredefinedFPCIdentifier,
   WordIsPredefinedDelphiIdentifier,
+  WordIsPredefinedPas2jsIdentifier,
   UnexpectedKeyWordInBeginBlock,
   UnexpectedKeyWordInAsmBlock,
   UnexpectedKeyWordInBrackets
@@ -388,7 +389,7 @@ begin
     DoDataFunction:=ADataFunction;
   end;
   inc(FCount);
-  if (AKeyWord='') or not IsValidIdent(AKeyWord) then
+  if not IsValidIdent(AKeyWord) then
     FHasOnlyIdentifiers:=false;
 end;
 
@@ -397,7 +398,7 @@ var
   i: Integer;
 begin
   for i:=0 to List.FCount-1 do begin
-    if IndexOf(List.FItems[i].KeyWord)<0 then begin
+    if IndexOf(List.FItems[i].KeyWord,false)<0 then begin
       AddExtended(List.FItems[i].KeyWord,List.FItems[i].DoIt,
                   List.FItems[i].DoDataFunction);
     end;
@@ -430,6 +431,7 @@ begin
   for i:=0 to FCount-1 do begin
     h:=KeyWordToHashIndex(FItems[i].KeyWord);
     if h>=0 then inc(FBucketStart[h]);
+    FItems[i].IsLast:=false;
   end;
   // change hash-count-index to bucket-end-index
   h:=0;
@@ -488,7 +490,7 @@ begin
   DbgOut('  BucketStart array:');
   for i:=0 to FMaxHashIndex do begin
     if FBucketStart[i]>=0 then
-    DbgOut(' '+dbgs(i)+'->'+dbgs(FBucketStart[i]));
+      DbgOut(' '+dbgs(i)+'->'+dbgs(FBucketStart[i]));
   end;
   DebugLn('');
 end;
@@ -503,22 +505,37 @@ begin
   Result:=false;
 end;
 
-function TBaseKeyWordFunctionList.Count: integer;
-begin
-  Result:=FCount;
-end;
-
 function TBaseKeyWordFunctionList.GetItem(Index: integer
   ): TBaseKeyWordFunctionListItem;
 begin
   Result:=FItems[Index];
 end;
 
-function TBaseKeyWordFunctionList.IndexOf(const AKeyWord: shortstring): integer;
+function TBaseKeyWordFunctionList.IndexOf(const AKeyWord: shortstring;
+  UseSort: boolean): integer;
+var
+  i: Integer;
 begin
-  Result:=FCount-1;
-  while (Result>=0) and (CompareText(FItems[Result].KeyWord,AKeyWord)<>0) do
-    dec(Result);
+  if UseSort then begin
+    if not Sorted then Sort;
+
+    i:=KeyWordToHashIndex(AKeyWord);
+    if i>=0 then begin
+      i:=FBucketStart[i];
+      if i>=0 then begin
+        repeat
+          if CompareText(FItems[i].KeyWord,AKeyWord)=0 then
+            exit(i);
+          if FItems[i].IsLast then break;
+          inc(i);
+        until false;
+      end;
+    end;
+  end else begin
+    for i:=0 to FCount-1 do
+      if CompareText(FItems[i].KeyWord,AKeyWord)=0 then exit(i);
+  end;
+  Result:=-1;
 end;
 
 { TKeyWordFunctionList }
@@ -853,6 +870,7 @@ begin
   with IsKeyWordMethodSpecifier do begin
     Add('ABSTRACT'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('ASSEMBLER'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('ASYNC'        ,{$ifdef FPC}@{$endif}AllwaysTrue); // pas2js
     Add('CDECL'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXTDECL'      ,{$ifdef FPC}@{$endif}AllwaysTrue); // often used for macros
     ADD('MWPASCAL'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
@@ -880,6 +898,7 @@ begin
     Add('FINAL'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('ENUMERATOR'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('VARARGS'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('VECTORCALL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXTERNAL'     ,{$ifdef FPC}@{$endif}AllwaysTrue); //jvm
   end;
 
@@ -888,6 +907,7 @@ begin
   with IsKeyWordProcedureSpecifier do begin
     Add('ALIAS'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('ASSEMBLER'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('ASYNC'        ,{$ifdef FPC}@{$endif}AllwaysTrue); // pas2js
     Add('CDECL'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('COMPILERPROC' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('DEPRECATED'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
@@ -920,6 +940,7 @@ begin
     Add('SYSCALL'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('UNIMPLEMENTED',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('VARARGS'      ,{$ifdef FPC}@{$endif}AllwaysTrue); // kylix
+    Add('VECTORCALL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('WEAKEXTERNAL' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('['            ,{$ifdef FPC}@{$endif}AllwaysTrue);
   end;
@@ -942,9 +963,11 @@ begin
     Add('SAFECALL'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('UNIMPLEMENTED',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('VARARGS'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('VECTORCALL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXPERIMENTAL' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('LIBRARY'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('IS'           ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('CBLOCK'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
   end;
 
   IsKeyWordCallingConvention:=TKeyWordFunctionList.Create('IsKeyWordCallingConvention');
@@ -956,6 +979,8 @@ begin
     Add('EXTDECL'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('MWPASCAL'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('POPSTACK'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SAFECALL'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('VECTORCALL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     // Note: 'inline' and 'is nested' are not a calling specifiers
   end;
 
@@ -1038,7 +1063,7 @@ begin
     Add('IN',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('INHERITED',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('INITIALIZATION',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('INLINE',{$ifdef FPC}@{$endif}AllwaysTrue);
+    //Add('INLINE',{$ifdef FPC}@{$endif}AllwaysTrue); can be used as identifier
     Add('INTERFACE',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('IS',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('LABEL',{$ifdef FPC}@{$endif}AllwaysTrue);
@@ -1051,13 +1076,13 @@ begin
     Add('OPERATOR',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('OR',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('PACKED',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('PRIVATE',{$ifdef FPC}@{$endif}AllwaysTrue);
+    //Add('PRIVATE',{$ifdef FPC}@{$endif}AllwaysTrue); can be used as identifier
     Add('PROCEDURE',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('PROGRAM',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('PROPERTY',{$ifdef FPC}@{$endif}AllwaysTrue);
-    //Add('PROTECTED',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('PUBLIC',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('PUBLISHED',{$ifdef FPC}@{$endif}AllwaysTrue);
+    //Add('PROTECTED',{$ifdef FPC}@{$endif}AllwaysTrue); can be used as identifier
+    //Add('PUBLIC',{$ifdef FPC}@{$endif}AllwaysTrue); can be used as identifier
+    //Add('PUBLISHED',{$ifdef FPC}@{$endif}AllwaysTrue); can be used as identifier
     Add('RAISE',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('RECORD',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('REPEAT',{$ifdef FPC}@{$endif}AllwaysTrue);
@@ -1234,35 +1259,43 @@ begin
   IsWordBuiltInFunc:=TKeyWordFunctionList.Create('IsWordBuiltInFunc');
   KeyWordLists.Add(IsWordBuiltInFunc);
   with IsWordBuiltInFunc do begin
-    Add('LOW'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('HIGH'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('LO'          ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('HI'          ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('ORD'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('PRED'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('SUCC'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('LENGTH'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('SETLENGTH'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('INC'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('DEC'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('INITIALIZE'  ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('FINALIZE'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('COPY'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('SIZEOF'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('WRITE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('WRITELN'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('READ'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('READLN'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('TYPEOF'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('ASSIGNED'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('INCLUDE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BREAK'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('CONCAT'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('CONTINUE'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('COPY'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DEC'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DEFAULT'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DELETE'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DISPOSE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXCLUDE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXIT'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('BREAK'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('CONTINUE'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('FINALIZE'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('GET_FRAME'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('HI'          ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('HIGH'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('INC'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('INCLUDE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('INITIALIZE'  ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('INSERT'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LENGTH'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LO'          ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LOW'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('NEW'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('DISPOSE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('OBJCSELECTOR',{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('ORD'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('PRED'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('READ'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('READLN'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SETLENGTH'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SIZEOF'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('STR'         ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SUCC'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('TYPEINFO'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('TYPEOF'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('WRITE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('WRITELN'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('WRITESTR'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
   end;
   
   WordIsTermOperator:=TKeyWordFunctionList.Create('WordIsTermOperator');
@@ -1396,24 +1429,11 @@ begin
   UnexpectedKeyWordInAsmBlock:=TKeyWordFunctionList.Create('UnexpectedKeyWordInAsmBlock');
   KeyWordLists.Add(UnexpectedKeyWordInAsmBlock);
   with UnexpectedKeyWordInAsmBlock do begin
-    Add('CLASS',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('CONST',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('CONSTRUCTOR',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('DESTRUCTOR',{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('ASSEMBLER',{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BEGIN',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('FINALIZATION',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('FUNCTION',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('IMPLEMENTATION',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('INITIALIZATION',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('INTERFACE',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('LIBRARY',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('PROCEDURE',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('PROGRAM',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('RECORD',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('RESOURCESTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('SET',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('THREADVAR',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('UNIT',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('VAR',{$ifdef FPC}@{$endif}AllwaysTrue);
   end;
 
   UnexpectedKeyWordInBrackets:=TKeyWordFunctionList.Create('UnexpectedKeyWordInBrackets');
@@ -1625,11 +1645,40 @@ begin
   WordIsCustomOperator:=TKeyWordFunctionList.Create('WordIsCustomOperator');
   KeyWordLists.Add(WordIsCustomOperator);
   with WordIsCustomOperator do begin
+    Add('IMPLICIT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXPLICIT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('NEGATIVE' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('POSITIVE' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('INC' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DEC' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LOGICALNOT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('TRUNC' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('ROUND' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('IN' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('EQUAL' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('NOTEQUAL' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('GREATERTHAN' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('GREATERTHANOREQUAL' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LESSTHAN' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LESSTHANOREQUAL' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('ADD' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SUBTRACT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('MULTIPLY' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DIVIDE' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('INTDIVIDE' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('MODULUS' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LEFTSHIFT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('RIGHTSHIFT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LOGICALAND' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LOGICALOR' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LOGICALXOR' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BITWISEAND' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BITWISEOR' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BITWISEXOR' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    // FPC operators
     Add(':=' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('=' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('<>' ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('IN' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('>' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('>=' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('<' ,{$ifdef FPC}@{$endif}AllwaysTrue);
@@ -1648,7 +1697,6 @@ begin
     Add('NOT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('INC' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('DEC' ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    // FPC operators
     Add('**' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('><' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('<<',{$ifdef FPC}@{$endif}AllwaysTrue);
@@ -1658,55 +1706,64 @@ begin
   WordIsPredefinedFPCIdentifier:=TKeyWordFunctionList.Create('WordIsPredefinedFPCIdentifier');
   KeyWordLists.Add(WordIsPredefinedFPCIdentifier);
   with WordIsPredefinedFPCIdentifier do begin
+    // types
     Add('ANSISTRING' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('BOOLEAN'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BYTE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('BYTEBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('WORDBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('QWORDBOOL'  ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('CARDINAL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('CHAR'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('COMP'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('CURRENCY'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('DOUBLE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('EXIT'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXTENDED'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('FALSE'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('FILE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('INT64'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LENGTH'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('LONGBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LONGINT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LONGWORD'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('NIL'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('POINTER'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('QWORD'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('QWORDBOOL'  ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('REAL'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SHORTINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('SHORTSTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('SINGLE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SMALLINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('STRING'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('TEXT'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('TRUE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('UNICODESTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('VARIANT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('WIDECHAR'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('WIDESTRING' ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('UNICODESTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('LONGWORD'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('WORD'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('LONGINT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('SMALLINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('SHORTINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('BYTE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('VARIANT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('WORDBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
   end;
-  // functions
+  // add functions
   WordIsPredefinedFPCIdentifier.Add(IsWordBuiltInFunc);
-  
+
   WordIsPredefinedDelphiIdentifier:=TKeyWordFunctionList.Create('WordIsPredefinedDelphiIdentifier');
   KeyWordLists.Add(WordIsPredefinedDelphiIdentifier);
   with WordIsPredefinedDelphiIdentifier do begin
+    Add('ANSICHAR'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('ANSISTRING' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('BOOLEAN'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('WORDBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BREAK'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BYTE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BYTEBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('CARDINAL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('CHAR'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('COMP'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('COPY'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('CONTINUE'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('CURRENCY'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DEFAULT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('DOUBLE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('EXIT'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('EXTENDED'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('FALSE'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('FILE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
@@ -1714,28 +1771,73 @@ begin
     Add('INT64'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('INTEGER'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('LENGTH'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LONGBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LONGINT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('LONGWORD'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('LOW'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('NATIVEINT'  ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('NATIVEUINT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('NIL'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('ORD'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('PCHAR'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('POINTER'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('PREC'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('QWORD'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('PRED'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('RAWBYTESTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('REAL'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SHORTINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('SHORTSTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('SINGLE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('SIZEOF'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SMALLINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('STRING'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('SUCC'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('TEXT'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('TRUE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('TYPEINFO'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('UINT64'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('UNICODESTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('WIDECHAR'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('WIDESTRING' ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('WORD'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('EXIT'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('WORDBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+  end;
+
+  WordIsPredefinedPas2jsIdentifier:=TKeyWordFunctionList.Create('WordIsPredefinedPas2jsIdentifier');
+  KeyWordLists.Add(WordIsPredefinedPas2jsIdentifier);
+  with WordIsPredefinedPas2jsIdentifier do begin
+    Add('BOOLEAN'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('BREAK'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BYTE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('BYTEBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('CHAR'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
     Add('CONTINUE'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
-    Add('PCHAR'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('COPY'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DEFAULT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('DOUBLE'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('EXIT'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('FALSE'      ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('HIGH'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('JSVALUE'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LENGTH'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LONGBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LONGINT'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LONGWORD'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('LOW'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('NATIVEINT'  ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('NATIVEUINT' ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('NIL'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('ORD'        ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('PRED'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('POINTER'    ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SHORTINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SMALLINT'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('STRING'     ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('SUCC'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('TRUE'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('TYPEINFO'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('UNICODESTRING',{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('WORD'       ,{$ifdef FPC}@{$endif}AllwaysTrue);
+    Add('WORDBOOL'   ,{$ifdef FPC}@{$endif}AllwaysTrue);
   end;
 end;
 

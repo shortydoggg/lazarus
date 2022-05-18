@@ -16,7 +16,7 @@ unit glazresmain;
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -95,7 +95,7 @@ implementation
 
 {$R *.lfm}
 
-const
+resourcestring
   ErrConvertToText = 'ERROR: unable to convert Delphi form to text: "%s"';
   ErrFileNotFound = 'ERROR: File not found: "%s"';
   ErrFileIsResource = 'ERROR: Cannot add resource file to itself ("%s")';
@@ -109,6 +109,15 @@ const
 
   MsgWrongExt = 'Filename does not have the required extension: fix it?';
 
+  DESaveResourcefileAs = 'Save resourcefile as';
+  DEFilter = 'Lazarus Resource Files|*.lrs|All Files|*';
+  ODOpenExistingFile = 'Open existing file';
+  OPDOpenExistingPicture = 'Open existing picture';
+  OPDFilter ='Graphic (*.png;*.xpm;*.bmp;*.cur;*.ico;*.icns;*.jpeg;*.jpg;*.jpe;*.jfif;*.tif;*.tiff;*.gif;*.pbm;*.pgm;*.ppm;*.gif;*.tga)|*.png;*.xpm;*.bmp;*.cur;*.ico;*.icns;*.jpeg;*.jpg;*.jpe;*.jfif;*.tif;*.tiff;*.gif;*.pbm;*.pgm;*.ppm;*.gif;*.tga|Portable Network Graphic (*.png)|*.png|Pixmap (*.xpm)|*.xpm|Bitmaps (*.bmp)|*.bmp|Cursor (*.cur)|*.cur|Icon (*.ico)|*.ico|Mac OS X Icon (*.icns)|*.icns|Joint Picture Expert Group (*.jpeg;*.jpg;*.jpe;*.jfif)|*.jpeg;*.jpg;*.jpe;*.jfif|Tagged Image File Format (*.tif;*.tiff)|*.tif;*.tiff|Graphics Interchange Format (*.gif)|*.gif|Portable PixMap (*.pbm;*.pgm;*.ppm)|*.pbm;*.pgm;*.ppm|Animated GIF (*.gif)|*.gif|TGA Image File (*.tga)|*.tga|';
+  OPDFilterAll = 'All files';
+  CBtnCancel = 'Cancel';
+
+const
   AppName = 'GLazRes';
   IniName = {$ifdef windows}'GLazRes.ini'{$else}'glazres.conf'{$endif};
   scPosition = 'Position';
@@ -139,6 +148,13 @@ begin
   FIniFileName := GetAppConfigDir(False) + IniName;
   CreateAnchors;
   LoadWindowGeometry;
+  DestEdt.DialogTitle := DESaveResourcefileAs;
+  DestEdt.Filter := DEFilter;
+  OpenDialog.Title := ODOpenExistingFile;
+  //OpenDialog.Filter := OPDFilterAll + {$IFDEF WINDOWS} ' (*.*)|*.*|' {$ELSE} ' (*)|*|' {$ENDIF} ;
+  OpenPictureDialog.Title := OPDOpenExistingPicture;
+  OpenPictureDialog.Filter := OPDFilter + OPDFilterAll + {$IFDEF WINDOWS} ' (*.*)|*.*|' {$ELSE} ' (*)|*|' {$ENDIF} ;
+  CloseBtn.Caption := CBtnCancel;
 end;
 
 procedure TGLazResForm.FormShow(Sender: TObject);
@@ -238,12 +254,12 @@ var
   TheCanvas: TCanvas;
 begin
   //Objective: draw only the FileName, not the fully qualified path.
-  //if (odPainted in State) then Exit;
   TheCanvas := (Control as TCustomListBox).Canvas;
 
   ItemText := ExtractFileName(FileListBox.Items[Index]);
 
-  TheCanvas.FillRect(ARect);
+  if not(odBackgroundPainted in State) then
+    TheCanvas.FillRect(ARect);
 
   OldBrushStyle := TheCanvas.Brush.Style;
   TheCanvas.Brush.Style := bsClear;

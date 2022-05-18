@@ -30,8 +30,13 @@ unit IDECommands;
 interface
 
 uses
-  Classes, SysUtils, LCLProc, Forms, LCLType, Menus, PropEdits, IDEImagesIntf,
-  ExtCtrls, LCLIntf;
+  Classes, SysUtils,
+  // LCL
+  LCLProc, LCLType, LCLIntf, Forms, Menus,
+  // LazUtils
+  LazMethodList, LazLoggerBase,
+  // IdeIntf
+  PropEdits, IDEImagesIntf;
   
 const
   { editor commands constants. see syneditkeycmds.pp for more
@@ -152,6 +157,7 @@ const
   ecUseUnit                 = ecFirstLazarus + 122;
   ecFindOverloads           = ecFirstLazarus + 123;
   ecFindUsedUnitRefs        = ecFirstLazarus + 124;
+  ecCompleteCodeInteractive = ecFirstLazarus + 125;
 
   // file menu
   ecNew                     = ecFirstLazarus + 201;
@@ -167,6 +173,10 @@ const
   ecCleanDirectory          = ecFirstLazarus + 212;
   ecRestart                 = ecFirstLazarus + 213;
   ecQuit                    = ecFirstLazarus + 214;
+  ecOpenUnit                = ecFirstLazarus + 215;
+
+  // edit menu
+  ecMultiPaste              = ecFirstLazarus + 230;
 
   // IDE navigation
   ecToggleFormUnit          = ecFirstLazarus + 301;
@@ -243,6 +253,8 @@ const
   ecClearBookmarkForFile    = ecFirstLazarus + 384;
   ecClearAllBookmark        = ecFirstLazarus + 385;
 
+  ecGotoBookmarks           = ecFirstLazarus + 386;
+  ecToggleBookmarks         = ecFirstLazarus + 387;
 
   // Macro
   ecSynMacroRecord          = ecFirstLazarus + 390;
@@ -255,6 +267,7 @@ const
   ecCleanUpAndBuild         = ecFirstLazarus + 403;
   ecBuildManyModes          = ecFirstLazarus + 404;
   ecAbortBuild              = ecFirstLazarus + 405;
+  ecRunWithoutDebugging     = ecFirstLazarus + 409;
   ecRun                     = ecFirstLazarus + 410;
   ecPause                   = ecFirstLazarus + 411;
   ecStepInto                = ecFirstLazarus + 412;
@@ -299,6 +312,7 @@ const
   ecViewProjectSource       = ecFirstLazarus + 512;
   ecProjectOptions          = ecFirstLazarus + 513;
   ecProjectChangeBuildMode  = ecFirstLazarus + 514;
+  ecProjectResaveFormsWithI18n = ecFirstLazarus + 515;
 
   // package menu
   ecOpenPackage             = ecFirstLazarus + 600;
@@ -350,6 +364,7 @@ const
   ecDesignerMoveToBack      = ecFirstLazarus + 1005;
   ecDesignerForwardOne      = ecFirstLazarus + 1006;
   ecDesignerBackOne         = ecFirstLazarus + 1007;
+  ecDesignerToggleNonVisComps= ecFirstLazarus + 1008;
 
 
   (* SynEdit Plugins
@@ -502,7 +517,7 @@ type
   end;
   PIDEShortCut = ^TIDEShortCut;
 
-  { TIDECommandCategory - list of TKeyCommandRelation
+  { TIDECommandCategory - list of TKeyCommandRelation/TIDECommand
     TIDECommandCategory is used to divide the commands in handy packets }
     
   TIDECommandCategory = class(TList)
@@ -632,6 +647,8 @@ type
     function FindCommandByName(const CommandName: string): TIDECommand; virtual; abstract;
     function FindCommandsByShortCut(const ShortCutMask: TIDEShortCut;
             IDEWindowClass: TCustomFormClass = nil): TFPList; virtual; abstract; // list of TIDECommand
+    function RemoveShortCut(ShortCutMask: TIDEShortCut;
+            IDEWindowClass: TCustomFormClass = nil): Integer; virtual; abstract;
     function CategoryCount: integer; virtual; abstract;
   public
     procedure StartUpdateEvents;
@@ -773,6 +790,7 @@ var
 var
   IDECmdScopeSrcEdit: TIDECommandScope;
   IDECmdScopeSrcEditOnly: TIDECommandScope;
+  IDECmdScopeSrcEditOnlyMultiCaret: TIDECommandScope;
   IDECmdScopeSrcEditOnlyTmplEdit: TIDECommandScope;
   IDECmdScopeSrcEditOnlyTmplEditOff: TIDECommandScope;
   IDECmdScopeSrcEditOnlySyncroEditSel: TIDECommandScope;
@@ -874,6 +892,7 @@ begin
   IDECommandScopes:=TIDECommandScopes.Create;
   IDECmdScopeSrcEdit:=RegisterIDECommandScope('SourceEditor');
   IDECmdScopeSrcEditOnly:=RegisterIDECommandScope('SourceEditorOnly');
+  IDECmdScopeSrcEditOnlyMultiCaret:=RegisterIDECommandScope('IDECmdScopeSrcEditOnlyMultiCaret');
   IDECmdScopeSrcEditOnlyTmplEdit:=RegisterIDECommandScope('SourceEditorOnlyTemplateEdit');
   IDECmdScopeSrcEditOnlyTmplEditOff:=RegisterIDECommandScope('SourceEditorOnlyTemplateEditOff');
   IDECmdScopeSrcEditOnlySyncroEditSel:=RegisterIDECommandScope('SourceEditorOnlySyncroEditSel');
@@ -1482,7 +1501,7 @@ function TIDECommand.GetCategoryAndName: string;
 begin
   Result:='"'+GetLocalizedName+'"';
   if Category<>nil then
-    Result:=Result+' in "'+Category.Description+'"';
+    Result:='"'+Category.Description+'" -> '+Result;
 end;
 
 function TIDECommand.Execute(Sender: TObject): boolean;
@@ -1625,6 +1644,8 @@ function TIDESpecialCommand.GetCaption: string;
 begin
   if FCaption<>'' then
     Result:=FCaption
+  else if (FCommand<>nil) and (FCommand.LocalizedName<>'') then
+    Result:=FCommand.LocalizedName
   else
     Result:=FName;
 end;
@@ -1818,7 +1839,7 @@ end;
 procedure TIDESpecialCommand.SetResourceName(const aResourceName: string);
 begin
   if aResourceName <> '' then
-    ImageIndex := IDEImages.LoadImage(16, aResourceName)
+    ImageIndex := IDEImages.LoadImage(aResourceName)
   else
     ImageIndex := -1;
 end;
@@ -1903,7 +1924,7 @@ begin
 end;
 
 const
-  IDEEditorCommandStrs: array[0..312] of TIdentMapEntry = (
+  IDEEditorCommandStrs: array[0..319] of TIdentMapEntry = (
   // search
     (Value: ecFind;                                   Name: 'ecFind'),
     (Value: ecFindAgain;                              Name: 'ecFindAgain'),
@@ -2005,6 +2026,7 @@ const
     (Value: ecUseUnit;                                Name: 'ecUseUnit'),
     (Value: ecFindOverloads;                          Name: 'ecFindOverloads'),
     (Value: ecFindUsedUnitRefs;                       Name: 'ecFindUsedUnitRefs'),
+    (Value: ecCompleteCodeInteractive;                Name: 'ecCompleteCodeInteractive'),
 
   // file menu
     (Value: ecNew;                                    Name: 'ecNew'),
@@ -2020,6 +2042,9 @@ const
     (Value: ecCleanDirectory;                         Name: 'ecCleanDirectory'),
     (Value: ecRestart;                                Name: 'ecRestart'),
     (Value: ecQuit;                                   Name: 'ecQuit'),
+
+  // edit menu
+    (Value: ecMultiPaste;                             Name: 'ecMultiPaste'),
 
   // IDE navigation
     (Value: ecToggleFormUnit;                         Name: 'ecToggleFormUnit'),
@@ -2095,6 +2120,8 @@ const
     (Value: ecNextBookmark;                           Name: 'ecNextBookmark'),
     (Value: ecClearBookmarkForFile;                   Name: 'ecClearBookmarkForFile'),
     (Value: ecClearAllBookmark;                       Name: 'ecClearAllBookmark'),
+    (Value: ecGotoBookmarks;                          Name: 'ecGotoBookmarks'),
+    (Value: ecToggleBookmarks;                        Name: 'ecToggleBookmarks'),
 
   // Macro
     (Value: ecSynMacroRecord;                         Name: 'ecSynMacroRecord'),
@@ -2106,6 +2133,7 @@ const
     (Value: ecQuickCompile;                           Name: 'ecQuickCompile'),
     (Value: ecCleanUpAndBuild;                        Name: 'ecCleanUpAndBuild'),
     (Value: ecAbortBuild;                             Name: 'ecAbortBuild'),
+    (Value: ecRunWithoutDebugging;                    Name: 'ecRunWithoutDebugging'),
     (Value: ecRun;                                    Name: 'ecRun'),
     (Value: ecPause;                                  Name: 'ecPause'),
     (Value: ecStepInto;                               Name: 'ecStepInto'),
@@ -2150,6 +2178,7 @@ const
     (Value: ecViewProjectSource;                      Name: 'ecViewProjectSource'),
     (Value: ecProjectOptions;                         Name: 'ecProjectOptions'),
     (Value: ecProjectChangeBuildMode;                 Name: 'ecProjectChangeBuildMode'),
+    (Value: ecProjectResaveFormsWithI18n;             Name: 'ecProjectResaveFormsWithI18n'),
 
   // package menu
     (Value: ecOpenPackage;                            Name: 'ecOpenPackage'),
@@ -2201,6 +2230,7 @@ const
     (Value: ecDesignerMoveToBack;                     Name: 'ecDesignerMoveToBack'),
     (Value: ecDesignerForwardOne;                     Name: 'ecDesignerForwardOne'),
     (Value: ecDesignerBackOne;                        Name: 'ecDesignerBackOne'),
+    (Value: ecDesignerToggleNonVisComps;              Name: 'ecDesignerToggleNonVisComps'),
 
   // TSynPluginTemplateEdit - In cell
     (Value: ecIdePTmplEdNextCell;                     Name: 'ecIdePTmplEdNextCell'),

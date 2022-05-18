@@ -1183,7 +1183,7 @@ begin
 end;
 
 {$IFDEF VerboseGtkToDos}{$note remove when gtk native imagelist will be ready}{$ENDIF}
-procedure DrawImageListIconOnWidget(ImgList: TCustomImageList;
+procedure DrawImageListIconOnWidget(ImgList: TScaledImageListResolution;
   Index: integer; AEffect: TGraphicsDrawEffect; Checked: boolean; DestWidget: PGTKWidget;
   CenterHorizontally, CenterVertically: boolean;
   DestLeft, DestTop: integer);
@@ -1198,7 +1198,6 @@ var
   FixedWidget: PGtkWidget;
   r:TRect;
 begin
-  if ImgList=nil then exit;
   if (Index<0) or (Index>=ImgList.Count) then exit;
   if (DestWidget=nil) then exit;
   ImageWidth:=ImgList.Width;
@@ -1240,7 +1239,7 @@ begin
   Bitmap.Free;
 end;
 
-procedure DrawImageListIconOnWidget(ImgList: TCustomImageList;
+procedure DrawImageListIconOnWidget(ImgList: TScaledImageListResolution;
   Index: integer; DestWidget: PGTKWidget);
 begin
   DrawImageListIconOnWidget(ImgList, Index, gdeNormal, false, DestWidget, true, true, 0, 0);
@@ -2176,7 +2175,8 @@ var
 
     if (
         GtkWidgetIsA(TargetWidget, gtk_type_entry) or
-        GtkWidgetIsA(TargetWidget, gtk_type_text_view)
+        GtkWidgetIsA(TargetWidget, gtk_type_text_view) or
+        GtkWidgetIsA(TargetWidget, gtk_type_tree_view)
        )
        and
       (gdk_event_get_type(AEvent) = GDK_KEY_PRESS) and
@@ -2198,9 +2198,16 @@ var
   end;
 
   function BlackListIMModule: boolean;
+  const
+    cBlackList = 'scim-bridge';
+    //to fix issue with duplicated chars:
+    //cBlackList = 'scim-bridge,scim,xim';
+  var
+    sVar: string;
   begin
     {$IFDEF UNIX}
-    Result := g_getenv('GTK_IM_MODULE') = 'scim-bridge';
+    sVar := g_getenv('GTK_IM_MODULE');
+    Result := Pos(','+sVar+',', ','+cBlackList+',')>0;
     {$ELSE}
     Result := False;
     {$ENDIF}
@@ -2236,13 +2243,23 @@ begin
   HandledByLCL := KeyEventWasHandledByLCL(AEvent, ABeforeEvent);
 
   {$IFDEF VerboseKeyboard}
-  DebugLn(['[HandleGTKKeyUpDown] ',DbgSName(TControl(AData)),
-    ' ',(AEvent^. _Type),' Widget=',GetWidgetClassName(AWidget),
+  DebugLn(['[HandleGTKKeyUpDown] START ',DbgSName(TControl(AData)),
+    ' _Type=',(AEvent^._Type),
+    ' state=',(AEvent^.state),
+    ' keyval=',(AEvent^.keyval),'=$',hexstr(AEvent^.keyval,4),
+    ' hardware_keycode=',(AEvent^.hardware_keycode),
+    ' length=',(AEvent^.length),
+    ' _string="',dbgMemRange(PByte(AEvent^._string),AEvent^.length),'"',
+    ' group=',(AEvent^.group),
+    ' Widget=',GetWidgetClassName(AWidget),
     ' Before=',ABeforeEvent,' Down=',AHandleDown,' HandledByLCL=',HandledByLCL]);
   {$ENDIF}
   
   // handle every key event only once
   if HandledByLCL then exit;
+
+  while (not GtkWidgetIsA(AWidget, gtk_window_get_type)) and (AWidget^.parent <> nil) do
+    AWidget := AWidget^.parent;
 
   TargetWidget := AWidget;
   TargetObj := AData;
@@ -2290,7 +2307,9 @@ begin
   FillChar(Msg, SizeOf(Msg), 0);
 
   gdk_event_key_get_string(AEvent, EventString{%H-});
-  //DebugLn(['HandleGTKKeyUpDown TargetWidget=',GetWidgetDebugReport(TargetWidget),' ',DbgStr(EventString),' state=',AEvent^.state,' keyval=',AEvent^.keyval]);
+  {$IFDEF VerboseKeyboard}
+  DebugLn(['HandleGTKKeyUpDown EVENTSTRING "',DbgStr(EventString),'" TargetWidget=',GetWidgetDebugReport(TargetWidget),' state=',AEvent^.state,' keyval=',AEvent^.keyval]);
+  {$ENDIF}
 
   {$IfDef Gtk2LatinAccents}
   gtk_im_context_filter_keypress (im_context, AEvent);
@@ -2313,6 +2332,9 @@ begin
   else begin
     KCInfo := MKeyCodeInfo[KeyCode];
 
+    {$IFDEF VerboseKeyboard}
+    debugln(['HandleGTKKeyUpDown AEvent^.hardware_keycode=',AEvent^.hardware_keycode,',keyval=',AEvent^.keyval,',group=',AEvent^.group,' KeyCode=',KeyCode,' ',dbgs(ShiftState),' KCInfo.VKey1=',KCInfo.VKey1,',VKey2=',KCInfo.VKey2]);
+    {$ENDIF}
     if (KCInfo.Flags and KCINFO_FLAG_SHIFT_XOR_NUM <> 0)
     and ((ssShift in ShiftState) xor (ssNum in ShiftState))
     then VKey := KCInfo.VKey2
@@ -2323,8 +2345,11 @@ begin
 
 
     // ssAlt + a key pressed is always a syskey
-    // ssAltGr + a key is only a syskey when the key pressed has no levelshift or when ssHift is pressed to0
-    SysKey := (ssAlt in ShiftState);
+    // ssAltGr + a key is only a syskey when the key pressed has no levelshift or when ssShift is pressed too
+    if ssAltGr in ShiftState then
+      SysKey := ssAlt in ShiftState
+    else
+      SysKey := [ssAlt,ssCtrl]*ShiftState=[ssAlt]; // Alt+Ctrl = AltGr, on Windows and on Linux via VNC, see bug 30544
     if not SysKey then
     begin
       // Check ssAltGr
@@ -2337,12 +2362,12 @@ begin
         SysKey := (ShiftState * [ssShift, ssAltGr] = [ssShift, ssAltGr]);
 
         // This is not true for TCustomControl, issues 22703,25874.
-        if Assigned(LCLObject) and (LCLObject is TCustomControl) then
+        if LCLObject is TCustomControl then
           SysKey := False;
       end;
     end;
 
-    if SysKey then
+    if SysKey or (ssAlt in ShiftState) then
       Flags := Flags or KF_ALTDOWN;
 
     CommonKeyData := KeyCode shl 16; // Not really scancode, but will do
@@ -2350,7 +2375,7 @@ begin
     if AHandleDown then
     begin
       {$IFDEF VerboseKeyboard}
-      DebugLn('[HandleGTKKeyUpDown] GDK_KEY_PRESS VKey=',dbgs(VKey),' SysKey=',dbgs(SysKey));
+      DebugLn(['[HandleGTKKeyUpDown] GDK_KEY_PRESS VKey=',dbgs(VKey),' SysKey=',dbgs(SysKey),' ShiftState=',dbgs(ShiftState),' KCInfo=Key1=',KCInfo.VKey1,',Key2=',KCInfo.VKey2,',Flags=',hexstr(KCInfo.Flags,2)]);
       {$ENDIF}
 
       Msg.CharCode := VKey;
@@ -2406,19 +2431,19 @@ begin
     if ABeforeEvent then
     begin
       // try to get the UTF8 representation of the key
-        if im_context_string <> '' then
-        begin
-          Character := UTF8Copy(im_context_string,1,1);
-          im_context_string:='';// clear, to avoid sending again
-        end
+      if im_context_string <> '' then
+      begin
+        Character := UTF8Copy(im_context_string,1,1);
+        im_context_string:='';// clear, to avoid sending again
+      end
+      else
+      begin
+        KeyPressesChar := GetSpecialChar;
+        if KeyPressesChar <> #0 then
+          Character := KeyPressesChar
         else
-        begin
-          KeyPressesChar := GetSpecialChar;
-          if KeyPressesChar <> #0 then
-            Character := KeyPressesChar
-          else
-            Character := '';
-        end;
+          Character := '';
+      end;
 
       {$IFDEF VerboseKeyboard}
       debugln('[HandleGTKKeyUpDown] GDK_KEY_PRESS UTF8="',DbgStr(Character),'"',
@@ -2495,7 +2520,7 @@ begin
       begin
         FillChar(Msg, SizeOf(Msg), 0);
 
-        Msg.KeyData := CommonKeyData;
+        Msg.KeyData := CommonKeyData or (Flags shl 16) or $0001;
         Msg.Msg := CHAR_MAP[SysKey, ABeforeEvent];
 
         // send the (Sys)Char message directly (not queued) to the LCL
@@ -2529,6 +2554,89 @@ begin
   EmulateEatenKeys;
 
   Result:=EventStopped;
+end;
+
+const
+  //AlexeyT:
+  //table got from usual Russian keyboard with 8 win-keys on the top
+
+  ru_map: array[GDK_KEY_Cyrillic_yu .. GDK_KEY_Cyrillic_CAPITAL_HARDSIGN] of byte =
+    (
+    0, ////Ord('.'), //GDK_KEY_Cyrillic_yu = $6c0;
+    VK_F, //GDK_KEY_Cyrillic_a = $6c1;
+    0, ////Ord(','), //GDK_KEY_Cyrillic_be = $6c2;
+    VK_W, //GDK_KEY_Cyrillic_tse = $6c3;
+    VK_L, //GDK_KEY_Cyrillic_de = $6c4;
+    VK_T, //GDK_KEY_Cyrillic_ie = $6c5;
+    VK_A, //GDK_KEY_Cyrillic_ef = $6c6;
+    VK_U, //GDK_KEY_Cyrillic_ghe = $6c7;
+    0, ////Ord('['), //GDK_KEY_Cyrillic_ha = $6c8;
+    VK_B, //GDK_KEY_Cyrillic_i = $6c9;
+    VK_Q, //GDK_KEY_Cyrillic_shorti = $6ca;
+    VK_R, //GDK_KEY_Cyrillic_ka = $6cb;
+    VK_K, //GDK_KEY_Cyrillic_el = $6cc;
+    VK_V, //GDK_KEY_Cyrillic_em = $6cd;
+    VK_Y, //GDK_KEY_Cyrillic_en = $6ce;
+    VK_J, //GDK_KEY_Cyrillic_o = $6cf;
+    VK_G, //GDK_KEY_Cyrillic_pe = $6d0;
+    VK_Z, //GDK_KEY_Cyrillic_ya = $6d1;
+    VK_H, //GDK_KEY_Cyrillic_er = $6d2;
+    VK_C, //GDK_KEY_Cyrillic_es = $6d3;
+    VK_N, //GDK_KEY_Cyrillic_te = $6d4;
+    VK_E, //GDK_KEY_Cyrillic_u = $6d5;
+    0, ////Ord(';'), //GDK_KEY_Cyrillic_zhe = $6d6;
+    VK_D, //GDK_KEY_Cyrillic_ve = $6d7;
+    VK_M, //GDK_KEY_Cyrillic_softsign = $6d8;
+    VK_S, //GDK_KEY_Cyrillic_yeru = $6d9;
+    VK_P, //GDK_KEY_Cyrillic_ze = $6da;
+    VK_I, //GDK_KEY_Cyrillic_sha = $6db;
+    0, ////Ord(''''), //GDK_KEY_Cyrillic_e = $6dc;
+    VK_O, //GDK_KEY_Cyrillic_shcha = $6dd;
+    VK_X, //GDK_KEY_Cyrillic_che = $6de;
+    0, ////Ord(']'), //GDK_KEY_Cyrillic_hardsign = $6df;
+    0, ////Ord('.'), //GDK_KEY_Cyrillic_CAPITAL_YU = $6e0;
+    VK_F, //GDK_KEY_Cyrillic_CAPITAL_A = $6e1;
+    0, ////Ord(','), //GDK_KEY_Cyrillic_CAPITAL_BE = $6e2;
+    VK_W, //GDK_KEY_Cyrillic_CAPITAL_TSE = $6e3;
+    VK_L, //GDK_KEY_Cyrillic_CAPITAL_DE = $6e4;
+    VK_T, //GDK_KEY_Cyrillic_CAPITAL_IE = $6e5;
+    VK_A, //GDK_KEY_Cyrillic_CAPITAL_EF = $6e6;
+    VK_U, //GDK_KEY_Cyrillic_CAPITAL_GHE = $6e7;
+    0, ////Ord('['), //GDK_KEY_Cyrillic_CAPITAL_HA = $6e8;
+    VK_B, //GDK_KEY_Cyrillic_CAPITAL_I = $6e9;
+    VK_Q, //GDK_KEY_Cyrillic_CAPITAL_SHORTI = $6ea;
+    VK_R, //GDK_KEY_Cyrillic_CAPITAL_KA = $6eb;
+    VK_K, //GDK_KEY_Cyrillic_CAPITAL_EL = $6ec;
+    VK_V, //GDK_KEY_Cyrillic_CAPITAL_EM = $6ed;
+    VK_Y, //GDK_KEY_Cyrillic_CAPITAL_EN = $6ee;
+    VK_J, //GDK_KEY_Cyrillic_CAPITAL_O = $6ef;
+    VK_G, //GDK_KEY_Cyrillic_CAPITAL_PE = $6f0;
+    VK_Z, //GDK_KEY_Cyrillic_CAPITAL_YA = $6f1;
+    VK_H, //GDK_KEY_Cyrillic_CAPITAL_ER = $6f2;
+    VK_C, //GDK_KEY_Cyrillic_CAPITAL_ES = $6f3;
+    VK_N, //GDK_KEY_Cyrillic_CAPITAL_TE = $6f4;
+    VK_E, //GDK_KEY_Cyrillic_CAPITAL_U = $6f5;
+    0, ////Ord(';'), //GDK_KEY_Cyrillic_CAPITAL_ZHE = $6f6;
+    VK_D, //GDK_KEY_Cyrillic_CAPITAL_VE = $6f7;
+    VK_M, //GDK_KEY_Cyrillic_CAPITAL_SOFTSIGN = $6f8;
+    VK_S, //GDK_KEY_Cyrillic_CAPITAL_YERU = $6f9;
+    VK_P, //GDK_KEY_Cyrillic_CAPITAL_ZE = $6fa;
+    VK_I, //GDK_KEY_Cyrillic_CAPITAL_SHA = $6fb;
+    0, ////Ord(''''), //GDK_KEY_Cyrillic_CAPITAL_E = $6fc;
+    VK_O, //GDK_KEY_Cyrillic_CAPITAL_SHCHA = $6fd;
+    VK_X, //GDK_KEY_Cyrillic_CAPITAL_CHE = $6fe;
+    0 ////Ord(']') //GDK_KEY_Cyrillic_CAPITAL_HARDSIGN = $6ff;
+    );
+
+function gdkKeyMapChanged(aKeymap: PGdkKeymap; Data: gPointer) : GBoolean; cdecl;
+begin
+  Result:=CallBackDefaultReturn;
+  if aKeymap=nil then ;
+  if Data=nil then ;
+  {$IFDEF VerboseKeyboard}
+  debugln(['gdkKeyMapChanged']);
+  {$ENDIF}
+  InitKeyboardTables;
 end;
 
 {------------------------------------------------------------------------------
@@ -2771,7 +2879,9 @@ procedure InitKeyboardTables;
       GDK_Key_Cancel:       AVKey := VK_CANCEL;
       GDK_Key_Help:         AVKey := VK_HELP;
       GDK_Key_Break:        AVKey := VK_CANCEL;
-      GDK_Key_Mode_switch:  AVKey := VK_MODECHANGE;
+      GDK_Key_Mode_switch,
+      GDK_KEY_ISO_Level3_Shift,
+      GDK_KEY_ISO_Level5_Shift:  AVKey := VK_MODECHANGE;
       GDK_Key_Caps_Lock:    AVKey := VK_CAPITAL;
       GDK_Key_Shift_L:      AVKey := VK_SHIFT;
       GDK_Key_Shift_R:
@@ -2953,18 +3063,13 @@ procedure InitKeyboardTables;
         // VK_A on a russian layout generates a cyrillic_EF
         // VK_A on a serbian layout generates a cyrillic_A
         //
-        // Mapping cyrillic_A to VK_A is easier so that encoding is used.
         // Maybe in future we can take the KBLayout into account
+        //
+        // AlexeyT:
+        // Now Ru keys on RU keyb layout work ok (array ru_map),
+        // cannot test Serbian/Ukrainian/Byelorussian etc
         case AKeySym of
-          GDK_KEY_cyrillic_a..GDK_KEY_cyrillic_ze:
-          begin
-            AVKey := VK_A + AKeySym - GDK_KEY_cyrillic_a;
-          end;
-          // Capital is not needed, the lower will match
-          //GDK_KEY_cyrillic_A..GDK_KEY_cyrillic_ZE:
-          //begin
-          //  AVKey := VK_A + AKeySym - GDK_KEY_cyrillic_A;
-          //end;
+          Low(ru_map)..High(ru_map):  AVKey := ru_map[AKeySym];
         end;
       end;
 
@@ -3083,7 +3188,7 @@ const
 {
  Starting gdk 2.10 Alt, meta, hyper are reported by a own mask. Since we support
  older versions, we need to create the modifiermap ourselves for X and we cannot
- ise them
+ use them
 }
 type
   TModMap = array[Byte] of Cardinal;
@@ -3130,7 +3235,7 @@ type
   
   procedure UpdateModifierMap(const AModMap: TModMap; AKeyCode: Byte; AKeySym: Cardinal);
   var
-  {$ifdef VerboseModifiermap}
+  {$if defined(VerboseModifiermap) or defined(VerboseKeyboard)}
     s: string;
   {$endif}
     ShiftState: TShiftStateEnum;
@@ -3166,9 +3271,9 @@ type
     MModifiers[ShiftState].Mask := AModMap[AKeyCode];
     MModifiers[ShiftState].UseValue := False;
     
-    {$ifdef VerboseModifiermap}
+    {$if defined(VerboseModifiermap) or defined(VerboseKeyboard)}
     WriteStr(s, ShiftState);
-    DebugLn('Mapped keycode=%u, keysym=$%x, modifier=$%2.2x to shiftstate %s',
+    DebugLn('UpdateModifierMap Mapped keycode=%u, keysym=$%x, modifier=$%2.2x to shiftstate %s',
             [AKeyCode, AKeySym, AModMap[AKeyCode], s]);
     {$endif}
 
@@ -3178,23 +3283,41 @@ type
   procedure UpdateKeyStateMap(var AIndex: integer; AKeyCode: Byte; AKeySym: Cardinal);
   var
     Enum: TShiftStateEnum;
+    {$IFDEF VerboseKeyboard}
+    s: string;
+    {$ENDIF}
   begin
+    // gdk emulates some keys by creating extra key signals without the
+    // current modifier state. Thus the LCL has to query the current state
+    // of the following modifiers (e.g. bug 30544).
     case AKeySym of
+      GDK_KEY_Control_L,
+      GDK_KEY_Control_R: Enum := ssCtrl; // see bug 30544, Alt+Ctrl
       GDK_KEY_Alt_L, GDK_KEY_Alt_R:     Enum := ssAlt;
       GDK_KEY_Meta_L, GDK_KEY_Meta_R:   Enum := ssMeta;
       GDK_KEY_Super_L, GDK_KEY_Super_R: Enum := ssSuper;
       GDK_KEY_Hyper_L, GDK_KEY_Hyper_R: Enum := ssHyper;
-      GDK_KEY_ISO_Level3_Shift:         Enum := ssAltGr;
+      GDK_KEY_Mode_switch,
+      GDK_KEY_ISO_Level3_Shift,
+      GDK_KEY_ISO_Level3_Latch,
+      GDK_KEY_ISO_Level3_Lock,
+      GDK_KEY_ISO_Level5_Shift,
+      GDK_KEY_ISO_Level5_Latch,
+      GDK_KEY_ISO_Level5_Lock:         Enum := ssAltGr;
     else
       Exit;
     end;
 
     if High(MKeyStateMap) < AIndex
-    then SetLength(MKeyStateMap, AIndex + 8);
+    then SetLength(MKeyStateMap, AIndex + 16);
 
     MKeyStateMap[AIndex].Index := AKeyCode shr 3;
     MKeyStateMap[AIndex].Mask := 1 shl (AKeyCode and 7);
     MKeyStateMap[AIndex].Enum := Enum;
+    {$IFDEF VerboseKeyboard}
+    writestr(s,Enum);
+    debugln(['UpdateKeyStateMap AKeySym=$',HexStr(AKeySym,4),'=',AKeySym,' ShiftState=',s,' Index=',MKeyStateMap[AIndex].Index,' Mask=',HexStr(MKeyStateMap[AIndex].Mask,4)]);
+    {$ENDIF}
     Inc(AIndex)
   end;
   {$endif UseOwnShiftState}
@@ -3204,7 +3327,6 @@ type
 const
   // first OEM specific VK
   VK_FIRST_OEM = $92;
-
 var
   KeySyms: array of guint;
   KeyVals: Pguint = nil;
@@ -3214,9 +3336,10 @@ var
   KeySymCount: Integer;
   KeySymChars: array[0..16] of Char;
   KeySymCharLen: Integer;
+  NewKeyMap: PGdkKeymap;
 
 {$ifdef HasX}
-  XDisplay: Pointer;
+  XDisplay: PDisplay;
   ModMap: TModMap;
 {$endif}
 {$ifdef UseOwnShiftState}
@@ -3233,10 +3356,22 @@ begin
 {$ifdef HasX}
   XDisplay := gdk_display;
   if XDisplay = nil then Exit;
-
   FillByte(MKeyStateMap, SizeOF(MKeyStateMap), 0);
   SetupModifiers(XDisplay, ModMap{%H-});
 {$endif}
+
+  NewKeyMap:=gdk_keymap_get_for_display(gdk_display_get_default);
+  if NewKeyMap<>GdkKeymap then begin
+    if GdkKeymap<>nil then
+      DisconnectGdkKeymapChangedSignal;
+    GdkKeymap:=NewKeyMap;
+    if GdkKeymap<>nil then
+      GdkKeyMapChangedID:=g_signal_connect_after(GdkKeymap, 'keys-changed',
+                                        TGTKSignalFunc(@gdkKeyMapChanged), nil);
+  end;
+
+  FillChar(MKeyCodeInfo, SizeOf(MKeyCodeInfo), $FF);
+  FillChar(MVKeyInfo, SizeOf(MVKeyInfo), 0);
 
   LoKey := 0;
   HiKey := 255;
@@ -3247,8 +3382,9 @@ begin
   FreeVK := VK_FIRST_OEM;
   for KeyCode := LoKey to HiKey do
   begin
-
-    if not gdk_keymap_get_entries_for_keycode(nil, KeyCode, KeymapKeys, KeyVals, @KeySymCount) then Continue;
+    // get all values for this keycode for all groups and level
+    if not gdk_keymap_get_entries_for_keycode(GdkKeymap, KeyCode, KeymapKeys, KeyVals, @KeySymCount) then
+      Continue;
     SetLength(KeySyms, KeySymCount);
     Move(KeyVals^, KeySyms[0], SizeOf(KeySyms[0]) * KeySymCount);
     g_free(KeymapKeys); // unused but we cannot pass a nil as param
@@ -3257,7 +3393,8 @@ begin
     //DebugLn(['InitKeyboardTables ',KeyCode,' ',HasKey,' ',KeySyms[0]]);
 
   {$ifdef HasX}
-    // Check if this keycode is in the modifiers map
+    // Check if this keycode is a modifier
+    // and if yes add it to modifiers map
     // loop through all keysyms till one found.
     // Some maps have a modifier with an undefined first keysym. It is checked for
     // modifiers, but not for vkeys
@@ -3305,7 +3442,7 @@ begin
 
     if VKey = VK_UNDEFINED
     then begin
-      MKeyCodeInfo[KeyCode].Flags := $FF
+      MKeyCodeInfo[KeyCode].Flags := $FF;
     end
     else begin
       MKeyCodeInfo[KeyCode].Flags := EXTFLAG[Extended] or MULTIFLAG[HasMultiVK];
@@ -3323,7 +3460,7 @@ begin
         if m >= 2 then Break; // Only process shift
 
         // The keypadkeys have 2 VK_keycodes :(
-        // In that case we have to FIndKeyInfo for every keysym
+        // In that case we have to FindKeyInfo for every keysym
         if m = 1
         then begin
           FindVKeyInfo(KeySyms[m], VKey, Extended, DummyBool, DummyBool{%H-});
@@ -3361,6 +3498,7 @@ procedure DoneKeyboardTables;
 var
   i: Integer;
 begin
+  DisconnectGdkKeymapChangedSignal;
   if LCLHandledKeyEvents<>nil then begin
     for i:=0 to LCLHandledKeyEvents.Count-1 do
       TObject(LCLHandledKeyEvents[i]).Free;
@@ -3373,6 +3511,13 @@ begin
     LCLHandledKeyAfterEvents.Free;
     LCLHandledKeyAfterEvents:=nil;
   end;
+end;
+
+procedure DisconnectGdkKeymapChangedSignal;
+begin
+  if GdkKeymap=nil then exit;
+  g_signal_handler_disconnect(GdkKeymap, GdkKeyMapChangedID);
+  GdkKeyMapChangedID:=0;
 end;
 
 {------------------------------------------------------------------------------
@@ -3409,7 +3554,6 @@ function GTKEventStateToShiftState(KeyState: LongWord): TShiftState;
     begin
       if Ord(Keys[MKeyStateMap[n].Index]) and MKeyStateMap[n].Mask = 0 then Continue;
       Include(Result, MKeyStateMap[n].Enum);
-      Break;
     end;
   end;
   {$else}
@@ -3436,6 +3580,10 @@ begin
   {$else}
   Result := [];
   {$endif}
+  {$IFDEF VerboseKeyboard}
+  if (KeyState<>0) or (Result-[ssLeft,ssRight]<>[]) then
+    debugln(['GTKEventStateToShiftState KeyState=',HexStr(KeyState,8),' X-State=',dbgs(Result)]);
+  {$ENDIF}
   for State := Low(State) to High(State) do
   begin
     if MModifiers[State].Mask = 0 then Continue;
@@ -3449,6 +3597,10 @@ begin
       then Include(Result, State);
     end;
   end;
+  {$IFDEF VerboseKeyboard}
+  if (KeyState<>0) or (Result-[ssLeft,ssRight]<>[]) then
+    debugln(['GTKEventStateToShiftState KeyState=',HexStr(KeyState,8),' Result=',dbgs(Result)]);
+  {$ENDIF}
 end;
 
 {------------------------------------------------------------------------------
@@ -3857,10 +4009,8 @@ var
 begin
   Result:=nil;
   LCLParent:=GetNearestLCLObject(Child);
-  if (LCLParent=nil) or (not (LCLParent is TWinControl))
-  or (not TWinControl(LCLParent).HandleAllocated)
-  then exit;
-  Result:={%H-}PGtkWidget(TWinControl(LCLParent).Handle);
+  if (LCLParent is TWinControl) then
+    Result:={%H-}PGtkWidget(TWinControlAccess(LCLParent).WindowHandle);
 end;
 
 function GetWinControlFixedWidget(Child: PGtkWidget): PGtkWidget;
@@ -4115,30 +4265,6 @@ begin
   Result := g_object_get_data(PGObject(WidgetInfo^.CoreWidget),'lcl_ttabcontrol') <> nil;
 end;
 
-{-------------------------------------------------------------------------------
-  function GetGtkNoteBookDummyPage(ANoteBookWidget: PGtkNoteBook): PGtkWidget;
-
-  Retrieves the DummyWidget associated with the ANoteBookWidget
--------------------------------------------------------------------------------}
-{$IFDEF GTK2USEDUMMYNOTEBOOKPAGE}
-function GetGtkNoteBookDummyPage(ANoteBookWidget: PGtkNoteBook): PGtkWidget;
-begin
-  Result:=g_object_get_data(PGObject(ANoteBookWidget),'LCLDummyPage');
-end;
-
-{-------------------------------------------------------------------------------
-  procedure SetGtkNoteBookDummyPage(ANoteBookWidget: PGtkNoteBook;
-    DummyWidget: PGtkWidget): PGtkWidget;
-
-  Associates the DummyWidget with the ANoteBookWidget
--------------------------------------------------------------------------------}
-procedure SetGtkNoteBookDummyPage(ANoteBookWidget: PGtkNoteBook;
-  DummyWidget: PGtkWidget);
-begin
-  g_object_set_data(PGObject(ANoteBookWidget),'LCLDummyPage',DummyWidget);
-end;
-{$ENDIF}
-
 {------------------------------------------------------------------------------
   UpdateNoteBookClientWidget
   Params: ANoteBook: TObject
@@ -4176,26 +4302,6 @@ begin
 end;
 
 {-------------------------------------------------------------------------------
-  procedure RemoveDummyNoteBookPage(NoteBookWidget: PGtkNotebook);
-
-  Removes the dummy page.
-  See also AddDummyNoteBookPage
--------------------------------------------------------------------------------}
-{$IFDEF GTK2USEDUMMYNOTEBOOKPAGE}
-procedure RemoveDummyNoteBookPage(NoteBookWidget: PGtkNotebook);
-var
-  DummyWidget: PGtkWidget;
-begin
-  DummyWidget:=GetGtkNoteBookDummyPage(NoteBookWidget);
-  if DummyWidget=nil then exit;
-  gtk_notebook_remove_page(NoteBookWidget,
-                           gtk_notebook_page_num(NoteBookWidget,DummyWidget));
-  DummyWidget:=nil;
-  SetGtkNoteBookDummyPage(NoteBookWidget,DummyWidget);
-end;
-{$ENDIF}
-
-{-------------------------------------------------------------------------------
   method UpdateNotebookPageTab
   Params: ANoteBook: TCustomTabControl; APage: TCustomPage
   Result: none
@@ -4224,19 +4330,19 @@ var
   procedure UpdateTabImage;
   var
     HasIcon: Boolean;
-    IconSize: TPoint;
+    IconSize: Types.TSize;
     ImageIndex: Integer;
   begin
     HasIcon:=false;
-    IconSize:=Point(0,0);
+    IconSize:=Size(0,0);
     ImageIndex := TheNoteBook.GetImageIndex(ThePage.PageIndex);
     if (TheNoteBook.Images<>nil)
     and (ImageIndex >= 0)
     and (ImageIndex < TheNoteBook.Images.Count) then
     begin
       // page has valid image
-      IconSize := Point(TheNoteBook.Images.Width, TheNoteBook.Images.Height);
-      HasIcon := (IconSize.X>0) and (IconSize.Y>0);
+      IconSize := TheNoteBook.Images.SizeForPPI[TheNoteBook.ImagesWidth, TheNoteBook.Font.PixelsPerInch];
+      HasIcon := (IconSize.cx>0) and (IconSize.cy>0);
     end;
 
     if HasIcon then
@@ -4246,7 +4352,7 @@ var
       begin
         // there is already an icon widget for the image in the tab
         // -> resize the icon widget
-        gtk_widget_set_usize(TabImageWidget,IconSize.X,IconSize.Y);
+        gtk_widget_set_usize(TabImageWidget,IconSize.cx,IconSize.cy);
       end else
       begin
         // there is no pixmap for the image in the tab
@@ -4255,7 +4361,7 @@ var
         g_signal_connect(PgtkObject(TabImageWidget), 'expose_event',
                            TGTKSignalFunc(@PageIconWidgetExposeAfter), ThePage);
         g_object_set_data(PGObject(TabWidget), 'TabImage', TabImageWidget);
-        gtk_widget_set_usize(TabImageWidget, IconSize.X, IconSize.Y);
+        gtk_widget_set_usize(TabImageWidget, IconSize.cx, IconSize.cy);
         gtk_widget_show(TabImageWidget);
         gtk_box_pack_start_defaults(PGtkBox(TabWidget), TabImageWidget);
         gtk_box_reorder_child(PGtkBox(TabWidget), TabImageWidget, 0);
@@ -4264,7 +4370,7 @@ var
       begin
         // there is already an icon widget for the image in the menu
         // -> resize the icon widget
-        gtk_widget_set_usize(MenuImageWidget, IconSize.X, IconSize.Y);
+        gtk_widget_set_usize(MenuImageWidget, IconSize.cx, IconSize.cy);
       end else
       begin
         // there is no icon widget for the image in the menu
@@ -4272,7 +4378,7 @@ var
         MenuImageWidget:=gtk_label_new(#0);
         g_signal_connect_after(PgtkObject(MenuImageWidget), 'expose_event',
                           TGTKSignalFunc(@PageIconWidgetExposeAfter), ThePage);
-        gtk_widget_set_usize(MenuImageWidget,IconSize.X,IconSize.Y);
+        gtk_widget_set_usize(MenuImageWidget,IconSize.cx,IconSize.cy);
         g_object_set_data(PGObject(MenuWidget),'TabImage',MenuImageWidget);
         gtk_widget_show(MenuImageWidget);
         gtk_box_pack_start_defaults(PGtkBox(MenuWidget),MenuImageWidget);
@@ -4462,7 +4568,7 @@ begin
     else
       DbgOut(' LCLObject=',TControl(LCLObject).ClassName);
     DebugLn('');
-    RaiseException('GetWidgetOrigin Window=nil');
+    RaiseGDBException('GetWidgetOrigin Window=nil');
     {$ENDIF}
     Result.X:=0;
     Result.Y:=0;
@@ -4661,7 +4767,7 @@ begin
   if SourceWindow = nil then
   begin
     {$IFDEF RaiseExceptionOnNilPointers}
-    RaiseException('TranslateGdkPointToClientArea Window=nil');
+    RaiseGDBException('TranslateGdkPointToClientArea Window=nil');
     {$ENDIF}
     DebugLn('WARNING: TranslateGdkPointToClientArea SourceWindow=nil');
   end;
@@ -5715,6 +5821,7 @@ var
   FreeImageList: Boolean;
   AImageIndex: Integer;
   ItemBmp: TBitmap;
+  DC: HDC;
 begin
   if (MenuItem=nil) then
     exit;
@@ -5734,15 +5841,18 @@ begin
     OldCheckMenuItemDrawProc(MenuItem,Area);
     exit;
   end;
-  IconSize:=LCLMenuItem.GetIconSize;
-  IconWidth:=IconSize.X;
-  IconHeight:=IconSize.Y;
-
   // calculate left and top
   Widget := PGtkWidget(MenuItem);
   AWindow:=GetControlWindow(Widget);
   if AWindow = nil then
     exit;
+
+  DC := Widgetset.GetDC(HWND({%H-}PtrUInt(Widget)));
+  IconSize:=LCLMenuItem.GetIconSize(DC);
+  WidgetSet.ReleaseDC(HWND({%H-}PtrUInt(Widget)), DC);
+  IconWidth:=IconSize.X;
+  IconHeight:=IconSize.Y;
+
   Container := GTK_CONTAINER (MenuItem);
   BorderWidth := Container^.flag0 and bm_TGtkContainer_border_width;
 
@@ -5763,16 +5873,17 @@ begin
 
   // draw icon
   AImageList := LCLMenuItem.GetImageList;
-  if AImageList = nil then
+  if (AImageList = nil) or (LCLMenuItem.ImageIndex < 0) then
   begin
     AImageList := TImageList.Create(nil);
     // prevent multiple calls to GetBitmap;
     ItemBmp := LCLMenuItem.Bitmap;
     AImageList.Width := ItemBmp.Width; // maybe height to prevent too wide bitmaps?
     AImageList.Height := ItemBmp.Height;
-    if ItemBmp.Masked
-    then AImageIndex := AImageList.AddMasked(ItemBmp, ItemBmp.TransparentColor)
-    else AImageIndex := AImageList.Add(ItemBmp, nil);
+    if not ItemBmp.Transparent then
+      AImageIndex := AImageList.AddMasked(ItemBmp, ItemBmp.Canvas.Pixels[0, AImageList.Height-1])
+    else
+      AImageIndex := AImageList.Add(ItemBmp, nil);
     FreeImageList := True;
   end
   else
@@ -5788,7 +5899,7 @@ begin
 
   if AImageIndex < AImageList.Count then
     {$IFDEF VerboseGtkToDos}{$note reimplement}{$ENDIF}
-    DrawImageListIconOnWidget(AImageList, AImageIndex, AEffect,
+    DrawImageListIconOnWidget(AImageList.ResolutionForPPI[IconWidth, 96, 1], AImageIndex, AEffect,
         LCLMenuItem.Checked, Widget, false, false, ALeft, ATop);
 
   if FreeImageList then
@@ -5810,6 +5921,7 @@ var
   CheckMenuItem: PGtkMenuItem;
   LCLMenuItem: TMenuItem;
   IconSize: TPoint;
+  DC: HDC;
 begin
   MaxToggleSize:=0;
   MenuShell:=GTK_MENU_SHELL(widget);
@@ -5822,8 +5934,10 @@ begin
       CurToggleSize:=OldCheckMenuItemToggleSize;
       LCLMenuItem:=TMenuItem(GetLCLObject(MenuItem));
       if LCLMenuItem<>nil then begin
-        IconSize:=LCLMenuItem.GetIconSize;
-        {if IconSize.X>100 then
+        DC := Widgetset.GetDC(HWND({%H-}PtrUInt(widget)));
+        IconSize:=LCLMenuItem.GetIconSize(DC);
+        WidgetSet.ReleaseDC(HWND({%H-}PtrUInt(Widget)), DC);
+        {if IconSize.Width>100 then
           debugln('MenuSizeRequest LCLMenuItem=',LCLMenuItem.Name,' ',LCLMenuItem.Caption,
             ' ');}
         if CurToggleSize<IconSize.X then
@@ -5931,7 +6045,6 @@ var
   begin
     // the icon will be painted instead of the toggle
     // of a normal gtkcheckmenuitem
-
     if LCLMenuItem.HasIcon then
     begin
       GTK_MENU_ITEM(MenuItemWidget)^.flag0:=
@@ -5942,6 +6055,8 @@ var
       if OldCheckMenuItemDrawProc = nil then
         OldCheckMenuItemDrawProc := CHECK_MENU_ITEM_CLASS(MenuItemWidget)^.draw_indicator;
       CHECK_MENU_ITEM_CLASS(MenuItemWidget)^.draw_indicator := @DrawMenuItemIcon;
+
+      MinHeightWidget := MenuItemWidget;
     end
     else
       MinHeightWidget := nil;
@@ -6148,6 +6263,7 @@ var
   NewShadowType: TGtkShadowType;
   NewJustification: TGtkJustification;
   xalign, yalign: gfloat;
+  MessageId: guint;
 begin
   //DebugLn('UpdateStatusBarPanel ',DbgS(StatusBar),' Index=',dbgs(Index));
   AStatusBar := StatusBar as TStatusBar;
@@ -6178,10 +6294,11 @@ begin
                                             'state');
   //DebugLn('  PanelText="',PanelText,'"');
   if PanelText <> '' then
-    gtk_statusbar_push(PGTKStatusBar(StatusPanelWidget), ContextID, PGChar(PanelText))
+    MessageId := gtk_statusbar_push(PGTKStatusBar(StatusPanelWidget), ContextID, PGChar(PanelText))
   else
-    gtk_statusbar_push(PGTKStatusBar(StatusPanelWidget), ContextID, '');
-
+    MessageId := gtk_statusbar_push(PGTKStatusBar(StatusPanelWidget), ContextID, '');
+  if MessageId > 1 then
+    gtk_statusbar_remove(PGTKStatusBar(StatusPanelWidget), ContextID, MessageId - 1);
 
   if CurPanel <> nil then
   begin
@@ -6224,8 +6341,9 @@ begin
 
     g_object_set_data(PGObject(StatusPanelWidget),'lcl_statusbar_id',
       @AStatusBar.Panels[Index].ID);
-    g_signal_connect_after(StatusPanelWidget, 'expose-event',
-      TGtkSignalFunc(@gtk2PaintStatusBarWidget), AStatusBar);
+    if AStatusBar.Panels[Index].Style = psOwnerDraw then
+      g_signal_connect_after(StatusPanelWidget, 'expose-event',
+        TGtkSignalFunc(@gtk2PaintStatusBarWidget), AStatusBar);
 
   end;
 end;
@@ -6408,7 +6526,7 @@ procedure GetGTKDefaultWidgetSize(AWinControl: TWinControl;
 var
   Widget: PGtkWidget;
   Requisition: TGtkRequisition;
-  FixedWidget: PGtkWidget;
+  FixedWidget, LblWidget: PGtkWidget;
 begin
   Widget := {%H-}PGtkWidget(AWinControl.Handle);
   {$IFDEF VerboseCalculatePreferredSize}
@@ -6445,6 +6563,13 @@ begin
       dec(PreferredWidth,Max(0,FixedWidget^.requisition.width));
       dec(PreferredHeight,Max(0,FixedWidget^.requisition.height));
     end;
+  end;
+
+  // Do not truncate Groupbox caption. Issue #32621
+  if AWinControl is TCustomGroupBox then begin
+    LblWidget := gtk_frame_get_label_widget(PGtkFrame(PGtkBin(Widget)^.child));
+    if LblWidget <> nil then
+      PreferredWidth := Max(PreferredWidth, LblWidget^.allocation.x * 2 + LblWidget^.requisition.width);
   end;
 
   // restore size
@@ -6763,7 +6888,7 @@ var
     DebugLn('WARNING: SetWidgetSizeAndPosition: resizing BIG ',
       ' Control=',LCLControl.Name,':',LCLControl.ClassName,
       ' NewSize=',dbgs(LCLWidth),',',dbgs(LCLHeight));
-    //RaiseException('');
+    //RaiseGDBException('');
   end;
 
   procedure WriteWarningParentWidgetNotFound;
@@ -7355,6 +7480,8 @@ begin
         Result:=(ValidDateSelection);
         exit;
       end;
+      // give the system some time to process the request
+      Sleep(1);
     until Abs(StartTime-Now)*86400>1.0; // wait at most a second
   finally
     {$IFDEF DEBUG_CLIPBOARD}
@@ -7383,11 +7510,11 @@ end;
  ------------------------------------------------------------------------------}
 function RequestSelectionData(ClipboardWidget: PGtkWidget;
   ClipboardType: TClipboardType; FormatID: PtrUInt): TGtkSelectionData;
-  
 var
-  TimeID: cardinal;
-  c: PClipboardEventData;
   StartTime: TDateTime;
+  TimeID: cardinal;
+  EventData: PClipboardEventData;
+  TypeAtom: TGdkAtom;
 begin
   {$IFDEF DEBUG_CLIPBOARD}
   DebugLn('[RequestSelectionData] FormatID=',dbgs(FormatID));
@@ -7406,26 +7533,25 @@ begin
         Exit; { Previous request timed out, so don't wait for another timeout period }
     end;
   end;
-  New(c);
-  FillChar(c^,SizeOf(TClipboardEventData),0);
+  New(EventData);
+  FillChar(EventData^,SizeOf(TClipboardEventData),0);
   TimeID:= gdk_event_get_time(gtk_get_current_event);
-             // IMPORTANT: To retrieve data from xterm or kde applications
-             //            the time id must be 0 or event^.time
-  c^.TimeID:=TimeID;
-  ClipboardSelectionData.Add(c);
+  // IMPORTANT: To retrieve data from xterm or kde applications the time id must be 0 or event^.time
+  EventData^.TimeID:=TimeID;
+  ClipboardSelectionData.Add(EventData);
   try
+    TypeAtom := ClipboardTypeAtoms[ClipboardType];
     {$IFDEF DEBUG_CLIPBOARD}
-    DebugLn('[RequestSelectionData] TimeID=',dbgs(TimeID),' Type=',GdkAtomToStr(ClipboardTypeAtoms[ClipboardType]),' FormatID=',GdkAtomToStr(FormatID), ' Sanity=', IntToStr(Sanity));
+    DebugLn('[RequestSelectionData] TimeID=',dbgs(TimeID),' Type=',GdkAtomToStr(Atom),' FormatID=',GdkAtomToStr(FormatID));
     {$ENDIF}
-    if gtk_selection_convert(ClipboardWidget, ClipboardTypeAtoms[ClipboardType],
-                             FormatID, TimeID)<>GdkFalse
-    then begin
-      if not WaitForClipboardAnswer(c) then exit;
-      Result:=c^.Data;
+    if gtk_selection_convert(ClipboardWidget,TypeAtom,FormatID,TimeID) <> GdkFalse then
+    begin
+      gtk_clipboard_wait_for_contents(gtk_clipboard_get(TypeAtom), FormatID);
+      Result:=EventData^.Data;
     end;
   finally
-    ClipboardSelectionData.Remove(c);
-    Dispose(c);
+    ClipboardSelectionData.Remove(EventData);
+    Dispose(EventData);
   end;
 end;
 
@@ -9357,7 +9483,7 @@ begin
   // X warns if marking a fixed size window resizeable:
   if ((AForm.Constraints.MinWidth>0)
   and (AForm.Constraints.MinWidth=AForm.Constraints.MaxWidth))
-  or ((AForm.Constraints.MinHeight>0)
+  and ((AForm.Constraints.MinHeight>0)
   and (AForm.Constraints.MinHeight=AForm.Constraints.MaxHeight)) then
     Result:=Result-GDK_FUNC_RESIZE;
 

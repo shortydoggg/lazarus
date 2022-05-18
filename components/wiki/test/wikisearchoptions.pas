@@ -14,8 +14,8 @@
 
   A copy of the GNU General Public License is available on the World Wide Web
   at <http://www.gnu.org/copyleft/gpl.html>. You can also obtain it by writing
-  to the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-  MA 02111-1307, USA.
+  to the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
+  Boston, MA 02110-1335, USA.
 
 }
 unit WikiSearchOptions;
@@ -25,7 +25,7 @@ unit WikiSearchOptions;
 interface
 
 uses
-  Classes, SysUtils, FileUtil, LazLogger, BasicCodeTools,
+  Classes, SysUtils, FileUtil, LazLogger, AvgLvlTree, BasicCodeTools,
   CodeToolsStructs, WikiHelpManager, WikiStrConsts, WikiFormat, Forms, Controls,
   Graphics, Dialogs, ExtCtrls, StdCtrls, ComCtrls, Grids;
 
@@ -325,7 +325,7 @@ end;
 
 function TWikiSearchOptsWnd.GetLanguages: string;
 var
-  S2SItem: PStringToStringTreeItem;
+  S2SItem: PStringToStringItem;
 begin
   Result:='';
   if not FLanguages.Contains('') then

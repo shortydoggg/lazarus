@@ -1,4 +1,4 @@
-{ $Id: win32wsforms.pp 51056 2015-12-27 20:27:38Z ondrej $}
+{ $Id: win32wsforms.pp 63465 2020-06-28 16:53:21Z mattias $}
 {
  *****************************************************************************
  *                              Win32WSForms.pp                              * 
@@ -66,6 +66,7 @@ type
   published
     class function CreateHandle(const AWinControl: TWinControl;
           const AParams: TCreateParams): HWND; override;
+    class function GetDefaultDoubleBuffered: Boolean; override;
     class procedure SetAllowDropFiles(const AForm: TCustomForm; AValue: Boolean); override;
     class procedure SetAlphaBlend(const ACustomForm: TCustomForm; const AlphaBlend: Boolean;
       const Alpha: Byte); override;
@@ -295,11 +296,13 @@ end;
 
 procedure AdjustFormBounds(const AForm: TCustomForm; out SizeRect: TRect);
 begin
+  SizeRect := AForm.BoundsRect;
+  {$IFNDEF LCLRealFormBounds}
   // the LCL defines the size of a form without border, win32 with.
   // -> adjust size according to BorderStyle
-  SizeRect := AForm.BoundsRect;
   Windows.AdjustWindowRectEx(@SizeRect, CalcBorderStyleFlags(AForm) or CalcBorderIconsFlags(AForm),
     False, CalcBorderStyleFlagsEx(AForm) or CalcBorderIconsFlagsEx(AForm));
+  {$ENDIF}
 end;
 
 function CustomFormWndProc(Window: HWnd; Msg: UInt; WParam: Windows.WParam; LParam: Windows.LParam): LResult; stdcall;
@@ -325,7 +328,9 @@ function CustomFormWndProc(Window: HWnd; Msg: UInt; WParam: Windows.WParam; LPar
 
       IntfWidth := AWidth;
       IntfHeight := AHeight;
+      {$IFNDEF LCLRealFormBounds}
       LCLFormSizeToWin32Size(TCustomForm(WinControl), IntfWidth, IntfHeight);
+      {$ENDIF}
 
       if AWidth > 0 then
         pt.X := IntfWidth;
@@ -369,7 +374,7 @@ begin
           end;
           SW_PARENTOPENING:
           begin
-            if Info^.RestoreState <> 0 then
+            if (Info^.RestoreState <> 0) and WinControl.Visible then
             begin
               Windows.ShowWindowAsync(Window, Info^.RestoreState);
               Info^.RestoreState := 0;
@@ -392,20 +397,32 @@ var
 begin
   // general initialization of Params
   PrepareCreateWindow(AWinControl, AParams, Params);
+
   // customization of Params
   with Params do
   begin
     if (Parent = 0) then
     begin
-      if not Application.MainFormOnTaskBar then
-        Parent := Win32WidgetSet.AppHandle
-      else
-      if (AWinControl <> Application.MainForm) then
-      begin
-        if Assigned(Application.MainForm) and Application.MainForm.HandleAllocated then
-          Parent := Application.MainFormHandle
-        else
+      // Leave Parent at 0 if this is a standalone form.
+      case lForm.EffectiveShowInTaskBar of
+        stDefault:
+        begin
+          if not Application.MainFormOnTaskBar then
+            Parent := Win32WidgetSet.AppHandle
+          else
+          if (AWinControl <> Application.MainForm) then
+          begin
+            if Assigned(Application.MainForm) and Application.MainForm.HandleAllocated then
+              Parent := Application.MainFormHandle
+            else
+              Parent := Win32WidgetSet.AppHandle;
+          end;
+        end;
+        stNever:
+        begin
           Parent := Win32WidgetSet.AppHandle;
+          FlagsEx := FlagsEx and not WS_EX_APPWINDOW;
+        end;
       end;
     end;
     CalcFormWindowFlags(lForm, Flags, FlagsEx);
@@ -433,7 +450,11 @@ begin
       Height := Bounds.Bottom - Bounds.Top;
     end;
     SubClassWndProc := @CustomFormWndProc;
-    if not (csDesigning in lForm.ComponentState) and lForm.AlphaBlend then
+
+    // mantis #26206: Layered windows are only supported for top-level windows.
+    // After Windows 8 it is supported for child windows too.
+    if not (csDesigning in lForm.ComponentState) and lForm.AlphaBlend
+    and ((WindowsVersion >= wv8) or (Parent = 0)) then
       FlagsEx := FlagsEx or WS_EX_LAYERED;
   end;
   SetStdBiDiModeParams(AWinControl, Params);
@@ -459,6 +480,11 @@ begin
   if WindowsVersion >= wv2000 then
     Windows.SendMessage(Result, WM_CHANGEUISTATE,
       MakeWParam(UIS_INITIALIZE, UISF_HIDEFOCUS or UISF_HIDEACCEL), 0)
+end;
+
+class function TWin32WSCustomForm.GetDefaultDoubleBuffered: Boolean;
+begin
+  Result := GetSystemMetrics(SM_REMOTESESSION)=0;
 end;
 
 class procedure TWin32WSCustomForm.SetAllowDropFiles(const AForm: TCustomForm;
@@ -587,15 +613,15 @@ begin
   // -> adjust size according to BorderStyle
   SizeRect := Bounds(ALeft, ATop, AWidth, AHeight);
 
+  {$IFNDEF LCLRealFormBounds}
   Windows.AdjustWindowRectEx(@SizeRect, CalcBorderStyleFlags(AForm) or CalcBorderIconsFlags(AForm),
     False, CalcBorderStyleFlagsEx(AForm) or CalcBorderIconsFlagsEx(AForm));
-
-
+  {$ENDIF}
   L := ALeft;
   T := ATop;
   W := SizeRect.Right - SizeRect.Left;
   H := SizeRect.Bottom - SizeRect.Top;
-  
+
   // we are calling setbounds in TWinControl.Initialize
   // if position is default it will be changed to designed. We do not want this.
   if wcfInitializing in TWinControlAccess(AWinControl).FWinControlFlags then
@@ -656,11 +682,10 @@ begin
     Exit;
 
   OldStyle := GetWindowLong(AForm.Handle, GWL_EXSTYLE);
-  NewStyle := OldStyle;
   if AValue = stAlways then
-    NewStyle := NewStyle or WS_EX_APPWINDOW
+    NewStyle := OldStyle or WS_EX_APPWINDOW
   else
-    NewStyle := NewStyle and not WS_EX_APPWINDOW;
+    NewStyle := OldStyle and not WS_EX_APPWINDOW;
   if OldStyle = NewStyle then exit;
 
   // to apply this changes we need either to hide window or recreate it. Hide is
@@ -686,7 +711,7 @@ const
  { wsNormal     } SW_SHOWNORMAL, // to restore from minimzed/maximized we need to use SW_SHOWNORMAL instead of SW_SHOW
  { wsMinimized  } SW_SHOWMINIMIZED,
  { wsMaximized  } SW_SHOWMAXIMIZED,
- { wsFullScreen } SW_SHOWNORMAL  // win32 has no fullscreen window state
+ { wsFullScreen } SW_SHOWMAXIMIZED  // win32 has no fullscreen window state
   );
 var
   Flags: DWord;

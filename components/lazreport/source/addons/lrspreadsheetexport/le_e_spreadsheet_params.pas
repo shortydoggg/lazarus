@@ -29,7 +29,7 @@
 
  You should have received a copy of the GNU Library General Public License
  along with this library; if not, write to the Free Software Foundation,
- Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
 unit le_e_spreadsheet_params;
@@ -48,24 +48,31 @@ type
 
   TleSpreadsheetParamsForm = class(TForm)
     ButtonPanel1: TButtonPanel;
-    CheckBox1: TCheckBox;
-    CheckBox2: TCheckBox;
-    CheckBox3: TCheckBox;
-    CheckBox4: TCheckBox;
-    CheckBox5: TCheckBox;
-    CheckBox6: TCheckBox;
-    Edit1: TEdit;
+    ExportPageFooterCheckBox: TCheckBox;
+    ExportPageHeaderCheckBox: TCheckBox;
+    ExportReportTitleCheckBox: TCheckBox;
+    ExportPicturesCheckBox: TCheckBox;
+    ExportReportSummaryCheckBox: TCheckBox;
+    Label2: TLabel;
+    MergeCellsCheckBox: TCheckBox;
+    PageBreaksCheckBox: TCheckBox;
+    OpenAfterExportCheckBox: TCheckBox;
+    AutoCreateFileCheckBox: TCheckBox;
+    ExportURLCheckBox: TCheckBox;
+    ExportPrintRangeCheckBox: TCheckBox;
+    DeleteEmptyRowsCheckBox: TCheckBox;
+    PagesEdit: TEdit;
     GroupBox1: TGroupBox;
     GroupBox2: TGroupBox;
     Label1: TLabel;
     PageControl1: TPageControl;
-    RadioButton1: TRadioButton;
-    RadioButton2: TRadioButton;
-    RadioButton3: TRadioButton;
-    RadioButton4: TRadioButton;
-    RadioButton5: TRadioButton;
-    RadioButton6: TRadioButton;
-    SpinEdit1: TSpinEdit;
+    AllPagesRadioButton: TRadioButton;
+    CurrentPageRadioButton: TRadioButton;
+    PagesRadioButton: TRadioButton;
+    LikeReportRadioButton: TRadioButton;
+    AllInOnePageRadioButton: TRadioButton;
+    RowsPerChunkRadioButton: TRadioButton;
+    RowsPerChunkEdit: TSpinEdit;
     TabSheet1: TTabSheet;
     TabSheet2: TTabSheet;
     procedure FormCreate(Sender: TObject);
@@ -97,21 +104,27 @@ begin
   TabSheet1.Caption:=sGeneral;
   TabSheet2.Caption:=sExportSettings;
   GroupBox2.Caption:=sDataGrouping;
-  RadioButton4.Caption:=sLikeTheReport;
-  RadioButton5.Caption:=sAllInOnePage;
-  RadioButton6.Caption:=sChunksEach;
-  CheckBox4.Caption:=sOpenAfterExport;
-  CheckBox5.Caption:=sAutoCreateFile;
+  LikeReportRadioButton.Caption:=sLikeTheReport;
+  AllInOnePageRadioButton.Caption:=sAllInOnePage;
+  RowsPerChunkRadioButton.Caption:=sChunksEach;
+  OpenAfterExportCheckBox.Caption:=sOpenAfterExport;
+  AutoCreateFileCheckBox.Caption:=sAutoCreateFile;
   GroupBox1.Caption:=sPageRange;
-  RadioButton1.Caption:=sAllPages;
-  RadioButton2.Caption:=sCurrentPage;
-  RadioButton3.Caption:=sPages;
+  AllPagesRadioButton.Caption:=sAllPages;
+  CurrentPageRadioButton.Caption:=sCurrentPage;
+  PagesRadioButton.Caption:=sPages;
   Label1.Caption:=sEnterPageNumbers;
 
-  CheckBox1.Caption:=sExportPictures;
-  CheckBox2.Caption:=sMergeCells;
-  CheckBox3.Caption:=sPageBreaks;
-  CheckBox6.Caption:=sDeleteEmptyRows;
+  ExportPicturesCheckBox.Caption:=sExportPictures;
+  MergeCellsCheckBox.Caption:=sMergeCells;
+  PageBreaksCheckBox.Caption:=sPageBreaks;
+  DeleteEmptyRowsCheckBox.Caption:=sDeleteEmptyRows;
+  ExportURLCheckBox.Caption:=sExportURL;
+  ExportPrintRangeCheckBox.Caption:=sExportPrintRange;
+  ExportReportTitleCheckBox.Caption:=sExportReportTitle;
+  ExportReportSummaryCheckBox.Caption:=sExportReportSummary;
+  ExportPageHeaderCheckBox.Caption:=sExportPageHeader;
+  ExportPageFooterCheckBox.Caption:=sExportPageFooter;
 end;
 
 end.

@@ -14,7 +14,7 @@
  *   A copy of the GNU General Public License is available on the World    *
  *   Wide Web at <http://www.gnu.org/copyleft/gpl.html>. You can also      *
  *   obtain it by writing to the Free Software Foundation,                 *
- *   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.        *
+ *   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.   *
  *                                                                         *
  ***************************************************************************
 
@@ -37,10 +37,10 @@ uses
   // CodeTools
   DefineTemplates, CodeToolManager, FileProcs,
   // LazUtils
-  LazFileCache, LazUTF8, LazUTF8Classes, LazFileUtils,
-  LazLoggerBase, LazLogger, Laz2_XMLCfg,
+  LazFileCache, LazUTF8, LazUTF8Classes, LazFileUtils, FileUtil,
+  LazLoggerBase, Laz2_XMLCfg,
   // IDE
-  LazarusIDEStrConsts, LazConf, EnvironmentOpts, IDEProcs;
+  LazarusIDEStrConsts, LazConf, EnvironmentOpts;
 
 type
   TSDFilenameQuality = (
@@ -87,12 +87,16 @@ function CheckLazarusDirectoryQuality(ADirectory: string; out Note: string): TSD
 function SearchLazarusDirectoryCandidates(StopIfFits: boolean): TSDFileInfoList;
 procedure SetupLazarusDirectory;
 
-// Compiler
-function CheckCompilerQuality(AFilename: string; out Note: string;
+// FreePascal Compiler
+function CheckFPCExeQuality(AFilename: string; out Note: string;
   TestSrcFilename: string): TSDFilenameQuality;
-function SearchCompilerCandidates(StopIfFits: boolean;
+function SearchFPCExeCandidates(StopIfFits: boolean;
   const TestSrcFilename: string): TSDFileInfoList;
-procedure SetupCompilerFilename;
+procedure SetupFPCExeFilename;
+
+// Pas2js compiler
+function CheckPas2jsQuality(AFilename: string; out Note: string;
+  TestSrcFilename: string): TSDFilenameQuality;
 
 // FPC Source
 function CheckFPCSrcDirQuality(ADirectory: string; out Note: string;
@@ -119,7 +123,7 @@ function CheckLazarusDirectoryQuality(ADirectory: string;
 
   function SubDirExists(SubDir: string; var q: TSDFilenameQuality): boolean;
   begin
-    SubDir:=SetDirSeparators(SubDir);
+    SubDir:=GetForcedPathDelims(SubDir);
     if DirPathExistsCached(ADirectory+SubDir) then exit(true);
     Result:=false;
     Note:=Format(lisDirectoryNotFound2, [SubDir]);
@@ -128,7 +132,7 @@ function CheckLazarusDirectoryQuality(ADirectory: string;
 
   function SubFileExists(SubFile: string; var q: TSDFilenameQuality): boolean;
   begin
-    SubFile:=SetDirSeparators(SubFile);
+    SubFile:=GetForcedPathDelims(SubFile);
     if FileExistsCached(ADirectory+SubFile) then exit(true);
     Result:=false;
     Note:=Format(lisFileNotFound3, [SubFile]);
@@ -153,7 +157,7 @@ begin
   if not SubDirExists('ide',Result) then exit;
   if not SubDirExists('components',Result) then exit;
   if not SubFileExists('ide/lazarus.lpi',Result) then exit;
-  VersionIncFile:=SetDirSeparators('ide/version.inc');
+  VersionIncFile:=GetForcedPathDelims('ide/version.inc');
   if not SubFileExists(VersionIncFile,Result) then exit;
   sl:=TStringListUTF8.Create;
   try
@@ -235,7 +239,7 @@ begin
     if CheckDir(EnvironmentOptions.LazarusDirectory,Result) then exit;
 
     // then check the directory of the executable
-    Dir:=ProgramDirectory(true);
+    Dir:=ProgramDirectoryWithBundle;
     if CheckDir(Dir,Result) then exit;
     ResolvedDir:=GetPhysicalFilenameCached(Dir,false);
     if (ResolvedDir<>Dir) and (CheckDir(ResolvedDir,Result)) then exit;
@@ -309,14 +313,15 @@ begin
   end;
 end;
 
-function CheckCompilerQuality(AFilename: string; out Note: string;
+function CheckFPCExeQuality(AFilename: string; out Note: string;
   TestSrcFilename: string): TSDFilenameQuality;
 var
-  CfgCache: TFPCTargetConfigCache;
+  CfgCache: TPCTargetConfigCache;
 
   function CheckPPU(const AnUnitName: string): boolean;
   begin
-    if CompareFileExt(CfgCache.Units[AnUnitName],'ppu',false)<>0 then
+    if (CfgCache.Units=nil)
+    or (CompareFileExt(CfgCache.Units[AnUnitName],'ppu',false)<>0) then
     begin
       Note:=Format(lisPpuNotFoundCheckYourFpcCfg, [AnUnitName]);
       Result:=false;
@@ -349,7 +354,7 @@ begin
   // do not execute unusual exe files
   ShortFilename:=ExtractFileNameOnly(AFilename);
   if (CompareFilenames(ShortFilename,'fpc')<>0)
-  and (CompareFilenames(copy(ShortFilename,1,3),'ppc')<>0)
+  and (CompareFilenames(LeftStr(ShortFilename,3),'ppc')<>0)
   then begin
     Note:=lisUnusualCompilerFileNameUsuallyItStartsWithFpcPpcOr;
     exit(sddqIncomplete);
@@ -357,14 +362,14 @@ begin
 
   if TestSrcFilename<>'' then
   begin
-    CfgCache:=CodeToolBoss.FPCDefinesCache.ConfigCaches.Find(
+    CfgCache:=CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
                                                        AFilename,'','','',true);
     if CfgCache.NeedsUpdate then
       CfgCache.Update(TestSrcFilename);
     i:=CfgCache.IndexOfUsedCfgFile;
     if i<0 then
     begin
-      Note:=lisFpcCfgIsMissing;
+      Note:=SafeFormat(lisCompilerCfgIsMissing,['fpc.cfg']);
       exit;
     end;
     if not CfgCache.HasPPUs then
@@ -384,7 +389,7 @@ begin
   Result:=sddqCompatible;
 end;
 
-function SearchCompilerCandidates(StopIfFits: boolean;
+function SearchFPCExeCandidates(StopIfFits: boolean;
   const TestSrcFilename: string): TSDFileInfoList;
 var
   ShortCompFile: String;
@@ -409,7 +414,7 @@ var
     if List=nil then
       List:=TSDFileInfoList.create(true);
     Item:=List.AddNewItem(RealFilename, AFilename);
-    Item.Quality:=CheckCompilerQuality(RealFilename, Item.Note, TestSrcFilename);
+    Item.Quality:=CheckFPCExeQuality(RealFilename, Item.Note, TestSrcFilename);
     Result:=(Item.Quality=sddqCompatible) and StopIfFits;
   end;
 
@@ -487,11 +492,11 @@ begin
     ShortCompFile:='fpc'+ExeExt;
 
     // check $(LazarusDir)\fpc\3.0.0\bin\i386-win32\fpc.exe
-    if CheckFile(SetDirSeparators('$(LazarusDir)/fpc/'+{$I %FPCVERSION%}+'/bin/'+GetCompiledTargetCPU+'-'+GetCompiledTargetOS+'/')+ShortCompFile,Result)
+    if CheckFile(GetForcedPathDelims('$(LazarusDir)/fpc/'+{$I %FPCVERSION%}+'/bin/'+GetCompiledTargetCPU+'-'+GetCompiledTargetOS+'/')+ShortCompFile,Result)
       then exit;
 
     // check $(LazarusDir)\fpc\bin\i386-win32\fpc.exe
-    if CheckFile(SetDirSeparators('$(LazarusDir)/fpc/bin/'+GetCompiledTargetCPU+'-'+GetCompiledTargetOS+'/')+ShortCompFile,Result)
+    if CheckFile(GetForcedPathDelims('$(LazarusDir)/fpc/bin/'+GetCompiledTargetCPU+'-'+GetCompiledTargetOS+'/')+ShortCompFile,Result)
       then exit;
 
     // check common directories
@@ -524,14 +529,14 @@ begin
   end;
 end;
 
-procedure SetupCompilerFilename;
+procedure SetupFPCExeFilename;
 var
   Filename, Note: String;
   Quality: TSDFilenameQuality;
   List: TSDFileInfoList;
 begin
   Filename:=EnvironmentOptions.GetParsedCompilerFilename;
-  Quality:=CheckCompilerQuality(Filename,Note,'');
+  Quality:=CheckFPCExeQuality(Filename,Note,'');
   if Quality<>sddqInvalid then exit;
   // bad compiler
   dbgout('SetupCompilerFilename:');
@@ -545,7 +550,7 @@ begin
   end else begin
     debugln(' Searching compiler ...');
   end;
-  List:=SearchCompilerCandidates(true, CodeToolBoss.FPCDefinesCache.TestFilename);
+  List:=SearchFPCExeCandidates(true, CodeToolBoss.CompilerDefinesCache.TestFilename);
   try
     if (List=nil) or (List.BestDir.Quality=sddqInvalid) then begin
       debugln(['SetupCompilerFilename: no proper compiler found.']);
@@ -582,6 +587,58 @@ begin
   end;
 end;
 
+function CheckPas2jsQuality(AFilename: string; out Note: string;
+  TestSrcFilename: string): TSDFilenameQuality;
+var
+  i: LongInt;
+  ShortFilename: String;
+  CfgCache: TPCTargetConfigCache;
+begin
+  Result:=sddqInvalid;
+  AFilename:=TrimFilename(AFilename);
+  if not FileExistsCached(AFilename) then
+  begin
+    Note:=lisFileNotFound4;
+    exit;
+  end;
+  if DirPathExistsCached(AFilename) then
+  begin
+    Note:=lisFileIsDirectory;
+    exit;
+  end;
+  if not FileIsExecutableCached(AFilename) then
+  begin
+    Note:=lisFileIsNotAnExecutable;
+    exit;
+  end;
+
+  // do not execute unusual exe files
+  ShortFilename:=ExtractFileNameOnly(AFilename);
+  if (CompareText(LeftStr(ShortFilename,6),'pas2js')<>0)
+  then begin
+    Note:=lisUnusualPas2jsCompilerFileNameUsuallyItStartsWithPa;
+    exit(sddqIncomplete);
+  end;
+
+  if TestSrcFilename<>'' then
+  begin
+    CfgCache:=CodeToolBoss.CompilerDefinesCache.ConfigCaches.Find(
+                                                       AFilename,'','','',true);
+    if CfgCache.NeedsUpdate then
+      CfgCache.Update(TestSrcFilename);
+    i:=CfgCache.IndexOfUsedCfgFile;
+    if i<0 then
+    begin
+      Note:=SafeFormat(lisCompilerCfgIsMissing,['pas2js.cfg']);
+      exit;
+    end;
+    //if not CheckPas('classes') then exit;
+  end;
+
+  Note:=lisOk;
+  Result:=sddqCompatible;
+end;
+
 function CheckFPCSrcDirQuality(ADirectory: string; out Note: string;
   const FPCVer: String; aUseFileCache: Boolean = True): TSDFilenameQuality;
 // aUseFileCache = False when this function is called from a thread.
@@ -605,7 +662,7 @@ function CheckFPCSrcDirQuality(ADirectory: string; out Note: string;
 
   function SubDirExists(SubDir: string): boolean;
   begin
-    SubDir:=SetDirSeparators(SubDir);
+    SubDir:=GetForcedPathDelims(SubDir);
     if DirPathExistsInternal(ADirectory+SubDir) then exit(true);
     Result:=false;
     Note:=Format(lisDirectoryNotFound2, [SubDir]);
@@ -613,7 +670,7 @@ function CheckFPCSrcDirQuality(ADirectory: string; out Note: string;
 
   function SubFileExists(SubFile: string): boolean;
   begin
-    SubFile:=SetDirSeparators(SubFile);
+    SubFile:=GetForcedPathDelims(SubFile);
     if FileExistsInternal(ADirectory+SubFile) then exit(true);
     Result:=false;
     Note:=Format(lisFileNotFound3, [SubFile]);
@@ -693,7 +750,7 @@ function SearchFPCSrcDirCandidates(StopIfFits: boolean; const FPCVer: string): T
     RealDir: String;
   begin
     Result:=false;
-    Dir:=ChompPathDelim(SetDirSeparators(Dir));
+    Dir:=ChompPathDelim(GetForcedPathDelims(Dir));
     if Dir='' then exit;
     // check if already checked
     if Assigned(List) and List.CaptionExists(Dir) then exit;
@@ -737,6 +794,10 @@ begin
     // check environment variable FPCDIR
     AFileName := GetEnvironmentVariableUTF8('FPCDIR');
     if Check(AFilename,Result) then exit;
+
+    // check relative to FPCDIR
+    if AFileName <> '' then
+      if Check(AFilename + '/../fpcsrc', Result) then exit;
 
     // check history
     Dirs:=EnvironmentOptions.FPCSourceDirHistory;
@@ -855,10 +916,10 @@ begin
     // Windows-only locations:
     if (GetDefaultSrcOSForTargetOS(GetCompiledTargetOS)='win') then begin
       // check make in fpc.exe directory
-      if CheckFile(SetDirSeparators('$Path($(CompPath))\make.exe'),Result)
+      if CheckFile(GetForcedPathDelims('$Path($(CompPath))\make.exe'),Result)
       then exit;
       // check $(LazarusDir)\fpc\bin\i386-win32\fpc.exe
-      if CheckFile(SetDirSeparators('$(LazarusDir)\fpc\bin\$(TargetCPU)-$(TargetOS)\make.exe'),Result)
+      if CheckFile(GetForcedPathDelims('$(LazarusDir)\fpc\bin\$(TargetCPU)-$(TargetOS)\make.exe'),Result)
         then exit;
     end;
 
